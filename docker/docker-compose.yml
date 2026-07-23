@@ -17,12 +17,28 @@ services:
     platform: linux/amd64
     ports:
       - "8182:8182"
+    volumes:
+      - ../data_schema/schema.groovy:/opt/janusgraph/scripts/schema.groovy
     healthcheck:
-      test: ["CMD", "bin/gremlin.sh", "-e", "scripts/remote-connect.groovy"]
+      test: [ "CMD", "bin/gremlin.sh", "-e", "scripts/remote-connect.groovy" ]
       interval: 10s
       timeout: 30s
       retries: 10
       start_period: 40s
+    networks:
+      - jg-network
+
+  schema-init:
+    image: janusgraph/janusgraph:latest
+    platform: linux/amd64
+    depends_on:
+      janusgraph:
+        condition: service_healthy
+    volumes:
+      - ../data_schema/schema.groovy:/opt/janusgraph/scripts/schema.groovy
+    entrypoint: [ "bin/gremlin.sh", "-e", "scripts/schema.groovy" ]
+    environment:
+      GREMLIN_REMOTE_HOSTS: janusgraph
     networks:
       - jg-network
 
