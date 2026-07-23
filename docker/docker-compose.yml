@@ -1,0 +1,31 @@
+
+name: plot-visualizer
+
+services:
+  app:
+    build: .
+    ports:
+      - "5001:5000"
+    depends_on:
+      janusgraph:
+        condition: service_healthy
+    networks:
+      - jg-network
+
+  janusgraph:
+    image: janusgraph/janusgraph:latest
+    platform: linux/amd64
+    ports:
+      - "8182:8182"
+    healthcheck:
+      test: ["CMD", "bin/gremlin.sh", "-e", "scripts/remote-connect.groovy"]
+      interval: 10s
+      timeout: 30s
+      retries: 10
+      start_period: 40s
+    networks:
+      - jg-network
+
+networks:
+  jg-network:
+    driver: bridge

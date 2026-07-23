@@ -1,0 +1,14 @@
+name: janusgraph_env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - numpy
+  - pandas
+  - ipython
+  - pip
+  - pip:
+    - requests
+    - gremlinpython
+    - flask
