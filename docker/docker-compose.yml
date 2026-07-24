@@ -18,7 +18,11 @@ services:
     ports:
       - "8182:8182"
     volumes:
-      - ../data_schema/schema.groovy:/opt/janusgraph/scripts/schema.groovy
+      - ../graph_schema/schema.groovy:/opt/janusgraph/scripts/schema.groovy
+      - ../graph_schema/gremlin-server-custom.yaml:/opt/janusgraph/conf/gremlin-server.yaml
+      - ../graph_schema/unus_mundus_network.properties:/opt/janusgraph/conf/unus_mundus_network.properties
+      - jg-data:/opt/janusgraph/data
+      - jg-index:/opt/janusgraph/index
     healthcheck:
       test: [ "CMD", "bin/gremlin.sh", "-e", "scripts/remote-connect.groovy" ]
       interval: 10s
@@ -35,7 +39,7 @@ services:
       janusgraph:
         condition: service_healthy
     volumes:
-      - ../data_schema/schema.groovy:/opt/janusgraph/scripts/schema.groovy
+      - ../graph_schema/schema.groovy:/opt/janusgraph/scripts/schema.groovy
     entrypoint: [ "bin/gremlin.sh", "-e", "scripts/schema.groovy" ]
     environment:
       GREMLIN_REMOTE_HOSTS: janusgraph
@@ -45,3 +49,7 @@ services:
 networks:
   jg-network:
     driver: bridge
+
+volumes:
+  jg-data:
+  jg-index:
