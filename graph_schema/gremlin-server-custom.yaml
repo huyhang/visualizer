@@ -2,8 +2,6 @@ host: 0.0.0.0
 port: 8182
 channelizer: org.apache.tinkerpop.gremlin.server.channel.WebSocketChannelizer
 graphManager: org.janusgraph.graphdb.management.JanusGraphManager
-graphs:
-  graph1: conf/unus_mundus_network.properties
 scriptEngines:
   gremlin-groovy:
     plugins:
