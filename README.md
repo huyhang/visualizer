@@ -10,3 +10,7 @@ connection = DriverRemoteConnection('ws://janusgraph:8182/gremlin', 'g')
 g = traversal().withRemote(connection)
 g.V().count().next()
 ```
+
+```bash
+docker compose up --build
+```

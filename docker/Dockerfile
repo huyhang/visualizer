@@ -23,5 +23,14 @@ RUN conda init bash
 
 RUN conda activate janusgraph_env
 
+# Install zsh and oh-my-zsh with Soliah theme
+RUN apt-get update && apt-get install -y zsh curl git && \
+    sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended && \
+    sed -i 's/ZSH_THEME="robbyrussell"/ZSH_THEME="soliah"/' ~/.zshrc
+
+# Set zsh as default shell
+SHELL ["/bin/zsh", "-c"]
+CMD ["zsh"]
+
 # Doing nothing for now, but necessary so that we have a live docker container for testing
 CMD ["sleep", "infinity"]

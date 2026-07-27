@@ -20,6 +20,7 @@ services:
     volumes:
       - ../graph_schema/schema.groovy:/opt/janusgraph/scripts/schema.groovy
       - ../graph_schema/gremlin-server-custom.yaml:/opt/janusgraph/conf/gremlin-server.yaml
+      - ../graph_schema/janusgraph-berkeleyje.properties:/opt/janusgraph/conf/janusgraph-berkeleyje.properties
       - jg-data:/opt/janusgraph/data
       - jg-index:/opt/janusgraph/index
     healthcheck:
