@@ -3,7 +3,12 @@ name: plot-visualizer
 
 services:
   app:
-    build: .
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    # Live container for interactive testing against janusgraph (previously the
+    # Dockerfile's default CMD; moved here now that the sleep is gone).
+    command: ["sleep", "infinity"]
     ports:
       - "5001:5000"
     depends_on:
@@ -46,10 +51,49 @@ services:
     networks:
       - jg-network
 
+  # --- document-server stack (Flask + MongoDB) ---------------------------------
+  document-server:
+    # Reuses the shared miniconda image (docker/Dockerfile); the janusgraph_env
+    # conda env already provides flask/pymongo/gunicorn. Only the run command
+    # differs from the janusgraph `app` service.
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "wsgi:app"]
+    # Only the application is published to the host.
+    ports:
+      - "5002:5000"
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - docserver-net
+
+  mongo:
+    image: mongo:7
+    # NOTE: no `ports:` mapping on purpose. MongoDB is reachable only from
+    # inside the docker network (by the `document-server` service), never from
+    # the host or the outside world.
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - docserver-net
+
 networks:
   jg-network:
+    driver: bridge
+  docserver-net:
     driver: bridge
 
 volumes:
   jg-data:
   jg-index:
+  mongo-data:

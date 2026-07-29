@@ -12,3 +12,5 @@ dependencies:
     - requests
     - gremlinpython
     - flask
+    - pymongo
+    - gunicorn
