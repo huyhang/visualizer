@@ -31,3 +31,17 @@ def get_secret_key() -> str:
             "SECRET_KEY environment variable is required (set it in docker/.env)."
         )
     return key
+
+
+def get_secure_cookies() -> bool:
+    """Whether to mark the session cookie ``Secure`` (HTTPS-only).
+
+    Off by default so plain-HTTP local dev works; enable it (``SESSION_COOKIE_SECURE=true``)
+    when the app is served over HTTPS, e.g. behind a reverse proxy.
+    """
+    return os.environ.get("SESSION_COOKIE_SECURE", "false").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )

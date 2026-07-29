@@ -16,7 +16,7 @@ from conftest import (
 
 from visualizer.document_server.app import create_app
 from visualizer.document_server.auth_store import AuthStore
-from visualizer.document_server.config import get_secret_key
+from visualizer.document_server.config import get_secret_key, get_secure_cookies
 from visualizer.document_server.store import DocumentStore
 
 
@@ -32,6 +32,25 @@ def test_get_secret_key_requires_env(monkeypatch):
         get_secret_key()
     monkeypatch.setenv("SECRET_KEY", "a-real-key")
     assert get_secret_key() == "a-real-key"
+
+
+def test_get_secure_cookies_parses_env(monkeypatch):
+    monkeypatch.delenv("SESSION_COOKIE_SECURE", raising=False)
+    assert get_secure_cookies() is False
+    for truthy in ("true", "1", "YES", "On"):
+        monkeypatch.setenv("SESSION_COOKIE_SECURE", truthy)
+        assert get_secure_cookies() is True
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", "false")
+    assert get_secure_cookies() is False
+
+
+def test_create_app_applies_secure_cookie_flag():
+    client = mongomock.MongoClient()
+    app = create_app(
+        DocumentStore(client), AuthStore(client), secret_key="k", secure_cookies=True
+    )
+    assert app.config["SESSION_COOKIE_SECURE"] is True
+    assert app.config["SESSION_COOKIE_HTTPONLY"] is True
 
 
 # -- authentication gate ------------------------------------------------------

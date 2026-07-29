@@ -103,11 +103,71 @@ network (by the `document-server` container), never from the host.
 | Variable | Purpose | Default |
 | --- | --- | --- |
 | `SECRET_KEY` | signs session cookies — **required**; compose refuses to start without it. Sourced from `docker/.env` (git-ignored), which compose auto-loads. Generate with `python -c "import secrets; print(secrets.token_hex(32))"`. | none (must be set) |
+| `SESSION_COOKIE_SECURE` | mark the session cookie HTTPS-only — enable when served over HTTPS (e.g. behind a reverse proxy) | `false` |
 | `MONGO_URI` | MongoDB connection string | `mongodb://mongo:27017` |
 
 Open **http://localhost:5002/** in a browser and **register the first account —
 it becomes the admin**. Everyone else self-registers at **/register** as a plain
 user, and the admin grants them access at **/admin**.
+
+### Deploy on a Synology NAS
+
+For constrained hosts there's a standalone, lightweight stack —
+`docker/docker-compose.nas.yml` (just `document-server` + `mongo`, built from the
+slim `docker/Dockerfile.docserver` instead of the miniconda image, with
+`restart: unless-stopped`).
+
+1. **Requirements.** A model with **Container Manager** (any "+" model, e.g. the
+   DS1621+). MongoDB 7 needs a CPU with **AVX** (the DS1621+'s Ryzen V1500B has
+   it); on a CPU without AVX, change `mongo:7` to `mongo:4.4` in the compose file.
+2. **Get the repo onto the NAS** (Git or a shared folder) — the image builds from
+   the repo root.
+3. **Set the secret** in `docker/.env` (git-ignored, auto-loaded):
+   `SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")`.
+   If you'll serve over HTTPS, also add `SESSION_COOKIE_SECURE=true`.
+4. **Deploy** — in Container Manager create a *Project* pointing at
+   `docker/docker-compose.nas.yml`, or on the CLI:
+   ```bash
+   docker compose -f docker/docker-compose.nas.yml up --build -d
+   ```
+   The app is published on host port **5002** (DSM uses 5000/5001 — don't reuse
+   those).
+
+#### Enabling HTTPS (strongly recommended)
+
+The app speaks plain HTTP on port 5002; session cookies must not travel
+unencrypted. Terminate TLS with Synology's built-in reverse proxy — no code or
+extra containers needed.
+
+1. **Have a hostname.** You need a domain that resolves to the NAS. The easiest
+   is a free Synology DDNS name: **Control Panel → External Access → DDNS → Add**
+   (e.g. `myvault.synology.me`). A custom domain works too.
+2. **Get a certificate.** **Control Panel → Security → Certificate → Add → Add a
+   new certificate → Get a certificate from Let's Encrypt.** Enter your hostname
+   and email. (Let's Encrypt validation needs ports 80/443 reachable from the
+   internet; if you only use this on your LAN, you can instead use a self-signed
+   cert or your own CA — the browser will warn but TLS still works.)
+3. **Create the reverse-proxy rule.** **Control Panel → Login Portal → Advanced →
+   Reverse Proxy → Create:**
+   - **Source** — Protocol `HTTPS`, Hostname `myvault.synology.me`, Port `443`.
+   - **Destination** — Protocol `HTTP`, Hostname `localhost`, Port `5002`.
+   - Under **Custom Header**, click **Create → WebSocket** (harmless, and future-proofs it).
+4. **Bind the certificate** to that hostname: **Control Panel → Security →
+   Certificate → Settings**, and set your Let's Encrypt cert for the reverse-proxy
+   hostname.
+5. **Turn on secure cookies.** Add `SESSION_COOKIE_SECURE=true` to `docker/.env`
+   and redeploy so the session cookie is only ever sent over HTTPS:
+   ```bash
+   docker compose -f docker/docker-compose.nas.yml up -d
+   ```
+6. **Use the HTTPS URL only.** Reach the app at `https://myvault.synology.me`
+   (port 443), not the raw `http://<nas-ip>:5002`. Optionally firewall off port
+   5002 from outside the NAS (**Control Panel → Security → Firewall**) so the app
+   is *only* reachable through the TLS proxy.
+
+> With `SESSION_COOKIE_SECURE=true`, logging in over plain HTTP will appear to
+> "not work" (the browser drops the Secure cookie) — that's expected; use the
+> `https://` address.
 
 ### API
 

@@ -1,0 +1,51 @@
+# Standalone, NAS-friendly stack: just the document-server + MongoDB.
+#
+# Differs from docker-compose.yml (the dev/full stack) by:
+#   - using the slim python image (docker/Dockerfile.docserver), not miniconda
+#   - dropping the janusgraph services and their amd64 platform pins
+#   - adding `restart: unless-stopped` so it survives NAS reboots
+#
+# Deploy (from the repo root on the NAS):
+#   SECRET_KEY is required — put it in docker/.env (auto-loaded), e.g.
+#     SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+#   Then, in Synology Container Manager, create a Project pointing at this file,
+#   or on the CLI:
+#     docker compose -f docker/docker-compose.nas.yml up --build -d
+#
+# App is published on host port 5002 (DSM itself uses 5000/5001, so avoid those).
+# Put it behind Synology's reverse proxy for HTTPS, then set
+# SESSION_COOKIE_SECURE=true (in docker/.env) so the session cookie is HTTPS-only.
+name: document-server
+
+services:
+  document-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.docserver
+    ports:
+      - "5002:5000"
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required — set it in docker/.env}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mongo:
+    # mongo:7 requires AVX — fine on the DS1621+ (Ryzen V1500B). On a CPU without
+    # AVX (e.g. some Celeron models), change this to mongo:4.4.
+    image: mongo:7
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  mongo-data:

@@ -36,7 +36,12 @@ _DOC_ROUTE = "/databases/<database>/collections/<collection>/documents/<doc_id>"
 _SEARCH_ROUTE = "/databases/<database>/collections/<collection>/search"
 
 
-def create_app(store: DocumentStore, auth_store: AuthStore, secret_key: str) -> Flask:
+def create_app(
+    store: DocumentStore,
+    auth_store: AuthStore,
+    secret_key: str,
+    secure_cookies: bool = False,
+) -> Flask:
     app = Flask(__name__)
     # A secret key is required to sign session cookies. It must be supplied
     # explicitly (production from the environment, tests with a fixed value) --
@@ -44,6 +49,12 @@ def create_app(store: DocumentStore, auth_store: AuthStore, secret_key: str) -> 
     if not secret_key:
         raise ValueError("create_app requires a non-empty secret_key.")
     app.secret_key = secret_key
+    app.config.update(
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Lax",
+        # Only sent over HTTPS when enabled (e.g. behind a reverse proxy).
+        SESSION_COOKIE_SECURE=secure_cookies,
+    )
 
     csrf = CSRFProtect(app)
     init_login(app, auth_store)
