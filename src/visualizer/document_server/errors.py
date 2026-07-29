@@ -55,3 +55,51 @@ class DocumentAlreadyExists(DocumentServerError):
     """Raised when creating a document whose id is already taken."""
 
     status_code = 409
+
+
+class InvalidCredentials(DocumentServerError):
+    """Raised when a login attempt has bad or missing credentials."""
+
+    status_code = 400
+
+
+class UserAlreadyExists(DocumentServerError):
+    """Raised when registering a username that is already taken."""
+
+    status_code = 409
+
+
+class EmailAlreadyExists(DocumentServerError):
+    """Raised when registering an email address that is already in use."""
+
+    status_code = 409
+
+
+class InvalidEmail(DocumentServerError):
+    """Raised when an email address is missing or malformed."""
+
+    status_code = 400
+
+
+class UserNotFound(DocumentServerError):
+    """Raised when addressing a user account that does not exist."""
+
+    status_code = 404
+
+
+class Unauthorized(DocumentServerError):
+    """Raised when a request is not authenticated."""
+
+    status_code = 401
+
+
+class Forbidden(DocumentServerError):
+    """Raised when an authenticated user lacks permission for an action."""
+
+    status_code = 403
+
+
+class ReservedName(DocumentServerError):
+    """Raised when a caller tries to use a reserved (internal) name."""
+
+    status_code = 400

@@ -2,7 +2,7 @@
 
 import pytest
 
-from errors import (
+from visualizer.document_server.errors import (
     CollectionAlreadyExists,
     CollectionNotFound,
     DatabaseNotFound,

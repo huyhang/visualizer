@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% block title %}Admin — Document Server{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Admin console</h1>
+  <p>Manage user accounts and fine-grained access control.</p>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Users</h2>
+    <p>{{ users | length }} account{{ '' if users | length == 1 else 's' }}.</p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Access</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td><strong>{{ u.username }}</strong></td>
+          <td>{{ u.email or '—' }}</td>
+          <td>
+            {% if u.role == 'admin' %}<span class="tag admin">admin</span>
+            {% else %}<span class="tag">user</span>{% endif %}
+          </td>
+          <td>
+            {% if u.active %}<span class="tag on">active</span>
+            {% else %}<span class="tag off">disabled</span>{% endif %}
+          </td>
+          <td>
+            <a href="{{ url_for('admin_page', user=u.username) }}">Manage grants →</a>
+          </td>
+          <td>
+            <div class="row-actions">
+              {% if u.role == 'admin' %}
+              <form method="post" action="{{ url_for('set_role', username=u.username) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="role" value="user">
+                <button class="secondary sm" type="submit">Revoke admin</button>
+              </form>
+              {% else %}
+              <form method="post" action="{{ url_for('set_role', username=u.username) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="role" value="admin">
+                <button class="secondary sm" type="submit">Make admin</button>
+              </form>
+              {% endif %}
+              <form method="post" action="{{ url_for('set_active', username=u.username) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="active" value="{{ 'false' if u.active else 'true' }}">
+                <button class="secondary sm" type="submit">{{ 'Disable' if u.active else 'Enable' }}</button>
+              </form>
+              <form method="post" action="{{ url_for('delete_user', username=u.username) }}"
+                    onsubmit="return confirm('Delete {{ u.username }} and all their grants?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="danger sm" type="submit">Delete</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Create a user</h2>
+    <p>Create an account directly, without waiting for the person to self-register.
+       New users start with no grants (unless made an admin).</p>
+  </div>
+  <form method="post" action="{{ url_for('create_user_admin') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-grid">
+      <div class="field">
+        <label for="new-username">Username</label>
+        <input type="text" id="new-username" name="username" required>
+      </div>
+      <div class="field">
+        <label for="new-email">Email</label>
+        <input type="text" id="new-email" name="email" required>
+      </div>
+      <div class="field">
+        <label for="new-password">Password</label>
+        <input type="password" id="new-password" name="password" required>
+      </div>
+      <div class="field">
+        <label for="new-role">Role</label>
+        <select id="new-role" name="role">
+          <option value="user" selected>user</option>
+          <option value="admin">admin</option>
+        </select>
+      </div>
+    </div>
+    <button type="submit">Create user</button>
+  </form>
+</div>
+
+{% if selected %}
+<div class="card">
+  <div class="card-head">
+    <h2>Edit <em>{{ selected }}</em></h2>
+    <p>Update the account's email or reset its password.</p>
+  </div>
+  <form method="post" action="{{ url_for('edit_user', username=selected) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-grid">
+      <div class="field">
+        <label for="edit-email">Email</label>
+        <input type="text" id="edit-email" name="email" value="{{ selected_email or '' }}">
+      </div>
+      <div class="field">
+        <label for="edit-password">New password <span class="muted">(blank = keep current)</span></label>
+        <input type="password" id="edit-password" name="password">
+      </div>
+    </div>
+    <button type="submit">Save changes</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Access control for <em>{{ selected }}</em></h2>
+    {% if selected_is_admin %}
+    <p><span class="tag admin">administrator — full access to every article</span></p>
+    <p class="muted">
+      Admins bypass grants entirely, so the grants below have no effect on this
+      account. They apply only if this user is demoted to a plain user.
+    </p>
+    {% else %}
+    <p>Grants are additive. Leave <strong>collection</strong> and/or
+      <strong>article</strong> blank to grant access to everything below that level
+      (blank article = all articles in the collection; blank collection = the whole
+      database).</p>
+    {% endif %}
+  </div>
+
+  <h2>Current grants</h2>
+  {% if grants %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Database</th><th>Collection</th><th>Article</th><th>Permissions</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for g in grants %}
+        <tr>
+          <td>{{ g.database or '— (any)' }}</td>
+          <td>{{ g.collection or '— (any)' }}</td>
+          <td>{{ g.doc_id or '— (any)' }}</td>
+          <td>
+            {% for p in g.perms %}<span class="tag">{{ p }}</span> {% endfor %}
+          </td>
+          <td>
+            <div class="row-actions">
+              <form method="post" action="{{ url_for('delete_grant', grant_id=g.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="user" value="{{ selected }}">
+                <button class="danger sm" type="submit">Revoke</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% elif selected_is_admin %}
+  <p class="muted">No grants — not needed; admins can access every article.</p>
+  {% else %}
+  <p class="muted">No grants yet — this user cannot access any articles.</p>
+  {% endif %}
+
+  <h2 style="margin-top:1.75rem">Add a grant</h2>
+  <form method="post" action="{{ url_for('add_grant') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="username" value="{{ selected }}">
+    <div class="form-grid">
+      <div class="field">
+        <label for="database">Database</label>
+        <input type="text" id="database" name="database" placeholder="e.g. middle-earth" required>
+      </div>
+      <div class="field">
+        <label for="collection">Collection <span class="muted">(blank = all in database)</span></label>
+        <input type="text" id="collection" name="collection" placeholder="e.g. lord-of-the-rings">
+      </div>
+      <div class="field">
+        <label for="doc_id">Article id <span class="muted">(blank = all in collection)</span></label>
+        <input type="text" id="doc_id" name="doc_id" placeholder="e.g. aragorn">
+      </div>
+      <div class="field">
+        <label>Permissions</label>
+        <div class="perms">
+          {% for p in all_perms %}
+          <label><input type="checkbox" name="perms" value="{{ p }}" {{ 'checked' if p == 'read' }}> {{ p }}</label>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <button type="submit">Add grant</button>
+  </form>
+</div>
+{% else %}
+<div class="card">
+  <p class="muted">Select <strong>Manage grants</strong> next to a user to view and
+    edit their fine-grained access.</p>
+</div>
+{% endif %}
+{% endblock %}

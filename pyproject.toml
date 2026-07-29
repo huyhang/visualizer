@@ -4,7 +4,12 @@ version = "0.1.0"
 description = "A short description of your project"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["flask>=2.2", "pymongo>=4.0"]
+dependencies = [
+    "flask>=2.2",
+    "pymongo>=4.0",
+    "flask-login>=0.6",
+    "flask-wtf>=1.2",
+]
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "mongomock>=4.1"]
@@ -17,8 +22,8 @@ build-backend = "setuptools.backends._legacy:_Backend"
 line-length = 88
 
 [tool.pytest.ini_options]
-testpaths = ["tests/document-server"]
-# The document-server code lives in a hyphenated directory, so it is imported as
-# flat top-level modules (app, store, ...) from this source root rather than as
-# a package.
-pythonpath = ["src/visualizer/document-server", "tests/document-server"]
+testpaths = ["tests/document_server"]
+# The code is a proper package (visualizer.document_server) under src/, so `src`
+# is on the path for package imports; the test dir is on the path so `conftest`
+# helpers are importable by name.
+pythonpath = ["src", "tests/document_server"]

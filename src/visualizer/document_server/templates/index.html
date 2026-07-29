@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Home — Document Server{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Welcome, {{ current_user.username }}</h1>
+  <p class="muted">
+    Role:
+    {% if current_user.is_admin %}<span class="tag admin">admin</span>
+    {% else %}<span class="tag">user</span>{% endif %}
+  </p>
+  {% if current_user.is_admin %}
+  <p>You can manage users and access control on the
+     <a href="{{ url_for('admin_page') }}">Admin</a> page.</p>
+  {% else %}
+  <p class="muted">
+    Your access to databases, collections, and articles is controlled by an
+    administrator. Use the document API with your session to read and edit the
+    articles you have been granted.
+  </p>
+  {% endif %}
+  <p class="muted">
+    Articles are addressed as
+    <code>/databases/&lt;db&gt;/collections/&lt;col&gt;/documents/&lt;id&gt;</code>.
+  </p>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Browse &amp; search</h2>
+    <p>Fetch a single article, or search a collection. You only ever see the
+       articles you have been granted access to.</p>
+  </div>
+
+  <div class="form-grid">
+    <div class="field">
+      <label for="q-db">Database</label>
+      <input type="text" id="q-db" placeholder="e.g. middle-earth">
+    </div>
+    <div class="field">
+      <label for="q-col">Collection</label>
+      <input type="text" id="q-col" placeholder="e.g. lord-of-the-rings">
+    </div>
+  </div>
+
+  <div class="form-grid">
+    <div class="field">
+      <label for="q-doc">Article id <span class="muted">(for Fetch)</span></label>
+      <input type="text" id="q-doc" placeholder="e.g. aragorn">
+    </div>
+    <div class="field">
+      <label>Search <span class="muted">(for Search — provide key and/or text)</span></label>
+      <div class="form-grid" style="gap:0 .6rem">
+        <input type="text" id="q-key" placeholder="key, e.g. weapon">
+        <input type="text" id="q-text" placeholder="text, e.g. bow">
+      </div>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button type="button" id="btn-fetch">Fetch article</button>
+    <button type="button" class="secondary" id="btn-search">Search collection</button>
+  </div>
+
+  <pre class="result" id="q-result" hidden></pre>
+</div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const out = $("q-result");
+
+  function render(cls, text) {
+    out.hidden = false;
+    out.className = "result " + cls;
+    out.textContent = text;
+  }
+
+  function showResponse(ok, status, payload) {
+    const body = (typeof payload === "string" ? payload : JSON.stringify(payload, null, 2));
+    // Only surface the status line on failure; a successful result shows just the body.
+    render(ok ? "ok" : "err", ok ? body : ("HTTP " + status + "\n\n" + body));
+  }
+
+  function showError(msg) { render("err", msg); }
+
+  function requireVal(v, label) {
+    if (!v) { showError(label + " is required."); return false; }
+    return true;
+  }
+
+  async function call(url) {
+    render("", "Loading…");
+    try {
+      const resp = await fetch(url, { headers: { "Accept": "application/json" } });
+      let body;
+      try { body = await resp.json(); } catch (e) { body = await resp.text(); }
+      showResponse(resp.ok, resp.status, body);
+    } catch (e) {
+      showError("Network error: " + String(e));
+    }
+  }
+
+  const enc = encodeURIComponent;
+
+  $("btn-fetch").addEventListener("click", function () {
+    const db = $("q-db").value.trim(), col = $("q-col").value.trim(), doc = $("q-doc").value.trim();
+    if (!requireVal(db, "Database") || !requireVal(col, "Collection") || !requireVal(doc, "Article id")) return;
+    call(`/databases/${enc(db)}/collections/${enc(col)}/documents/${enc(doc)}`);
+  });
+
+  $("btn-search").addEventListener("click", function () {
+    const db = $("q-db").value.trim(), col = $("q-col").value.trim();
+    const key = $("q-key").value.trim(), text = $("q-text").value.trim();
+    if (!requireVal(db, "Database") || !requireVal(col, "Collection")) return;
+    if (!key && !text) { showError("Provide a search key and/or text."); return; }
+    const params = new URLSearchParams();
+    if (key) params.set("key", key);
+    if (text) params.set("text", text);
+    call(`/databases/${enc(db)}/collections/${enc(col)}/search?` + params.toString());
+  });
+})();
+</script>
+{% endblock %}

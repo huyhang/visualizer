@@ -14,7 +14,7 @@ from typing import Any, Iterator
 
 from pymongo.errors import DuplicateKeyError
 
-from errors import (
+from .errors import (
     CollectionAlreadyExists,
     CollectionNotFound,
     DatabaseNotFound,

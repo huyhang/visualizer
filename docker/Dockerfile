@@ -37,12 +37,12 @@ CMD ["zsh"]
 # --- document-server application code -----------------------------------------
 # Copied last so editing app source does not invalidate the (slow) conda layer.
 # The janusgraph_env conda env already provides flask/pymongo/gunicorn.
-# Contents land directly in /app so wsgi.py & friends are importable as
-# top-level modules (gunicorn wsgi:app).
-COPY src/visualizer/document-server ./
+# The source tree is copied under /app/src so the package is importable as
+# `visualizer.document_server` (gunicorn visualizer.document_server.wsgi:app).
+COPY src /app/src
 
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app \
+    PYTHONPATH=/app/src \
     MONGO_URI=mongodb://mongo:27017
 
 # Each service in docker-compose.yml supplies its own `command`

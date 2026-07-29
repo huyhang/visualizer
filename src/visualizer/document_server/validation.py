@@ -4,9 +4,13 @@ These functions have no dependency on Flask or MongoDB so they can be unit
 tested in isolation.
 """
 
+import re
 from typing import Any
 
-from errors import InvalidDocument, InvalidSearch
+from .errors import InvalidDocument, InvalidEmail, InvalidSearch
+
+# Deliberately permissive: one "@", a non-empty local part, and a dotted domain.
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 def validate_document(payload: Any) -> dict:
@@ -18,6 +22,16 @@ def validate_document(payload: Any) -> dict:
     if not isinstance(payload, dict):
         raise InvalidDocument("Document must be a valid JSON dictionary.")
     return payload
+
+
+def validate_email(email: Any) -> str:
+    """Return a normalised (trimmed, lower-cased) email or raise ``InvalidEmail``."""
+    if not isinstance(email, str) or not email.strip():
+        raise InvalidEmail("An email address is required.")
+    normalised = email.strip().lower()
+    if not _EMAIL_RE.match(normalised):
+        raise InvalidEmail("Enter a valid email address.")
+    return normalised
 
 
 def validate_search_terms(key: str | None, text: str | None) -> tuple[str | None, str | None]:

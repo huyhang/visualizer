@@ -2,23 +2,82 @@
 
 ## document-server
 
-A small Flask + MongoDB service for storing and searching JSON documents.
+A small Flask + MongoDB service for storing and searching JSON documents,
+secured with user accounts and fine-grained access control, plus a
+server-rendered browser GUI for registration and administration.
 
 ### Design
 
-Code lives in `src/visualizer/document-server/`. Because that directory name is
-hyphenated (not a valid Python package name), the modules are imported as flat
-top-level modules from that source root — hence `gunicorn wsgi:app`.
+Code is a proper Python package at `src/visualizer/document_server/`; modules
+import each other with relative imports (`from .store import DocumentStore`).
+With `src` on the path, the WSGI entrypoint is
+`visualizer.document_server.wsgi:app`.
 
-- `store.py` — `DocumentStore`, the only seam to MongoDB. It receives its Mongo
-  client via the constructor (inversion of control), so tests inject an
-  in-memory client and production injects a real one.
-- `app.py` — `create_app(store)` factory + routes.
-- `validation.py` — pure, DB-free validation helpers.
+- `store.py` — `DocumentStore`, the only seam to MongoDB for documents. It
+  receives its Mongo client via the constructor (inversion of control), so tests
+  inject an in-memory client and production injects a real one.
+- `auth_store.py` — `AuthStore`, the same-pattern seam for user accounts and
+  access-control grants. Lives in a reserved `_auth` database that the document
+  API can never address.
+- `authz.py` — pure, DB-free access-control resolution (grant matching,
+  most-specific-wins, permission ↔ HTTP-method mapping).
+- `auth.py` — Flask-Login wiring, session routes (`/login`, `/register`,
+  `/logout`), the `admin_required` guard, and the admin bootstrap.
+- `app.py` — `create_app(store, auth_store)` factory; document routes (each
+  authenticated and authorized), admin routes, and the GUI pages.
+- `validation.py` — pure, DB-free document validation helpers.
+- `templates/` — Jinja templates for the browser GUI (`login`, `register`,
+  `index`, `admin`).
 - `config.py` / `wsgi.py` — production wiring only.
 
-Tests live in `tests/document-server/` and run against an in-memory MongoDB
+Tests live in `tests/document_server/` and run against an in-memory MongoDB
 (`mongomock`).
+
+### Authentication & access control
+
+Every document endpoint requires an authenticated session; requests without one
+get `401` (API) or a redirect to the login page (browser).
+
+- **Accounts & roles.** Users register with a username + password (hashed with
+  `werkzeug.security`). Each account is either `admin` or `user` and is
+  `active`/disabled. The **first account ever registered** (via `/register`)
+  becomes the admin; every account after it is a plain user. There is no
+  default/bootstrap admin, so no built-in credentials exist to guess.
+- **Grants (fine-grained, allow-only).** A user's access is the union of their
+  grants. Each grant is scoped at the database, collection, **or** individual
+  article level and lists permissions (`read`, `write`, `delete`):
+
+  | Grant scope | Example | Effect |
+  | --- | --- | --- |
+  | Database | `middle-earth` / — / — | everything under that database |
+  | Collection | `middle-earth` / `lotr` / — | every article in that collection |
+  | Article | `middle-earth` / `lotr` / `aragorn` | that one article |
+
+  Resolution is **most-specific-wins**: an article-level grant overrides a
+  broader collection/database grant on that article (so you can grant full
+  access to one collection but only specific articles in another). There are no
+  deny rules — anything not granted is denied. Admins bypass all grant checks.
+- **Ownership.** Creating a database/collection or an article auto-grants the
+  creator full permissions on it.
+- **Search is filtered**, not just gated: results you cannot `read` are removed
+  from the response.
+- **Admin GUI.** Admins manage users (role, enable/disable, delete) and edit any
+  user's grants at `/admin`. The last remaining admin cannot be demoted,
+  disabled, or deleted.
+
+### TODO — production hardening
+
+Not yet implemented; required before exposing the service beyond localhost:
+
+- [ ] **Rate limiting on `/login`** (and ideally `/register`) to blunt password
+  brute-forcing and account-enumeration attempts. Consider `Flask-Limiter` with a
+  per-IP + per-username limit and a shared backend (e.g. Redis) so limits hold
+  across gunicorn workers.
+- [ ] **SSL/HTTPS.** Session cookies are currently served over plain HTTP; without
+  TLS they can be intercepted. Terminate TLS (a reverse proxy such as nginx/Caddy,
+  or a managed load balancer) and then set `SESSION_COOKIE_SECURE=True` and
+  `SESSION_COOKIE_HTTPONLY=True` (httponly is already Flask's default) so cookies
+  are only sent over HTTPS. Redirect HTTP → HTTPS.
 
 ### Run
 
@@ -39,13 +98,30 @@ Omit the service names to bring up everything (graph + document server).
 MongoDB has **no published port** — it is reachable only from inside the docker
 network (by the `document-server` container), never from the host.
 
+**Configuration** (environment variables on the `document-server` service):
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `SECRET_KEY` | signs session cookies — **required**; compose refuses to start without it. Sourced from `docker/.env` (git-ignored), which compose auto-loads. Generate with `python -c "import secrets; print(secrets.token_hex(32))"`. | none (must be set) |
+| `MONGO_URI` | MongoDB connection string | `mongodb://mongo:27017` |
+
+Open **http://localhost:5002/** in a browser and **register the first account —
+it becomes the admin**. Everyone else self-registers at **/register** as a plain
+user, and the admin grants them access at **/admin**.
+
 ### API
 
 Every call names a database and collection; single-document calls also name a
-document id. A document body must be a JSON object.
+document id. A document body must be a JSON object. **All document endpoints
+require an authenticated session** (see the auth endpoints below); unauthenticated
+API calls return `401`, and calls lacking the needed grant return `403`.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
+| POST   | `/register` | create an account (`{username, password}`; 409 if taken) |
+| POST   | `/login` | start a session (`{username, password}`; sets the session cookie) |
+| POST   | `/logout` | end the session |
+| GET    | `/auth/me` | the current user (`{username, role}`) |
 | POST   | `/databases/<db>/collections/<col>` | create the database + collection (409 if exists) |
 | POST   | `/databases/<db>/collections/<col>/documents/<id>` | create document (404 if db/collection missing, 409 if id exists) |
 | GET    | `/databases/<db>/collections/<col>/documents/<id>` | get (404 if missing) |
@@ -72,7 +148,23 @@ The app is published on the host at `http://localhost:5002`. For brevity, set:
 BASE="http://localhost:5002/databases/middle-earth/collections/lord-of-the-rings"
 ```
 
-**Create the database and collection first** (required before adding documents):
+**Authenticate first.** Every call below needs a session. On a fresh deployment,
+register the first account (it becomes the admin), then log in, keeping the
+session cookie in a jar that later `curl` calls reuse via `-b`/`-c`:
+
+```bash
+curl -X POST http://localhost:5002/register \
+  -H 'Content-Type: application/json' -d '{"username":"huy","password":"<your-password>"}'
+curl -c cookies.txt -X POST http://localhost:5002/login \
+  -H 'Content-Type: application/json' -d '{"username":"huy","password":"<your-password>"}'
+```
+
+For brevity the remaining examples omit authentication — prepend `-b cookies.txt`
+to each `curl` (or, in the shell, define
+`curl() { command curl -b cookies.txt "$@"; }` for the session).
+
+**Create the database and collection first** (required before adding documents;
+the creator gets full access to it):
 
 ```bash
 curl -X POST "$BASE"
@@ -162,13 +254,19 @@ import requests
 
 base = "http://localhost:5002/databases/middle-earth/collections/lord-of-the-rings"
 
-requests.post(base)  # create the database + collection (idempotent-ish: 409 if it already exists)
-requests.post(f"{base}/documents/frodo",
-              json={"name": "Frodo Baggins", "race": "Hobbit", "home": "the Shire"})
+# A Session keeps the auth cookie across calls. On a fresh deployment the first
+# registered account becomes the admin.
+s = requests.Session()
+s.post("http://localhost:5002/register", json={"username": "huy", "password": "secret"})
+s.post("http://localhost:5002/login", json={"username": "huy", "password": "secret"})
 
-print(requests.get(f"{base}/documents/frodo").json())
-print(requests.get(f"{base}/search", params={"key": "weapon"}).json())
-print(requests.get(f"{base}/search", params={"text": "Shire"}).json())
+s.post(base)  # create the database + collection (idempotent-ish: 409 if it already exists)
+s.post(f"{base}/documents/frodo",
+       json={"name": "Frodo Baggins", "race": "Hobbit", "home": "the Shire"})
+
+print(s.get(f"{base}/documents/frodo").json())
+print(s.get(f"{base}/search", params={"key": "weapon"}).json())
+print(s.get(f"{base}/search", params={"text": "Shire"}).json())
 ```
 
 ### Tests
