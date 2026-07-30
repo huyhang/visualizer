@@ -50,10 +50,11 @@ Useful commands: `docker compose -f docker/docker-compose.nas.yml logs -f
 document-server` (logs) and `... down` (stop; add `-v` to also wipe the data
 volume).
 
-> **Run locally without Docker** (needs a MongoDB you can reach):
+> **Run locally without Docker** (after `pip install -e ".[dev]"` in a 3.11
+> environment — see [Development & tests](#development--tests) — and with a
+> MongoDB you can reach):
 > ```bash
-> pip install -e ".[dev]"
-> PYTHONPATH=src SECRET_KEY=dev MONGO_URI=mongodb://localhost:27017 \
+> SECRET_KEY=dev MONGO_URI=mongodb://localhost:27017 \
 >   gunicorn -b localhost:5002 visualizer.document_server.wsgi:app
 > ```
 
@@ -352,12 +353,25 @@ won't work — use the `https://` address.)
 
 ---
 
-## Tests
+## Development & tests
 
-Tests run entirely against an in-memory MongoDB (`mongomock`) — no server is
-contacted.
+Work in an isolated environment on **Python 3.11** (the same version the
+container runs) so local behavior matches production, then install the project
+editable with its dev tools:
 
 ```bash
-pip install -e ".[dev]"
-pytest
+# create + activate a 3.11 environment — either works:
+python3.11 -m venv .venv && source .venv/bin/activate
+# or:  conda create -y -n visualizer python=3.11 && conda activate visualizer
+
+pip install -e ".[dev]"     # the package + pytest, ruff, mongomock
 ```
+
+Then, from the repo root:
+
+```bash
+pytest        # runs entirely against an in-memory MongoDB (mongomock) — no server needed
+ruff check    # lint
+```
+
+The editable install puts `visualizer` on the path, so no `PYTHONPATH` is needed.
