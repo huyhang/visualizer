@@ -9,6 +9,7 @@ import os
 from pymongo import MongoClient
 
 DEFAULT_MONGO_URI = "mongodb://mongo:27017"
+DEFAULT_VERSIONS_KEEP = 20
 
 
 def get_mongo_uri() -> str:
@@ -31,6 +32,25 @@ def get_secret_key() -> str:
             "SECRET_KEY environment variable is required (set it in docker/.env)."
         )
     return key
+
+
+def get_versions_keep() -> int:
+    """Max version snapshots retained per document (older ones are pruned).
+
+    Read here (the only place env is touched) and injected into the app factory,
+    keeping the store env-free and testable. Defaults to ``20``; a non-numeric or
+    non-positive value is rejected rather than silently ignored.
+    """
+    raw = os.environ.get("VERSIONS_KEEP")
+    if raw is None or raw.strip() == "":
+        return DEFAULT_VERSIONS_KEEP
+    try:
+        value = int(raw)
+    except ValueError:
+        raise RuntimeError(f"VERSIONS_KEEP must be an integer, got {raw!r}.")
+    if value < 1:
+        raise RuntimeError("VERSIONS_KEEP must be at least 1.")
+    return value
 
 
 def get_secure_cookies() -> bool:

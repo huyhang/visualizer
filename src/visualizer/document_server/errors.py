@@ -103,3 +103,26 @@ class ReservedName(DocumentServerError):
     """Raised when a caller tries to use a reserved (internal) name."""
 
     status_code = 400
+
+
+class RevisionConflict(DocumentServerError):
+    """Raised when a write's expected revision does not match the stored one.
+
+    The optimistic-concurrency guard: someone else changed the document since
+    the caller last read it, so the write is refused rather than silently
+    clobbering their change.
+    """
+
+    status_code = 409
+
+
+class VersionNotFound(DocumentServerError):
+    """Raised when addressing a document version that is not retained."""
+
+    status_code = 404
+
+
+class InvalidRevision(DocumentServerError):
+    """Raised when an If-Match / _rev precondition value is malformed."""
+
+    status_code = 400

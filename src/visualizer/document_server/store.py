@@ -2,16 +2,32 @@
 
 ``DocumentStore`` is the single seam between the application and MongoDB. It
 receives its Mongo client via the constructor (inversion of control) so tests
-can inject an in-memory client while production injects a real one.
+can inject an in-memory client while production injects a real one. It also
+receives a ``clock`` (for deterministic version timestamps in tests) and
+``versions_keep`` (the history cap), both injected -- the store never reads the
+environment or the wall clock directly.
 
 Documents are stored using the caller-supplied ``doc_id`` as the Mongo ``_id``.
-On the way out, ``_id`` is renamed to ``id`` so callers never see Mongo
-internals.
+Three fields are Mongo-internal and never leak to callers:
+
+- ``_id``       -- the document id (surfaced separately as ``id``).
+- ``_rev``      -- an optimistic-concurrency counter (surfaced as ``rev``).
+- ``_history``  -- the last N version snapshots (see ``history``); surfaced only
+  through the dedicated version helpers.
+
+Writes are optimistically concurrent: an ``expected_rev`` guards updates/deletes
+against lost updates, and every successful write appends a pruned snapshot in the
+*same* atomic ``find_one_and_replace`` so the document and its history can never
+diverge (important on a standalone MongoDB, which has no transactions). Deletes
+are soft (a tombstone) so history stays diffable; a later ``create`` of the same
+id revives it.
 """
 
 import json
-from typing import Any, Iterator
+from datetime import datetime, timezone
+from typing import Any, Callable, Iterator
 
+from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from .errors import (
@@ -20,16 +36,39 @@ from .errors import (
     DatabaseNotFound,
     DocumentAlreadyExists,
     DocumentNotFound,
+    RevisionConflict,
 )
+from .history import CREATE, DELETE, UPDATE, make_snapshot, prune
+
+_DEFAULT_VERSIONS_KEEP = 20
+
+
+def _default_clock() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class DocumentStore:
-    def __init__(self, client):
-        """:param client: a pymongo-compatible ``MongoClient`` (or mongomock)."""
+    def __init__(
+        self,
+        client,
+        clock: Callable[[], datetime] | None = None,
+        versions_keep: int = _DEFAULT_VERSIONS_KEEP,
+    ):
+        """:param client: a pymongo-compatible ``MongoClient`` (or mongomock).
+        :param clock: returns the current time; injected so tests are deterministic.
+        :param versions_keep: max snapshots retained per document.
+        """
         self._client = client
+        self._clock = clock or _default_clock
+        self._versions_keep = versions_keep
 
     def _collection(self, database: str, collection: str):
         return self._client[database][collection]
+
+    def _now(self) -> str:
+        return self._clock().isoformat()
+
+    # -- namespace management ------------------------------------------------
 
     def create_collection(self, database: str, collection: str) -> dict:
         """Explicitly create a collection (and its database).
@@ -59,62 +98,202 @@ class DocumentStore:
                 f"Collection '{collection}' does not exist in database '{database}'."
             )
 
-    @staticmethod
-    def _to_public(stored: dict) -> dict:
-        """Convert a stored document into the public representation."""
-        doc = dict(stored)
-        doc_id = doc.pop("_id")
-        return {"id": doc_id, "document": doc}
+    # -- browse listings (grant filtering happens in the route layer) --------
+
+    def list_databases(self) -> list[str]:
+        """User-visible databases (reserved ``_``-prefixed ones are hidden)."""
+        return sorted(
+            d for d in self._client.list_database_names() if not d.startswith("_")
+        )
+
+    def list_collections(self, database: str) -> list[str]:
+        if not self._database_exists(database):
+            raise DatabaseNotFound(f"Database '{database}' does not exist.")
+        return sorted(self._client[database].list_collection_names())
+
+    def list_documents(
+        self,
+        database: str,
+        collection: str,
+        limit: int | None = None,
+        after: str | None = None,
+    ) -> list[dict]:
+        """List live documents in id order, optionally paginated by ``after``."""
+        self._require_namespace(database, collection)
+        query: dict[str, Any] = {"_deleted": {"$ne": True}}
+        if after is not None:
+            query["_id"] = {"$gt": after}
+        cursor = self._collection(database, collection).find(query).sort("_id", 1)
+        if limit:
+            cursor = cursor.limit(limit)
+        return [self._to_public(stored) for stored in cursor]
+
+    # -- (de)serialisation ---------------------------------------------------
 
     @staticmethod
-    def _to_stored(doc_id: str, document: dict) -> dict:
-        """Build the record persisted in Mongo, with ``doc_id`` as ``_id``.
+    def _sanitize(document: dict) -> dict:
+        """Drop reserved ``_``-prefixed keys so callers cannot inject internals."""
+        return {k: v for k, v in document.items() if not k.startswith("_")}
 
-        The URL-supplied id is authoritative, so any ``_id`` inside the payload
-        is overwritten.
-        """
-        stored = dict(document)
-        stored["_id"] = doc_id
-        return stored
+    @staticmethod
+    def _body(stored: dict) -> dict:
+        """The public body: stored fields minus every internal ``_`` field."""
+        return {k: v for k, v in stored.items() if not k.startswith("_")}
 
-    def create(self, database: str, collection: str, doc_id: str, document: dict) -> dict:
-        """Insert a new document.
+    @classmethod
+    def _to_public(cls, stored: dict) -> dict:
+        """Public representation of a stored document."""
+        return {
+            "id": stored["_id"],
+            "document": cls._body(stored),
+            "rev": stored.get("_rev", 1),
+        }
 
-        The database and collection must already exist (create them via
-        ``create_collection``). Fails if the id already exists.
+    def _replacement(self, doc_id: str, body: dict, rev: int, history: list[dict]) -> dict:
+        return {**body, "_id": doc_id, "_rev": rev, "_history": history}
+
+    def _append_history(self, current: dict, snapshot: dict) -> list[dict]:
+        return prune(list(current.get("_history", [])) + [snapshot], self._versions_keep)
+
+    @staticmethod
+    def _check_rev(current: dict, expected_rev: int | None) -> None:
+        """Raise ``RevisionConflict`` when the caller's expected rev is stale."""
+        if expected_rev is not None and current.get("_rev") != expected_rev:
+            raise RevisionConflict(
+                f"Document was modified since revision {expected_rev}; "
+                "reload it and retry."
+            )
+
+    # -- writes --------------------------------------------------------------
+
+    def create(
+        self, database: str, collection: str, doc_id: str, document: dict, author: str | None = None
+    ) -> dict:
+        """Insert a new document (or revive a soft-deleted one).
+
+        The database and collection must already exist. Fails with
+        ``DocumentAlreadyExists`` if a *live* document has this id.
         """
         self._require_namespace(database, collection)
-        try:
-            self._collection(database, collection).insert_one(
-                self._to_stored(doc_id, document)
+        body = self._sanitize(document)
+        existing = self._collection(database, collection).find_one({"_id": doc_id})
+        if existing is not None and not existing.get("_deleted"):
+            raise DocumentAlreadyExists(
+                f"Document '{doc_id}' already exists in '{database}/{collection}'."
             )
+        if existing is not None:
+            return self._revive(database, collection, doc_id, body, existing, author)
+        return self._insert_new(database, collection, doc_id, body, author)
+
+    def _insert_new(self, database, collection, doc_id, body, author) -> dict:
+        rev = 1
+        snapshot = make_snapshot(rev, CREATE, author, self._now(), body)
+        stored = self._replacement(doc_id, body, rev, [snapshot])
+        try:
+            self._collection(database, collection).insert_one(stored)
         except DuplicateKeyError:
             raise DocumentAlreadyExists(
                 f"Document '{doc_id}' already exists in '{database}/{collection}'."
             )
-        return {"id": doc_id, "document": document}
+        return self._to_public(stored)
+
+    def _revive(self, database, collection, doc_id, body, existing, author) -> dict:
+        new_rev = existing.get("_rev", 1) + 1
+        snapshot = make_snapshot(new_rev, CREATE, author, self._now(), body)
+        replacement = self._replacement(
+            doc_id, body, new_rev, self._append_history(existing, snapshot)
+        )
+        revived = self._collection(database, collection).find_one_and_replace(
+            {"_id": doc_id, "_rev": existing.get("_rev")},
+            replacement,
+            return_document=ReturnDocument.AFTER,
+        )
+        if revived is None:  # someone changed/revived it first
+            raise DocumentAlreadyExists(
+                f"Document '{doc_id}' already exists in '{database}/{collection}'."
+            )
+        return self._to_public(revived)
+
+    def update(
+        self,
+        database: str,
+        collection: str,
+        doc_id: str,
+        document: dict,
+        expected_rev: int | None = None,
+        author: str | None = None,
+    ) -> dict:
+        """Fully replace an existing document (optimistically concurrent).
+
+        Fails with ``DocumentNotFound`` if it does not exist, or
+        ``RevisionConflict`` if ``expected_rev`` no longer matches the stored rev.
+        """
+        body = self._sanitize(document)
+        current = self._require_live(database, collection, doc_id)
+        self._check_rev(current, expected_rev)
+        new_rev = current.get("_rev", 1) + 1
+        snapshot = make_snapshot(new_rev, UPDATE, author, self._now(), body)
+        replacement = self._replacement(
+            doc_id, body, new_rev, self._append_history(current, snapshot)
+        )
+        return self._compare_and_replace(database, collection, doc_id, current, replacement)
+
+    def delete(
+        self,
+        database: str,
+        collection: str,
+        doc_id: str,
+        expected_rev: int | None = None,
+        author: str | None = None,
+    ) -> None:
+        """Soft-delete a document (a tombstone), keeping its history diffable."""
+        current = self._require_live(database, collection, doc_id)
+        self._check_rev(current, expected_rev)
+        new_rev = current.get("_rev", 1) + 1
+        snapshot = make_snapshot(new_rev, DELETE, author, self._now(), None)
+        replacement = {
+            "_id": doc_id,
+            "_rev": new_rev,
+            "_deleted": True,
+            "_history": self._append_history(current, snapshot),
+        }
+        self._compare_and_replace(database, collection, doc_id, current, replacement)
+
+    def _require_live(self, database: str, collection: str, doc_id: str) -> dict:
+        """Return the current stored doc or raise if it is missing/deleted."""
+        current = self._collection(database, collection).find_one({"_id": doc_id})
+        if current is None or current.get("_deleted"):
+            raise self._not_found(database, collection, doc_id)
+        return current
+
+    def _compare_and_replace(self, database, collection, doc_id, current, replacement):
+        """Atomically replace iff the stored rev still matches the one we read."""
+        updated = self._collection(database, collection).find_one_and_replace(
+            {"_id": doc_id, "_rev": current.get("_rev")},
+            replacement,
+            return_document=ReturnDocument.AFTER,
+        )
+        if updated is None:  # changed between our read and this write
+            raise RevisionConflict(
+                "Document was modified concurrently; reload it and retry."
+            )
+        return self._to_public(updated)
+
+    # -- reads ---------------------------------------------------------------
 
     def get(self, database: str, collection: str, doc_id: str) -> dict:
-        """Return a single document or raise ``DocumentNotFound``."""
+        """Return a single live document or raise ``DocumentNotFound``."""
         stored = self._collection(database, collection).find_one({"_id": doc_id})
-        if stored is None:
+        if stored is None or stored.get("_deleted"):
             raise self._not_found(database, collection, doc_id)
         return self._to_public(stored)
 
-    def update(self, database: str, collection: str, doc_id: str, document: dict) -> dict:
-        """Fully replace an existing document. Fails if it does not exist."""
-        result = self._collection(database, collection).replace_one(
-            {"_id": doc_id}, self._to_stored(doc_id, document)
-        )
-        if result.matched_count == 0:
+    def history(self, database: str, collection: str, doc_id: str) -> list[dict]:
+        """Return the retained snapshots (oldest first), even for a tombstone."""
+        stored = self._collection(database, collection).find_one({"_id": doc_id})
+        if stored is None:
             raise self._not_found(database, collection, doc_id)
-        return {"id": doc_id, "document": document}
-
-    def delete(self, database: str, collection: str, doc_id: str) -> None:
-        """Delete a document or raise ``DocumentNotFound``."""
-        result = self._collection(database, collection).delete_one({"_id": doc_id})
-        if result.deleted_count == 0:
-            raise self._not_found(database, collection, doc_id)
+        return list(stored.get("_history", []))
 
     def search(
         self,
@@ -138,15 +317,16 @@ class DocumentStore:
         return list(matches)
 
     def _query_by_key(self, database: str, collection: str, key: str | None) -> Iterator[dict]:
-        query = {key: {"$exists": True}} if key else {}
+        query: dict[str, Any] = {"_deleted": {"$ne": True}}
+        if key:
+            query[key] = {"$exists": True}
         return self._collection(database, collection).find(query)
 
-    @staticmethod
-    def _matches_text(stored: dict, text: str | None) -> bool:
+    @classmethod
+    def _matches_text(cls, stored: dict, text: str | None) -> bool:
         if not text:
             return True
-        content = {k: v for k, v in stored.items() if k != "_id"}
-        haystack = json.dumps(content, default=str).lower()
+        haystack = json.dumps(cls._body(stored), default=str).lower()
         return text.lower() in haystack
 
     @staticmethod

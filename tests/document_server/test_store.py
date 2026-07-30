@@ -20,6 +20,7 @@ def test_create_and_get_roundtrip(store):
     assert store.get(DB, COL, "a1") == {
         "id": "a1",
         "document": {"name": "Aragorn", "race": "Man"},
+        "rev": 1,
     }
 
 

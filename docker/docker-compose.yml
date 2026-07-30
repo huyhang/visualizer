@@ -69,6 +69,8 @@ services:
       # `:?` makes compose fail fast if it is unset, rather than silently
       # falling back to an insecure key.
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required — set it in docker/.env}
+      # Max version snapshots retained per article (older ones are pruned).
+      VERSIONS_KEEP: ${VERSIONS_KEEP:-20}
     depends_on:
       mongo:
         condition: service_healthy

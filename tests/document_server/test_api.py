@@ -44,7 +44,7 @@ def test_create_collection_then_document(client):
 def test_create_returns_201(client):
     resp = client.post(doc_url("a1"), json={"name": "Aragorn"})
     assert resp.status_code == 201
-    assert resp.get_json() == {"id": "a1", "document": {"name": "Aragorn"}}
+    assert resp.get_json() == {"id": "a1", "document": {"name": "Aragorn"}, "rev": 1}
 
 
 def test_create_rejects_non_dict_body(client):
@@ -70,7 +70,7 @@ def test_get_returns_document(client):
     client.post(doc_url("a1"), json={"name": "Aragorn"})
     resp = client.get(doc_url("a1"))
     assert resp.status_code == 200
-    assert resp.get_json() == {"id": "a1", "document": {"name": "Aragorn"}}
+    assert resp.get_json() == {"id": "a1", "document": {"name": "Aragorn"}, "rev": 1}
 
 
 def test_get_missing_returns_404(client):

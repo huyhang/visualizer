@@ -1,354 +1,363 @@
-# visualizer
+# document-server
 
-## document-server
+A small Flask + MongoDB service for storing, linking and versioning JSON
+documents, secured with user accounts and fine-grained access control.
 
-A small Flask + MongoDB service for storing and searching JSON documents,
-secured with user accounts and fine-grained access control, plus a
-server-rendered browser GUI for registration and administration.
+There are two ways to use it:
 
-### Design
+- **The web UI** — a mobile-friendly, Wikipedia-style **article editor** (the
+  app's home page) for browsing, reading, creating, editing, deleting and
+  cross-linking documents, with a light/dark theme and per-article version
+  history you can diff and restore.
+- **The HTTP/JSON API** — the same capabilities from code. Examples below use
+  Python + [`requests`](https://requests.readthedocs.io/).
 
-Code is a proper Python package at `src/visualizer/document_server/`; modules
-import each other with relative imports (`from .store import DocumentStore`).
-With `src` on the path, the WSGI entrypoint is
-`visualizer.document_server.wsgi:app`.
+Both share one login, one permission model, and one document store. See
+[`docs/editor-design.md`](docs/editor-design.md) for the full design.
 
-- `store.py` — `DocumentStore`, the only seam to MongoDB for documents. It
-  receives its Mongo client via the constructor (inversion of control), so tests
-  inject an in-memory client and production injects a real one.
-- `auth_store.py` — `AuthStore`, the same-pattern seam for user accounts and
-  access-control grants. Lives in a reserved `_auth` database that the document
-  API can never address.
-- `authz.py` — pure, DB-free access-control resolution (grant matching,
-  most-specific-wins, permission ↔ HTTP-method mapping).
-- `auth.py` — Flask-Login wiring, session routes (`/login`, `/register`,
-  `/logout`), the `admin_required` guard, and the admin bootstrap.
-- `app.py` — `create_app(store, auth_store)` factory; document routes (each
-  authenticated and authorized), admin routes, and the GUI pages.
-- `validation.py` — pure, DB-free document validation helpers.
-- `templates/` — Jinja templates for the browser GUI (`login`, `register`,
-  `index`, `admin`).
-- `config.py` / `wsgi.py` — production wiring only.
+---
 
-Tests live in `tests/document_server/` and run against an in-memory MongoDB
-(`mongomock`).
+## Run it
 
-### Authentication & access control
-
-Every document endpoint requires an authenticated session; requests without one
-get `401` (API) or a redirect to the login page (browser).
-
-- **Accounts & roles.** Users register with a username + password (hashed with
-  `werkzeug.security`). Each account is either `admin` or `user` and is
-  `active`/disabled. The **first account ever registered** (via `/register`)
-  becomes the admin; every account after it is a plain user. There is no
-  default/bootstrap admin, so no built-in credentials exist to guess.
-- **Grants (fine-grained, allow-only).** A user's access is the union of their
-  grants. Each grant is scoped at the database, collection, **or** individual
-  article level and lists permissions (`read`, `write`, `delete`):
-
-  | Grant scope | Example | Effect |
-  | --- | --- | --- |
-  | Database | `middle-earth` / — / — | everything under that database |
-  | Collection | `middle-earth` / `lotr` / — | every article in that collection |
-  | Article | `middle-earth` / `lotr` / `aragorn` | that one article |
-
-  Resolution is **most-specific-wins**: an article-level grant overrides a
-  broader collection/database grant on that article (so you can grant full
-  access to one collection but only specific articles in another). There are no
-  deny rules — anything not granted is denied. Admins bypass all grant checks.
-- **Ownership.** Creating a database/collection or an article auto-grants the
-  creator full permissions on it.
-- **Search is filtered**, not just gated: results you cannot `read` are removed
-  from the response.
-- **Admin GUI.** Admins manage users (role, enable/disable, delete) and edit any
-  user's grants at `/admin`. The last remaining admin cannot be demoted,
-  disabled, or deleted.
-
-### TODO — production hardening
-
-Not yet implemented; required before exposing the service beyond localhost:
-
-- [ ] **Rate limiting on `/login`** (and ideally `/register`) to blunt password
-  brute-forcing and account-enumeration attempts. Consider `Flask-Limiter` with a
-  per-IP + per-username limit and a shared backend (e.g. Redis) so limits hold
-  across gunicorn workers.
-- [ ] **SSL/HTTPS.** Session cookies are currently served over plain HTTP; without
-  TLS they can be intercepted. Terminate TLS (a reverse proxy such as nginx/Caddy,
-  or a managed load balancer) and then set `SESSION_COOKIE_SECURE=True` and
-  `SESSION_COOKIE_HTTPONLY=True` (httponly is already Flask's default) so cookies
-  are only sent over HTTPS. Redirect HTTP → HTTPS.
-
-### Run
-
-The `document-server` and `mongo` services live in the shared compose file at
-`docker/docker-compose.yml` (alongside the janusgraph stack). The
-`document-server` reuses the existing miniconda image (`docker/Dockerfile`) —
-its `janusgraph_env` conda environment (see `docker/environment.yaml`) provides
-flask, pymongo and gunicorn — and only overrides the run command to launch
-gunicorn. To bring up just the document server:
+The service is two containers — `document-server` (the app) and `mongo` —
+defined in `docker/docker-compose.nas.yml`. MongoDB has **no published port**; it
+is reachable only from inside the Docker network, never from the host.
 
 ```bash
-docker compose -f docker/docker-compose.yml up --build -d document-server mongo
-# app on http://localhost:5002, mongo internal-only
+# 1. Set the cookie-signing secret (git-ignored, auto-loaded by compose)
+echo "SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))')" > docker/.env
+
+# 2. Build and start
+docker compose -f docker/docker-compose.nas.yml up --build -d
+
+# App on http://localhost:5002
 ```
 
-Omit the service names to bring up everything (graph + document server).
+Then open **http://localhost:5002/** and **register the first account — it
+becomes the administrator**. Everyone after them registers as a plain user whom
+the admin grants access.
 
-MongoDB has **no published port** — it is reachable only from inside the docker
-network (by the `document-server` container), never from the host.
-
-**Configuration** (environment variables on the `document-server` service):
+**Configuration** (environment variables, set in `docker/.env`):
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `SECRET_KEY` | signs session cookies — **required**; compose refuses to start without it. Sourced from `docker/.env` (git-ignored), which compose auto-loads. Generate with `python -c "import secrets; print(secrets.token_hex(32))"`. | none (must be set) |
-| `SESSION_COOKIE_SECURE` | mark the session cookie HTTPS-only — enable when served over HTTPS (e.g. behind a reverse proxy) | `false` |
+| `SECRET_KEY` | signs session cookies — **required**; compose refuses to start without it. Generate with `python -c "import secrets; print(secrets.token_hex(32))"`. | none (must be set) |
 | `MONGO_URI` | MongoDB connection string | `mongodb://mongo:27017` |
+| `VERSIONS_KEEP` | max version snapshots kept per article (older pruned) | `20` |
+| `SESSION_COOKIE_SECURE` | mark the session cookie HTTPS-only (enable behind an HTTPS reverse proxy) | `false` |
 
-Open **http://localhost:5002/** in a browser and **register the first account —
-it becomes the admin**. Everyone else self-registers at **/register** as a plain
-user, and the admin grants them access at **/admin**.
+Useful commands: `docker compose -f docker/docker-compose.nas.yml logs -f
+document-server` (logs) and `... down` (stop; add `-v` to also wipe the data
+volume).
 
-### Deploy on a Synology NAS
+> **Run locally without Docker** (needs a MongoDB you can reach):
+> ```bash
+> pip install -e ".[dev]"
+> PYTHONPATH=src SECRET_KEY=dev MONGO_URI=mongodb://localhost:27017 \
+>   gunicorn -b localhost:5002 visualizer.document_server.wsgi:app
+> ```
 
-For constrained hosts there's a standalone, lightweight stack —
-`docker/docker-compose.nas.yml` (just `document-server` + `mongo`, built from the
-slim `docker/Dockerfile.docserver` instead of the miniconda image, with
-`restart: unless-stopped`).
+---
 
-1. **Requirements.** A model with **Container Manager** (any "+" model, e.g. the
-   DS1621+). MongoDB 7 needs a CPU with **AVX** (the DS1621+'s Ryzen V1500B has
-   it); on a CPU without AVX, change `mongo:7` to `mongo:4.4` in the compose file.
-2. **Get the repo onto the NAS** (Git or a shared folder) — the image builds from
-   the repo root.
-3. **Set the secret** in `docker/.env` (git-ignored, auto-loaded):
-   `SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")`.
-   If you'll serve over HTTPS, also add `SESSION_COOKIE_SECURE=true`.
-4. **Deploy** — in Container Manager create a *Project* pointing at
-   `docker/docker-compose.nas.yml`, or on the CLI:
-   ```bash
-   docker compose -f docker/docker-compose.nas.yml up --build -d
-   ```
-   The app is published on host port **5002** (DSM uses 5000/5001 — don't reuse
-   those).
+## Using the web UI
 
-#### Enabling HTTPS (strongly recommended)
+Everything below is gated by your permissions — you only ever see and edit what
+you have been granted (admins see everything).
 
-The app speaks plain HTTP on port 5002; session cookies must not travel
-unencrypted. Terminate TLS with Synology's built-in reverse proxy — no code or
-extra containers needed.
+**Browse & read.** The left panel is a lazy-loading tree of *databases →
+collections → articles*. Open an article to read it rendered as a page: a title
+heading, the prose body, and an **infobox** of the remaining fields on the side.
+The search box at the top finds articles by title across everything you can read.
 
-1. **Have a hostname.** You need a domain that resolves to the NAS. The easiest
-   is a free Synology DDNS name: **Control Panel → External Access → DDNS → Add**
-   (e.g. `myvault.synology.me`). A custom domain works too.
-2. **Get a certificate.** **Control Panel → Security → Certificate → Add → Add a
-   new certificate → Get a certificate from Let's Encrypt.** Enter your hostname
-   and email. (Let's Encrypt validation needs ports 80/443 reachable from the
-   internet; if you only use this on your LAN, you can instead use a self-signed
-   cert or your own CA — the browser will warn but TLS still works.)
-3. **Create the reverse-proxy rule.** **Control Panel → Login Portal → Advanced →
-   Reverse Proxy → Create:**
-   - **Source** — Protocol `HTTPS`, Hostname `myvault.synology.me`, Port `443`.
-   - **Destination** — Protocol `HTTP`, Hostname `localhost`, Port `5002`.
-   - Under **Custom Header**, click **Create → WebSocket** (harmless, and future-proofs it).
-4. **Bind the certificate** to that hostname: **Control Panel → Security →
-   Certificate → Settings**, and set your Let's Encrypt cert for the reverse-proxy
-   hostname.
-5. **Turn on secure cookies.** Add `SESSION_COOKIE_SECURE=true` to `docker/.env`
-   and redeploy so the session cookie is only ever sent over HTTPS:
-   ```bash
-   docker compose -f docker/docker-compose.nas.yml up -d
-   ```
-6. **Use the HTTPS URL only.** Reach the app at `https://myvault.synology.me`
-   (port 443), not the raw `http://<nas-ip>:5002`. Optionally firewall off port
-   5002 from outside the NAS (**Control Panel → Security → Firewall**) so the app
-   is *only* reachable through the TLS proxy.
+**Follow links.** Words wrapped in `[[…]]` render as tappable links to other
+articles; clicking one opens it. Links to articles that don't exist (or that you
+can't read) show as dimmed "red links".
 
-> With `SESSION_COOKIE_SECURE=true`, logging in over plain HTTP will appear to
-> "not work" (the browser drops the Secure cookie) — that's expected; use the
-> `https://` address.
+**Create & edit.** Hit **New** (or **Edit** on an open article) to get:
 
-### API
+- a **Title** field,
+- a **body editor** using a wikitext subset — `'''bold'''`, `''italic''`,
+  `== Heading ==`, `* list item`, and `[[links]]` — with a formatting toolbar and
+  a **Preview** toggle,
+- an **Insert link** button (or just type `[[`) that opens a type-ahead over all
+  articles you can read; picking one inserts the correct link automatically, and
+  if nothing matches you can **create the target on the fly**,
+- an **infobox editor** to add/rename/remove fields (a value with commas becomes
+  a list of chips), and
+- a hidden **Advanced** toggle to edit the raw fields directly.
 
-Every call names a database and collection; single-document calls also name a
-document id. A document body must be a JSON object. **All document endpoints
-require an authenticated session** (see the auth endpoints below); unauthenticated
-API calls return `401`, and calls lacking the needed grant return `403`.
+**History, compare & restore.** The **History** tab lists an article's retained
+versions. Each one offers **Compare with current** (a field-by-field diff with
+word-level highlighting on prose) and **Restore** (re-applies that version as a
+new revision). If someone else saved while you were editing, the editor detects
+it on save and shows you the differences so nothing is silently overwritten.
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| POST   | `/register` | create an account (`{username, password}`; 409 if taken) |
-| POST   | `/login` | start a session (`{username, password}`; sets the session cookie) |
-| POST   | `/logout` | end the session |
-| GET    | `/auth/me` | the current user (`{username, role}`) |
-| POST   | `/databases/<db>/collections/<col>` | create the database + collection (409 if exists) |
-| POST   | `/databases/<db>/collections/<col>/documents/<id>` | create document (404 if db/collection missing, 409 if id exists) |
-| GET    | `/databases/<db>/collections/<col>/documents/<id>` | get (404 if missing) |
-| PUT    | `/databases/<db>/collections/<col>/documents/<id>` | replace (404 if missing) |
-| DELETE | `/databases/<db>/collections/<col>/documents/<id>` | delete (404 if missing) |
-| GET    | `/databases/<db>/collections/<col>/search?key=&text=` | search |
+**Delete.** Removing an article hides it but keeps its version history; you can
+recreate the same id later.
 
-**Collections are explicit.** A database and collection must be created (via the
-first `POST` above) before documents can be added to them — creating a document
-in a database or collection that does not exist returns `404`. Creating the
-collection also creates its database.
+**Theme, text size & mobile.** Toggle light/dark with the ◐ button, and cycle the
+text size (Normal → Large → Larger → Largest) with the **A** button — both are
+remembered per browser. On a phone the browser tree collapses into a drawer (☰).
 
-Search: `key` returns documents that contain that exact **top-level** key;
-`text` returns documents whose content contains the text (case-insensitive
-substring); giving both returns only documents that satisfy both. At least one
-of `key`/`text` is required.
+**Admin.** Admins get an **Admin** link to `/admin` to manage users (role,
+enable/disable, delete) and edit anyone's grants.
 
-### Examples — querying the Lord of the Rings data
+---
 
-These use the database `middle-earth` and the collection `lord-of-the-rings`.
-The app is published on the host at `http://localhost:5002`. For brevity, set:
+## Data model
 
-```bash
-BASE="http://localhost:5002/databases/middle-earth/collections/lord-of-the-rings"
-```
+Documents are **flat** JSON objects: each value is a scalar
+(`str`/`int`/`float`/`bool`/`null`) or a flat array of scalars. Nested objects
+and nested arrays are rejected — this keeps the editor and the version diff
+simple.
 
-**Authenticate first.** Every call below needs a session. On a fresh deployment,
-register the first account (it becomes the admin), then log in, keeping the
-session cookie in a jar that later `curl` calls reuse via `-b`/`-c`:
+The UI presents a document as an article using two conventional fields:
 
-```bash
-curl -X POST http://localhost:5002/register \
-  -H 'Content-Type: application/json' -d '{"username":"huy","password":"<your-password>"}'
-curl -c cookies.txt -X POST http://localhost:5002/login \
-  -H 'Content-Type: application/json' -d '{"username":"huy","password":"<your-password>"}'
-```
+| Field | Becomes |
+| --- | --- |
+| `title` | the article heading |
+| `body` | the article prose (wikitext) |
+| any other field | an infobox fact (arrays render as chips) |
 
-For brevity the remaining examples omit authentication — prepend `-b cookies.txt`
-to each `curl` (or, in the shell, define
-`curl() { command curl -b cookies.txt "$@"; }` for the session).
+Both are optional — a document created via the API with neither still reads fine
+(the id is used as the heading and every field shows in the infobox).
 
-**Create the database and collection first** (required before adding documents;
-the creator gets full access to it):
+**Link syntax** (inside any string value, usually `body`):
 
-```bash
-curl -X POST "$BASE"
-# {"collection":"lord-of-the-rings","database":"middle-earth"}
-# a second call returns 409 (already exists)
-```
+| Token | Points at |
+| --- | --- |
+| `[[aragorn]]` | article `aragorn` in the *same* collection |
+| `[[characters/rand]]` | `rand` in another collection of the *same* database |
+| `[[middle-earth/lord-of-the-rings/frodo]]` | fully-qualified |
+| `[[aragorn\|the King]]` | same target, custom link text |
 
-**Create the four characters** (each document is a JSON object; the id comes
-from the URL). Posting to a database/collection that doesn't exist yet returns
-`404`:
+---
 
-```bash
-curl -X POST "$BASE/documents/aragorn" -H 'Content-Type: application/json' \
-  -d '{"name":"Aragorn","race":"Man","title":"King of Gondor","weapon":"Anduril"}'
-curl -X POST "$BASE/documents/frodo" -H 'Content-Type: application/json' \
-  -d '{"name":"Frodo Baggins","race":"Hobbit","role":"Ring-bearer","home":"the Shire"}'
-curl -X POST "$BASE/documents/legolas" -H 'Content-Type: application/json' \
-  -d '{"name":"Legolas","race":"Elf","weapon":"bow","realm":"Mirkwood"}'
-curl -X POST "$BASE/documents/gimli" -H 'Content-Type: application/json' \
-  -d '{"name":"Gimli","race":"Dwarf","axe":"battle axe","father":"Gloin"}'
-```
+## Access control
 
-**Get one document by id:**
+- **Accounts & roles.** Register with a username + password (hashed). Each
+  account is `admin` or `user`. The **first account ever registered** becomes the
+  admin; there is no built-in/default admin to guess.
+- **Grants (allow-only, most-specific-wins).** A user's access is the union of
+  their grants; each grant is scoped at the **database**, **collection**, or
+  **article** level and lists permissions (`read`, `write`, `delete`). A narrower
+  grant overrides a broader one. Anything not granted is denied. Admins bypass
+  all grant checks.
+- **Ownership.** Creating a database/collection or an article auto-grants its
+  creator full permissions on it.
+- **Filtering, not just gating.** Browse, search and suggest results omit
+  anything you can't read.
 
-```bash
-curl -s "$BASE/documents/frodo"
-# {"document":{"home":"the Shire","name":"Frodo Baggins","race":"Hobbit","role":"Ring-bearer"},"id":"frodo"}
-```
+Unauthenticated API calls get `401`; authenticated calls lacking the needed grant
+get `403`.
 
-**Search by key** — key matching is exact and top-level only. Aragorn and
-Legolas have a `weapon` key; Gimli's is spelled `axe`, so he is excluded:
+---
 
-```bash
-curl -s "$BASE/search?key=weapon"
-# {"count":2,"results":[{"document":{...,"name":"Aragorn","weapon":"Anduril"},"id":"aragorn"},
-#                       {"document":{...,"name":"Legolas","weapon":"bow"},"id":"legolas"}]}
-```
+## Using it from Python
 
-**Search by text** — documents whose content contains "Shire" (case-insensitive):
+All examples use a `requests.Session`, which keeps the login cookie across calls.
+The service is at `http://localhost:5002`.
 
-```bash
-curl -s "$BASE/search?text=Shire"
-# {"count":1,"results":[{"document":{"home":"the Shire","name":"Frodo Baggins",...},"id":"frodo"}]}
-```
-
-**Search by key AND text** — has a `weapon` key *and* mentions "bow":
-
-```bash
-curl -s "$BASE/search?key=weapon&text=bow"
-# {"count":1,"results":[{"document":{"name":"Legolas",...,"weapon":"bow"},"id":"legolas"}]}
-```
-
-If your text has spaces or special characters, let curl encode it:
-
-```bash
-curl -s -G "$BASE/search" --data-urlencode "text=the Shire"
-```
-
-**Update (full replace)** — Aragorn takes his throne name (replace semantics:
-fields not present are dropped):
-
-```bash
-curl -X PUT "$BASE/documents/aragorn" -H 'Content-Type: application/json' \
-  -d '{"name":"Aragorn","alias":"Elessar","race":"Man"}'
-```
-
-**Delete:**
-
-```bash
-curl -X DELETE "$BASE/documents/gimli"   # 204 No Content; a later GET returns 404
-```
-
-**Read the data straight from MongoDB** (it has no host port, so query it from
-inside the container). Note the bracket notation because the collection name is
-hyphenated:
-
-```bash
-docker compose -f docker/docker-compose.yml exec -T mongo \
-  mongosh --quiet middle-earth \
-  --eval 'db["lord-of-the-rings"].find().toArray()'
-```
-
-The same queries in Python with `requests`:
+### Log in
 
 ```python
 import requests
 
-base = "http://localhost:5002/databases/middle-earth/collections/lord-of-the-rings"
-
-# A Session keeps the auth cookie across calls. On a fresh deployment the first
-# registered account becomes the admin.
+BASE = "http://localhost:5002"
 s = requests.Session()
-s.post("http://localhost:5002/register", json={"username": "huy", "password": "secret"})
-s.post("http://localhost:5002/login", json={"username": "huy", "password": "secret"})
 
-s.post(base)  # create the database + collection (idempotent-ish: 409 if it already exists)
-s.post(f"{base}/documents/frodo",
-       json={"name": "Frodo Baggins", "race": "Hobbit", "home": "the Shire"})
+# On a fresh deployment, the first registered account becomes the admin.
+# Registration requires a valid email; it does not log you in, so log in after.
+s.post(f"{BASE}/register",
+       json={"username": "huy", "password": "secret", "email": "huy@example.com"})
+s.post(f"{BASE}/login", json={"username": "huy", "password": "secret"})
 
-print(s.get(f"{base}/documents/frodo").json())
-print(s.get(f"{base}/search", params={"key": "weapon"}).json())
-print(s.get(f"{base}/search", params={"text": "Shire"}).json())
+print(s.get(f"{BASE}/auth/me").json())   # {'username': 'huy', 'role': 'admin'}
 ```
 
-### Tests
+### Create a collection and articles
 
-Database tests use an in-memory MongoDB (`mongomock`); no server is contacted.
+A database + collection must exist before you can add documents to it. The body
+is a flat JSON object; the id comes from the URL.
+
+```python
+col = f"{BASE}/databases/middle-earth/collections/lord-of-the-rings"
+
+s.post(col)  # create the database + collection (409 if it already exists)
+
+r = s.post(f"{col}/documents/aragorn", json={
+    "title": "Aragorn",
+    "body": ("'''Aragorn''' is heir of Isildur and King of Gondor. "
+             "He travels with [[frodo]] and the wizard [[gandalf]]."),
+    "race": "Man",
+    "weapon": "Andúril",
+    "titles": ["Strider", "Elessar", "King of Gondor"],   # a flat array
+})
+print(r.status_code, r.json())
+# 201 {'id': 'aragorn', 'document': {...}, 'rev': 1}
+```
+
+### Read one article
+
+`GET` returns the current body plus its revision (`rev`), also exposed as an
+`ETag` header.
+
+```python
+doc = s.get(f"{col}/documents/aragorn").json()
+print(doc["id"], doc["rev"], doc["document"]["title"])
+# aragorn 1 Aragorn
+```
+
+### Update safely (optimistic concurrency)
+
+Send the revision you based your edit on via `If-Match`. If someone else changed
+the article in the meantime, your write is rejected with `409` instead of
+silently clobbering theirs.
+
+```python
+doc = s.get(f"{col}/documents/aragorn").json()
+rev = doc["rev"]
+
+r = s.put(f"{col}/documents/aragorn",
+          json={**doc["document"], "weapon": "Andúril, Flame of the West"},
+          headers={"If-Match": str(rev)})
+print(r.status_code, r.json()["rev"])   # 200 2
+
+# Re-using the now-stale rev is refused:
+r = s.put(f"{col}/documents/aragorn", json={"title": "x"},
+          headers={"If-Match": str(rev)})
+print(r.status_code)                     # 409
+
+# Omitting If-Match is allowed (last-write-wins) for quick scripts.
+```
+
+### Browse
+
+```python
+print(s.get(f"{BASE}/databases").json())
+# {'databases': ['middle-earth', ...]}
+
+print(s.get(f"{BASE}/databases/middle-earth/collections").json())
+# {'database': 'middle-earth', 'collections': ['lord-of-the-rings']}
+
+print(s.get(f"{col}/documents").json())
+# {'documents': [{'id': 'aragorn', 'title': 'Aragorn', 'rev': 2, ...}, ...]}
+# supports ?limit= and ?after=<id> for paging
+```
+
+### Suggest (link type-ahead)
+
+```python
+print(s.get(f"{BASE}/suggest", params={"q": "arag"}).json())
+# {'suggestions': [{'slug': 'aragorn', 'title': 'Aragorn',
+#                   'database': 'middle-earth', 'collection': 'lord-of-the-rings'}]}
+```
+
+### Search
+
+`key` matches an exact top-level key; `text` is a case-insensitive substring over
+the content; giving both requires both. At least one is required.
+
+```python
+print(s.get(f"{col}/search", params={"key": "weapon"}).json())
+print(s.get(f"{col}/search", params={"text": "Gondor"}).json())
+# {'results': [{'id': 'aragorn', 'document': {...}, 'rev': 2}], 'count': 1}
+```
+
+### Version history, diff & restore
+
+```python
+doc = f"{col}/documents/aragorn"
+
+# Metadata for every retained version, newest first
+print(s.get(f"{doc}/versions").json())
+# {'id': 'aragorn', 'versions': [{'rev': 2, 'op': 'update', 'author': 'huy',
+#                                 'timestamp': '...'}, {'rev': 1, ...}]}
+
+# A single version's full body
+print(s.get(f"{doc}/versions/1").json())
+
+# A structured diff between two revisions
+print(s.get(f"{doc}/diff", params={"from": 1, "to": 2}).json()["diff"])
+# {'fields': [{'key': 'weapon', 'status': 'changed', 'inline': [...]}, ...]}
+
+# Restore rev 1 as a brand-new revision (append-only; never a rewind)
+print(s.post(f"{doc}/restore/1").json()["rev"])   # 3
+```
+
+### Delete
+
+```python
+rev = s.get(doc).json()["rev"]
+r = s.delete(doc, headers={"If-Match": str(rev)})
+print(r.status_code)                 # 204
+print(s.get(doc).status_code)        # 404 (history is kept; the id can be recreated)
+```
+
+---
+
+## API reference
+
+Every document call names a database and collection; single-document calls also
+name a document id. Bodies must be flat JSON objects. All endpoints require an
+authenticated session.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST   | `/register` | create an account (`{username, password}`; 409 if taken) |
+| POST   | `/login` | start a session (`{username, password}`) |
+| POST   | `/logout` | end the session |
+| GET    | `/auth/me` | the current user (`{username, role}`) |
+| GET    | `/databases` | list readable databases |
+| GET    | `/databases/<db>/collections` | list readable collections |
+| POST   | `/databases/<db>/collections/<col>` | create the database + collection (409 if exists) |
+| GET    | `/databases/<db>/collections/<col>/documents` | list readable articles (`?limit=&after=`) |
+| POST   | `/databases/<db>/collections/<col>/documents/<id>` | create an article (404 if namespace missing, 409 if id exists) |
+| GET    | `…/documents/<id>` | read (404 if missing); returns `rev` + `ETag` |
+| PUT    | `…/documents/<id>` | replace (404 if missing; 409 if `If-Match` rev is stale) |
+| DELETE | `…/documents/<id>` | delete (soft; 409 if `If-Match` rev is stale) |
+| GET    | `…/documents/<id>/versions` | retained version metadata (newest first) |
+| GET    | `…/documents/<id>/versions/<n>` | one version snapshot |
+| GET    | `…/documents/<id>/diff?from=&to=` | structured diff of two versions |
+| POST   | `…/documents/<id>/restore/<n>` | restore version `n` as a new revision |
+| GET    | `/databases/<db>/collections/<col>/search?key=&text=` | search |
+| GET    | `/suggest?q=&db=&col=` | link type-ahead over readable articles |
+
+Writes accept an optional `If-Match: "<rev>"` header (or `?_rev=<rev>`) for
+optimistic concurrency; a stale value returns `409`.
+
+---
+
+## Deploy on a Synology NAS
+
+> Before exposing this beyond localhost, read [`SECURITY.md`](SECURITY.md) — it
+> lists the security measures in place and the hardening still required
+> (TLS, MongoDB auth, rate limiting, non-root container, and more).
+
+The same `docker/docker-compose.nas.yml` runs on a Synology NAS with **Container
+Manager** (any "+" model). MongoDB 7 needs a CPU with AVX; on one without, change
+`mongo:7` to `mongo:4.4` in the compose file.
+
+1. Put the repo on the NAS and set `SECRET_KEY` in `docker/.env` (as above).
+2. In Container Manager create a **Project** pointing at
+   `docker/docker-compose.nas.yml` (or run the `docker compose … up --build -d`
+   command). The app is published on host port **5002** (DSM uses 5000/5001).
+
+**HTTPS (recommended).** Terminate TLS with Synology's built-in reverse proxy —
+**Control Panel → Login Portal → Advanced → Reverse Proxy** — pointing an HTTPS
+hostname at `http://localhost:5002`, bind a Let's Encrypt certificate to it, then
+add `SESSION_COOKIE_SECURE=true` to `docker/.env` and redeploy so the session
+cookie is only ever sent over HTTPS. (With that set, logging in over plain HTTP
+won't work — use the `https://` address.)
+
+---
+
+## Tests
+
+Tests run entirely against an in-memory MongoDB (`mongomock`) — no server is
+contacted.
 
 ```bash
 pip install -e ".[dev]"
 pytest
-```
-
-# Example in python
-```python
-from gremlin_python.driver.driver_remote_connection import DriverRemoteConnection
-from gremlin_python.process.anonymous_traversal import traversal
-
-# referencing the service directly by its name (janusgraph, as defined in the docker compose file)
-connection = DriverRemoteConnection('ws://janusgraph:8182/gremlin', 'g')
-g = traversal().withRemote(connection)
-g.V().count().next()
-```
-
-```bash
-docker compose up --build
 ```

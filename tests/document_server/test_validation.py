@@ -14,13 +14,35 @@ from visualizer.document_server.validation import (
 )
 
 
-@pytest.mark.parametrize("payload", [{}, {"a": 1}, {"nested": {"x": [1, 2]}}])
-def test_validate_document_accepts_dicts(payload):
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"a": 1},
+        {"name": "Aragorn", "age": 87, "king": True, "note": None, "hp": 3.5},
+        {"tags": ["a", "b", "c"]},  # a flat array of scalars is allowed
+        {"tags": []},
+    ],
+)
+def test_validate_document_accepts_flat_dicts(payload):
     assert validate_document(payload) is payload
 
 
 @pytest.mark.parametrize("payload", [None, [], [1, 2], "text", 5, 3.14, True])
 def test_validate_document_rejects_non_dicts(payload):
+    with pytest.raises(InvalidDocument):
+        validate_document(payload)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"nested": {"x": 1}},  # nested object
+        {"matrix": [[1, 2], [3, 4]]},  # array of arrays
+        {"people": [{"name": "Frodo"}]},  # array of objects
+    ],
+)
+def test_validate_document_rejects_nested_values(payload):
     with pytest.raises(InvalidDocument):
         validate_document(payload)
 
