@@ -10,10 +10,17 @@ with no dependency on Flask or MongoDB so it can be unit tested in isolation:
 
 Grant shape (a plain mapping; ``None`` in a scope field means "any"/wildcard)::
 
-    {"database": "middle-earth" | None,
+    {"resource_type": "database",          # or e.g. "book" (chronos)
+     "database": "middle-earth" | None,
      "collection": "lord-of-the-rings" | None,
      "doc_id": "aragorn" | None,
      "perms": ["read", "write", "delete"]}
+
+``resource_type`` namespaces the scope. Services share one grant store, so a
+grant only ever matches a request of the *same* resource type -- a chronos book
+called ``x`` must never confer access to a document-server database called
+``x``. A grant with no ``resource_type`` predates the field and is treated as
+``"database"`` (document-server), which is also the default when asking.
 
 Resolution is **allow-only** with most-specific-wins:
 
@@ -36,6 +43,9 @@ DELETE = "delete"
 
 ALL_PERMS = (READ, WRITE, DELETE)
 
+# Default resource kind: document-server's database -> collection -> document.
+DATABASE_RESOURCE = "database"
+
 # HTTP method -> the permission required to perform it on a document resource.
 _METHOD_PERMS = {
     "GET": READ,
@@ -54,8 +64,25 @@ def perm_for_method(method: str) -> str:
     return _METHOD_PERMS[method.upper()]
 
 
-def _matches(grant: Mapping, database: str, collection: str | None, doc_id: str | None) -> bool:
-    """Whether ``grant`` applies to the requested resource."""
+def _grant_type(grant: Mapping) -> str:
+    """A grant's resource kind; absent means a legacy document-server grant."""
+    return grant.get("resource_type") or DATABASE_RESOURCE
+
+
+def _matches(
+    grant: Mapping,
+    database: str,
+    collection: str | None,
+    doc_id: str | None,
+    resource_type: str = DATABASE_RESOURCE,
+) -> bool:
+    """Whether ``grant`` applies to the requested resource.
+
+    The resource kind must match exactly -- unlike the scope fields it is never
+    a wildcard, so one service's grants cannot satisfy another's requests.
+    """
+    if _grant_type(grant) != resource_type:
+        return False
     for field, value in (
         ("database", database),
         ("collection", collection),
@@ -79,13 +106,16 @@ def effective_perms(
     database: str,
     collection: str | None = None,
     doc_id: str | None = None,
+    resource_type: str = DATABASE_RESOURCE,
 ) -> set[str]:
     """Return the permissions a user holds on a specific resource.
 
     Only the most-specific matching grants contribute; their perms are unioned.
     Returns an empty set when nothing matches (i.e. access is denied).
     """
-    matching = [g for g in grants if _matches(g, database, collection, doc_id)]
+    matching = [
+        g for g in grants if _matches(g, database, collection, doc_id, resource_type)
+    ]
     if not matching:
         return set()
     top = max(_specificity(g) for g in matching)
@@ -102,6 +132,7 @@ def is_allowed(
     database: str,
     collection: str | None = None,
     doc_id: str | None = None,
+    resource_type: str = DATABASE_RESOURCE,
 ) -> bool:
     """Whether the user's ``grants`` permit ``perm`` on the resource."""
-    return perm in effective_perms(grants, database, collection, doc_id)
+    return perm in effective_perms(grants, database, collection, doc_id, resource_type)

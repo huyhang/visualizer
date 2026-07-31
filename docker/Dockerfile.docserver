@@ -1,4 +1,4 @@
-# Lightweight image for the document-server (no conda / janusgraph baggage).
+# Lightweight image for the document-server.
 # Ideal for constrained hosts like a Synology NAS: small, quick to build, and it
 # installs only what the app needs.
 #

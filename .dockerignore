@@ -1,6 +1,6 @@
 # Keeps the Docker build context small and fast (the context is the repo root).
-# Only requirements.txt, src/, and docker/environment.yaml are needed to build
-# the images; everything below is excluded.
+# Only requirements.txt and src/ are needed to build the images; everything
+# below is excluded.
 
 # Version control
 .git
@@ -20,7 +20,7 @@ docker/.env
 
 # Not needed to build or run the app image
 tests/
-graph_schema/
+docs/
 
 # Virtualenvs
 .venv/

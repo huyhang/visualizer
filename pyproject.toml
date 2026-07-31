@@ -9,10 +9,14 @@ dependencies = [
     "pymongo>=4.0",
     "flask-login>=0.6",
     "flask-wtf>=1.2",
+    # Chronos builds each book's story graph in-process (convergence/divergence,
+    # reachability); pure-Python, no server or extra container.
+    "networkx>=3.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff", "mongomock>=4.1"]
+# jsonschema backs the OpenAPI contract test (tests/chronos/test_contract.py).
+dev = ["pytest", "ruff", "mongomock>=4.1", "jsonschema>=4.0"]
 
 [build-system]
 requires = ["setuptools>=68.0"]
@@ -22,8 +26,10 @@ build-backend = "setuptools.build_meta"
 line-length = 88
 
 [tool.pytest.ini_options]
-testpaths = ["tests/document_server"]
-# The code is a proper package (visualizer.document_server) under src/, so `src`
-# is on the path for package imports; the test dir is on the path so `conftest`
-# helpers are importable by name.
-pythonpath = ["src", "tests/document_server"]
+testpaths = ["tests/document_server", "tests/chronos"]
+# `src` is on the path for package imports. `tests/document_server` stays a
+# non-package dir so its historical bare `from conftest import ...` keeps working.
+# `tests/chronos` is a package (has __init__.py), so its conftest is namespaced
+# as `tests.chronos.conftest` -- no clash with the other suite's conftest; the
+# repo root (".") is on the path so that package resolves.
+pythonpath = ["src", ".", "tests/document_server"]

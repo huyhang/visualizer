@@ -1,0 +1,341 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Chronos API",
+    "version": "0.0.1-draft",
+    "description": "Plotline & timeline API for fiction writers. SCAFFOLD — this contract is authored ahead of implementation (see docs/chronos/design.md). The Plotline shape is defined first; other resources follow the same conventions. Served at /openapi.json with a Redoc UI at /docs."
+  },
+  "servers": [
+    { "url": "/", "description": "Same origin as the Chronos service" }
+  ],
+  "tags": [
+    { "name": "plotlines", "description": "Ordered threads of events within a book" }
+  ],
+  "paths": {
+    "/books/{book}/events/{event}/plotlines": {
+      "parameters": [
+        { "name": "book", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Book id (slug)." },
+        { "name": "event", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Event id (slug), unique within the book." }
+      ],
+      "get": {
+        "tags": ["plotlines"],
+        "summary": "Plotlines converging into / diverging from an event",
+        "description": "The event-local slice of the story graph. Incoming edges grouped by predecessor give convergence; outgoing edges grouped by successor give divergence.",
+        "parameters": [
+          {
+            "name": "relation",
+            "in": "query",
+            "required": false,
+            "description": "Return only the matching block instead of the full neighborhood.",
+            "schema": { "type": "string", "enum": ["converging", "diverging", "through"] }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The event neighborhood.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EventNeighborhood" } } }
+          },
+          "404": {
+            "description": "No such book or event.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Finding" } } }
+          }
+        }
+      }
+    },
+    "/books/{book}/plotlines/{plotline}": {
+      "parameters": [
+        { "name": "book", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Book id (slug)." },
+        { "name": "plotline", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Plotline id (slug), unique within the book." }
+      ],
+      "get": {
+        "tags": ["plotlines"],
+        "summary": "Retrieve a plotline",
+        "description": "Returns the stored record, a computed `status`, and a `_links` block. Lean by default; `?expand=events` inlines event summaries.",
+        "parameters": [
+          {
+            "name": "expand",
+            "in": "query",
+            "required": false,
+            "description": "Inline referenced resources instead of returning bare ids.",
+            "schema": { "type": "string", "enum": ["events"] }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The plotline.",
+            "headers": {
+              "ETag": { "description": "Current revision, e.g. \"3\". Echo as If-Match on writes.", "schema": { "type": "string" } }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Plotline" }
+              }
+            }
+          },
+          "404": {
+            "description": "No such book or plotline.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Finding" } } }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Plotline": {
+        "type": "object",
+        "description": "An ordered thread of events within a book, plus its goals. Top-level fields are stored/editable; `status`, `_links`, `_schema`, and `rev` are server-computed (readOnly).",
+        "required": ["kind", "id", "book", "goals", "events", "rev"],
+        "properties": {
+          "kind": { "type": "string", "enum": ["plotline"], "readOnly": true, "description": "Type discriminator." },
+          "id": { "type": "string", "description": "Plotline id (slug), unique within the book." },
+          "title": { "type": "string", "description": "Optional short display name; defaults to id." },
+          "book": { "type": "string", "description": "Owning book id." },
+          "goals": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string" },
+            "description": "Non-empty set of goals."
+          },
+          "events": {
+            "type": "array",
+            "description": "The thread. ORDER IS THE CONTRACT: each event must end strictly before the next begins. Bare ids by default; EventSummary objects when ?expand=events.",
+            "items": {
+              "oneOf": [
+                { "type": "string", "description": "An event id." },
+                { "$ref": "#/components/schemas/EventSummary" }
+              ]
+            }
+          },
+          "rev": { "type": "integer", "readOnly": true, "description": "Optimistic-concurrency counter; echo as If-Match on write." },
+          "status": { "$ref": "#/components/schemas/PlotlineStatus" },
+          "_links": { "$ref": "#/components/schemas/Links" },
+          "_schema": { "type": "string", "readOnly": true, "description": "JSON-Schema pointer for this shape." }
+        },
+        "example": {
+          "kind": "plotline",
+          "id": "knights-road",
+          "book": "ember-pact",
+          "goals": ["Deliver the Ember Seal", "Reach the coronation alive"],
+          "events": ["aldric-departs", "meet-at-emberport", "the-coronation"],
+          "rev": 3,
+          "status": {
+            "ordering": { "state": "ok" },
+            "ends_at_terminus": { "state": "ok" },
+            "span": {
+              "start_tick": 0, "end_tick": 210,
+              "start_label": "Year 1, Month 1, Day 1, 00:00 AF",
+              "end_label": "Year 1, Month 1, Day 9, 18:00 AF"
+            }
+          },
+          "_links": {
+            "self": "/books/ember-pact/plotlines/knights-road",
+            "book": "/books/ember-pact",
+            "expanded": "/books/ember-pact/plotlines/knights-road?expand=events",
+            "validate": "/books/ember-pact/validate",
+            "graph": "/books/ember-pact/graph",
+            "events": ["/books/ember-pact/events/aldric-departs"]
+          },
+          "_schema": "/openapi.json#/components/schemas/Plotline"
+        }
+      },
+      "PlotlineStatus": {
+        "type": "object",
+        "readOnly": true,
+        "description": "Computed verdicts for this plotline (soft model: reported, not blocking). Never accepted on write.",
+        "properties": {
+          "ordering": { "$ref": "#/components/schemas/Verdict" },
+          "ends_at_terminus": { "$ref": "#/components/schemas/Verdict" },
+          "span": { "$ref": "#/components/schemas/Span" }
+        }
+      },
+      "Verdict": {
+        "type": "object",
+        "description": "The shared 'finding' shape for a single rule. On `ok`, only `state` is present; on `conflicted`, the rest describe and locate the problem.",
+        "required": ["state"],
+        "properties": {
+          "state": { "type": "string", "enum": ["ok", "conflicted"] },
+          "code": { "type": "string", "description": "Stable machine code, e.g. ORDERING_VIOLATION, TERMINUS_VIOLATION." },
+          "message": { "type": "string", "description": "Human-readable explanation." },
+          "evidence": { "type": "object", "additionalProperties": true, "description": "Structured pointer to the offending elements." },
+          "doc": { "type": "string", "description": "Deep link to the governing design section." }
+        },
+        "example": {
+          "state": "conflicted",
+          "code": "ORDERING_VIOLATION",
+          "message": "'meet-at-emberport' ends after 'lyra-infiltrates' begins.",
+          "evidence": { "before": "meet-at-emberport", "after": "lyra-infiltrates", "reason": "end(72) !< start(0)" },
+          "doc": "docs/chronos/design.md#52"
+        }
+      },
+      "Span": {
+        "type": "object",
+        "readOnly": true,
+        "description": "The tick range covered by the plotline, with codec-formatted labels (design §4.1).",
+        "properties": {
+          "start_tick": { "type": "integer" },
+          "end_tick": { "type": "integer" },
+          "start_label": { "type": "string" },
+          "end_label": { "type": "string" }
+        }
+      },
+      "EventSummary": {
+        "type": "object",
+        "description": "An event as inlined by ?expand=events, annotated in this plotline's context.",
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string", "description": "Optional short display name; defaults to id." },
+          "start_tick": { "type": "integer" },
+          "end_tick": { "type": "integer" },
+          "start_label": { "type": "string" },
+          "end_label": { "type": "string" },
+          "location": { "$ref": "#/components/schemas/EntityRef" },
+          "characters": { "type": "array", "items": { "$ref": "#/components/schemas/EntityRef" } },
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/EntityRef" } },
+          "description_preview": { "type": "string", "description": "Truncated body; full text via GET .../events/{id}." },
+          "shared_with": { "type": "array", "items": { "type": "string" }, "description": "Other plotlines that also contain this event (convergence/divergence)." },
+          "is_convergence": { "type": "boolean" },
+          "is_terminus": { "type": "boolean" }
+        }
+      },
+      "EventNeighborhood": {
+        "type": "object",
+        "description": "Which plotlines pass through, converge into, and diverge out of a single event (design §7.4). Built for reading: ids carry titles, times are codec-formatted, and `role`/`summary` state what is happening. All fields are computed by the presenter — nothing here is stored.",
+        "required": ["event", "role", "through", "converging", "diverging"],
+        "properties": {
+          "event": { "$ref": "#/components/schemas/NodeRef" },
+          "role": {
+            "type": "string",
+            "description": "One-word graph role of the event.",
+            "enum": ["convergence", "divergence", "convergence+divergence", "interior", "origin", "terminus"]
+          },
+          "summary": { "type": "string", "description": "Human-readable prose describing the branch/merge." },
+          "through": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PlotlineRef" },
+            "description": "Every plotline that contains this event."
+          },
+          "converging": {
+            "type": "object",
+            "description": "Threads arriving at the event, grouped by the predecessor they come from (sorted by predecessor start_tick).",
+            "required": ["is_convergence", "incoming"],
+            "properties": {
+              "is_convergence": { "type": "boolean", "description": "True when entered by more than one distinct predecessor edge." },
+              "summary": { "type": "string" },
+              "incoming": { "type": "array", "items": { "$ref": "#/components/schemas/EdgeGroup" } }
+            }
+          },
+          "diverging": {
+            "type": "object",
+            "description": "Threads leaving the event, grouped by the successor they go to (sorted by successor start_tick).",
+            "required": ["is_divergence", "outgoing"],
+            "properties": {
+              "is_divergence": { "type": "boolean", "description": "True when left toward more than one distinct successor." },
+              "summary": { "type": "string" },
+              "outgoing": { "type": "array", "items": { "$ref": "#/components/schemas/EdgeGroup" } }
+            }
+          },
+          "is_terminus": { "type": "boolean" },
+          "is_origin": { "type": "boolean", "description": "True when no plotline has an event before this one (a starting point)." },
+          "_links": { "$ref": "#/components/schemas/Links" }
+        },
+        "example": {
+          "event": { "id": "meet-at-emberport", "title": "The Harbor Exchange", "when": "Year 1, Month 1, Day 3 → Day 4 AF", "location": "Emberport" },
+          "role": "convergence",
+          "summary": "Two plotlines converge here — The Knight's Road (from “Aldric Departs”) and The Spy's Shadow (from “Lyra Infiltrates”) — then continue together to “The Coronation”.",
+          "through": [
+            { "id": "knights-road", "title": "The Knight's Road" },
+            { "id": "spys-shadow", "title": "The Spy's Shadow" }
+          ],
+          "converging": {
+            "is_convergence": true,
+            "summary": "2 threads arrive from 2 different events.",
+            "incoming": [
+              { "from": { "id": "aldric-departs", "title": "Aldric Departs", "when": "Day 1" }, "plotlines": [ { "id": "knights-road", "title": "The Knight's Road" } ] },
+              { "from": { "id": "lyra-infiltrates", "title": "Lyra Infiltrates", "when": "Day 1–3" }, "plotlines": [ { "id": "spys-shadow", "title": "The Spy's Shadow" } ] }
+            ]
+          },
+          "diverging": {
+            "is_divergence": false,
+            "summary": "All threads continue together.",
+            "outgoing": [
+              { "to": { "id": "the-coronation", "title": "The Coronation", "when": "Day 9" }, "plotlines": [ { "id": "knights-road", "title": "The Knight's Road" }, { "id": "spys-shadow", "title": "The Spy's Shadow" } ] }
+            ]
+          },
+          "is_terminus": false,
+          "is_origin": false,
+          "_links": {
+            "self": "/books/ember-pact/events/meet-at-emberport/plotlines",
+            "event": "/books/ember-pact/events/meet-at-emberport",
+            "graph": "/books/ember-pact/graph"
+          }
+        }
+      },
+      "EdgeGroup": {
+        "type": "object",
+        "description": "The plotlines sharing one neighboring event. `from` is set on incoming groups, `to` on outgoing groups.",
+        "required": ["plotlines"],
+        "properties": {
+          "from": { "$ref": "#/components/schemas/NodeRef" },
+          "to": { "$ref": "#/components/schemas/NodeRef" },
+          "plotlines": { "type": "array", "items": { "$ref": "#/components/schemas/PlotlineRef" } }
+        }
+      },
+      "NodeRef": {
+        "type": "object",
+        "description": "A readable reference to an event: id plus display title, codec-formatted time, and (optionally) location name.",
+        "required": ["id"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string", "description": "Display name; defaults to id." },
+          "when": { "type": "string", "description": "Codec-formatted time or span (§4.1)." },
+          "location": { "type": "string", "description": "Location title." }
+        }
+      },
+      "PlotlineRef": {
+        "type": "object",
+        "description": "A readable reference to a plotline: id plus display title.",
+        "required": ["id"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string", "description": "Display name; defaults to id." }
+        }
+      },
+      "EntityRef": {
+        "type": "object",
+        "description": "A reference to a document in document-server that MUST exist (character, item, or location).",
+        "required": ["database", "collection", "id"],
+        "properties": {
+          "database": { "type": "string" },
+          "collection": { "type": "string" },
+          "id": { "type": "string" }
+        }
+      },
+      "Links": {
+        "type": "object",
+        "readOnly": true,
+        "description": "Discoverable next actions for this resource.",
+        "properties": {
+          "self": { "type": "string" },
+          "book": { "type": "string" },
+          "event": { "type": "string" },
+          "expanded": { "type": "string" },
+          "validate": { "type": "string" },
+          "graph": { "type": "string" },
+          "events": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "Finding": {
+        "type": "object",
+        "description": "Error/report envelope, the same vocabulary as a Verdict (design §10).",
+        "required": ["error"],
+        "properties": {
+          "error": { "type": "string", "description": "Human-readable message." },
+          "code": { "type": "string" },
+          "evidence": { "type": "object", "additionalProperties": true },
+          "doc": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -26,6 +26,21 @@ AUTH_DB = "_auth"
 _USERS = "users"
 _GRANTS = "grants"
 
+# Grants are namespaced by the kind of resource they scope, so services sharing
+# this store never match one another's resources (a chronos book named "x" must
+# not grant access to a document-server database named "x"). See ``authz``.
+DATABASE_RESOURCE = "database"
+
+
+def _type_query(resource_type: str):
+    """Match a resource_type, treating a missing field as the legacy default.
+
+    Grants written before this field existed are document-server grants.
+    """
+    if resource_type == DATABASE_RESOURCE:
+        return {"$in": [DATABASE_RESOURCE, None]}
+    return resource_type
+
 
 class AuthStore:
     def __init__(self, client):
@@ -133,10 +148,17 @@ class AuthStore:
         doc_id: str | None,
         perms: list[str],
         granted_by: str,
+        resource_type: str = DATABASE_RESOURCE,
     ) -> dict:
-        """Create a grant for ``username`` and return it in the public shape."""
+        """Create a grant for ``username`` and return it in the public shape.
+
+        ``resource_type`` namespaces the scope so different services' grants
+        never match each other's resources (see ``authz``). It defaults to
+        ``"database"``, which is what document-server grants are.
+        """
         record = {
             "username": username,
+            "resource_type": resource_type,
             "database": database,
             "collection": collection,
             "doc_id": doc_id,
@@ -154,6 +176,7 @@ class AuthStore:
         collection: str | None,
         doc_id: str | None,
         perms: list[str],
+        resource_type: str = DATABASE_RESOURCE,
     ) -> None:
         """Idempotently give ``username`` full perms on a resource they created.
 
@@ -163,6 +186,7 @@ class AuthStore:
         existing = self._grants.find_one(
             {
                 "username": username,
+                "resource_type": _type_query(resource_type),
                 "database": database,
                 "collection": collection,
                 "doc_id": doc_id,
@@ -172,7 +196,10 @@ class AuthStore:
             merged = sorted(set(existing.get("perms", [])) | set(perms))
             self._grants.update_one({"_id": existing["_id"]}, {"$set": {"perms": merged}})
             return
-        self.add_grant(username, database, collection, doc_id, perms, granted_by=username)
+        self.add_grant(
+            username, database, collection, doc_id, perms,
+            granted_by=username, resource_type=resource_type,
+        )
 
     def delete_grant(self, grant_id: str) -> None:
         """Delete a grant by its string id. Missing ids are silently ignored."""
@@ -198,6 +225,9 @@ class AuthStore:
         return {
             "id": str(record["_id"]),
             "username": record["username"],
+            # Grants written before resource_type existed are document-server
+            # (database-scoped) grants, so that is the backward-compatible default.
+            "resource_type": record.get("resource_type") or DATABASE_RESOURCE,
             "database": record.get("database"),
             "collection": record.get("collection"),
             "doc_id": record.get("doc_id"),
