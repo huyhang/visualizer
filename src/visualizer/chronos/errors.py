@@ -1,6 +1,6 @@
 """Domain errors for Chronos.
 
-Mirrors ``document_server.errors``: each error carries an HTTP ``status_code``
+Mirrors ``akasha.errors``: each error carries an HTTP ``status_code``
 so the web layer can serialize it without knowing the details, plus a stable
 machine ``code`` and optional structured ``evidence`` (the shared "finding"
 vocabulary from the design, used by errors, ``status`` verdicts and

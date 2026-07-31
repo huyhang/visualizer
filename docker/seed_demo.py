@@ -2,7 +2,7 @@
 
 Creates, over the real HTTP APIs (no direct DB writes):
 
-- document-server: the canon -- characters, items, locations as articles.
+- akasha: the canon -- characters, items, locations as articles.
 - chronos: the book "The Ember Pact" with a fictional calendar, six events, and
   four plotlines.
 
@@ -183,7 +183,7 @@ def login(client):
     )
     show(status, f"register '{USER}'", "already exists (fine)" if status == 409 else "")
     status, _ = client.post(f"{DOCS}/login", {"username": USER, "password": PASSWORD})
-    show(status, "login to document-server")
+    show(status, "login to akasha")
     if status != 200:
         sys.exit("login failed -- cannot seed")
     status, _ = client.get(f"{CHRONOS}/books")
@@ -191,7 +191,7 @@ def login(client):
 
 
 def seed_entities(client):
-    step("document-server: the canon (entities chronos will reference)")
+    step("akasha: the canon (entities chronos will reference)")
     for collection, entries in (
         ("characters", CHARACTERS), ("items", ITEMS), ("locations", LOCATIONS)
     ):

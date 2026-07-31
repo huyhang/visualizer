@@ -1,6 +1,6 @@
 # Security
 
-This document records the security measures **implemented** in `document-server`
+This document records the security measures **implemented** in `akasha`
 and the hardening **still required** before running it as a non-local (shared,
 internet- or LAN-reachable) service. The running code is the source of truth; if
 this doc and the code disagree, trust the code and fix the doc.
@@ -134,7 +134,7 @@ Ordered roughly by priority. Items marked *(partial)* have some support already.
    backend so limits hold across gunicorn workers) and backoff/lockout on
    repeated failures to blunt brute-forcing, credential stuffing, and
    enumeration/DoS on `/login` and `/register`.
-4. **Run the container as non-root.** `docker/Dockerfile.docserver` has no `USER`
+4. **Run the container as non-root.** `docker/Dockerfile.akasha` has no `USER`
    directive, so the app runs as root. Add a non-root user, and consider a
    read-only root filesystem, dropped Linux capabilities, and resource limits.
 5. **Trust the proxy correctly.** Behind a reverse proxy, add Werkzeug

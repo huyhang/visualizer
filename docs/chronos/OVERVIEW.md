@@ -172,7 +172,7 @@ or deleting a scene that a thread still depends on.
 ## Your cast lives next door
 
 Characters, items and locations aren't stored in Chronos. They're articles in
-the companion **document-server** — a small wiki where you write them up, link
+the companion **Akasha** — a small wiki where you write them up, link
 them to each other, and keep their history.
 
 Chronos only *points* at them, and it refuses to point at something that doesn't

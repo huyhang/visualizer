@@ -3,7 +3,7 @@
 ``create_app`` receives its seams by injection -- the ``StoryStore`` and
 ``EntityGate`` plus the shared ``AuthStore`` -- so the same routing runs against
 an in-memory Mongo in tests and a real one in production. Authentication and the
-grant model are reused from ``document_server`` unchanged (one identity, one
+grant model are reused from ``akasha`` unchanged (one identity, one
 login -- design decision in §12); Chronos authorizes at **book scope** using the
 same allow-only, most-specific-wins ``is_allowed`` logic.
 """
@@ -12,8 +12,8 @@ from flask import Flask, jsonify, request
 from flask_login import current_user, login_required
 from flask_wtf.csrf import CSRFProtect
 
-from visualizer.document_server.auth import init_login, register_auth_routes
-from visualizer.document_server.authz import ALL_PERMS, is_allowed, perm_for_method
+from visualizer.akasha.auth import init_login, register_auth_routes
+from visualizer.akasha.authz import ALL_PERMS, is_allowed, perm_for_method
 
 from .entity_gate import EntityGate
 from .errors import ChronosError, Forbidden, InvalidRevision
@@ -25,8 +25,8 @@ _PLOTLINE = "/books/<book>/plotlines/<plotline>"
 _EVENT = "/books/<book>/events/<event>"
 
 # Chronos grants are namespaced by this resource kind in the shared `_auth`
-# store, so a book named "x" never confers access to a document-server database
-# named "x" (and vice versa). See document_server.authz.
+# store, so a book named "x" never confers access to a akasha database
+# named "x" (and vice versa). See akasha.authz.
 BOOK_RESOURCE = "book"
 
 _ROLE_PERMS = {
@@ -314,7 +314,7 @@ def _require_owner(auth_store, book: str) -> None:
 def _replace_book_grants(auth_store, username: str, book: str) -> None:
     """Drop this user's existing grants on *this book* (idempotent invite).
 
-    Scoped to ``BOOK_RESOURCE`` so a user's document-server grants -- which may
+    Scoped to ``BOOK_RESOURCE`` so a user's akasha grants -- which may
     share the same name -- are never touched.
     """
     for grant in auth_store.grants_for(username):

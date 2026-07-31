@@ -5,7 +5,7 @@ of their work: who did what, where, and when — and how those threads split,
 weave, and finally come together. One of two services in the
 [visualizer](../../README.md) stack.
 
-Chronos ships alongside [`document-server`](../document-server/README.md) and
+Chronos ships alongside [`akasha`](../Akasha/README.md) and
 shares its MongoDB and its login. Characters, items and locations live there as articles;
 Chronos references them and refuses to invent them.
 
@@ -16,14 +16,14 @@ Chronos references them and refuses to invent them.
 - **Want the contract?** See [openapi.json](../openapi.json).
 
 > **API only.** There is no web UI for books, plotlines or events yet. The
-> entities Chronos references *are* browsable in the document-server editor; the
+> entities Chronos references *are* browsable in the Akasha editor; the
 > story graph is not. A `/graph` viewer is planned (design §12).
 
 ---
 
 ## Run it
 
-Chronos is one of three containers (`chronos`, `document-server`, `mongo`)
+Chronos is one of three containers (`akasha`, `chronos`, `mongo`)
 defined in `docker/docker-compose.nas.yml`. MongoDB has **no published port** —
 it is reachable only inside the Docker network.
 
@@ -38,7 +38,7 @@ docker compose -f docker/docker-compose.nas.yml up --build -d
 
 | Service | Host port | Purpose |
 | --- | --- | --- |
-| `document-server` | 5002 | articles: characters, items, locations |
+| `akasha` | 5002 | articles: characters, items, locations |
 | `chronos` | 5003 | books, plotlines, events |
 | `mongo` | *(internal only)* | shared storage |
 
@@ -53,12 +53,12 @@ curl -s localhost:5003/health   # {"service":"chronos","status":"ok"}
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `SECRET_KEY` | signs session cookies — **required**. Use the *same* value as document-server so one session covers both. | none (must be set) |
+| `SECRET_KEY` | signs session cookies — **required**. Use the *same* value as Akasha so one session covers both. | none (must be set) |
 | `MONGO_URI` | MongoDB connection string | `mongodb://mongo:27017` |
 | `SESSION_COOKIE_SECURE` | mark the session cookie HTTPS-only (enable behind an HTTPS reverse proxy) | `false` |
 
 Chronos stores everything in a reserved `_chronos` database, which the
-document-server API deliberately refuses to expose.
+Akasha API deliberately refuses to expose.
 
 > **Run locally without Docker** (needs a reachable MongoDB):
 > ```bash
@@ -76,7 +76,7 @@ document-server API deliberately refuses to expose.
 | **Plotline** | An **ordered** list of events plus a non-empty set of goals. Order is the contract. |
 | **Book** | A collection of plotlines with one designated **Terminus**. |
 | **Terminus** | The single event every plotline in the book must end at. |
-| **EntityRef** | A pointer to a document-server article — `{database, collection, id}`. Must already exist. |
+| **EntityRef** | A pointer to a Akasha article — `{database, collection, id}`. Must already exist. |
 
 Events, plotlines and terminus are **scoped to one book**; ids are unique within
 their book. Two plotlines may share an event — that is how threads converge and
@@ -114,7 +114,7 @@ whether the data makes structural sense.
 
 | Rule | Response |
 | --- | --- |
-| An `EntityRef` doesn't exist in document-server | `422 ENTITY_NOT_FOUND` |
+| An `EntityRef` doesn't exist in Akasha | `422 ENTITY_NOT_FOUND` |
 | `start_tick > end_tick`, or a tick isn't an integer | `400 INVALID_TIMEFRAME` |
 | Empty event list, empty goals, unknown event id | `400 INVALID_PLOTLINE` |
 | Deleting an event a plotline still lists | `409 EVENT_IN_USE` |
@@ -239,9 +239,9 @@ blocked — see the soft rules above.
 
 ### Grants and the shared store
 
-Chronos and document-server share one `_auth` store. Grants are namespaced by a
+Chronos and Akasha share one `_auth` store. Grants are namespaced by a
 `resource_type` discriminator (`"book"` vs `"database"`) that must match
-**exactly**, so a book named `x` never confers access to a document-server
+**exactly**, so a book named `x` never confers access to a Akasha
 database named `x`. Grants written before this field are read as `"database"`.
 
 ---
@@ -297,7 +297,7 @@ touch a database.
 | --- | --- |
 | `timeline`, `conflicts`, `ordering`, `book_rules`, `reports`, `calendar`, `validation`, `models` | **pure logic** — no I/O, no Flask; where correctness lives |
 | `store.StoryStore` | persistence seam (Mongo, OCC, injected clock) |
-| `entity_gate.EntityGate` | the document-server boundary (`InProcessEntityGate`, `FakeEntityGate`) |
+| `entity_gate.EntityGate` | the boundary to Akasha (`InProcessEntityGate`, `FakeEntityGate`) |
 | `services` | orchestration: load → validate purely → persist → present |
 | `presenters` | the single source of every response shape |
 | `app`, `wsgi` | Flask factory (injected seams) and entrypoint |

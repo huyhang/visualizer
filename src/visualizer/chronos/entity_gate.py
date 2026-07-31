@@ -1,7 +1,7 @@
-"""The boundary to document-server (design §6.2).
+"""The boundary to akasha (design §6.2).
 
 Chronos never invents characters/items/locations -- they must exist as documents
-in document-server. ``EntityGate`` answers "does this reference exist?"; it is a
+in akasha. ``EntityGate`` answers "does this reference exist?"; it is a
 seam so tests inject a fake that answers from a set literal.
 
 ``InProcessEntityGate`` is the production adapter for the shared-Mongo,
@@ -13,7 +13,7 @@ the services are ever split apart.
 from collections.abc import Iterable
 from typing import Protocol
 
-from visualizer.document_server.errors import DocumentServerError
+from visualizer.akasha.errors import AkashaError
 
 from .models import EntityRef
 
@@ -46,7 +46,7 @@ class InProcessEntityGate(_MissingMixin):
         try:
             self._store.get(ref.database, ref.collection, ref.id)
             return True
-        except DocumentServerError:
+        except AkashaError:
             # Missing, deleted, reserved, or otherwise unreadable -> "not there".
             return False
 

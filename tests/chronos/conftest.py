@@ -2,7 +2,7 @@
 
 DB-touching tests use an in-memory ``mongomock`` client (never a real Mongo) and
 a fixed clock, mirroring the injected-seam design. The same client can back both
-the Chronos store and a document-server ``DocumentStore`` -- exactly as
+the Chronos store and a akasha ``DocumentStore`` -- exactly as
 production shares one Mongo.
 """
 
@@ -12,12 +12,12 @@ import mongomock
 import pytest
 from werkzeug.security import generate_password_hash
 
+from visualizer.akasha.auth_store import AuthStore
+from visualizer.akasha.store import DocumentStore
 from visualizer.chronos.app import create_app
 from visualizer.chronos.entity_gate import FakeEntityGate, InProcessEntityGate
 from visualizer.chronos.models import EntityRef
 from visualizer.chronos.store import StoryStore
-from visualizer.document_server.auth_store import AuthStore
-from visualizer.document_server.store import DocumentStore
 
 FIXED_TIME = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
@@ -39,7 +39,7 @@ def story_store(mongo_client):
 
 @pytest.fixture
 def doc_store(mongo_client):
-    """A document-server store sharing the same Mongo, for entity checks."""
+    """A akasha store sharing the same Mongo, for entity checks."""
     return DocumentStore(mongo_client)
 
 

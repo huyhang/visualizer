@@ -1,7 +1,7 @@
 # Lightweight image for the chronos API (plotline & timeline service).
 #
-# Mirrors Dockerfile.docserver: same slim base, same layout, same layer
-# ordering. Chronos always ships alongside document-server and shares its
+# Mirrors Dockerfile.akasha: same slim base, same layout, same layer
+# ordering. Chronos always ships alongside akasha and shares its
 # MongoDB (entities live there, and both use one `_auth` store), so the only
 # real difference is the gunicorn entrypoint.
 #

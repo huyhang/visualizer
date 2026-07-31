@@ -1,19 +1,19 @@
 """Grants must not leak between services sharing one `_auth` store.
 
 Regression tests for the bug where a chronos book grant was written as a
-document-server *database* grant: creating a book named "x" silently conferred
-read/write/delete on a document-server database also named "x".
+akasha *database* grant: creating a book named "x" silently conferred
+read/write/delete on a akasha database also named "x".
 """
 
 import pytest
 from werkzeug.security import generate_password_hash
 
+from visualizer.akasha.app import create_app as create_docs_app
+from visualizer.akasha.authz import is_allowed
+from visualizer.akasha.store import DocumentStore
 from visualizer.chronos.app import BOOK_RESOURCE
-from visualizer.document_server.app import create_app as create_docs_app
-from visualizer.document_server.authz import is_allowed
-from visualizer.document_server.store import DocumentStore
 
-# The collision case: a book and a document-server database with the SAME name.
+# The collision case: a book and a akasha database with the SAME name.
 SHARED_NAME = "ember-pact"
 WRITER = "mara"
 WRITER_PASS = "mara-pass"
@@ -42,7 +42,7 @@ def test_book_grant_does_not_grant_document_database(app, docs_app):
     docs = docs_app.test_client()
     assert _login(docs).status_code == 200
     resp = docs.get(f"/databases/{SHARED_NAME}/collections/characters/documents/aldric")
-    assert resp.status_code == 403, "book grant leaked into the document server"
+    assert resp.status_code == 403, "book grant leaked into Akasha"
 
 
 def test_document_grant_does_not_grant_book(app, docs_app, auth_store):
@@ -61,11 +61,11 @@ def test_document_grant_does_not_grant_book(app, docs_app, auth_store):
 
 
 def test_collaborator_invite_leaves_document_grants_alone(app, docs_app, auth_store):
-    """Re-inviting a collaborator must not delete their document-server grants."""
+    """Re-inviting a collaborator must not delete their akasha grants."""
     auth_store.create_user("finn", generate_password_hash("pw"))
     auth_store.add_grant(
         "finn", SHARED_NAME, None, None, ["read"], granted_by="admin"
-    )  # a document-server grant
+    )  # a akasha grant
 
     owner = app.test_client()
     assert _login(owner).status_code == 200
@@ -78,7 +78,7 @@ def test_collaborator_invite_leaves_document_grants_alone(app, docs_app, auth_st
     grants = auth_store.grants_for("finn")
     docs_grants = [g for g in grants if g["resource_type"] == "database"]
     book_grants = [g for g in grants if g["resource_type"] == BOOK_RESOURCE]
-    assert len(docs_grants) == 1, "document-server grant was clobbered"
+    assert len(docs_grants) == 1, "akasha grant was clobbered"
     assert len(book_grants) == 1, "invite should be idempotent"
 
 
@@ -92,7 +92,7 @@ def test_resource_type_must_match_exactly():
 
 
 def test_legacy_grant_without_resource_type_is_a_database_grant():
-    """Grants written before the field existed keep working for document-server."""
+    """Grants written before the field existed keep working for akasha."""
     legacy = {"database": "x", "collection": None, "doc_id": None, "perms": ["read"]}
     assert is_allowed([legacy], "read", "x")
     assert not is_allowed([legacy], "read", "x", resource_type="book")

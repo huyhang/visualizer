@@ -1,17 +1,17 @@
 """Production entrypoint for Chronos.
 
-Wires the real seams together, all sharing one MongoClient with document-server
+Wires the real seams together, all sharing one MongoClient with akasha
 (constraint #1: Chronos always ships alongside it). Kept tiny -- all the
-env/IO lives in ``document_server.config``, injected here.
+env/IO lives in ``akasha.config``, injected here.
 """
 
-from visualizer.document_server.auth_store import AuthStore
-from visualizer.document_server.config import (
+from visualizer.akasha.auth_store import AuthStore
+from visualizer.akasha.config import (
     get_mongo_client,
     get_secret_key,
     get_secure_cookies,
 )
-from visualizer.document_server.store import DocumentStore
+from visualizer.akasha.store import DocumentStore
 
 from .app import create_app
 from .entity_gate import InProcessEntityGate

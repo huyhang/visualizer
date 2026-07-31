@@ -9,7 +9,7 @@ holds **no** domain rules (those are the pure modules the services call).
 Everything lives in a reserved ``_chronos`` database. Books, plotlines and
 events are book-scoped: the Mongo ``_id`` is a composite ``"<book>::<id>"`` and
 the local ``id``/``book`` are stored as fields. Writes are optimistically
-concurrent via ``_rev`` (reused from the document-server pattern) and stamp the
+concurrent via ``_rev`` (reused from akasha's pattern) and stamp the
 ``author``. Deletes are hard (id may be recreated); embedded history/activity is
 a noted future addition.
 """

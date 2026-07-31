@@ -13,13 +13,16 @@ designed to run comfortably on a home NAS.
 
 | Service | Port | What it does | Docs |
 | --- | --- | --- | --- |
-| **document-server** | 5002 | A Wikipedia-style article store and editor: characters, items, locations, lore — with linking, versioning and diffs. Has a web UI. | [README](docs/document-server/README.md) · [design](docs/document-server/editor-design.md) |
+| **akasha** | 5002 | A Wikipedia-style article store and editor: characters, items, locations, lore — with linking, versioning and diffs. Has a web UI. | [README](docs/akasha/README.md) · [design](docs/akasha/editor-design.md) |
 | **chronos** | 5003 | A plotline & timeline API for fiction writers: books, events and plotlines, checked for continuity errors. API only, no UI yet. | [README](docs/chronos/README.md) · [plain-language overview](docs/chronos/OVERVIEW.md) · [design](docs/chronos/design.md) |
 | **mongo** | *internal* | Shared storage. Deliberately not published to the host. | — |
 
+The two are named for what they hold: **Akasha** (the aether said to record all
+things) is the canon; **Chronos** (time) is the sequence of events through it.
+
 **How they fit together.** Characters, items and locations are articles in
-document-server. Chronos never invents them — it *references* them, and refuses
-a reference to something that doesn't exist. So there is one canon, and the
+Akasha. Chronos never invents them — it *references* them, and refuses a
+reference to something that doesn't exist. So there is one canon, and the
 timeline is checked against it.
 
 ---
@@ -41,7 +44,7 @@ docker compose -f docker/docker-compose.nas.yml up --build -d
 
 Each service's README documents its own configuration, API and deployment
 notes. For a NAS install, see
-[Deploy on a Synology NAS](docs/document-server/README.md#deploy-on-a-synology-nas).
+[Deploy on a Synology NAS](docs/akasha/README.md#deploy-on-a-synology-nas).
 
 > Before exposing any of this beyond localhost, read [`SECURITY.md`](SECURITY.md)
 > — it lists what protections exist and what hardening is still required.
@@ -96,7 +99,7 @@ without `--fix` it breaks the story again.
 
 ```
 src/visualizer/
-  document_server/   articles, auth, grants, versioning, web UI
+  akasha/   articles, auth, grants, versioning, web UI
   chronos/           books, plotlines, events, story graph
 tests/               one suite per service (in-memory MongoDB)
 docker/              Dockerfiles, the compose stack, demo seed script

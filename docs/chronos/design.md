@@ -3,7 +3,7 @@
 This document is the proposed design for **Chronos**, a new API service that lets
 fiction writers model the *plotlines* of their work: who did what, where, and
 when, and how those threads weave, split, and finally come together. It is a
-sibling to the existing `document-server` and deliberately reuses its
+sibling to the existing `akasha` and deliberately reuses its
 conventions. Nothing here is implemented yet; this doc is the thing to agree on
 before code exists.
 
@@ -26,14 +26,14 @@ testable.
   - every plotline in a book converges into one shared final event (the
     *terminus*).
 - Reference characters, items, and locations as **entities that must already
-  exist in the document-server** — Chronos never invents them.
+  exist in Akasha** — Chronos never invents them.
 - Be **easy to test**: all domain logic is pure and DB-free; every I/O boundary
   is an injected seam, exactly as `DocumentStore`/`AuthStore` are today.
 
 ### Non-goals (for this design)
 
 - No writing/prose editor UI. Chronos is an HTTP/JSON API first; a UI can come
-  later on top of it, the way the editor was layered onto `document-server`.
+  later on top of it, the way the editor was layered onto `akasha`.
 - No real-world calendar semantics. Time is abstract (see §4).
 - No automatic *resolution* of conflicts — Chronos **detects and reports**;
   the writer decides what to change.
@@ -42,10 +42,10 @@ testable.
 
 ## 2. Principles (consistent with the existing codebase)
 
-These mirror `docs/document-server/editor-design.md` on purpose — a reader who knows
-`document-server` should feel at home.
+These mirror `docs/akasha/editor-design.md` on purpose — a reader who knows
+`akasha` should feel at home.
 
-- **Inversion of control.** Every boundary — persistence, the document-server
+- **Inversion of control.** Every boundary — persistence, the Akasha entity
   lookup, the clock — is an interface injected into an application factory
   (`create_app(...)`). Production wires real adapters; tests wire fakes. No
   module reaches for the environment, the wall clock, or a live socket on its
@@ -58,7 +58,7 @@ These mirror `docs/document-server/editor-design.md` on purpose — a reader who
   I/O; pure modules decide. Each function does one thing and is short enough to
   read at a glance.
 - **Reuse the existing auth + grant model.** Chronos authenticates the same way
-  `document-server` does and expresses access with the same allow-only,
+  `akasha` does and expresses access with the same allow-only,
   most-specific-wins grants (`authz.is_allowed`), just over a
   `book → plotline → event` hierarchy instead of `database → collection →
   document`.
@@ -80,10 +80,10 @@ Book
     all plotlines must end at it                        └── description (long text)
 ```
 
-### 3.1 EntityRef — the link to the document-server
+### 3.1 EntityRef — the link to Akasha
 
 A character, item, or location is **not** stored in Chronos. It is a *reference*
-to a document that must already exist in `document-server`. A reference reuses
+to a document that must already exist in `akasha`. A reference reuses
 that service's addressing verbatim:
 
 ```jsonc
@@ -364,7 +364,7 @@ in-memory fake `StoryStore`.
 
 ### 6.2 Seam: `EntityGate`
 
-The boundary to `document-server` — how Chronos honors "entities must exist."
+The boundary to `akasha` — how Chronos honors "entities must exist."
 
 ```python
 class EntityGate(Protocol):
@@ -375,7 +375,7 @@ class EntityGate(Protocol):
 
 Two adapters, same interface:
 
-- **In-process** (recommended when Chronos and `document-server` share a Mongo):
+- **In-process** (recommended when Chronos and `akasha` share a Mongo):
   wrap a `DocumentStore` and call `.get(...)`. No network, and tests can inject
   the very same fake store.
 - **HTTP** (when they're separate services): call `GET
@@ -384,7 +384,7 @@ Two adapters, same interface:
   entity is treated the same: "does not exist for you."
 
 Because it's a seam, tests inject a fake that answers from a set literal — no
-document-server needed to test Chronos's rules.
+Akasha needed to test Chronos's rules.
 
 ### 6.3 Services
 
@@ -414,7 +414,7 @@ the entity check is a function call or an HTTP round-trip.
 ### 6.4 Routes & the app factory
 
 `create_app(story_store, entity_gate, auth_store, secret_key, ...)` mirrors the
-document-server factory: injected dependencies, focused
+Akasha factory: injected dependencies, focused
 `_register_*_routes(...)` helpers so `app.py` stays a thin orchestrator, and a
 single `@app.errorhandler(ChronosError)` translating domain errors to JSON +
 status (§10). Auth uses the existing Flask-Login + grant path, unchanged, over
@@ -424,7 +424,7 @@ the `book → plotline → event` scope.
 
 ## 7. API surface
 
-REST, shaped like `document-server` so callers see one house style. All routes
+REST, shaped like `akasha` so callers see one house style. All routes
 are authenticated and grant-checked; writes accept an `If-Match` `_rev`
 precondition and return an `ETag`.
 
@@ -724,32 +724,32 @@ Two changes:
   the existing `read`/`write`/`delete` (+`share`) at book scope — no new
   concept, just convenience.
 
-**Shared `_auth`, namespaced by resource type.** Chronos and `document-server`
+**Shared `_auth`, namespaced by resource type.** Chronos and `akasha`
 use the **same `_auth` store** (one identity, one login, one grant model — see
 §12), so their grants share one `_auth.grants` collection and one matcher. They
 are kept apart by a **`resource_type` discriminator** on every grant —
-`"database"` for document-server, `"book"` for Chronos — rather than by separate
+`"database"` for Akasha, `"book"` for Chronos — rather than by separate
 scope keys. Both reuse the same three positional scope fields; only the
 discriminator distinguishes them:
 
 ```jsonc
 {"resource_type": "database", "database": "ember-pact", "collection": "characters",
- "doc_id": "aldric", "perms": ["read"]}          // document-server
+ "doc_id": "aldric", "perms": ["read"]}          // Akasha
 {"resource_type": "book",     "database": "ember-pact", "collection": null,
  "doc_id": null,   "perms": ["read","write"]}    // chronos (book scope)
 ```
 
 `resource_type` is matched **exactly and is never a wildcard**, unlike the scope
 fields. That is the load-bearing rule: without it a Chronos book named `x` would
-be indistinguishable from a document-server *database-wide* grant on `x`, and
+be indistinguishable from a Akasha *database-wide* grant on `x`, and
 creating the book would silently confer blanket access to that database (a bug
 this design originally had). A grant with no `resource_type` predates the field
-and is read as `"database"`, so existing document-server grants keep working
+and is read as `"database"`, so existing Akasha grants keep working
 unchanged.
 
 Two consequences worth stating: anything that *edits* grants must also scope by
 resource type — the idempotent collaborator invite removes only `book` grants,
-never a user's document-server grants — and the new `share` permission simply
+never a user's Akasha grants — and the new `share` permission simply
 joins the shared permission set.
 
 ### 8.3 Attribution & concurrent edits
@@ -832,7 +832,7 @@ edges and assert.
 ### Why not a second datastore (SQLite, embedded graph DBs)?
 
 A second store was considered and rejected. Mongo is **already present and
-guaranteed** (Chronos always ships with `document-server`), so a second store
+guaranteed** (Chronos always ships with `akasha`), so a second store
 adds cost without a matching benefit:
 
 - **The one real draw is transactions.** SQLite (and embedded graph DBs like
@@ -844,7 +844,7 @@ adds cost without a matching benefit:
   on simplicity.
 - **A second store reintroduces dual-write drift** — two systems to keep
   consistent, back up, and monitor — the very thing "Mongo-only" was chosen to
-  avoid. Entities *must* live in `document-server` (Mongo) regardless, so a
+  avoid. Entities *must* live in `akasha` (Mongo) regardless, so a
   SQLite Chronos would straddle two stores permanently.
 - **SQLite's coarse write locking** (one writer DB-wide) and its **broken
   locking over network filesystems** are minor here (local Docker volume, few
@@ -858,14 +858,14 @@ DB.
 
 ## 10. Error taxonomy
 
-A `ChronosError(status_code, message)` base mirrors `DocumentServerError`, so
+A `ChronosError(status_code, message)` base mirrors `AkashaError`, so
 one error handler serializes everything. Subclasses:
 
 | Error                | Status | Raised when                                                        |
 | -------------------- | :----: | ------------------------------------------------------------------ |
 | `InvalidTimeframe`   |  400   | `start_tick > end_tick`, or a tick isn't an integer                |
 | `InvalidPlotline`    |  400   | empty event list, empty goals, unknown event id referenced         |
-| `EntityNotFound`     |  422   | an EntityRef doesn't exist (or isn't readable) in `document-server` |
+| `EntityNotFound`     |  422   | an EntityRef doesn't exist (or isn't readable) in `akasha` |
 | `TemporalConflict`   |  409   | a write would put a character in two places at once (§5.1)         |
 | `OrderingViolation`  |  422   | a plotline's events aren't strictly, non-overlappingly ordered (§5.2)|
 | `TerminusViolation`  |  422   | a plotline in the book doesn't end at the terminus (§5.3)          |
@@ -909,7 +909,7 @@ The layering exists to make this cheap:
 - **Cross-service grant isolation.** Because both services share one `_auth`
   store, tests assert a `book` grant never satisfies a `database` request (and
   vice versa) **using the same name for both**, that inviting a collaborator
-  leaves their document-server grants alone, and that legacy grants without a
+  leaves their Akasha grants alone, and that legacy grants without a
   `resource_type` still work (§8.2). Same-name collision is the case that
   matters; tests that use distinct names pass either way and prove nothing.
 
@@ -927,7 +927,7 @@ The layering exists to make this cheap:
   discriminator (`"book"` vs `"database"`) that is matched exactly, so a book
   and a database of the same name never confer each other's access; the `share`
   permission joins the shared set (§8.2). (Justified by constraint #1: Chronos
-  always ships with document-server.)
+  always ships with Akasha.)
 - ~~**Deleting a referenced event.**~~ **Decided:** block by default
   (`409 EVENT_IN_USE`, names the referencing plotlines); opt-in `?detach=true`
   removes it from those plotlines first, then deletes; deleting the terminus is
@@ -937,7 +937,7 @@ The layering exists to make this cheap:
   per-book terminus + free acyclicity), so sharing events across independent
   timelines has no well-defined meaning. The genuinely shared canon —
   characters, items, locations — is already shared via `EntityRef` into
-  document-server (§3.1). If a series/universe is ever wanted, the clean path is
+  Akasha (§3.1). If a series/universe is ever wanted, the clean path is
   a future **"Series"** grouping *above* Book (sharing the entity canon, perhaps
   cross-referencing termini) with events still book-local — not cross-book
   events; that would first require defining cross-timeline conflict semantics and

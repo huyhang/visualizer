@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class EntityRef:
-    """A reference to a document in document-server (character/item/location)."""
+    """A reference to a document in akasha (character/item/location)."""
 
     database: str
     collection: str

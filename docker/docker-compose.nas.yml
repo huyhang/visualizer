@@ -1,4 +1,4 @@
-# The stack: document-server + chronos + MongoDB.
+# The stack: akasha + chronos + MongoDB.
 #
 # Built on slim python images (docker/Dockerfile.*) and marked
 # `restart: unless-stopped` so it survives NAS reboots. This is the only
@@ -12,18 +12,18 @@
 #     docker compose -f docker/docker-compose.nas.yml up --build -d
 #
 # Ports (DSM itself uses 5000/5001, so those are avoided):
-#   5002 -> document-server (articles/entities)
-#   5003 -> chronos         (plotlines/timeline)
+#   5002 -> akasha  (articles/entities)
+#   5003 -> chronos (plotlines/timeline)
 # Both share one MongoDB and one SECRET_KEY, so a single login works across
 # them (one identity, one `_auth` grant store). Put them behind Synology's
 # reverse proxy for HTTPS, then set SESSION_COOKIE_SECURE=true in docker/.env.
-name: document-server
+name: visualizer
 
 services:
-  document-server:
+  akasha:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.docserver
+      dockerfile: docker/Dockerfile.akasha
     ports:
       - "5002:5000"
     environment:
@@ -38,7 +38,7 @@ services:
 
   chronos:
     # The plotline & timeline API. Shares mongo (entities live in
-    # document-server) and the same SECRET_KEY so one session covers both.
+    # akasha) and the same SECRET_KEY so one session covers both.
     build:
       context: ..
       dockerfile: docker/Dockerfile.chronos
@@ -68,4 +68,9 @@ services:
     restart: unless-stopped
 
 volumes:
+  # Pinned to its original name so the rename to `akasha` (and the compose
+  # project rename to `visualizer`) does not orphan existing data -- compose
+  # derives volume names from the project name, so without this the stack would
+  # silently come up against an empty database.
   mongo-data:
+    name: document-server_mongo-data
