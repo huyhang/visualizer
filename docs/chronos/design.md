@@ -117,17 +117,60 @@ book (a plotline references events by id); events are not shared across books.
 
 An **ordered list of event ids**, plus a set of **goals**.
 
-| Field      | Type              | Notes                                                    |
-| ---------- | ----------------- | ------------------------------------------------------- |
-| `id`       | slug              | unique within its book                                  |
-| `title`    | string            | optional short display name; defaults to `id`           |
-| `events`   | ordered `[id]`    | references events in the same book; order is meaningful |
-| `goals`    | set of strings    | required to be non-empty                                |
+| Field            | Type              | Notes                                                    |
+| ---------------- | ----------------- | -------------------------------------------------------- |
+| `id`             | slug              | unique within its book                                    |
+| `title`          | string            | optional short display name; defaults to `id`             |
+| `events`         | ordered `[id]`    | this plotline's **own segment**; order is meaningful      |
+| `goals`          | set of strings    | required to be non-empty                                  |
+| `continues_into` | plotline `id`     | optional; the thread carries on into that plotline        |
 
 The order is the contract: if event **A** precedes event **B** in the list,
 then **A must end strictly before B begins** (§5.2). Two plotlines may list the
 same event (**convergence**/**divergence**); the shared event is one object, so
 edits to it are seen by every plotline that uses it.
+
+**Continuations — writing a shared ending once.** Because every plotline must
+reach the terminus, threads that merge would otherwise repeat the whole shared
+tail. That is not just verbose: inserting one scene into the ending means
+editing *every* thread, and a thread you forget silently drifts — exactly the
+class of continuity bug Chronos exists to catch.
+
+So a plotline may name a `continues_into` target. Its **effective path** is its
+own events followed by the effective path of that target, transitively:
+
+```
+trunk             [meet-at-emberport, the-coronation]
+knights-road      [aldric-departs]    → continues_into: trunk
+spys-shadow       [lyra-infiltrates]  → continues_into: trunk
+```
+
+Every rule — ordering (§5.2), convergence (§5.3), the story graph (§7.4) — runs
+on the **effective** path, so a thread stored as a segment is indistinguishable
+from one written out in full. Ordering therefore also checks the *junction*: the
+segment's last event must end before the continuation's first event begins. Reads
+return both: `events` (what is stored, and what you send back) and
+`effective_events` (the resolved path).
+
+Two structural rules, both **hard** (unlike the story-logic ones), because an
+unresolvable chain has no effective path at all and would break every later read:
+
+- `continues_into` must name a plotline in the same book → `400 INVALID_PLOTLINE`
+- the chain must not loop → `422 PLOTLINE_CYCLE`
+- deleting a plotline others continue into → `409 PLOTLINE_IN_USE`, unless
+  `?inline=true` absorbs it into each dependent first (the same shape as
+  `EVENT_IN_USE` / `?detach=true` for events, §7.2)
+
+The inverse operation is **`POST …/plotlines/<id>/inline`**: it copies the
+resolved path into the thread's own `events` and clears `continues_into`, so the
+thread keeps its exact story but stops depending on another plotline. It is a
+no-op when there is nothing to absorb, and refuses on a broken chain rather than
+inlining a partial path.
+
+Note the acyclicity argument in §5.3 covers *event* edges, which are ordered by
+tick; plotline links are a separate graph and need this explicit guard. The
+resolver is cycle-tolerant by design — it reports a loop rather than recursing —
+so a read never hangs on data that is already bad.
 
 ### 3.4 Book & Terminus
 

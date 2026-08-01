@@ -11,8 +11,16 @@ from __future__ import annotations
 
 from .book_rules import graph_view, neighborhood
 from .calendar import codec_for
+from .continuation import effective_paths, resolve, would_cycle
 from .entity_gate import EntityGate
-from .errors import EntityNotFound, EventInUse, InvalidPlotline, TerminusInUse
+from .errors import (
+    EntityNotFound,
+    EventInUse,
+    InvalidPlotline,
+    PlotlineCycle,
+    PlotlineInUse,
+    TerminusInUse,
+)
 from .models import Book, Event, Plotline
 from .presenters import (
     present_book,
@@ -104,7 +112,7 @@ class BookService(_Service):
 
     def graph(self, book_id) -> dict:
         book = self._book(book_id)
-        view = graph_view(self._plotlines(book_id), book.terminus)
+        view = graph_view(effective_paths(self._plotlines(book_id)), book.terminus)
         return present_graph(view, self._events_by_id(book_id))
 
     def _plotline_ids(self, book_id) -> list[str]:
@@ -155,8 +163,14 @@ class EventService(_Service):
                 evidence={"plotlines": [p["id"] for p in referencing]},
             )
         for p in referencing:  # detach=True
-            new_events = [e for e in p["events"] if e != event_id]
-            body = {"title": p.get("title"), "events": new_events, "goals": p["goals"]}
+            # Rebuild the whole stored body -- dropping a field here (e.g.
+            # continues_into) would silently sever the thread's continuation.
+            body = {
+                "title": p.get("title"),
+                "events": [e for e in p["events"] if e != event_id],
+                "goals": p["goals"],
+                "continues_into": p.get("continues_into"),
+            }
             self.store.update_plotline(book_id, p["id"], body, p["rev"], author)
         self.store.delete_event(book_id, event_id, expected_rev, author)
 
@@ -166,7 +180,7 @@ class EventService(_Service):
         if event_id not in events_by_id:
             self.store.get_event(book_id, event_id)  # raises EventNotFound
         plotlines = self._plotlines(book_id)
-        n = neighborhood(plotlines, event_id, book.terminus)
+        n = neighborhood(effective_paths(plotlines), event_id, book.terminus)
         full = present_neighborhood(
             n, events_by_id[event_id], events_by_id,
             {p.id: p for p in plotlines}, codec_for(book), book_id,
@@ -190,6 +204,28 @@ class PlotlineService(_Service):
                 evidence={"unknown_events": unknown},
             )
 
+    def _check_continuation(self, book_id, plotline: Plotline) -> None:
+        """Referential + structural checks on ``continues_into`` -- both hard.
+
+        An unresolvable chain has no effective path, so unlike a story-logic
+        finding it cannot be reported and left in place.
+        """
+        if plotline.continues_into is None:
+            return
+        siblings = self._plotlines(book_id)
+        if plotline.continues_into not in {p.id for p in siblings}:
+            raise InvalidPlotline(
+                f"Continues into '{plotline.continues_into}', which does not exist "
+                "in this book.",
+                evidence={"continues_into": plotline.continues_into},
+            )
+        cycle = would_cycle(plotline, siblings)
+        if cycle:
+            raise PlotlineCycle(
+                "This continuation would make the plotline chain loop.",
+                evidence={"cycle": cycle},
+            )
+
     def _present(self, book, public) -> dict:
         return present_plotline(
             public, book, self._plotlines(book.id), self._events_by_id(book.id),
@@ -200,6 +236,7 @@ class PlotlineService(_Service):
         book = self._require_book(book_id)
         plotline = validate_plotline_payload(plotline_id, payload)
         self._check_event_refs(book_id, plotline)
+        self._check_continuation(book_id, plotline)
         public = self.store.create_plotline(book_id, plotline_id, plotline.to_storage(), author)
         return self._present(book, public)
 
@@ -215,11 +252,66 @@ class PlotlineService(_Service):
         book = self._require_book(book_id)
         plotline = validate_plotline_payload(plotline_id, payload)
         self._check_event_refs(book_id, plotline)
+        self._check_continuation(book_id, plotline)
         public = self.store.update_plotline(
             book_id, plotline_id, plotline.to_storage(), expected_rev, author
         )
         return self._present(book, public)
 
-    def delete(self, book_id, plotline_id, expected_rev=None, author=None) -> None:
+    def inline(self, book_id, plotline_id, expected_rev=None, author=None) -> dict:
+        """Absorb the continuation chain into this plotline's own segment.
+
+        The inverse of adopting a continuation: the thread keeps the exact story
+        it had, but stops depending on another plotline. A no-op (and so safely
+        repeatable) when there is no continuation to absorb.
+        """
+        book = self._require_book(book_id)
+        public = self.store.get_plotline(book_id, plotline_id)
+        plotline = Plotline.from_storage(public)
+        if plotline.continues_into is None:
+            return self._present(book, public)
+
+        resolution = resolve(plotline_id, {p.id: p for p in self._plotlines(book_id)})
+        # Refuse on a broken chain rather than silently inlining a partial path.
+        if resolution.cycle:
+            raise PlotlineCycle(
+                "Cannot inline: the continuation chain loops.",
+                evidence={"cycle": resolution.cycle},
+            )
+        if resolution.missing:
+            raise InvalidPlotline(
+                f"Cannot inline: continues into '{resolution.missing}', which does "
+                "not exist.",
+                evidence={"missing": resolution.missing},
+            )
+        inlined = Plotline(
+            id=plotline_id, events=resolution.events, goals=plotline.goals,
+            title=plotline.title, continues_into=None,
+        )
+        updated = self.store.update_plotline(
+            book_id, plotline_id, inlined.to_storage(), expected_rev, author
+        )
+        return self._present(book, updated)
+
+    def delete(
+        self, book_id, plotline_id, expected_rev=None, author=None, inline_dependents=False
+    ) -> None:
+        """Delete a plotline, refusing to orphan threads that continue into it.
+
+        Referential integrity is hard (§8.1): a dangling ``continues_into`` has
+        no effective path. ``inline_dependents`` absorbs this plotline into each
+        dependent first, so their stories survive the deletion intact.
+        """
         self._require_book(book_id)
+        self.store.get_plotline(book_id, plotline_id)  # raises PlotlineNotFound
+        dependents = [
+            p for p in self._plotlines(book_id) if p.continues_into == plotline_id
+        ]
+        if dependents and not inline_dependents:
+            raise PlotlineInUse(
+                "Other plotlines continue into this one.",
+                evidence={"plotlines": sorted(p.id for p in dependents)},
+            )
+        for dependent in dependents:
+            self.inline(book_id, dependent.id, author=author)
         self.store.delete_plotline(book_id, plotline_id, expected_rev, author)

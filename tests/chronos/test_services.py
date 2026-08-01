@@ -98,7 +98,7 @@ def test_plotline_expand_marks_convergence(svc):
     svc["plotlines"].create(BOOK, "p1", {"events": ["a", "m", "t"], "goals": ["g"]})
     svc["plotlines"].create(BOOK, "p2", {"events": ["b", "m", "t"], "goals": ["g"]})
     expanded = svc["plotlines"].get(BOOK, "p1", expand=True)
-    by_id = {e["id"]: e for e in expanded["events"]}
+    by_id = {e["id"]: e for e in expanded["effective_events"]}
     assert by_id["m"]["is_convergence"] is True
     assert by_id["m"]["shared_with"] == ["p2"]
 

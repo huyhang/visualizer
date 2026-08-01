@@ -63,6 +63,17 @@ class InvalidBook(ChronosError):
     code = "INVALID_BOOK"
 
 
+class PlotlineCycle(ChronosError):
+    """Raised when ``continues_into`` would make a plotline chain loop.
+
+    Structural, not story-logic: an unresolvable chain has no effective path, so
+    every later read would break. Rejected outright rather than reported.
+    """
+
+    status_code = 422
+    code = "PLOTLINE_CYCLE"
+
+
 class EntityNotFound(ChronosError):
     """Raised when an EntityRef does not exist (or is unreadable) upstream."""
 
@@ -103,6 +114,13 @@ class EventInUse(ChronosError):
 
     status_code = 409
     code = "EVENT_IN_USE"
+
+
+class PlotlineInUse(ChronosError):
+    """Raised when deleting a plotline that others still continue into."""
+
+    status_code = 409
+    code = "PLOTLINE_IN_USE"
 
 
 class TerminusInUse(ChronosError):

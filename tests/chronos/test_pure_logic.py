@@ -11,6 +11,7 @@ from visualizer.chronos.book_rules import (
 )
 from visualizer.chronos.calendar import IdentityCodec, MixedRadixCodec, codec_for
 from visualizer.chronos.conflicts import find_temporal_conflicts
+from visualizer.chronos.continuation import effective_paths
 from visualizer.chronos.errors import InvalidTimeframe
 from visualizer.chronos.models import Book, EntityRef, Event, Plotline
 from visualizer.chronos.ordering import validate_order
@@ -104,13 +105,13 @@ def test_convergence_ok_when_all_end_at_terminus():
         Plotline("knights", ["a", "m", "t"], ["g"]),
         Plotline("spys", ["b", "m", "t"], ["g"]),
     ]
-    report = validate_convergence(pls, "t")
+    report = validate_convergence(effective_paths(pls), "t")
     assert report.ok and report.failures == []
 
 
 def test_convergence_reports_offenders():
     pls = [Plotline("knights", ["a", "t"], ["g"]), Plotline("spys", ["b", "x"], ["g"])]
-    report = validate_convergence(pls, "t")
+    report = validate_convergence(effective_paths(pls), "t")
     assert not report.ok
     assert report.failures == [
         {"plotline": "spys", "reason": "does not end at terminus", "last_event": "x"}
@@ -118,7 +119,7 @@ def test_convergence_reports_offenders():
 
 
 def test_convergence_requires_terminus():
-    report = validate_convergence([Plotline("p", ["a"], ["g"])], None)
+    report = validate_convergence(effective_paths([Plotline("p", ["a"], ["g"])]), None)
     assert not report.ok
 
 
@@ -133,17 +134,17 @@ def _ember_plotlines():
 
 
 def test_graph_is_acyclic_and_marks_convergence():
-    view = graph_view(_ember_plotlines(), "the-coronation")
+    view = graph_view(effective_paths(_ember_plotlines()), "the-coronation")
     # the-coronation has a single distinct predecessor (both threads arrive via
     # meet-at-emberport), so the merge is at meet-at-emberport, not the terminus.
     assert set(view["convergence"]) == {"meet-at-emberport"}
     assert view["divergence"] == []
     assert view["terminus"] == "the-coronation"
-    assert is_acyclic(build_graph(_ember_plotlines()))
+    assert is_acyclic(build_graph(effective_paths(_ember_plotlines())))
 
 
 def test_neighborhood_convergence_point():
-    n = neighborhood(_ember_plotlines(), "meet-at-emberport", "the-coronation")
+    n = neighborhood(effective_paths(_ember_plotlines()), "meet-at-emberport", "the-coronation")
     assert n.role == "convergence"
     assert n.is_convergence and not n.is_divergence
     incoming = {g.node: g.plotlines for g in n.incoming}
@@ -159,13 +160,13 @@ def test_neighborhood_divergence_point():
         Plotline("a", ["start", "left"], ["g"]),
         Plotline("b", ["start", "right"], ["g"]),
     ]
-    n = neighborhood(pls, "start", "left")
+    n = neighborhood(effective_paths(pls), "start", "left")
     assert n.role == "divergence"
     assert n.is_divergence and n.is_origin
 
 
 def test_neighborhood_terminus_role():
-    n = neighborhood(_ember_plotlines(), "the-coronation", "the-coronation")
+    n = neighborhood(effective_paths(_ember_plotlines()), "the-coronation", "the-coronation")
     assert n.role == "terminus" and n.is_terminus
 
 

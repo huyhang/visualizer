@@ -73,7 +73,7 @@ Akasha API deliberately refuses to expose.
 | Term | What it is |
 | --- | --- |
 | **Event** | Characters + items, at one location, over a timeframe, with a description. The atom of the model. |
-| **Plotline** | An **ordered** list of events plus a non-empty set of goals. Order is the contract. |
+| **Plotline** | An **ordered** list of events plus a non-empty set of goals. Order is the contract. May `continues_into` another plotline so a shared ending is stored once. |
 | **Book** | A collection of plotlines with one designated **Terminus**. |
 | **Terminus** | The single event every plotline in the book must end at. |
 | **EntityRef** | A pointer to a Akasha article — `{database, collection, id}`. Must already exist. |
@@ -116,7 +116,9 @@ whether the data makes structural sense.
 | --- | --- |
 | An `EntityRef` doesn't exist in Akasha | `422 ENTITY_NOT_FOUND` |
 | `start_tick > end_tick`, or a tick isn't an integer | `400 INVALID_TIMEFRAME` |
-| Empty event list, empty goals, unknown event id | `400 INVALID_PLOTLINE` |
+| Empty event list, empty goals, unknown event id, unknown `continues_into` target | `400 INVALID_PLOTLINE` |
+| A `continues_into` chain that loops | `422 PLOTLINE_CYCLE` |
+| Deleting a plotline others continue into | `409 PLOTLINE_IN_USE` |
 | Deleting an event a plotline still lists | `409 EVENT_IN_USE` |
 | Deleting the book's terminus | `409 TERMINUS_IN_USE` |
 | Stale `If-Match` / `_rev` | `409 REVISION_CONFLICT` |
@@ -157,7 +159,8 @@ GET    /books/<book>/graph                           the whole story graph
 POST   /books/<book>/plotlines/<plotline>            create
 GET    /books/<book>/plotlines/<plotline>[?expand=events]
 PUT    /books/<book>/plotlines/<plotline>            replace (reorder / edit goals)
-DELETE /books/<book>/plotlines/<plotline>
+POST   /books/<book>/plotlines/<plotline>/inline     absorb its continuation chain
+DELETE /books/<book>/plotlines/<plotline>[?inline=true]   block if depended on, unless inlining
 
 POST   /books/<book>/events/<event>                  create
 GET    /books/<book>/events/<event>
@@ -169,10 +172,41 @@ PUT    /books/<book>/collaborators/<user>            invite / set role (owners o
 DELETE /books/<book>/collaborators/<user>            remove (owners only)
 ```
 
+### Shared endings
+
+Threads that merge would otherwise repeat the whole shared tail in every
+plotline — and inserting one scene into the ending would mean editing them all.
+Instead a plotline can store just its own segment and name where it continues:
+
+```
+trunk         [meet-at-emberport, the-coronation]
+knights-road  [aldric-departs]     continues_into: trunk
+spys-shadow   [lyra-infiltrates]   continues_into: trunk
+```
+
+Every rule runs on the resolved **effective path**, so these threads still
+converge on the terminus and still appear in the graph with the junction edge.
+Reads give you both `events` (stored, send this back on a write) and
+`effective_events` (resolved). Edit `trunk` once and every thread on it follows.
+
+The two chain rules are hard: the target must exist (`400`), and the chain must
+not loop (`422 PLOTLINE_CYCLE`).
+
+**Breaking a thread off the trunk.** `POST …/plotlines/<id>/inline` copies the
+resolved path into the thread's own `events` and clears `continues_into` — it
+keeps the exact story and just drops the dependency. It's a no-op when there's
+nothing to absorb, so it's safe to repeat. (Clearing `continues_into` with a
+plain `PUT` also detaches, but leaves the thread stopping at its own segment,
+which then won't reach the terminus.)
+
+**Deleting a shared trunk** is blocked with `409 PLOTLINE_IN_USE` while other
+threads continue into it — a dangling `continues_into` has no effective path.
+`?inline=true` absorbs it into each dependent first, so their stories survive.
+
 ### Reading a plotline
 
 Lean by default; `?expand=events` inlines event summaries with titles, calendar
-labels, and convergence markers.
+labels, and convergence markers into `effective_events`.
 
 ```jsonc
 {
@@ -181,11 +215,14 @@ labels, and convergence markers.
   "title": "The Knight's Road",
   "book": "ember-pact",
   "goals": ["Deliver the Ember Seal", "Reach the coronation alive"],
-  "events": ["aldric-departs", "meet-at-emberport", "the-coronation"],
+  "events": ["aldric-departs"],                // stored: this thread's own segment
+  "continues_into": "trunk",                   // ... then it joins the shared ending
+  "effective_events": ["aldric-departs", "meet-at-emberport", "the-coronation"],
   "rev": 1,
   "status": {                                  // computed, read-only
     "ordering":         {"state": "ok"},
     "ends_at_terminus": {"state": "ok"},
+    "continuation":     {"state": "ok"},
     "span": {"start_tick": 0, "end_tick": 210, "start_label": "…", "end_label": "…"}
   },
   "_links": { "self": "…", "expanded": "…", "validate": "…", "graph": "…" },

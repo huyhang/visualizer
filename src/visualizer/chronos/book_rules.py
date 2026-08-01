@@ -2,16 +2,19 @@
 
 The story graph is the union of every plotline's ordering: events are nodes,
 each consecutive pair is an edge carrying the plotline id(s) that traverse it.
+Rules here operate on **effective paths** (``{plotline_id: [event_id, ...]}``,
+produced by ``continuation.effective_paths``) rather than on ``Plotline``
+objects, so a thread stored as a segment plus a continuation is indistinguishable
+from one written out in full.
 Convergence (in-degree > 1) and divergence (out-degree > 1) fall out of the
 graph, and acyclicity is free because ticks strictly increase along edges. Built
 with NetworkX per the design; book graphs are tiny, so this is cheap.
 """
 
 from dataclasses import dataclass, field
+from itertools import pairwise
 
 import networkx as nx
-
-from .models import Plotline
 
 # -- convergence / terminus (§5.3) -------------------------------------------
 
@@ -23,25 +26,27 @@ class ConvergenceReport:
     failures: list[dict] = field(default_factory=list)
 
 
-def validate_convergence(plotlines: list[Plotline], terminus_id: str | None) -> ConvergenceReport:
-    """Every plotline must be non-empty and end at the terminus.
+def validate_convergence(paths: dict[str, list[str]], terminus_id: str | None) -> ConvergenceReport:
+    """Every plotline's *effective* path must be non-empty and end at the terminus.
 
-    Vacuously satisfied when a book has no plotlines yet (a fresh book is
-    consistent until it has threads that need to converge).
+    A thread that continues into another satisfies this when the chain it joins
+    eventually reaches the terminus -- the shared ending is only written once.
+    Vacuously satisfied when a book has no plotlines yet.
     """
-    if not plotlines:
+    if not paths:
         return ConvergenceReport(ok=True, terminus=terminus_id, failures=[])
     failures: list[dict] = []
     if not terminus_id:
         failures.append({"reason": "no terminus designated"})
         return ConvergenceReport(ok=False, terminus=terminus_id, failures=failures)
-    for pl in plotlines:
-        if not pl.events:
-            failures.append({"plotline": pl.id, "reason": "empty plotline"})
-        elif pl.events[-1] != terminus_id:
+    for pid in sorted(paths):
+        events = paths[pid]
+        if not events:
+            failures.append({"plotline": pid, "reason": "empty plotline"})
+        elif events[-1] != terminus_id:
             failures.append(
-                {"plotline": pl.id, "reason": "does not end at terminus",
-                 "last_event": pl.events[-1]}
+                {"plotline": pid, "reason": "does not end at terminus",
+                 "last_event": events[-1]}
             )
     return ConvergenceReport(ok=not failures, terminus=terminus_id, failures=failures)
 
@@ -49,16 +54,20 @@ def validate_convergence(plotlines: list[Plotline], terminus_id: str | None) -> 
 # -- the story graph (§7.4) --------------------------------------------------
 
 
-def build_graph(plotlines: list[Plotline]) -> nx.DiGraph:
-    """Union of all plotline orderings; edges carry the set of plotline ids."""
+def build_graph(paths: dict[str, list[str]]) -> nx.DiGraph:
+    """Union of all effective paths; edges carry the set of plotline ids.
+
+    Because paths are resolved, the junction between a thread and the
+    continuation it joins appears as a normal edge.
+    """
     graph = nx.DiGraph()
-    for pl in plotlines:
-        graph.add_nodes_from(pl.events)
-        for a, b in zip(pl.events, pl.events[1:]):
+    for pid, events in paths.items():
+        graph.add_nodes_from(events)
+        for a, b in pairwise(events):
             if graph.has_edge(a, b):
-                graph[a][b]["plotlines"].add(pl.id)
+                graph[a][b]["plotlines"].add(pid)
             else:
-                graph.add_edge(a, b, plotlines={pl.id})
+                graph.add_edge(a, b, plotlines={pid})
     return graph
 
 
@@ -104,11 +113,11 @@ def _role(is_terminus: bool, is_origin: bool, conv: bool, div: bool) -> str:
 
 
 def neighborhood(
-    plotlines: list[Plotline], event_id: str, terminus_id: str | None
+    paths: dict[str, list[str]], event_id: str, terminus_id: str | None
 ) -> Neighborhood:
     """The event-local slice of the story graph (design §7.4)."""
-    graph = build_graph(plotlines)
-    through = sorted(pl.id for pl in plotlines if event_id in pl.events)
+    graph = build_graph(paths)
+    through = sorted(pid for pid, events in paths.items() if event_id in events)
     incoming = [
         EdgeGroup(pred, _sorted_plotlines(graph[pred][event_id]))
         for pred in graph.predecessors(event_id)
@@ -134,9 +143,9 @@ def neighborhood(
     )
 
 
-def graph_view(plotlines: list[Plotline], terminus_id: str | None) -> dict:
+def graph_view(paths: dict[str, list[str]], terminus_id: str | None) -> dict:
     """The whole book's story graph, for the ``/graph`` endpoint."""
-    graph = build_graph(plotlines)
+    graph = build_graph(paths)
     edges = [
         {"from": a, "to": b, "plotlines": _sorted_plotlines(data)}
         for a, b, data in graph.edges(data=True)

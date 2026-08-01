@@ -223,12 +223,22 @@ def _register_routes(app, csrf, auth_store, books, plotlines, events):
         )
         return _resp(result)
 
+    @app.post(_PLOTLINE + "/inline")
+    @csrf.exempt
+    @login_required
+    def inline_plotline(book, plotline):
+        _authorize(auth_store, "PUT", book)
+        return _resp(plotlines.inline(book, plotline, _expected_rev(), current_user.username))
+
     @app.delete(_PLOTLINE)
     @csrf.exempt
     @login_required
     def delete_plotline(book, plotline):
         _authorize(auth_store, "DELETE", book)
-        plotlines.delete(book, plotline, _expected_rev(), current_user.username)
+        plotlines.delete(
+            book, plotline, _expected_rev(), current_user.username,
+            inline_dependents=_truthy(request.args.get("inline")),
+        )
         return "", 204
 
     # -- events --------------------------------------------------------------

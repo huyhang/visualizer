@@ -4,12 +4,17 @@ Composes the three story-logic checks over a book's events and plotlines into
 one report. Under the all-soft model (§8.1) this is what `status` and
 `/validate` are built from -- the same functions used everywhere else, just run
 across the whole book. Services load the data; this module only computes.
+
+Every check runs on **effective paths** (``continuation``), so a thread stored
+as a segment plus a ``continues_into`` is judged on the full path it actually
+follows -- including the junction into the continuation it joins.
 """
 
 from dataclasses import dataclass, field
 
 from .book_rules import ConvergenceReport, validate_convergence
 from .conflicts import Conflict, all_conflicts
+from .continuation import effective_paths
 from .models import Event, Plotline
 from .ordering import Violation, validate_order
 
@@ -35,26 +40,30 @@ class BookReport:
         )
 
 
-def _ordered_events(plotline: Plotline, by_id: dict[str, Event]) -> list[Event]:
-    return [by_id[eid] for eid in plotline.events if eid in by_id]
+def ordered_events(event_ids: list[str], by_id: dict[str, Event]) -> list[Event]:
+    """The Event objects for a path, skipping ids that no longer resolve."""
+    return [by_id[eid] for eid in event_ids if eid in by_id]
 
 
-def plotline_ordering_issue(plotline: Plotline, by_id: dict[str, Event]) -> OrderingIssue | None:
-    violation = validate_order(_ordered_events(plotline, by_id))
-    return OrderingIssue(plotline.id, violation) if violation else None
+def path_ordering_issue(
+    plotline_id: str, event_ids: list[str], by_id: dict[str, Event]
+) -> OrderingIssue | None:
+    violation = validate_order(ordered_events(event_ids, by_id))
+    return OrderingIssue(plotline_id, violation) if violation else None
 
 
 def build_report(
     events: list[Event], plotlines: list[Plotline], terminus: str | None
 ) -> BookReport:
     by_id = {e.id: e for e in events}
+    paths = effective_paths(plotlines)
     ordering = [
         issue
-        for pl in plotlines
-        if (issue := plotline_ordering_issue(pl, by_id)) is not None
+        for pid in sorted(paths)
+        if (issue := path_ordering_issue(pid, paths[pid], by_id)) is not None
     ]
     return BookReport(
         temporal_conflicts=all_conflicts(events),
         ordering=ordering,
-        convergence=validate_convergence(plotlines, terminus),
+        convergence=validate_convergence(paths, terminus),
     )

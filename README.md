@@ -7,6 +7,15 @@ in your world, the other holds **what happens** in it.
 Both share one MongoDB, one login, and one permission model, and both are
 designed to run comfortably on a home NAS.
 
+> **Vibe-coded with Claude.** This project was built in conversation with
+> Anthropic's Claude (via Claude Code): the design was argued out and decided
+> interactively, and the model wrote the implementation, the tests and these
+> docs under that direction. It's a personal tool for me and a few fellow
+> novelists — not a hardened product. Two things follow. Read
+> [`SECURITY.md`](SECURITY.md) before exposing it beyond your own network; and
+> where the prose and the code disagree, believe the **test suite** — it runs
+> against both services and is the honest account of what actually works.
+
 ---
 
 ## Services

@@ -70,19 +70,30 @@ class Event:
 
 @dataclass
 class Plotline:
-    """An ordered list of event ids plus a non-empty set of goals."""
+    """One thread: an ordered list of event ids plus a non-empty set of goals.
+
+    ``events`` is this plotline's *own* segment. When ``continues_into`` names
+    another plotline, the thread carries on into it -- so a shared ending is
+    stored once rather than repeated in every thread. See ``continuation``.
+    """
 
     id: str
     events: list[str]
     goals: list[str]
     title: str | None = None
+    continues_into: str | None = None
 
     @property
     def display_title(self) -> str:
         return self.title or self.id
 
     def to_storage(self) -> dict:
-        return {"title": self.title, "events": list(self.events), "goals": list(self.goals)}
+        return {
+            "title": self.title,
+            "events": list(self.events),
+            "goals": list(self.goals),
+            "continues_into": self.continues_into,
+        }
 
     @classmethod
     def from_storage(cls, doc: dict) -> "Plotline":
@@ -91,6 +102,7 @@ class Plotline:
             events=list(doc.get("events", [])),
             goals=list(doc.get("goals", [])),
             title=doc.get("title"),
+            continues_into=doc.get("continues_into"),
         )
 
 

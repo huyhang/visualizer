@@ -87,6 +87,28 @@ Because the shared scene is one single event, not two copies, editing it updates
 every thread that uses it. There's no such thing as two versions of the same
 scene drifting apart.
 
+### Sharing a whole ending
+
+Once threads have merged, they usually run together to the finish — and listing
+those closing scenes over and over in every thread gets tedious fast. Worse, if
+you later slip a new scene into the ending, you'd have to remember to add it to
+*every* thread, and any you miss quietly falls out of step.
+
+So a thread can simply say **"from here I continue into that one."**
+
+> **The Trunk** — The Harbor Exchange → The Coronation
+> **The Knight's Road** — Aldric Departs, *then continues into The Trunk*
+> **The Spy's Shadow** — Lyra Infiltrates, *then continues into The Trunk*
+
+The ending is written once. Add a scene to The Trunk and both threads get it
+immediately. Chronos still reads each thread as its complete journey — Aldric
+Departs → The Harbor Exchange → The Coronation — so all the usual checks apply,
+including whether the handover point makes sense in time.
+
+The only thing it won't let you do is make the chain circular — A continuing
+into B continuing back into A. There's no story that describes, so it refuses
+rather than reports.
+
 You can ask Chronos about any scene — *"which threads meet here, and where did
 they each come from?"* — and it will tell you in words:
 

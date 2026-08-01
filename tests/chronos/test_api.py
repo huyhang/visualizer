@@ -131,7 +131,7 @@ def test_plotline_expand(seeded, client):
     resp = client.get(f"/books/{BOOK}/plotlines/knights?expand=events")
     body = resp.get_json()
     assert body["kind"] == "plotline"
-    m = next(e for e in body["events"] if e["id"] == "m")
+    m = next(e for e in body["effective_events"] if e["id"] == "m")
     assert m["is_convergence"] and m["shared_with"] == ["spies"]
 
 

@@ -10,6 +10,7 @@ to one definition. It turns ids into titles, ticks into codec labels, and adds
 from .book_rules import Neighborhood, build_graph
 from .calendar import TimeCodec
 from .conflicts import Conflict
+from .continuation import Resolution, effective_paths, resolve
 from .models import Book, Event, Plotline
 from .ordering import Violation
 from .reports import BookReport
@@ -166,6 +167,24 @@ def _event_summary(
 # -- plotlines ---------------------------------------------------------------
 
 
+def _continuation_verdict(resolution: Resolution) -> dict:
+    if resolution.cycle:
+        return {
+            "state": "conflicted", "code": "PLOTLINE_CYCLE",
+            "message": "This plotline's continuation chain loops.",
+            "evidence": {"cycle": resolution.cycle},
+            "doc": "docs/chronos/design.md#33",
+        }
+    if resolution.missing:
+        return {
+            "state": "conflicted", "code": "INVALID_PLOTLINE",
+            "message": f"Continues into '{resolution.missing}', which does not exist.",
+            "evidence": {"missing": resolution.missing},
+            "doc": "docs/chronos/design.md#33",
+        }
+    return _ok()
+
+
 def present_plotline(
     public: dict,
     book: Book,
@@ -175,13 +194,17 @@ def present_plotline(
     expand: bool = False,
 ) -> dict:
     this = Plotline.from_storage(public)
-    ordered = [events_by_id[eid] for eid in this.events if eid in events_by_id]
-    last_event = this.events[-1] if this.events else None
-    graph = build_graph(plotlines)
+    paths = effective_paths([*(p for p in plotlines if p.id != this.id), this])
+    resolution = resolve(this.id, {p.id: p for p in plotlines} | {this.id: this})
+    path = paths.get(this.id, list(this.events))
+
+    ordered = [events_by_id[eid] for eid in path if eid in events_by_id]
+    last_event = path[-1] if path else None
+    graph = build_graph(paths)
     convergence = {n for n in graph if graph.in_degree(n) > 1}
     membership = {
-        eid: sorted(pl.id for pl in plotlines if eid in pl.events and pl.id != this.id)
-        for eid in this.events
+        eid: sorted(pid for pid, evs in paths.items() if eid in evs and pid != this.id)
+        for eid in path
     }
 
     if expand:
@@ -193,11 +216,11 @@ def present_plotline(
                 is_convergence=eid in convergence,
                 is_terminus=eid == book.terminus,
             )
-            for eid in this.events
+            for eid in path
             if eid in events_by_id
         ]
     else:
-        events_field = list(this.events)
+        events_field = list(path)
 
     return {
         "kind": "plotline",
@@ -205,11 +228,14 @@ def present_plotline(
         "title": this.title,
         "book": public["book"],
         "goals": this.goals,
-        "events": events_field,
+        "events": list(this.events),
+        "continues_into": this.continues_into,
+        "effective_events": events_field,
         "rev": public["rev"],
         "status": {
             "ordering": _ordering_verdict(_ordering_violation(ordered)),
             "ends_at_terminus": _terminus_verdict(last_event, book.terminus),
+            "continuation": _continuation_verdict(resolution),
             "span": _span(ordered, codec),
         },
         "_links": {
@@ -218,7 +244,7 @@ def present_plotline(
             "expanded": _plotline_url(public["book"], this.id) + "?expand=events",
             "validate": _book_url(public["book"]) + "/validate",
             "graph": _book_url(public["book"]) + "/graph",
-            "events": [_event_url(public["book"], eid) for eid in this.events],
+            "events": [_event_url(public["book"], eid) for eid in path],
         },
         "_schema": f"{_SCHEMA}/Plotline",
     }

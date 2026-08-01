@@ -4,7 +4,7 @@ Creates, over the real HTTP APIs (no direct DB writes):
 
 - akasha: the canon -- characters, items, locations as articles.
 - chronos: the book "The Ember Pact" with a fictional calendar, six events, and
-  four plotlines.
+  five plotlines -- three of which share one ending via `continues_into`.
 
 Three of those plotlines are sound. The fourth -- "The Witness's Tale" -- is
 deliberately broken, so a fresh seed leaves the book **conflicted** and you can
@@ -84,22 +84,27 @@ SIGHTING_BROKEN = ("aldric-at-emberport", "Aldric Seen At Emberport", "emberport
 # Moving it later resolves the overlap.
 SIGHTING_FIXED = (*SIGHTING_BROKEN[:3], 30, 40, *SIGHTING_BROKEN[5:])
 
+# The shared ending, written once. The knight's and spy's threads continue into
+# it rather than repeating it -- add a scene here and both threads get it.
+# (Order matters: the trunk must exist before anything continues into it.)
 SOUND_PLOTLINES = [
+    ("trunk", "The Road to the Crown", ["See the Seal pressed to the charter"],
+     ["meet-at-emberport", "the-coronation"], None),
     ("knights-road", "The Knight's Road",
      ["Deliver the Ember Seal", "Reach the coronation alive"],
-     ["aldric-departs", "meet-at-emberport", "the-coronation"]),
+     ["aldric-departs"], "trunk"),
     ("spys-shadow", "The Spy's Shadow", ["Expose the traitor"],
-     ["lyra-infiltrates", "meet-at-emberport", "the-coronation"]),
+     ["lyra-infiltrates"], "trunk"),
+    # This one joins only at the very end, so it keeps its own full path.
     ("magisters-gambit", "The Magister's Gambit", ["Contest the succession"],
-     ["corwin-plots", "the-coronation"]),
+     ["corwin-plots", "the-coronation"], None),
 ]
 
 # Out of order (hour 48-72 listed before hour 10-30) AND stops short of the
 # terminus -- two more findings on top of the temporal conflict.
 WITNESS_BROKEN = ("witness-tale", "The Witness's Tale", ["Establish who was where"],
-                  ["meet-at-emberport", "aldric-at-emberport"])
-WITNESS_FIXED = (*WITNESS_BROKEN[:3],
-                 ["aldric-at-emberport", "meet-at-emberport", "the-coronation"])
+                  ["meet-at-emberport", "aldric-at-emberport"], None)
+WITNESS_FIXED = (*WITNESS_BROKEN[:3], ["aldric-at-emberport"], "trunk")
 
 TERMINUS = "the-coronation"
 
@@ -228,14 +233,16 @@ def demo_hard_rule(client):
 
 
 def seed_plotlines(client, witness):
-    step("chronos: plotlines")
-    for pid, title, goals, evs in [*SOUND_PLOTLINES, witness]:
-        status, body = client.upsert(
-            f"{CHRONOS}/books/{BOOK}/plotlines/{pid}",
-            {"title": title, "goals": goals, "events": evs},
-        )
-        ordering = body["status"]["ordering"]["state"] if status < 400 else "?"
-        show(status, f"plotline {pid}", f"ordering={ordering}")
+    step("chronos: plotlines (the shared ending lives once, in 'trunk')")
+    for pid, title, goals, evs, into in [*SOUND_PLOTLINES, witness]:
+        body = {"title": title, "goals": goals, "events": evs}
+        if into:
+            body["continues_into"] = into
+        status, result = client.upsert(f"{CHRONOS}/books/{BOOK}/plotlines/{pid}", body)
+        detail = f"-> {into}" if into else "(own full path)"
+        if status < 400:
+            detail += f"  ordering={result['status']['ordering']['state']}"
+        show(status, f"plotline {pid}", detail)
     status, _ = client.post(f"{CHRONOS}/books/{BOOK}/terminus/{TERMINUS}")
     show(status, f"terminus = {TERMINUS}")
 
@@ -301,10 +308,12 @@ def main():
         eid, payload = event_payload(SIGHTING_FIXED)
         status, _ = client.put(f"{CHRONOS}/books/{BOOK}/events/{eid}", payload)
         show(status, "moved the sighting to hours 30-40 (no longer overlaps the ride)")
-        pid, title, goals, evs = WITNESS_FIXED
-        status, _ = client.put(f"{CHRONOS}/books/{BOOK}/plotlines/{pid}",
-                               {"title": title, "goals": goals, "events": evs})
-        show(status, "reordered the witness thread and carried it to the terminus")
+        pid, title, goals, evs, into = WITNESS_FIXED
+        status, _ = client.put(
+            f"{CHRONOS}/books/{BOOK}/plotlines/{pid}",
+            {"title": title, "goals": goals, "events": evs, "continues_into": into},
+        )
+        show(status, "pointed the witness thread at the trunk so it reaches the terminus")
 
     report(client)
     next_steps(fix)

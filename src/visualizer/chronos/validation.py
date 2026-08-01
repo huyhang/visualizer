@@ -90,7 +90,15 @@ def validate_plotline_payload(plotline_id: str, payload: Any) -> Plotline:
     title = body.get("title")
     if title is not None and not isinstance(title, str):
         raise InvalidPlotline("'title' must be a string.")
-    return Plotline(id=plotline_id, events=list(events), goals=list(goals), title=title)
+    continues_into = body.get("continues_into")
+    if continues_into is not None and not (isinstance(continues_into, str) and continues_into):
+        raise InvalidPlotline("'continues_into' must be a plotline id string.")
+    if continues_into == plotline_id:
+        raise InvalidPlotline("A plotline cannot continue into itself.")
+    return Plotline(
+        id=plotline_id, events=list(events), goals=list(goals),
+        title=title, continues_into=continues_into,
+    )
 
 
 def validate_book_payload(book_id: str, payload: Any) -> Book:
