@@ -145,6 +145,30 @@ so flashbacks and ancient history need no special handling.
 > you record a scene you still give it the plain number. Typing "Day 9" and
 > having it understood isn't built yet.
 
+### You don't need to know when it happens
+
+Most of the time you'll sketch a scene long before you've worked out where it
+sits on the clock — so **timing is optional**. Write the scene, put it in a
+thread, and leave the when for later.
+
+Chronos treats that as a normal part of drafting, not a mistake. Undated scenes
+are simply left out of the timing checks, and your book stays "consistent". It
+keeps a running to-do list of what still needs a time.
+
+Better, it works out where each undated scene *could* go. Because your thread
+already says what comes before and after, the dated scenes around it pin it
+down:
+
+> **The Harbor Exchange** — no time set yet
+> must fall between **Day 2** (when Aldric Departs ends) and **Day 9** (when
+> The Coronation begins)
+
+And if the scenes around it leave **no room at all** — the one before ends after
+the one after begins — it tells you, because then there's no time the scene
+could possibly happen. That's a genuine knot in the story, and it's one you'd
+have almost no chance of spotting by hand when the two scenes belong to
+different threads.
+
 ---
 
 ## What Chronos checks for you

@@ -1109,8 +1109,6 @@
           "id",
           "book",
           "location",
-          "start_tick",
-          "end_tick",
           "rev"
         ],
         "properties": {
@@ -1138,19 +1136,23 @@
           },
           "start_tick": {
             "type": "integer",
-            "description": "Signed tick; negative is before the epoch."
+            "nullable": true,
+            "description": "Signed tick; negative is before the epoch. Null when the scene is not scheduled yet."
           },
           "end_tick": {
-            "type": "integer"
+            "type": "integer",
+            "nullable": true
           },
           "start_label": {
             "type": "string",
             "readOnly": true,
-            "description": "start_tick formatted by the book's calendar."
+            "description": "start_tick formatted by the book's calendar.",
+            "nullable": true
           },
           "end_label": {
             "type": "string",
-            "readOnly": true
+            "readOnly": true,
+            "nullable": true
           },
           "characters": {
             "type": "array",
@@ -1173,6 +1175,14 @@
           },
           "_links": {
             "$ref": "#/components/schemas/Links"
+          },
+          "scheduled": {
+            "type": "boolean",
+            "readOnly": true,
+            "description": "False while the scene has no timing yet. Unscheduled scenes are skipped by conflict and ordering checks."
+          },
+          "window": {
+            "$ref": "#/components/schemas/Window"
           }
         },
         "example": {
@@ -1214,16 +1224,16 @@
             "self": "/books/ember-pact/events/meet-at-emberport",
             "book": "/books/ember-pact",
             "plotlines": "/books/ember-pact/events/meet-at-emberport/plotlines"
-          }
+          },
+          "scheduled": true,
+          "window": null
         }
       },
       "EventWrite": {
         "type": "object",
-        "description": "Writable fields of an event. The id comes from the URL. Every EntityRef must already exist in Akasha.",
+        "description": "Writable fields of an event. The id comes from the URL. Every EntityRef must already exist in Akasha. Give both ticks or neither \u2014 omitting them records an unscheduled scene, which a drafting writer can time later.",
         "required": [
-          "location",
-          "start_tick",
-          "end_tick"
+          "location"
         ],
         "properties": {
           "title": {
@@ -1233,11 +1243,14 @@
             "$ref": "#/components/schemas/EntityRef"
           },
           "start_tick": {
-            "type": "integer"
+            "type": "integer",
+            "nullable": true,
+            "description": "Omit or null to leave the scene unscheduled. Must be paired with end_tick."
           },
           "end_tick": {
             "type": "integer",
-            "description": "Must be >= start_tick."
+            "nullable": true,
+            "description": "Must be >= start_tick, and paired with it."
           },
           "characters": {
             "type": "array",
@@ -1548,16 +1561,21 @@
             "description": "Optional short display name; defaults to id."
           },
           "start_tick": {
-            "type": "integer"
+            "type": "integer",
+            "nullable": true,
+            "description": "Signed tick; negative is before the epoch. Null when the scene is not scheduled yet."
           },
           "end_tick": {
-            "type": "integer"
+            "type": "integer",
+            "nullable": true
           },
           "start_label": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "end_label": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "location": {
             "$ref": "#/components/schemas/EntityRef"
@@ -1590,6 +1608,11 @@
           },
           "is_terminus": {
             "type": "boolean"
+          },
+          "scheduled": {
+            "type": "boolean",
+            "readOnly": true,
+            "description": "False while the scene has no timing yet. Unscheduled scenes are skipped by conflict and ordering checks."
           }
         }
       },
@@ -1600,7 +1623,8 @@
           "status",
           "temporal_conflicts",
           "ordering",
-          "convergence"
+          "convergence",
+          "unscheduled"
         ],
         "properties": {
           "status": {
@@ -1626,6 +1650,21 @@
           },
           "convergence": {
             "$ref": "#/components/schemas/ConvergenceReport"
+          },
+          "unscheduled": {
+            "type": "array",
+            "description": "Scenes still waiting for timing \u2014 a to-do list, not a fault: these alone do not make a book conflicted. Each carries the window its neighbours imply; an `impossible` window IS a contradiction.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "event": {
+                  "type": "string"
+                },
+                "window": {
+                  "$ref": "#/components/schemas/Window"
+                }
+              }
+            }
           }
         },
         "example": {
@@ -1684,7 +1723,19 @@
                 "last_event": "aldric-at-emberport"
               }
             ]
-          }
+          },
+          "unscheduled": [
+            {
+              "event": "the-vigil",
+              "window": {
+                "earliest": 24,
+                "latest": 96,
+                "earliest_label": "Day 2",
+                "latest_label": "Day 5",
+                "impossible": false
+              }
+            }
+          ]
         }
       },
       "ConflictFinding": {
@@ -2295,6 +2346,54 @@
               }
             ]
           }
+        }
+      },
+      "Window": {
+        "type": "object",
+        "nullable": true,
+        "readOnly": true,
+        "description": "Where an unscheduled scene could go, inferred from its plotline neighbours. Null on a side means unconstrained. `impossible` means the surrounding scenes leave no room at all \u2014 a real contradiction.",
+        "properties": {
+          "earliest": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Nearest scheduled predecessor's end."
+          },
+          "latest": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Nearest scheduled successor's start."
+          },
+          "earliest_label": {
+            "type": "string",
+            "nullable": true
+          },
+          "latest_label": {
+            "type": "string",
+            "nullable": true
+          },
+          "impossible": {
+            "type": "boolean"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "IMPOSSIBLE_WINDOW"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "doc": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "earliest": 24,
+          "latest": 96,
+          "earliest_label": "Year 1, Month 1, Day 2, 00:00 AF",
+          "latest_label": "Year 1, Month 1, Day 5, 00:00 AF",
+          "impossible": false
         }
       }
     }

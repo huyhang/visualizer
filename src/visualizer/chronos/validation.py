@@ -38,11 +38,36 @@ def _parse_ref_list(value: Any, what: str) -> list[EntityRef]:
     return [parse_entity_ref(item, what) for item in value]
 
 
-def _parse_tick(value: Any, field: str) -> int:
+def _parse_tick(value: Any, field: str) -> int | None:
+    """An integer tick, or None meaning "not scheduled yet"."""
+    if value is None:
+        return None
     # bool is an int subclass but is not a valid tick.
     if isinstance(value, bool) or not isinstance(value, int):
-        raise InvalidTimeframe(f"'{field}' must be an integer tick.")
+        raise InvalidTimeframe(f"'{field}' must be an integer tick or null.")
     return value
+
+
+def _parse_timeframe(body: dict) -> tuple[int | None, int | None]:
+    """Both ticks or neither -- a scene is fully scheduled or not at all.
+
+    Half-known timing would multiply the cases every rule has to handle for
+    little gain, so it is rejected rather than guessed at.
+    """
+    start = _parse_tick(body.get("start_tick"), "start_tick")
+    end = _parse_tick(body.get("end_tick"), "end_tick")
+    if (start is None) != (end is None):
+        raise InvalidTimeframe(
+            "Give both 'start_tick' and 'end_tick', or neither (an unscheduled "
+            "scene). A half-known timeframe is not supported.",
+            evidence={"start_tick": start, "end_tick": end},
+        )
+    if start is not None and start > end:
+        raise InvalidTimeframe(
+            f"start_tick ({start}) must not be after end_tick ({end}).",
+            evidence={"start_tick": start, "end_tick": end},
+        )
+    return start, end
 
 
 def validate_event_payload(event_id: str, payload: Any) -> Event:
@@ -50,13 +75,7 @@ def validate_event_payload(event_id: str, payload: Any) -> Event:
     if "location" not in body:
         raise InvalidEvent("An event requires a 'location'.")
     location = parse_entity_ref(body["location"], "location")
-    start = _parse_tick(body.get("start_tick"), "start_tick")
-    end = _parse_tick(body.get("end_tick"), "end_tick")
-    if start > end:
-        raise InvalidTimeframe(
-            f"start_tick ({start}) must not be after end_tick ({end}).",
-            evidence={"start_tick": start, "end_tick": end},
-        )
+    start, end = _parse_timeframe(body)
     title = body.get("title")
     if title is not None and not isinstance(title, str):
         raise InvalidEvent("'title' must be a string.")

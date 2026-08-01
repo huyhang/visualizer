@@ -212,6 +212,40 @@ Intervals are treated as **half-open `[start_tick, end_tick)`**. This makes
 "one event ends exactly as the next begins" *not* an overlap — which is exactly
 the boundary the plotline ordering rule wants (end **strictly before** start).
 
+### 4.2 Unscheduled scenes and inferred windows
+
+A writer sketching a thread usually knows the *order* of scenes long before
+their *timing*. Requiring exact ticks up front would make Chronos block drafting
+— the one thing §8.1 promises it never does. So both ticks are **optional**:
+give both or neither (a half-known timeframe is rejected, `400`, because it
+would multiply the cases every rule handles for little gain).
+
+An **unscheduled** scene has no interval, so:
+
+- it is **skipped by temporal-conflict detection** — it cannot contradict what
+  has no time;
+- it is **skipped by ordering** — the scheduled scenes on either side of it are
+  still compared, so a gap hides nothing;
+- convergence is unaffected (that rule is about ids, not times).
+
+**Unscheduled is a draft state, not a fault.** `/validate` lists these scenes
+under `unscheduled`, and they do **not** make a book `conflicted` — a
+permanently-red book would train the writer to ignore the report.
+
+**Inferred windows.** Because a plotline already encodes order, the *scheduled*
+scenes around an undated one constrain it: it must start after its nearest
+scheduled predecessor ends and end before its nearest scheduled successor
+begins. Constraints from every thread the scene appears in compound (latest
+lower bound, earliest upper bound). `scheduling.py` computes this purely; the
+result rides along on the event and in `/validate`.
+
+That turns "I haven't decided" into guidance, and it catches something no other
+rule can: when the neighbours leave **no room at all** (`earliest > latest`) the
+scene has no valid time. That *is* a contradiction, so an
+`IMPOSSIBLE_WINDOW` does make the book `conflicted`. Note it is genuinely
+additive — the neighbours may sit in *different* plotlines, in which case no
+single thread is out of order and the ordering check sees nothing wrong.
+
 ### 4.1 Translating ticks — a pure `TimeCodec` at the edges
 
 Writers think in "Year 3, Month 4, Day 12," not `10567`. The mechanism that

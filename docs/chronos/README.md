@@ -84,6 +84,28 @@ diverge.
 
 ### Time
 
+### Drafting without timing
+
+Both ticks are **optional** — give both or neither. Omitting them records an
+**unscheduled** scene, so a writer can sketch a whole thread in order and fill
+in the clock later. Unscheduled scenes are skipped by conflict and ordering
+checks (they have no interval), and they appear in `/validate` under
+`unscheduled` as a to-do list — they do **not** make a book conflicted.
+
+Chronos also infers the **window** each undated scene must fall into, from its
+scheduled plotline neighbours:
+
+```jsonc
+"window": {"earliest": 24, "latest": 96,
+           "earliest_label": "Year 1, Month 1, Day 2, 00:00 AF",
+           "latest_label":   "Year 1, Month 1, Day 5, 00:00 AF",
+           "impossible": false}
+```
+
+If the neighbours leave **no room** (`impossible: true`, `IMPOSSIBLE_WINDOW`)
+that *is* a contradiction and the book goes conflicted — and it catches cases
+ordering can't, where the constraining scenes live in different threads.
+
 Every event has an integer `start_tick` and `end_tick` on a per-book timeline,
 `start_tick <= end_tick`. Ticks are **signed**, so flashbacks are negative.
 Intervals are **half-open `[start, end)`** — touching is not overlapping.
@@ -115,7 +137,7 @@ whether the data makes structural sense.
 | Rule | Response |
 | --- | --- |
 | An `EntityRef` doesn't exist in Akasha | `422 ENTITY_NOT_FOUND` |
-| `start_tick > end_tick`, or a tick isn't an integer | `400 INVALID_TIMEFRAME` |
+| `start_tick > end_tick`, a non-integer tick, or only one of the two given | `400 INVALID_TIMEFRAME` |
 | Empty event list, empty goals, unknown event id, unknown `continues_into` target | `400 INVALID_PLOTLINE` |
 | A `continues_into` chain that loops | `422 PLOTLINE_CYCLE` |
 | Deleting a plotline others continue into | `409 PLOTLINE_IN_USE` |

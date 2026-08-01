@@ -17,6 +17,7 @@ from .conflicts import Conflict, all_conflicts
 from .continuation import effective_paths
 from .models import Event, Plotline
 from .ordering import Violation, validate_order
+from .scheduling import Window, unscheduled_windows
 
 
 @dataclass
@@ -30,12 +31,26 @@ class BookReport:
     temporal_conflicts: list[Conflict] = field(default_factory=list)
     ordering: list[OrderingIssue] = field(default_factory=list)
     convergence: ConvergenceReport | None = None
+    unscheduled: dict[str, Window] = field(default_factory=dict)
+
+    @property
+    def impossible_windows(self) -> dict[str, Window]:
+        """Unscheduled scenes their neighbours leave no room for."""
+        return {eid: w for eid, w in self.unscheduled.items() if w.impossible}
 
     @property
     def ok(self) -> bool:
+        """Whether the story holds together.
+
+        Note an unscheduled scene is **not** a problem -- it is a draft state,
+        and counting it as one would leave the book permanently red and train
+        the writer to ignore the report. A scene with *no possible time*,
+        however, is a genuine contradiction.
+        """
         return (
             not self.temporal_conflicts
             and not self.ordering
+            and not self.impossible_windows
             and (self.convergence is None or self.convergence.ok)
         )
 
@@ -66,4 +81,5 @@ def build_report(
         temporal_conflicts=all_conflicts(events),
         ordering=ordering,
         convergence=validate_convergence(paths, terminus),
+        unscheduled=unscheduled_windows(events, paths),
     )

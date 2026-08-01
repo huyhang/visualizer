@@ -1,7 +1,8 @@
 """Temporal-conflict detection (design §5.1) -- pure, no I/O.
 
 Rule: a character cannot be in two events at *different* locations with
-*overlapping* timeframes. Same-location overlaps are allowed. The service loads
+*overlapping* timeframes. Same-location overlaps are allowed, and scenes that
+are not scheduled yet are skipped -- they have no interval to overlap. The service loads
 the small set of events sharing a character with the candidate and passes it
 here; this module never touches a database.
 """
@@ -34,6 +35,9 @@ def _conflicts_with(candidate: Event, other: Event) -> Conflict | None:
     """A conflict exists iff they share a character, sit at different
     locations, and their timeframes overlap."""
     if other.id == candidate.id:
+        return None
+    # An unscheduled scene has no interval, so it can contradict nothing.
+    if not (candidate.is_scheduled and other.is_scheduled):
         return None
     if candidate.location == other.location:
         return None

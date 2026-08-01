@@ -27,8 +27,12 @@ class Violation:
 
 
 def validate_order(events_in_order: list[Event]) -> Violation | None:
-    """Return the first adjacent pair where ``end(prev) > start(next)``, else None."""
-    for prev, nxt in pairwise(events_in_order):
+    """Return the first out-of-order pair, else None.
+
+    Unscheduled scenes are skipped: a scene with no timing yet cannot be out of
+    order, and the scheduled scenes around it must still run forwards.
+    """
+    for prev, nxt in pairwise([e for e in events_in_order if e.is_scheduled]):
         if prev.end_tick > nxt.start_tick:
             return Violation(prev.id, nxt.id, prev.end_tick, nxt.start_tick)
     return None

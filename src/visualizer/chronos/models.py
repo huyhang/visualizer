@@ -28,8 +28,8 @@ class Event:
 
     id: str
     location: EntityRef
-    start_tick: int
-    end_tick: int
+    start_tick: int | None
+    end_tick: int | None
     title: str | None = None
     description: str = ""
     characters: list[EntityRef] = field(default_factory=list)
@@ -38,6 +38,16 @@ class Event:
     @property
     def display_title(self) -> str:
         return self.title or self.id
+
+    @property
+    def is_scheduled(self) -> bool:
+        """Whether this scene has been placed on the timeline yet.
+
+        Drafting writers record scenes before they know when they happen; an
+        unscheduled scene has no interval, so it cannot conflict with or be
+        ordered against anything (see ``scheduling``).
+        """
+        return self.start_tick is not None and self.end_tick is not None
 
     def entity_refs(self) -> list[EntityRef]:
         """Every EntityRef this event references (for existence checks)."""

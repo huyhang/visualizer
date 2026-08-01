@@ -31,6 +31,7 @@ from .presenters import (
     present_validate,
 )
 from .reports import build_report
+from .scheduling import window_for
 from .store import StoryStore
 from .validation import (
     validate_book_payload,
@@ -137,7 +138,15 @@ class EventService(_Service):
 
     def get(self, book_id, event_id) -> dict:
         public = self.store.get_event(book_id, event_id)
-        return present_event(public, codec_for(self._book(book_id)))
+        book = self._book(book_id)
+        return present_event(public, codec_for(book), self._window(book_id, event_id))
+
+    def _window(self, book_id, event_id):
+        """Where this scene could go, from its plotline neighbours (§4.2)."""
+        events = self._events_by_id(book_id)
+        if events.get(event_id) is not None and events[event_id].is_scheduled:
+            return None
+        return window_for(event_id, effective_paths(self._plotlines(book_id)), events)
 
     def update(self, book_id, event_id, payload, expected_rev=None, author=None) -> dict:
         self._require_book(book_id)

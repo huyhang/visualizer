@@ -14,6 +14,7 @@ from .continuation import Resolution, effective_paths, resolve
 from .models import Book, Event, Plotline
 from .ordering import Violation
 from .reports import BookReport
+from .scheduling import Window
 
 _SCHEMA = "/openapi.json#/components/schemas"
 
@@ -36,11 +37,43 @@ def _event_url(b: str, e: str) -> str:
 # -- small pieces ------------------------------------------------------------
 
 
+UNSCHEDULED = "unscheduled"
+
+
+def _label(tick: int | None, codec: TimeCodec) -> str | None:
+    return None if tick is None else codec.format(tick)
+
+
 def _when(event: Event, codec: TimeCodec, span: bool = False) -> str:
+    if not event.is_scheduled:
+        return UNSCHEDULED
     start = codec.format(event.start_tick)
     if span and event.end_tick != event.start_tick:
         return f"{start} → {codec.format(event.end_tick)}"
     return start
+
+
+def _window(window: Window | None, codec: TimeCodec) -> dict | None:
+    """The range an unscheduled scene must fall inside (design §4.2)."""
+    if window is None or window.unconstrained:
+        return None
+    out = {
+        "earliest": window.earliest,
+        "latest": window.latest,
+        "earliest_label": _label(window.earliest, codec),
+        "latest_label": _label(window.latest, codec),
+        "impossible": window.impossible,
+    }
+    if window.impossible:
+        out.update(
+            code="IMPOSSIBLE_WINDOW",
+            message=(
+                "The surrounding scenes leave no room for this one: it would have "
+                f"to start after {window.earliest} and end before {window.latest}."
+            ),
+            doc="docs/chronos/design.md#42",
+        )
+    return out
 
 
 def _node_ref(event: Event, codec: TimeCodec, span: bool = False, location: bool = False) -> dict:
@@ -87,10 +120,11 @@ def _terminus_verdict(last_event: str | None, terminus: str | None) -> dict:
 
 
 def _span(events: list[Event], codec: TimeCodec) -> dict | None:
-    if not events:
+    scheduled = [e for e in events if e.is_scheduled]
+    if not scheduled:
         return None
-    start = min(e.start_tick for e in events)
-    end = max(e.end_tick for e in events)
+    start = min(e.start_tick for e in scheduled)
+    end = max(e.end_tick for e in scheduled)
     return {
         "start_tick": start,
         "end_tick": end,
@@ -118,7 +152,7 @@ def conflict_finding(c: Conflict, codec: TimeCodec) -> dict:
 # -- events ------------------------------------------------------------------
 
 
-def present_event(public: dict, codec: TimeCodec) -> dict:
+def present_event(public: dict, codec: TimeCodec, window: Window | None = None) -> dict:
     event = Event.from_storage(public)
     return {
         "kind": "event",
@@ -128,11 +162,14 @@ def present_event(public: dict, codec: TimeCodec) -> dict:
         "location": event.location.to_dict(),
         "start_tick": event.start_tick,
         "end_tick": event.end_tick,
-        "start_label": codec.format(event.start_tick),
-        "end_label": codec.format(event.end_tick),
+        "start_label": _label(event.start_tick, codec),
+        "end_label": _label(event.end_tick, codec),
+        "scheduled": event.is_scheduled,
         "characters": [c.to_dict() for c in event.characters],
         "items": [i.to_dict() for i in event.items],
         "description": event.description,
+        # Only meaningful while unscheduled: where its neighbours allow it to go.
+        "window": None if event.is_scheduled else _window(window, codec),
         "rev": public["rev"],
         "_links": {
             "self": _event_url(public["book"], event.id),
@@ -152,8 +189,9 @@ def _event_summary(
         "title": event.display_title,
         "start_tick": event.start_tick,
         "end_tick": event.end_tick,
-        "start_label": codec.format(event.start_tick),
-        "end_label": codec.format(event.end_tick),
+        "start_label": _label(event.start_tick, codec),
+        "end_label": _label(event.end_tick, codec),
+        "scheduled": event.is_scheduled,
         "location": event.location.to_dict(),
         "characters": [c.to_dict() for c in event.characters],
         "items": [i.to_dict() for i in event.items],
@@ -354,6 +392,12 @@ def present_validate(report: BookReport, codec: TimeCodec) -> dict:
             "terminus": report.convergence.terminus if report.convergence else None,
             "failures": report.convergence.failures if report.convergence else [],
         },
+        # A to-do list, not a fault: scenes still waiting for timing, each with
+        # the window its neighbours imply.
+        "unscheduled": [
+            {"event": eid, "window": _window(window, codec)}
+            for eid, window in sorted(report.unscheduled.items())
+        ],
     }
 
 
