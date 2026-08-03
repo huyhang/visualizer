@@ -9,8 +9,10 @@ as ``DocumentStore``.
 Everything it owns lives in a dedicated, reserved database (``_auth``) that is
 never exposed through the document API:
 
-- ``_auth.users``   -- one record per account, keyed by username (``_id``).
-- ``_auth.grants``  -- one record per grant (see ``authz`` for the shape).
+- ``_auth.users``    -- one record per account, keyed by username (``_id``).
+- ``_auth.grants``   -- one record per grant (see ``authz`` for the shape).
+- ``_auth.settings`` -- singleton records for instance-wide settings (e.g. the
+  registration mode), keyed by setting name (``_id``).
 """
 
 from typing import Any
@@ -25,11 +27,31 @@ AUTH_DB = "_auth"
 
 _USERS = "users"
 _GRANTS = "grants"
+_SETTINGS = "settings"
 
 # Grants are namespaced by the kind of resource they scope, so services sharing
 # this store never match one another's resources (a chronos book named "x" must
 # not grant access to a akasha database named "x"). See ``authz``.
 DATABASE_RESOURCE = "database"
+
+# Registration modes. ``open`` lets anyone self-register; ``invite`` disables the
+# registration page so accounts exist only when an admin creates them.
+REGISTRATION_OPEN = "open"
+REGISTRATION_INVITE = "invite"
+REGISTRATION_MODES = (REGISTRATION_OPEN, REGISTRATION_INVITE)
+
+# The settings record id holding the current registration mode.
+_REGISTRATION_MODE_KEY = "registration_mode"
+
+
+def registration_allowed(mode: str, user_count: int) -> bool:
+    """Whether a new self-registration may proceed (pure policy).
+
+    ``open`` mode always allows it. ``invite`` mode blocks it -- *except* when
+    there are no users yet, so a fresh deployment can still bootstrap its first
+    (admin) account even if it starts invite-only.
+    """
+    return mode == REGISTRATION_OPEN or user_count == 0
 
 
 def _type_query(resource_type: str):
@@ -55,6 +77,25 @@ class AuthStore:
     def _grants(self):
         return self._client[AUTH_DB][_GRANTS]
 
+    @property
+    def _settings(self):
+        return self._client[AUTH_DB][_SETTINGS]
+
+    # -- settings ------------------------------------------------------------
+
+    def get_registration_mode(self) -> str:
+        """Return the current registration mode (defaults to ``open``)."""
+        record = self._settings.find_one({"_id": _REGISTRATION_MODE_KEY})
+        return (record or {}).get("value", REGISTRATION_OPEN)
+
+    def set_registration_mode(self, mode: str) -> None:
+        """Persist the registration mode. Raises ``ValueError`` for unknown modes."""
+        if mode not in REGISTRATION_MODES:
+            raise ValueError(f"Unknown registration mode: {mode!r}.")
+        self._settings.update_one(
+            {"_id": _REGISTRATION_MODE_KEY}, {"$set": {"value": mode}}, upsert=True
+        )
+
     # -- users ---------------------------------------------------------------
 
     def create_user(
@@ -64,8 +105,12 @@ class AuthStore:
         email: str | None = None,
         role: str = "user",
         active: bool = True,
+        must_change_password: bool = False,
     ) -> dict:
         """Create an account.
+
+        ``must_change_password`` forces the user to set a new password on their
+        next login (used for admin-provisioned accounts).
 
         Raises ``UserAlreadyExists`` if the username is taken, or
         ``EmailAlreadyExists`` if the email is already in use.
@@ -80,6 +125,7 @@ class AuthStore:
             "email": email,
             "role": role,
             "active": active,
+            "must_change_password": must_change_password,
         }
         self._users.insert_one(record)
         return self._public_user(record)
@@ -101,7 +147,11 @@ class AuthStore:
         Raises ``UserNotFound`` if the user is missing, or ``EmailAlreadyExists``
         if a new email is already held by a *different* user.
         """
-        allowed = {k: v for k, v in fields.items() if k in ("role", "active", "email")}
+        allowed = {
+            k: v
+            for k, v in fields.items()
+            if k in ("role", "active", "email", "must_change_password")
+        }
         if allowed.get("email") is not None:
             clash = self._users.find_one(
                 {"email": allowed["email"], "_id": {"$ne": username}}
@@ -113,10 +163,23 @@ class AuthStore:
             raise UserNotFound(f"User '{username}' does not exist.")
         return self._public_user(self._users.find_one({"_id": username}))
 
-    def set_password(self, username: str, password_hash: str) -> None:
-        """Replace a user's password hash. Raises if the user is missing."""
+    def set_password(
+        self, username: str, password_hash: str, must_change_password: bool = False
+    ) -> None:
+        """Replace a user's password hash and set the must-change flag.
+
+        A voluntary/first-login change passes ``False`` (clears the flag); an
+        admin-initiated reset passes ``True`` so the user is forced to change it
+        again on their next login. Raises if the user is missing.
+        """
         result = self._users.update_one(
-            {"_id": username}, {"$set": {"password_hash": password_hash}}
+            {"_id": username},
+            {
+                "$set": {
+                    "password_hash": password_hash,
+                    "must_change_password": must_change_password,
+                }
+            },
         )
         if result.matched_count == 0:
             raise UserNotFound(f"User '{username}' does not exist.")
@@ -218,6 +281,7 @@ class AuthStore:
             "email": record.get("email"),
             "role": record.get("role", "user"),
             "active": record.get("active", True),
+            "must_change_password": record.get("must_change_password", False),
         }
 
     @staticmethod

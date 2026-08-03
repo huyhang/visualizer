@@ -32,7 +32,14 @@ BOOK = "ember-pact"
 _OPENAPI_PATH = Path(__file__).resolve().parents[2] / "docs" / "openapi.json"
 
 # Auth/static routes come from akasha and are out of this contract's scope.
-_NOT_OUR_API = {"/static/{filename}", "/login", "/logout", "/register", "/auth/me"}
+_NOT_OUR_API = {
+    "/static/{filename}",
+    "/login",
+    "/logout",
+    "/register",
+    "/auth/me",
+    "/change-password",
+}
 _HTTP_METHODS = {"get", "post", "put", "delete"}
 
 

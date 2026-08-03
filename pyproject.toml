@@ -9,6 +9,8 @@ dependencies = [
     "pymongo>=4.0",
     "flask-login>=0.6",
     "flask-wtf>=1.2",
+    # Per-IP rate limiting on the auth endpoints (login/register/change-password).
+    "flask-limiter>=3.5",
     # Chronos builds each book's story graph in-process (convergence/divergence,
     # reachability); pure-Python, no server or extra container.
     "networkx>=3.0",

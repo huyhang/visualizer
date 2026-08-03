@@ -37,9 +37,17 @@ def store(mongo_client):
 
 @pytest.fixture
 def auth_store(mongo_client):
-    """Auth store seeded with a single admin account."""
+    """Auth store seeded with an admin account.
+
+    Admins are no longer privileged over *content*: they must hold grants like
+    anyone else. Most HTTP tests use the admin as a convenient omnipotent actor,
+    so the seeded admin is given an instance-wide grant (an admin who has granted
+    themselves full access). Tests that exercise the deny-by-default behaviour
+    build their own ungranted admin.
+    """
     s = AuthStore(mongo_client)
     s.create_user(ADMIN_USER, generate_password_hash(ADMIN_PASS), role="admin")
+    s.grant_owner(ADMIN_USER, None, None, None, ["read", "write", "delete"])
     return s
 
 
@@ -47,7 +55,9 @@ def auth_store(mongo_client):
 def app(store, auth_store):
     app = create_app(store, auth_store, secret_key="test-secret")
     # CSRF is exercised in the browser; disable it so API-style tests stay terse.
-    app.config.update(TESTING=True, WTF_CSRF_ENABLED=False)
+    # Rate limiting is exercised by a dedicated test; off here so the many
+    # per-test logins don't trip the per-IP limits.
+    app.config.update(TESTING=True, WTF_CSRF_ENABLED=False, RATELIMIT_ENABLED=False)
     return app
 
 

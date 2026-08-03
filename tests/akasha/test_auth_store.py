@@ -35,7 +35,13 @@ def test_list_users_excludes_password_hash(auth):
     auth.create_user("alice", "hash", email="alice@example.com")
     users = auth.list_users()
     assert users == [
-        {"username": "alice", "email": "alice@example.com", "role": "user", "active": True}
+        {
+            "username": "alice",
+            "email": "alice@example.com",
+            "role": "user",
+            "active": True,
+            "must_change_password": False,
+        }
     ]
 
 

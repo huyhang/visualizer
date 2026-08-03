@@ -77,7 +77,9 @@ volume).
 ## Using the web UI
 
 Everything below is gated by your permissions — you only ever see and edit what
-you have been granted (admins see everything).
+you have been granted. This includes admins: the admin role governs account and
+access *management*, not content access, so an admin sees another user's articles
+only where they have explicitly granted themselves (or been granted) access.
 
 **Browse & read.** The left panel is a lazy-loading tree of *databases →
 collections → articles*. Open an article to read it rendered as a page: a title
@@ -115,7 +117,18 @@ text size (Normal → Large → Larger → Largest) with the **A** button — bo
 remembered per browser. On a phone the browser tree collapses into a drawer (☰).
 
 **Admin.** Admins get an **Admin** link to `/admin` to manage users (role,
-enable/disable, delete) and edit anyone's grants.
+enable/disable, delete) and edit anyone's grants. From there an admin can also:
+
+- **Create accounts directly** without waiting for self-registration. Leave the
+  password blank and a strong **temporary password** is generated and shown once
+  to hand over; the new user must change it on first login.
+- **Switch registration between *open* and *invite-only*.** In invite-only mode
+  the registration page is disabled and accounts exist only when an admin creates
+  them (existing users can still log in). The very first account can always be
+  registered so a fresh deployment can bootstrap its admin.
+
+Note admins are **not** exempt from grants (see above) — to read another user's
+content an admin grants themselves access like anyone else.
 
 ---
 
@@ -152,12 +165,16 @@ Both are optional — a document created via the API with neither still reads fi
 
 - **Accounts & roles.** Register with a username + password (hashed). Each
   account is `admin` or `user`. The **first account ever registered** becomes the
-  admin; there is no built-in/default admin to guess.
+  admin; there is no built-in/default admin to guess. Registration can be set to
+  **invite-only** by an admin, in which case accounts are created only from the
+  admin console. Passwords must meet a strength policy (NIST 800-63B: at least 12
+  characters, screened against common passwords).
 - **Grants (allow-only, most-specific-wins).** A user's access is the union of
   their grants; each grant is scoped at the **database**, **collection**, or
   **article** level and lists permissions (`read`, `write`, `delete`). A narrower
-  grant overrides a broader one. Anything not granted is denied. Admins bypass
-  all grant checks.
+  grant overrides a broader one. Anything not granted is denied. The **admin role
+  is not exempt**: admins manage accounts and grants, but read/write content only
+  where explicitly granted.
 - **Ownership.** Creating a database/collection or an article auto-grants its
   creator full permissions on it.
 - **Filtering, not just gating.** Browse, search and suggest results omit

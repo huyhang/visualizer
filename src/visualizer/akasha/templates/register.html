@@ -3,6 +3,15 @@
 {% block content %}
 <div class="card narrow">
   <h1>Create an account</h1>
+  {% if not registration_open %}
+  <div class="notice">
+    Registration is invite-only right now. Ask an administrator to create an
+    account for you.
+  </div>
+  <p class="muted" style="margin-top:1rem">
+    <a href="{{ url_for('login') }}">Back to log in</a>.
+  </p>
+  {% else %}
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
   <form method="post" action="{{ url_for('register') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -18,8 +27,10 @@
     Already registered? <a href="{{ url_for('login') }}">Log in</a>.
   </p>
   <p class="muted">
-    New accounts start with no access — an administrator grants you access to
-    databases, collections, or individual articles.
+    Use at least 12 characters. New accounts start with no access — an
+    administrator grants you access to databases, collections, or individual
+    articles.
   </p>
+  {% endif %}
 </div>
 {% endblock %}

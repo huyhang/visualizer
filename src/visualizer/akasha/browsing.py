@@ -4,7 +4,8 @@ Browsing is grant-filtered just like search: a user only sees the databases and
 collections in which they can ``read`` *something*. These helpers answer that
 from a user's grants and a raw listing, with no dependency on Flask or MongoDB,
 so they are unit tested in isolation. (Per-document read checks reuse
-``authz.is_allowed``; admins bypass all of this in the route layer.)
+``authz.is_allowed``. Everyone, admins included, is filtered by their grants;
+the admin role governs account/access management, not content visibility.)
 
 Grant shape is the same as ``authz`` (``None`` in a scope field means "any").
 """

@@ -41,6 +41,23 @@ this doc and the code disagree, trust the code and fix the doc.
 - **Deactivated accounts are logged out.** The Flask-Login `user_loader` returns
   `None` for inactive accounts, so disabling an account takes effect on its next
   request.
+- **Invite-only registration (optional).** An admin can switch registration
+  between *open* and *invite-only* (`_auth.settings`, `auth_store.py`). In
+  invite-only mode `/register` is refused (`403`) and accounts exist only when an
+  admin creates them — except the very first account, which is always allowed so a
+  fresh deployment can bootstrap its admin (`registration_allowed`, pure/tested).
+- **Password strength policy (NIST SP 800-63B).** Chosen passwords must be 12–128
+  characters, are screened against a common-password blocklist, and may not equal
+  the username (`passwords.py`, pure/tested). No composition or rotation rules
+  (per NIST). Enforced on registration, admin-set/reset, and self-change. A
+  breached-password (HIBP) check is intentionally not included (network
+  dependency); see hardening below.
+- **Forced first-login password change.** Admin-provisioned accounts carry a
+  `must_change_password` flag; an admin may leave the password blank to have a
+  strong **temporary** password generated and shown once (`generate_temp_password`,
+  `secrets`-backed). A `before_request` guard blocks such a user from the rest of
+  the app until they set a new password at `/change-password` (browser is
+  redirected; API gets `403`).
 
 ### Authorization (access control)
 
@@ -56,6 +73,12 @@ this doc and the code disagree, trust the code and fix the doc.
   don't disclose the existence of unreadable articles/collections/databases.
 - **Least-privilege availability guard.** The last remaining admin cannot be
   demoted, disabled, or deleted.
+- **Admins are not exempt from grants.** The admin role governs account and
+  access *management* (the `/admin` console, gated by `admin_required`), not
+  content access. Document and book endpoints authorize every caller — admins
+  included — against their grants, so an admin reads another user's content only
+  where explicitly granted. (`_authorize`/`_can_read` in both services no longer
+  short-circuit on the admin role.)
 
 ### Tenant / internal-state isolation
 
@@ -105,6 +128,18 @@ this doc and the code disagree, trust the code and fix the doc.
 - **CSRF tokens** protect the server-rendered forms (login/register/admin) via
   Flask-WTF `CSRFProtect`.
 
+### Rate limiting
+
+- **Per-IP limits on the auth endpoints.** `/login`, `/register` and
+  `/change-password` are rate-limited (Flask-Limiter, 5/minute and 30/hour per
+  client IP) to blunt brute-forcing, credential stuffing and abuse. The limiter
+  is injected into the app factory (`build_limiter`), so tests can disable it and
+  a deployment can choose its storage backend. The default is in-memory
+  (`memory://`), which suits a single process; set `RATELIMIT_STORAGE_URI` to a
+  shared backend (e.g. Redis) so limits hold across multiple gunicorn workers.
+  Behind a reverse proxy, configure `ProxyFix` so the real client IP is used (see
+  hardening below).
+
 ### Network / data exposure
 
 - **MongoDB has no published port** — only the app container can reach it.
@@ -129,11 +164,12 @@ Ordered roughly by priority. Items marked *(partial)* have some support already.
    SCRAM auth with a least-privilege application user, keep it off the host
    network, and use TLS for the app↔Mongo connection. Without this, anything that
    reaches the Docker network has full DB access.
-3. **Rate limiting & lockout on auth endpoints.** There is **no** rate limiting.
-   Add per-IP + per-username limits (e.g. Flask-Limiter with a shared Redis
-   backend so limits hold across gunicorn workers) and backoff/lockout on
-   repeated failures to blunt brute-forcing, credential stuffing, and
-   enumeration/DoS on `/login` and `/register`.
+3. **Rate limiting & lockout on auth endpoints.** *(partial — done: per-IP rate
+   limiting on `/login`, `/register`, `/change-password` via Flask-Limiter; see
+   "Rate limiting" above.)* Still to do for a hardened deployment: configure a
+   **shared storage backend** (`RATELIMIT_STORAGE_URI`, e.g. Redis) so limits hold
+   across gunicorn workers, add **per-username** limits and **backoff/lockout** on
+   repeated failures, and ensure the real client IP is trusted (item 5).
 4. **Run the container as non-root.** `docker/Dockerfile.akasha` has no `USER`
    directive, so the app runs as root. Add a non-root user, and consider a
    read-only root filesystem, dropped Linux capabilities, and resource limits.
@@ -159,12 +195,13 @@ Ordered roughly by priority. Items marked *(partial)* have some support already.
 9. **Session lifecycle.** Configure `PERMANENT_SESSION_LIFETIME` (idle/absolute
    expiry), rotate the session identifier on login (session-fixation), and
    provide a way to revoke sessions (e.g. on password change / disable).
-10. **Registration controls.** Self-registration is open (anyone can create an
-    account, then awaits grants). For a shared deployment consider invite-only or
-    admin approval, a CAPTCHA to stop bot signups, and **email verification**
-    (emails are stored but not verified). Note that `/register` returns `409` on a
-    taken username/email — an enumeration vector (unlike the uniform `/login`);
-    prefer a generic response or an email-based flow.
+10. **Registration controls.** *(partial — done: an admin can switch to
+    **invite-only**, disabling self-registration; see "Authentication" above.)*
+    Still to consider for a shared deployment: admin approval, a CAPTCHA to stop
+    bot signups, and **email verification** (emails are stored but not verified).
+    Note that `/register` returns `409` on a taken username/email — an enumeration
+    vector (unlike the uniform `/login`); prefer a generic response or an
+    email-based flow.
 11. **Secrets management.** `SECRET_KEY` lives in `docker/.env` on disk. Prefer
     Docker/orchestrator secrets or a vault, restrict file permissions, and plan
     for rotation (rotating invalidates existing sessions). `.env` is git-ignored —
@@ -184,9 +221,17 @@ Ordered roughly by priority. Items marked *(partial)* have some support already.
 15. **Search/suggest cost controls.** Search scans collections and `/suggest`
     iterates every readable namespace; at scale this is a resource-exhaustion
     vector. Add indexes, hard result/time limits, and consider debouncing.
-16. **Password policy & recovery.** No minimum length/complexity or breached-
-    password check is enforced today; add one (e.g. HIBP k-anonymity). If you add
-    password reset, make it tokenised and expiring.
+16. **Password policy & recovery.** *(partial — done: a NIST 800-63B length +
+    common-password policy is enforced, plus admin reset and forced first-login
+    change; see "Authentication" above.)* Still to consider: a **breached-password
+    check** (HIBP k-anonymity), **self-service** password change for any logged-in
+    user (currently only forced-on-first-login and admin reset), and an
+    unauthenticated **password reset**. If you add reset, make it a **tokenised,
+    expiring, single-use** email flow — sketch: a `_auth.reset_tokens` collection
+    holding hashed tokens; an enumeration-safe `/forgot-password`; a
+    `/reset-password?token=…` that verifies the token and reuses the strength
+    validator; an injected SMTP/email-sender seam (kept out of the current build to
+    avoid an email dependency).
 17. **Backups & disaster recovery.** Back up the Mongo data volume and test
     restores; the embedded version history is not a backup.
 18. **Keep debug off & errors generic.** Ensure Flask debug mode stays disabled

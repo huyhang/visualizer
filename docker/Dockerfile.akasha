@@ -21,4 +21,10 @@ ENV PYTHONUNBUFFERED=1 \
 
 EXPOSE 5000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "visualizer.akasha.wsgi:app"]
+# Threaded (gthread) workers handle idle browser keep-alive connections
+# gracefully; the default sync worker kills the whole worker on its request
+# timeout, which surfaces to the client as a transient 500. A 60s timeout gives
+# slow requests headroom.
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", \
+     "--workers", "2", "--worker-class", "gthread", "--threads", "4", \
+     "--timeout", "60", "visualizer.akasha.wsgi:app"]

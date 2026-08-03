@@ -12,8 +12,9 @@ from flask import Flask, jsonify, request
 from flask_login import current_user, login_required
 from flask_wtf.csrf import CSRFProtect
 
-from visualizer.akasha.auth import init_login, register_auth_routes
+from visualizer.akasha.auth import build_limiter, init_login, register_auth_routes
 from visualizer.akasha.authz import ALL_PERMS, is_allowed, perm_for_method
+from visualizer.akasha.errors import AkashaError
 
 from .entity_gate import EntityGate
 from .errors import ChronosError, Forbidden, InvalidRevision
@@ -42,6 +43,7 @@ def create_app(
     auth_store,
     secret_key: str,
     secure_cookies: bool = False,
+    rate_limit_storage_uri: str = "memory://",
 ) -> Flask:
     if not secret_key:
         raise ValueError("create_app requires a non-empty secret_key.")
@@ -53,8 +55,9 @@ def create_app(
         SESSION_COOKIE_SECURE=secure_cookies,
     )
     csrf = CSRFProtect(app)
+    limiter = build_limiter(app, rate_limit_storage_uri)
     init_login(app, auth_store)
-    register_auth_routes(app, auth_store, csrf)
+    register_auth_routes(app, auth_store, csrf, limiter)
 
     books = BookService(story_store, entity_gate)
     plotlines = PlotlineService(story_store, entity_gate)
@@ -75,20 +78,22 @@ def _book_allowed(auth_store, perm: str, book: str) -> bool:
 
 
 def _authorize(auth_store, method: str, book: str) -> None:
-    """Raise Forbidden unless the user may perform ``method`` on the book."""
-    if current_user.is_admin:
-        return
+    """Raise Forbidden unless the user may perform ``method`` on the book.
+
+    Everyone -- including admins -- is subject to grants; the admin role governs
+    account/access management (in akasha's console), not content access.
+    """
     perm = perm_for_method(method)
     if not _book_allowed(auth_store, perm, book):
         raise Forbidden(f"You lack '{perm}' permission on book '{book}'.")
 
 
 def _can_read(auth_store, book: str) -> bool:
-    return current_user.is_admin or _book_allowed(auth_store, "read", book)
+    return _book_allowed(auth_store, "read", book)
 
 
 def _is_owner(auth_store, book: str) -> bool:
-    return current_user.is_admin or _book_allowed(auth_store, "delete", book)
+    return _book_allowed(auth_store, "delete", book)
 
 
 def _expected_rev():
@@ -341,3 +346,9 @@ def _register_error_handler(app):
     @app.errorhandler(ChronosError)
     def handle(err: ChronosError):
         return jsonify(err.to_dict()), err.status_code
+
+    @app.errorhandler(AkashaError)
+    def handle_auth(err: AkashaError):
+        # The shared auth routes (login/register/change-password) raise akasha
+        # domain errors; serialise them consistently on this service too.
+        return jsonify({"error": err.message}), err.status_code

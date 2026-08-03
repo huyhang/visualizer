@@ -81,6 +81,18 @@ class InvalidEmail(AkashaError):
     status_code = 400
 
 
+class WeakPassword(AkashaError):
+    """Raised when a chosen password fails the strength policy."""
+
+    status_code = 400
+
+
+class RegistrationDisabled(AkashaError):
+    """Raised when self-registration is attempted while in invite-only mode."""
+
+    status_code = 403
+
+
 class UserNotFound(AkashaError):
     """Raised when addressing a user account that does not exist."""
 

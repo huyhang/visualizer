@@ -10,6 +10,9 @@ from pymongo import MongoClient
 
 DEFAULT_MONGO_URI = "mongodb://mongo:27017"
 DEFAULT_VERSIONS_KEEP = 20
+# In-memory rate-limit storage suits a single process; point this at Redis
+# (e.g. "redis://redis:6379") to share limits across multiple gunicorn workers.
+DEFAULT_RATELIMIT_STORAGE_URI = "memory://"
 
 
 def get_mongo_uri() -> str:
@@ -51,6 +54,15 @@ def get_versions_keep() -> int:
     if value < 1:
         raise RuntimeError("VERSIONS_KEEP must be at least 1.")
     return value
+
+
+def get_rate_limit_storage_uri() -> str:
+    """Storage backend URI for the auth rate limiter.
+
+    Defaults to in-memory. Set ``RATELIMIT_STORAGE_URI`` to a shared backend
+    (e.g. Redis) so limits hold across gunicorn workers.
+    """
+    return os.environ.get("RATELIMIT_STORAGE_URI", DEFAULT_RATELIMIT_STORAGE_URI)
 
 
 def get_secure_cookies() -> bool:

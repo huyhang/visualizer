@@ -3,4 +3,5 @@ pymongo>=4.0
 gunicorn>=21.2
 flask-login>=0.6
 flask-wtf>=1.2
+flask-limiter>=3.5
 networkx>=3.0

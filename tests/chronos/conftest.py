@@ -64,7 +64,9 @@ def auth_store(mongo_client):
 @pytest.fixture
 def app(story_store, fake_gate, auth_store):
     application = create_app(story_store, fake_gate, auth_store, secret_key="test-secret")
-    application.config.update(TESTING=True, WTF_CSRF_ENABLED=False)
+    application.config.update(
+        TESTING=True, WTF_CSRF_ENABLED=False, RATELIMIT_ENABLED=False
+    )
     return application
 
 
@@ -82,7 +84,11 @@ def client(app):
 
 @pytest.fixture
 def admin_client(app):
-    """A client authenticated as an admin (bypasses grant checks)."""
+    """A client authenticated as an admin.
+
+    The admin role governs account/access management, not content access: an
+    admin holds no book grants unless explicitly given them.
+    """
     c = app.test_client()
     assert _login(c, ADMIN_USER, ADMIN_PASS).status_code == 200
     return c

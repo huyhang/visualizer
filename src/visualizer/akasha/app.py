@@ -24,8 +24,11 @@ from flask_login import current_user, login_required
 from flask_wtf.csrf import CSRFProtect
 from werkzeug.security import generate_password_hash
 
-from .auth import admin_required, init_login, register_auth_routes
-from .auth_store import AuthStore
+from .auth import admin_required, build_limiter, init_login, register_auth_routes
+from .auth_store import (
+    REGISTRATION_MODES,
+    AuthStore,
+)
 from .authz import ALL_PERMS, is_allowed, perm_for_method
 from .browsing import rank_suggestions, visible_collections, visible_databases
 from .diff import diff_documents
@@ -39,6 +42,7 @@ from .errors import (
     VersionNotFound,
 )
 from .history import find_snapshot, history_meta
+from .passwords import generate_temp_password, validate_password_strength
 from .store import DocumentStore
 from .validation import validate_document, validate_email, validate_search_terms
 
@@ -52,6 +56,7 @@ def create_app(
     auth_store: AuthStore,
     secret_key: str,
     secure_cookies: bool = False,
+    rate_limit_storage_uri: str = "memory://",
 ) -> Flask:
     app = Flask(__name__)
     # A secret key is required to sign session cookies. It must be supplied
@@ -68,8 +73,9 @@ def create_app(
     )
 
     csrf = CSRFProtect(app)
+    limiter = build_limiter(app, rate_limit_storage_uri)
     init_login(app, auth_store)
-    register_auth_routes(app, auth_store, csrf)
+    register_auth_routes(app, auth_store, csrf, limiter)
 
     _register_routes(app, store, auth_store, csrf)
     _register_browse_routes(app, store, auth_store, csrf)
@@ -88,12 +94,12 @@ def _reject_reserved(database: str) -> None:
 def _authorize(auth_store: AuthStore, method: str, database, collection, doc_id=None) -> None:
     """Raise ``Forbidden`` unless the current user may perform ``method`` here.
 
-    Admins bypass grant checks; everyone else must hold the matching permission
-    (read/write/delete) at some scope covering the resource.
+    Everyone -- including admins -- must hold the matching permission
+    (read/write/delete) at some scope covering the resource. The admin role
+    governs *account and access management* (the ``/admin`` console), not content
+    access: an admin sees another user's content only where explicitly granted.
     """
     _reject_reserved(database)
-    if current_user.is_admin:
-        return
     perm = perm_for_method(method)
     grants = auth_store.grants_for(current_user.username)
     if not is_allowed(grants, perm, database, collection, doc_id):
@@ -103,9 +109,7 @@ def _authorize(auth_store: AuthStore, method: str, database, collection, doc_id=
 
 
 def _can_read(auth_store: AuthStore, database, collection, doc_id=None) -> bool:
-    """Whether the current user may read a resource (admins always can)."""
-    if current_user.is_admin:
-        return True
+    """Whether the current user may read a resource (per their grants)."""
     grants = auth_store.grants_for(current_user.username)
     return is_allowed(grants, "read", database, collection, doc_id)
 
@@ -232,8 +236,6 @@ def _register_routes(app: Flask, store: DocumentStore, auth_store: AuthStore, cs
 
 def _filter_readable(auth_store: AuthStore, database, collection, results):
     """Drop search results the current user is not allowed to read."""
-    if current_user.is_admin:
-        return results
     grants = auth_store.grants_for(current_user.username)
     return [
         r
@@ -255,11 +257,9 @@ def _register_browse_routes(app: Flask, store: DocumentStore, auth_store: AuthSt
     @csrf.exempt
     @login_required
     def list_databases():
-        databases = store.list_databases()
-        if not current_user.is_admin:
-            databases = visible_databases(
-                auth_store.grants_for(current_user.username), databases
-            )
+        databases = visible_databases(
+            auth_store.grants_for(current_user.username), store.list_databases()
+        )
         return jsonify({"databases": databases})
 
     @app.get("/databases/<database>/collections")
@@ -267,11 +267,11 @@ def _register_browse_routes(app: Flask, store: DocumentStore, auth_store: AuthSt
     @login_required
     def list_collections(database):
         _reject_reserved(database)
-        collections = store.list_collections(database)
-        if not current_user.is_admin:
-            collections = visible_collections(
-                auth_store.grants_for(current_user.username), database, collections
-            )
+        collections = visible_collections(
+            auth_store.grants_for(current_user.username),
+            database,
+            store.list_collections(database),
+        )
         return jsonify({"database": database, "collections": collections})
 
     @app.get("/databases/<database>/collections/<collection>/documents")
@@ -328,17 +328,12 @@ def _document_preview(database, collection, doc: dict) -> dict:
 
 def _visible_namespaces(store: DocumentStore, auth_store: AuthStore):
     """Yield (database, collection) pairs the current user may read within."""
-    databases = store.list_databases()
-    if not current_user.is_admin:
-        databases = visible_databases(
-            auth_store.grants_for(current_user.username), databases
-        )
+    grants = auth_store.grants_for(current_user.username)
+    databases = visible_databases(grants, store.list_databases())
     for database in databases:
-        collections = store.list_collections(database)
-        if not current_user.is_admin:
-            collections = visible_collections(
-                auth_store.grants_for(current_user.username), database, collections
-            )
+        collections = visible_collections(
+            grants, database, store.list_collections(database)
+        )
         for collection in collections:
             yield database, collection
 
@@ -452,22 +447,40 @@ def _restore_body(store: DocumentStore, database, collection, doc_id, body: dict
         )
 
 
+def _render_admin(auth_store: AuthStore, selected=None, new_credential=None):
+    """Render the admin console. ``new_credential`` shows a just-generated
+    temporary password once (never persisted or shown again)."""
+    record = auth_store.get_user(selected) if selected else None
+    grants = auth_store.grants_for(selected) if selected else []
+    return render_template(
+        "admin.html",
+        users=auth_store.list_users(),
+        selected=selected,
+        selected_is_admin=bool(record and record.get("role") == "admin"),
+        selected_email=record.get("email") if record else None,
+        grants=grants,
+        all_perms=ALL_PERMS,
+        registration_mode=auth_store.get_registration_mode(),
+        new_credential=new_credential,
+    )
+
+
 def _register_admin_routes(app: Flask, auth_store: AuthStore) -> None:
     @app.get("/admin")
     @admin_required
     def admin_page():
-        selected = request.args.get("user") or None
-        record = auth_store.get_user(selected) if selected else None
-        grants = auth_store.grants_for(selected) if selected else []
-        return render_template(
-            "admin.html",
-            users=auth_store.list_users(),
-            selected=selected,
-            selected_is_admin=bool(record and record.get("role") == "admin"),
-            selected_email=record.get("email") if record else None,
-            grants=grants,
-            all_perms=ALL_PERMS,
-        )
+        return _render_admin(auth_store, selected=request.args.get("user") or None)
+
+    @app.post("/admin/settings/registration")
+    @admin_required
+    def set_registration_mode():
+        mode = request.form.get("mode", "")
+        if mode not in REGISTRATION_MODES:
+            flash("Unknown registration mode.", "error")
+            return redirect(url_for("admin_page"))
+        auth_store.set_registration_mode(mode)
+        flash(f"Registration is now {mode}.", "success")
+        return redirect(url_for("admin_page"))
 
     @app.post("/admin/users/<username>/edit")
     @admin_required
@@ -483,33 +496,78 @@ def _register_admin_routes(app: Flask, auth_store: AuthStore) -> None:
             if email_raw:
                 auth_store.update_user(username, email=validate_email(email_raw))
             if new_password:
-                auth_store.set_password(username, generate_password_hash(new_password))
+                validate_password_strength(new_password, username)
+                # An admin reset forces the user to change it again on next login.
+                auth_store.set_password(
+                    username,
+                    generate_password_hash(new_password),
+                    must_change_password=True,
+                )
         except AkashaError as err:
             flash(err.message, "error")
             return redirect(url_for("admin_page", user=username))
         flash(f"User '{username}' updated.", "success")
         return redirect(url_for("admin_page", user=username))
 
+    @app.post("/admin/users/<username>/reset-password")
+    @admin_required
+    def reset_password(username):
+        # One-click reset: generate a strong temporary password, force a change on
+        # next login, and show it once so the admin can hand it over.
+        if auth_store.get_user(username) is None:
+            raise UserNotFound(f"User '{username}' does not exist.")
+        temp_password = generate_temp_password()
+        auth_store.set_password(
+            username,
+            generate_password_hash(temp_password),
+            must_change_password=True,
+        )
+        return _render_admin(
+            auth_store,
+            selected=username,
+            new_credential={"username": username, "password": temp_password},
+        )
+
     @app.post("/admin/users")
     @admin_required
     def create_user_admin():
-        username = request.form.get("username")
-        password = request.form.get("password")
+        username = (request.form.get("username") or "").strip()
         role = request.form.get("role", "user")
-        if not username or not password:
-            flash("Username and password are required.", "error")
+        password = request.form.get("password") or ""
+        if not username:
+            flash("A username is required.", "error")
             return redirect(url_for("admin_page"))
         if role not in ("admin", "user"):
             flash("Unknown role.", "error")
             return redirect(url_for("admin_page"))
+        generated = None
         try:
-            email = validate_email(request.form.get("email"))
+            email_raw = (request.form.get("email") or "").strip()
+            email = validate_email(email_raw) if email_raw else None
+            if password:
+                # An admin may set a specific password; it is still strength-checked.
+                validate_password_strength(password, username)
+            else:
+                # The easy path: generate a strong temporary password to hand over.
+                password = generated = generate_temp_password()
             auth_store.create_user(
-                username, generate_password_hash(password), email=email, role=role
+                username,
+                generate_password_hash(password),
+                email=email,
+                role=role,
+                must_change_password=True,
             )
         except AkashaError as err:
             flash(err.message, "error")
             return redirect(url_for("admin_page"))
+        # Show a generated credential once, in-page (not via a redirect that would
+        # expose the password in the URL/history).
+        if generated is not None:
+            return _render_admin(
+                auth_store,
+                selected=username,
+                new_credential={"username": username, "password": generated},
+            )
         flash(f"User '{username}' created.", "success")
         return redirect(url_for("admin_page", user=username))
 

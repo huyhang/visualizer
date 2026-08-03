@@ -11,6 +11,7 @@ from .app import create_app
 from .auth_store import AuthStore
 from .config import (
     get_mongo_client,
+    get_rate_limit_storage_uri,
     get_secret_key,
     get_secure_cookies,
     get_versions_keep,
@@ -25,6 +26,7 @@ app = create_app(
     _auth_store,
     secret_key=get_secret_key(),
     secure_cookies=get_secure_cookies(),
+    rate_limit_storage_uri=get_rate_limit_storage_uri(),
 )
 
 

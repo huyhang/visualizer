@@ -174,9 +174,9 @@ def test_non_collaborator_cannot_read(seeded, client, admin_client):
     app = seeded
     app.auth_store = None
     other = app.test_client()
-    other.post("/register", json={"username": "outsider", "password": "pw",
+    other.post("/register", json={"username": "outsider", "password": "correct-horse-battery",
                                   "email": "o@example.com"})
-    assert other.post("/login", json={"username": "outsider", "password": "pw"}).status_code == 200
+    assert other.post("/login", json={"username": "outsider", "password": "correct-horse-battery"}).status_code == 200
     assert other.get(f"/books/{BOOK}").status_code == 403
 
 
@@ -184,8 +184,8 @@ def test_collaborator_can_read_after_invite(seeded, client):
     _make_book(client)
     app = seeded
     other = app.test_client()
-    other.post("/register", json={"username": "finn", "password": "pw", "email": "f@example.com"})
-    other.post("/login", json={"username": "finn", "password": "pw"})
+    other.post("/register", json={"username": "finn", "password": "correct-horse-battery", "email": "f@example.com"})
+    other.post("/login", json={"username": "finn", "password": "correct-horse-battery"})
     assert other.get(f"/books/{BOOK}").status_code == 403
     # owner invites finn as editor
     assert client.put(f"/books/{BOOK}/collaborators/finn",

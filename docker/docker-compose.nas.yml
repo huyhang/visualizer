@@ -31,6 +31,9 @@ services:
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required — set it in docker/.env}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       VERSIONS_KEEP: ${VERSIONS_KEEP:-20}
+      # In-memory auth rate limiting by default; point at a shared backend (e.g.
+      # redis://redis:6379) to hold limits across multiple gunicorn workers.
+      RATELIMIT_STORAGE_URI: ${RATELIMIT_STORAGE_URI:-memory://}
     depends_on:
       mongo:
         condition: service_healthy
@@ -48,6 +51,7 @@ services:
       MONGO_URI: mongodb://mongo:27017
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required — set it in docker/.env}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      RATELIMIT_STORAGE_URI: ${RATELIMIT_STORAGE_URI:-memory://}
     depends_on:
       mongo:
         condition: service_healthy
@@ -68,9 +72,7 @@ services:
     restart: unless-stopped
 
 volumes:
-  # Pinned to its original name so the rename to `akasha` (and the compose
-  # project rename to `visualizer`) does not orphan existing data -- compose
-  # derives volume names from the project name, so without this the stack would
-  # silently come up against an empty database.
-  mongo-data:
-    name: document-server_mongo-data
+  # Project-owned volume: compose names it `visualizer_mongo-data` and manages it
+  # (create on first `up`, auto-used thereafter). Existing data was migrated here
+  # from the pre-rename `document-server_mongo-data` volume.
+  mongo-data: {}

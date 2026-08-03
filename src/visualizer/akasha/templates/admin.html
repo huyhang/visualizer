@@ -6,6 +6,52 @@
   <p>Manage user accounts and fine-grained access control.</p>
 </div>
 
+{% if new_credential %}
+<div class="card" style="border-color: var(--accent);">
+  <div class="card-head">
+    <h2>Temporary password for <em>{{ new_credential.username }}</em></h2>
+    <p>Share this with the user now — it won't be shown again. They'll be required
+       to set their own password the first time they log in.</p>
+  </div>
+  <div class="btn-row">
+    <code id="temp-cred">{{ new_credential.password }}</code>
+    <button type="button" class="secondary sm" onclick="copyTempCred(this)">Copy</button>
+  </div>
+</div>
+<script>
+  function copyTempCred(btn) {
+    var text = document.getElementById('temp-cred').textContent;
+    navigator.clipboard.writeText(text).then(function () {
+      btn.textContent = 'Copied';
+      setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+    });
+  }
+</script>
+{% endif %}
+
+<div class="card">
+  <div class="card-head">
+    <h2>Registration</h2>
+    <p>Control whether people can create their own accounts.</p>
+  </div>
+  <p>
+    Current mode:
+    {% if registration_mode == 'invite' %}
+    <span class="tag off">invite-only</span> — the registration page is disabled;
+    accounts exist only when you create them.
+    {% else %}
+    <span class="tag on">open</span> — anyone can self-register.
+    {% endif %}
+  </p>
+  <form method="post" action="{{ url_for('set_registration_mode') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="mode" value="{{ 'open' if registration_mode == 'invite' else 'invite' }}">
+    <button type="submit" class="secondary">
+      {{ 'Switch to open registration' if registration_mode == 'invite' else 'Switch to invite-only' }}
+    </button>
+  </form>
+</div>
+
 <div class="card">
   <div class="card-head">
     <h2>Users</h2>
@@ -28,6 +74,7 @@
           <td>
             {% if u.active %}<span class="tag on">active</span>
             {% else %}<span class="tag off">disabled</span>{% endif %}
+            {% if u.must_change_password %}<span class="tag admin">password pending</span>{% endif %}
           </td>
           <td>
             <a href="{{ url_for('admin_page', user=u.username) }}">Manage grants →</a>
@@ -70,6 +117,8 @@
   <div class="card-head">
     <h2>Create a user</h2>
     <p>Create an account directly, without waiting for the person to self-register.
+       Leave the password blank to generate a strong temporary one — it's shown
+       once so you can hand it over, and the user must change it on first login.
        New users start with no grants (unless made an admin).</p>
   </div>
   <form method="post" action="{{ url_for('create_user_admin') }}">
@@ -80,12 +129,12 @@
         <input type="text" id="new-username" name="username" required>
       </div>
       <div class="field">
-        <label for="new-email">Email</label>
-        <input type="text" id="new-email" name="email" required>
+        <label for="new-email">Email <span class="muted">(optional)</span></label>
+        <input type="text" id="new-email" name="email">
       </div>
       <div class="field">
-        <label for="new-password">Password</label>
-        <input type="password" id="new-password" name="password" required>
+        <label for="new-password">Password <span class="muted">(blank = generate one)</span></label>
+        <input type="password" id="new-password" name="password">
       </div>
       <div class="field">
         <label for="new-role">Role</label>
@@ -103,7 +152,8 @@
 <div class="card">
   <div class="card-head">
     <h2>Edit <em>{{ selected }}</em></h2>
-    <p>Update the account's email or reset its password.</p>
+    <p>Update the account's email, or reset its password. To reset without
+       inventing one, use <strong>Generate temporary password</strong> below.</p>
   </div>
   <form method="post" action="{{ url_for('edit_user', username=selected) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -113,11 +163,18 @@
         <input type="text" id="edit-email" name="email" value="{{ selected_email or '' }}">
       </div>
       <div class="field">
-        <label for="edit-password">New password <span class="muted">(blank = keep current)</span></label>
+        <label for="edit-password">New password <span class="muted">(blank = leave unchanged)</span></label>
         <input type="password" id="edit-password" name="password">
       </div>
     </div>
     <button type="submit">Save changes</button>
+  </form>
+  <form method="post" action="{{ url_for('reset_password', username=selected) }}"
+        style="margin-top:.9rem">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="secondary">Generate temporary password</button>
+    <span class="muted">Sets a strong random password (shown once) and requires
+      {{ selected }} to change it on next login.</span>
   </form>
 </div>
 
@@ -125,10 +182,11 @@
   <div class="card-head">
     <h2>Access control for <em>{{ selected }}</em></h2>
     {% if selected_is_admin %}
-    <p><span class="tag admin">administrator — full access to every article</span></p>
+    <p><span class="tag admin">administrator</span></p>
     <p class="muted">
-      Admins bypass grants entirely, so the grants below have no effect on this
-      account. They apply only if this user is demoted to a plain user.
+      Administrators manage accounts and access, but — like everyone else — can
+      only read or edit content they've been granted. Add grants below to give
+      this admin access to specific resources.
     </p>
     {% else %}
     <p>Grants are additive. Leave <strong>collection</strong> and/or
@@ -168,8 +226,6 @@
       </tbody>
     </table>
   </div>
-  {% elif selected_is_admin %}
-  <p class="muted">No grants — not needed; admins can access every article.</p>
   {% else %}
   <p class="muted">No grants yet — this user cannot access any articles.</p>
   {% endif %}
