@@ -23,7 +23,7 @@ designed to run comfortably on a home NAS.
 | Service | Port | What it does | Docs |
 | --- | --- | --- | --- |
 | **akasha** | 5002 | A Wikipedia-style article store and editor: characters, items, locations, lore — with linking, versioning and diffs. Has a web UI. | [README](docs/akasha/README.md) · [design](docs/akasha/editor-design.md) |
-| **chronos** | 5003 | A plotline & timeline API for fiction writers: books, events and plotlines, checked for continuity errors. API only, no UI yet. | [README](docs/chronos/README.md) · [plain-language overview](docs/chronos/OVERVIEW.md) · [design](docs/chronos/design.md) |
+| **chronos** | 5003 | A plotline & timeline API for fiction writers: books, events and plotlines, checked for continuity errors. Ships with a read-only plotline visualiser at `/`. | [README](docs/chronos/README.md) · [plain-language overview](docs/chronos/OVERVIEW.md) · [design](docs/chronos/design.md) |
 | **mongo** | *internal* | Shared storage. Deliberately not published to the host. | — |
 
 The two are named for what they hold: **Akasha** (the aether said to record all
@@ -49,7 +49,8 @@ docker compose -f docker/docker-compose.nas.yml up --build -d
 
 - **http://localhost:5002/** — the article editor. **Register the first account;
   it becomes the administrator.**
-- **http://localhost:5003/health** — chronos liveness (it has no UI).
+- **http://localhost:5003/** — the read-only plotline visualiser.
+- **http://localhost:5003/health** — chronos liveness.
 
 Each service's README documents its own configuration, API and deployment
 notes. For a NAS install, see

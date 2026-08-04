@@ -45,6 +45,7 @@ from .session import (
     build_limiter,
     init_login,
     register_auth_routes,
+    register_service_links,
 )
 from .store import (
     REGISTRATION_INVITE,
@@ -93,6 +94,7 @@ __all__ = [
     "owned_resources",
     "perm_for_method",
     "register_auth_routes",
+    "register_service_links",
     "registration_allowed",
     "resources_shared_with",
     "role_for_perms",

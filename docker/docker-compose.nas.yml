@@ -31,6 +31,10 @@ services:
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required — set it in docker/.env}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       VERSIONS_KEEP: ${VERSIONS_KEEP:-20}
+      # Browser-facing URLs for the header's service switcher. Defaults suit
+      # localhost; set both (e.g. https://myworld/akasha) behind a reverse proxy.
+      AKASHA_URL: ${AKASHA_URL:-http://localhost:5002}
+      CHRONOS_URL: ${CHRONOS_URL:-http://localhost:5003}
       # In-memory auth rate limiting by default; point at a shared backend (e.g.
       # redis://redis:6379) to hold limits across multiple gunicorn workers.
       RATELIMIT_STORAGE_URI: ${RATELIMIT_STORAGE_URI:-memory://}
@@ -52,6 +56,9 @@ services:
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required — set it in docker/.env}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       RATELIMIT_STORAGE_URI: ${RATELIMIT_STORAGE_URI:-memory://}
+      # Browser-facing URLs for the header's service switcher (see akasha above).
+      AKASHA_URL: ${AKASHA_URL:-http://localhost:5002}
+      CHRONOS_URL: ${CHRONOS_URL:-http://localhost:5003}
     depends_on:
       mongo:
         condition: service_healthy

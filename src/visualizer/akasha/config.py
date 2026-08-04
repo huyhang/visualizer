@@ -13,6 +13,11 @@ DEFAULT_VERSIONS_KEEP = 20
 # In-memory rate-limit storage suits a single process; point this at Redis
 # (e.g. "redis://redis:6379") to share limits across multiple gunicorn workers.
 DEFAULT_RATELIMIT_STORAGE_URI = "memory://"
+# Browser-facing base URLs for the two services, used by the header's service
+# switcher. Defaults match the compose port mapping on the local host; override
+# both when serving behind a reverse proxy (e.g. https://myworld/akasha).
+DEFAULT_AKASHA_URL = "http://localhost:5002"
+DEFAULT_CHRONOS_URL = "http://localhost:5003"
 
 
 def get_mongo_uri() -> str:
@@ -63,6 +68,16 @@ def get_rate_limit_storage_uri() -> str:
     (e.g. Redis) so limits hold across gunicorn workers.
     """
     return os.environ.get("RATELIMIT_STORAGE_URI", DEFAULT_RATELIMIT_STORAGE_URI)
+
+
+def get_akasha_url() -> str:
+    """Browser-facing base URL of the akasha service (for the service switcher)."""
+    return os.environ.get("AKASHA_URL", DEFAULT_AKASHA_URL)
+
+
+def get_chronos_url() -> str:
+    """Browser-facing base URL of the chronos service (for the service switcher)."""
+    return os.environ.get("CHRONOS_URL", DEFAULT_CHRONOS_URL)
 
 
 def get_secure_cookies() -> bool:

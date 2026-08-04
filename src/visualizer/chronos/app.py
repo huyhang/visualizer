@@ -8,17 +8,22 @@ login -- design decision in §12); Chronos authorizes at **book scope** using th
 same allow-only, most-specific-wins ``is_allowed`` logic.
 """
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, render_template, request
 from flask_login import current_user, login_required
 from flask_wtf.csrf import CSRFProtect
 
-from visualizer.auth import build_limiter, init_login, register_auth_routes
+from visualizer.auth import (
+    build_limiter,
+    init_login,
+    register_auth_routes,
+    register_service_links,
+)
 from visualizer.auth.authz import ALL_PERMS, is_allowed, perm_for_method
 from visualizer.auth.errors import AuthError
 
 from .entity_gate import EntityGate
 from .errors import ChronosError, Forbidden, InvalidRevision
-from .services import BookService, EventService, PlotlineService
+from .services import BookService, EventService, PlotlineService, VisualizerService
 from .store import StoryStore
 
 _BOOK = "/books/<book>"
@@ -44,6 +49,8 @@ def create_app(
     secret_key: str,
     secure_cookies: bool = False,
     rate_limit_storage_uri: str = "memory://",
+    akasha_url: str = "http://localhost:5002",
+    chronos_url: str = "http://localhost:5003",
 ) -> Flask:
     if not secret_key:
         raise ValueError("create_app requires a non-empty secret_key.")
@@ -57,15 +64,17 @@ def create_app(
     csrf = CSRFProtect(app)
     limiter = build_limiter(app, rate_limit_storage_uri)
     init_login(app, auth_store)
-    # API-only service: no HTML home to land on after a browser login, so the
-    # shared auth routes fall back to "/" for their (never-exercised) redirects.
-    register_auth_routes(app, auth_store, csrf, limiter, home_endpoint=None)
+    # The read-only visualiser (below) is the HTML home a browser login lands on.
+    register_auth_routes(app, auth_store, csrf, limiter, home_endpoint="index")
+    register_service_links(app, akasha_url, chronos_url, current="chronos")
 
     books = BookService(story_store, entity_gate)
     plotlines = PlotlineService(story_store, entity_gate)
     events = EventService(story_store, entity_gate)
+    visualizer = VisualizerService(story_store, entity_gate)
 
     _register_routes(app, csrf, auth_store, books, plotlines, events)
+    _register_ui_routes(app, csrf, auth_store, visualizer)
     _register_error_handler(app)
     return app
 
@@ -342,6 +351,73 @@ def _replace_book_grants(auth_store, username: str, book: str) -> None:
             and grant.get("doc_id") is None
         ):
             auth_store.delete_grant(grant["id"])
+
+
+# -- read-only visualiser UI -------------------------------------------------
+
+
+def _register_ui_routes(app, csrf, auth_store, visualizer):
+    """The single-page plotline visualiser: an HTML shell plus two read seams.
+
+    The SPA (served at ``/``) reads plotlines/events through the existing JSON
+    API and adds two book-scoped helpers the API lacks: a paginated, filtered,
+    name-ordered plotline listing, and a proxy that reads a referenced Akasha
+    article so the browser stays same-origin.
+    """
+
+    @app.get("/")
+    @login_required
+    def index():
+        return render_template("visualizer.html")
+
+    @app.get(_BOOK + "/ui/plotlines")
+    @csrf.exempt
+    @login_required
+    def ui_list_plotlines(book):
+        _authorize(auth_store, "GET", book)
+        return jsonify(
+            visualizer.browse_plotlines(
+                book,
+                query=request.args.get("filter", ""),
+                page=_positive_int(request.args.get("page"), 1),
+                per_page=_positive_int(request.args.get("per_page"), None),
+            )
+        )
+
+    @app.get(_BOOK + "/ui/entity/<database>/<collection>/<entity_id>")
+    @csrf.exempt
+    @login_required
+    def ui_fetch_entity(book, database, collection, entity_id):
+        # Two gates. You must be able to read the *book* (checked first, so an
+        # unreadable book never leaks whether the article exists)...
+        _authorize(auth_store, "GET", book)
+        # ...and hold Akasha read permission on the *article itself*, so the
+        # proxy never exposes something Akasha would refuse you directly.
+        _authorize_entity_read(auth_store, database, collection, entity_id)
+        return jsonify(visualizer.fetch_entity(database, collection, entity_id))
+
+
+def _authorize_entity_read(auth_store, database: str, collection: str, entity_id: str) -> None:
+    """Require Akasha ``read`` on the referenced article, mirroring Akasha's own
+    document authorization: the default ``database`` grant hierarchy, everyone
+    (admins included) subject to their grants. See visualizer.auth.authz."""
+    grants = auth_store.grants_for(current_user.username)
+    if not is_allowed(grants, "read", database, collection, entity_id):
+        raise Forbidden(
+            f"You do not have 'read' permission on '{database}/{collection}/{entity_id}'."
+        )
+
+
+def _positive_int(raw, default):
+    """Parse a positive int query arg, falling back to ``default`` when absent
+    or malformed (the browser helpers clamp the value further)."""
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return value if value >= 1 else default
 
 
 def _register_error_handler(app):

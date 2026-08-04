@@ -15,9 +15,14 @@ Chronos references them and refuses to invent them.
   full design and the decisions behind it.
 - **Want the contract?** See [openapi.json](../openapi.json).
 
-> **API only.** There is no web UI for books, plotlines or events yet. The
-> entities Chronos references *are* browsable in the Akasha editor; the
-> story graph is not. A `/graph` viewer is planned (design §12).
+> **Mostly an API.** Books and events are created and edited over the JSON API
+> below. There is now a **read-only visualiser** served at `/`: pick a book,
+> browse its plotlines (name-ordered, word-filtered, paginated), and open one to
+> see its events as cards on a vertical timeline — with the Akasha articles they
+> reference shown inline. Those referenced articles are fetched through Chronos
+> (so the browser stays same-origin) and are subject to **both** book-read and
+> the article's own Akasha read grant. It never writes. A full `/graph` viewer is
+> still planned (design §12).
 
 ---
 

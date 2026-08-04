@@ -38,6 +38,10 @@
     {
       "name": "service",
       "description": "Operational endpoints"
+    },
+    {
+      "name": "visualizer",
+      "description": "The read-only plotline visualiser (web UI and its read helpers)"
     }
   ],
   "security": [
@@ -729,6 +733,147 @@
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "tags": [
+          "visualizer"
+        ],
+        "summary": "The plotline visualiser (single-page web app)",
+        "description": "Serves the read-only web UI. Requires a session; a browser is redirected to `/login` when unauthenticated.",
+        "responses": {
+          "200": {
+            "description": "The visualiser HTML shell.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/books/{book}/ui/plotlines": {
+      "get": {
+        "tags": [
+          "visualizer"
+        ],
+        "summary": "List a book's plotlines (filtered, ordered, paginated)",
+        "description": "A read helper for the visualiser table. Returns the book's plotlines ordered by name, narrowed to those whose name, goals, or event titles contain all the words in `filter`, one page at a time.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/BookId"
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Space-separated words; a plotline matches only if it contains all of them."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "1-indexed page number (clamped into range)."
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "Page size (defaults to 20, capped at 100)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of plotlines.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlotlinePage"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/books/{book}/ui/entity/{database}/{collection}/{entity_id}": {
+      "get": {
+        "tags": [
+          "visualizer"
+        ],
+        "summary": "Read a referenced Akasha article (same-origin proxy)",
+        "description": "A read helper for the visualiser's entity cards: fetches one Akasha article an event references, so the browser never has to talk to Akasha cross-origin. Two checks: you must be able to read the book, and you must hold Akasha `read` permission on the article itself (`403` otherwise). A dangling reference (article since deleted) reports `ENTITY_NOT_FOUND`.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/BookId"
+          },
+          {
+            "name": "database",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Akasha database of the referenced article."
+          },
+          {
+            "name": "collection",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Akasha collection of the referenced article."
+          },
+          {
+            "name": "entity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Article id (slug)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The referenced article.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Article"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           },
           "422": {
             "$ref": "#/components/responses/Unprocessable"
@@ -2394,6 +2539,114 @@
           "earliest_label": "Year 1, Month 1, Day 2, 00:00 AF",
           "latest_label": "Year 1, Month 1, Day 5, 00:00 AF",
           "impossible": false
+        }
+      },
+      "Article": {
+        "type": "object",
+        "description": "A referenced Akasha article, read back through Chronos for display. `document` is the article's flat body (`title`, `body`, plus arbitrary infobox facts).",
+        "required": [
+          "id",
+          "document",
+          "rev"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "document": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "rev": {
+            "type": "integer"
+          }
+        },
+        "example": {
+          "id": "aldric",
+          "document": {
+            "title": "Sir Aldric",
+            "race": "Human"
+          },
+          "rev": 7
+        }
+      },
+      "PlotlineRow": {
+        "type": "object",
+        "description": "One plotline as shown in the visualiser's table.",
+        "required": [
+          "id",
+          "book",
+          "name",
+          "goals"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "book": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name (title, or id when untitled)."
+          },
+          "goals": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "PlotlinePage": {
+        "type": "object",
+        "description": "One page of a book's plotlines, filtered by word and ordered by name.",
+        "required": [
+          "plotlines",
+          "page",
+          "per_page",
+          "total",
+          "pages"
+        ],
+        "properties": {
+          "plotlines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlotlineRow"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "description": "1-indexed current page (clamped into range)."
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Total plotlines matching the filter."
+          },
+          "pages": {
+            "type": "integer",
+            "description": "Total pages at this page size (>= 1)."
+          }
+        },
+        "example": {
+          "plotlines": [
+            {
+              "id": "knights-road",
+              "book": "ember-pact",
+              "name": "The Knight's Road",
+              "goals": [
+                "Deliver the Ember Seal",
+                "Reach the coronation alive"
+              ]
+            }
+          ],
+          "page": 1,
+          "per_page": 20,
+          "total": 1,
+          "pages": 1
         }
       }
     }

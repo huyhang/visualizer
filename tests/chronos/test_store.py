@@ -6,6 +6,7 @@ from tests.chronos.conftest import ref
 from visualizer.chronos.errors import (
     AlreadyExists,
     BookNotFound,
+    EntityNotFound,
     EventNotFound,
     RevisionConflict,
 )
@@ -125,3 +126,28 @@ def test_fake_gate(fake_gate):
     fake_gate.add(ref("aldric"))
     assert fake_gate.exists(ref("aldric"))
     assert fake_gate.missing([ref("aldric"), ref("lyra")]) == [ref("lyra")]
+
+
+def test_inprocess_gate_fetch_returns_article(doc_store, inprocess_gate):
+    doc_store.create_collection("ember-pact", "characters")
+    doc_store.create("ember-pact", "characters", "aldric", {"title": "Sir Aldric"})
+    article = inprocess_gate.fetch(ref("aldric"))
+    assert article["document"]["title"] == "Sir Aldric"
+    assert article["rev"] == 1
+
+
+def test_inprocess_gate_fetch_missing_raises_entity_not_found(doc_store, inprocess_gate):
+    with pytest.raises(EntityNotFound):
+        inprocess_gate.fetch(ref("ghost"))
+
+
+def test_fake_gate_fetch(fake_gate):
+    fake_gate.add(ref("aldric"), {"title": "Sir Aldric", "race": "Human"})
+    article = fake_gate.fetch(ref("aldric"))
+    assert article == {
+        "id": "aldric",
+        "document": {"title": "Sir Aldric", "race": "Human"},
+        "rev": 1,
+    }
+    with pytest.raises(EntityNotFound):
+        fake_gate.fetch(ref("lyra"))

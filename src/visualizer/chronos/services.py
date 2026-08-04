@@ -10,6 +10,7 @@ are enforced hard here.
 from __future__ import annotations
 
 from .book_rules import graph_view, neighborhood
+from .browsing import DEFAULT_PER_PAGE, browse_plotlines
 from .calendar import codec_for
 from .continuation import effective_paths, resolve, would_cycle
 from .entity_gate import EntityGate
@@ -21,7 +22,7 @@ from .errors import (
     PlotlineInUse,
     TerminusInUse,
 )
-from .models import Book, Event, Plotline
+from .models import Book, EntityRef, Event, Plotline
 from .presenters import (
     present_book,
     present_event,
@@ -324,3 +325,42 @@ class PlotlineService(_Service):
         for dependent in dependents:
             self.inline(book_id, dependent.id, author=author)
         self.store.delete_plotline(book_id, plotline_id, expected_rev, author)
+
+
+class VisualizerService(_Service):
+    """Read-only orchestration behind the plotline visualiser UI.
+
+    Two use-cases the SPA needs and the JSON API does not already offer: a
+    name-ordered, word-filtered, paginated table of a book's plotlines, and a
+    same-origin proxy for the Akasha articles those plotlines reference (so the
+    browser never talks cross-service). All the interesting logic is the pure
+    ``browsing`` module and the ``EntityGate`` seam; this just loads and hands off.
+    """
+
+    def browse_plotlines(
+        self, book_id, query: str = "", page: int = 1, per_page: int = DEFAULT_PER_PAGE
+    ) -> dict:
+        self._require_book(book_id)  # 404 for an unknown book
+        events_by_id = self._events_by_id(book_id)
+        plotlines = self._plotlines(book_id)
+        # Filter on the *resolved* path so a word from a shared/continued scene
+        # still surfaces the thread -- the same path the plotline view shows.
+        paths = effective_paths(plotlines)
+        rows = [self._row(pl, paths, events_by_id, book_id) for pl in plotlines]
+        return browse_plotlines(rows, query=query, page=page, per_page=per_page)
+
+    @staticmethod
+    def _row(pl: Plotline, paths, events_by_id, book_id) -> dict:
+        path = paths.get(pl.id, list(pl.events))
+        titles = [events_by_id[eid].display_title for eid in path if eid in events_by_id]
+        return {
+            "id": pl.id,
+            "book": book_id,
+            "name": pl.display_title,
+            "goals": list(pl.goals),
+            "event_titles": titles,
+        }
+
+    def fetch_entity(self, database: str, collection: str, entity_id: str) -> dict:
+        """Return one referenced Akasha article for display, or raise 404."""
+        return self.entities.fetch(EntityRef(database, collection, entity_id))

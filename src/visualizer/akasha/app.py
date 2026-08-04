@@ -42,6 +42,7 @@ from visualizer.auth import (
     owned_resources,
     perm_for_method,
     register_auth_routes,
+    register_service_links,
     resources_shared_with,
     role_for_perms,
     validate_email,
@@ -77,6 +78,8 @@ def create_app(
     secret_key: str,
     secure_cookies: bool = False,
     rate_limit_storage_uri: str = "memory://",
+    akasha_url: str = "http://localhost:5002",
+    chronos_url: str = "http://localhost:5003",
 ) -> Flask:
     app = Flask(__name__)
     # A secret key is required to sign session cookies. It must be supplied
@@ -96,6 +99,7 @@ def create_app(
     limiter = build_limiter(app, rate_limit_storage_uri)
     init_login(app, auth_store)
     register_auth_routes(app, auth_store, csrf, limiter)
+    register_service_links(app, akasha_url, chronos_url, current="akasha")
 
     _register_routes(app, store, auth_store, csrf)
     _register_browse_routes(app, store, auth_store, csrf)

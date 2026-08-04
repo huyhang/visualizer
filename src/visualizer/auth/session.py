@@ -94,6 +94,27 @@ def build_limiter(app, storage_uri: str = "memory://") -> Limiter:
     )
 
 
+def register_service_links(app, akasha_url: str, chronos_url: str, current: str) -> None:
+    """Expose cross-service nav links to every template (the header switcher).
+
+    Both services share one login (one cookie across ports/origins), so these are
+    plain links between the two apps. The URLs are injected here rather than
+    hard-coded in templates, so a reverse-proxy deployment can point them wherever
+    it serves each service. ``current`` (``"akasha"``/``"chronos"``) lets a header
+    highlight the active service.
+    """
+    links = {
+        "akasha": akasha_url,
+        "chronos": chronos_url,
+        "admin": akasha_url.rstrip("/") + "/admin",
+        "current": current,
+    }
+
+    @app.context_processor
+    def _inject_service_links():
+        return {"service_links": links}
+
+
 def _wants_json() -> bool:
     """Whether to answer with JSON (API client) rather than HTML (browser)."""
     if request.path.startswith("/databases"):

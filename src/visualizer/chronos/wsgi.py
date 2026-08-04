@@ -6,6 +6,8 @@ env/IO lives in ``akasha.config``, injected here.
 """
 
 from visualizer.akasha.config import (
+    get_akasha_url,
+    get_chronos_url,
     get_mongo_client,
     get_rate_limit_storage_uri,
     get_secret_key,
@@ -26,4 +28,6 @@ app = create_app(
     secret_key=get_secret_key(),
     secure_cookies=get_secure_cookies(),
     rate_limit_storage_uri=get_rate_limit_storage_uri(),
+    akasha_url=get_akasha_url(),
+    chronos_url=get_chronos_url(),
 )

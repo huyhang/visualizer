@@ -42,6 +42,12 @@ button { font-family: inherit; cursor: pointer; }
   background: linear-gradient(135deg, var(--accent), var(--accent-strong));
 }
 .header-actions { margin-left: auto; display: flex; align-items: center; gap: .5rem; }
+.service-switch { display: inline-flex; align-items: center; gap: .2rem; margin-left: .4rem; }
+.service-switch a {
+  color: var(--muted); font-weight: 600; font-size: .85rem; padding: .3rem .6rem; border-radius: 8px;
+}
+.service-switch a:hover { background: var(--surface-2); text-decoration: none; }
+.service-switch a.active { background: var(--accent-soft); color: var(--accent-strong); }
 .header-link { color: var(--muted); font-weight: 600; font-size: .9rem; padding: .3rem .5rem; border-radius: 8px; }
 .header-link:hover { background: var(--surface-2); text-decoration: none; }
 .userchip { display: inline-flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .85rem; }
