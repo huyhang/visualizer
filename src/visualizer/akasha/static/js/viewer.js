@@ -40,6 +40,7 @@ function _toolbar({ db, col, id, rev }, handlers) {
     el("span", { class: "spacer" }),
     el("button", { class: "btn sm", text: "Edit", onclick: () => handlers.onEdit() }),
     el("button", { class: "btn sm secondary", text: "History", onclick: () => handlers.onHistory() }),
+    el("button", { class: "btn sm secondary", text: "Share", onclick: () => handlers.onShare() }),
     el("button", { class: "btn sm danger", text: "Delete", onclick: () => handlers.onDelete(rev) }),
   ]);
 }

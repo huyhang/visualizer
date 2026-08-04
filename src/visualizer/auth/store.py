@@ -28,6 +28,7 @@ AUTH_DB = "_auth"
 _USERS = "users"
 _GRANTS = "grants"
 _SETTINGS = "settings"
+_CONTACTS = "contacts"
 
 # Grants are namespaced by the kind of resource they scope, so services sharing
 # this store never match one another's resources (a chronos book named "x" must
@@ -80,6 +81,10 @@ class AuthStore:
     @property
     def _settings(self):
         return self._client[AUTH_DB][_SETTINGS]
+
+    @property
+    def _contacts(self):
+        return self._client[AUTH_DB][_CONTACTS]
 
     # -- settings ------------------------------------------------------------
 
@@ -185,11 +190,14 @@ class AuthStore:
             raise UserNotFound(f"User '{username}' does not exist.")
 
     def delete_user(self, username: str) -> None:
-        """Delete an account and every grant belonging to it."""
+        """Delete an account and every trace of it: its grants, its own
+        collaborator roster, and any reference to it in *other* users' rosters."""
         result = self._users.delete_one({"_id": username})
         if result.deleted_count == 0:
             raise UserNotFound(f"User '{username}' does not exist.")
         self._grants.delete_many({"username": username})
+        self._contacts.delete_one({"_id": username})
+        self._contacts.update_many({}, {"$pull": {"contacts": username}})
 
     def count_users(self) -> int:
         return self._users.count_documents({})
@@ -202,6 +210,29 @@ class AuthStore:
     def grants_for(self, username: str) -> list[dict]:
         """Return every grant held by ``username`` in the public shape."""
         return [self._public_grant(g) for g in self._grants.find({"username": username})]
+
+    def grants_on(
+        self,
+        database: str | None,
+        collection: str | None,
+        doc_id: str | None,
+        resource_type: str = DATABASE_RESOURCE,
+    ) -> list[dict]:
+        """Return every grant scoped to *exactly* this resource (any user).
+
+        Matches the scope fields verbatim -- ``None`` means the wildcard scope,
+        not "any value" -- so it answers "who has been granted access to this
+        specific collection/document?" for the sharing UI. ``resource_type`` is
+        namespaced like everywhere else, so akasha and chronos grants that share
+        a name never bleed together.
+        """
+        query = {
+            "resource_type": _type_query(resource_type),
+            "database": database,
+            "collection": collection,
+            "doc_id": doc_id,
+        }
+        return [self._public_grant(g) for g in self._grants.find(query)]
 
     def add_grant(
         self,
@@ -271,6 +302,38 @@ class AuthStore:
         except (InvalidId, TypeError):
             return
         self._grants.delete_one({"_id": oid})
+
+    # -- collaborator roster (per-user "address book") -----------------------
+
+    def list_contacts(self, owner: str) -> list[str]:
+        """Return ``owner``'s saved collaborators, sorted.
+
+        Filtered to accounts that still exist, so a roster never offers a user
+        who has since been deleted (a belt-and-braces guard alongside the
+        cleanup in ``delete_user``).
+        """
+        record = self._contacts.find_one({"_id": owner})
+        names = (record or {}).get("contacts", [])
+        if not names:
+            return []
+        existing = {u["_id"] for u in self._users.find({"_id": {"$in": names}}, {"_id": 1})}
+        return sorted(n for n in names if n in existing)
+
+    def add_contact(self, owner: str, username: str) -> None:
+        """Add ``username`` to ``owner``'s roster (idempotent).
+
+        Raises ``UserNotFound`` if the target account does not exist. The
+        "not yourself" policy is enforced by the caller.
+        """
+        if self.get_user(username) is None:
+            raise UserNotFound(f"User '{username}' does not exist.")
+        self._contacts.update_one(
+            {"_id": owner}, {"$addToSet": {"contacts": username}}, upsert=True
+        )
+
+    def remove_contact(self, owner: str, username: str) -> None:
+        """Remove ``username`` from ``owner``'s roster (a no-op if absent)."""
+        self._contacts.update_one({"_id": owner}, {"$pull": {"contacts": username}})
 
     # -- serialisation -------------------------------------------------------
 

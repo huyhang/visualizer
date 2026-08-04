@@ -14,7 +14,7 @@ from conftest import (
 )
 
 from visualizer.akasha.app import create_app
-from visualizer.akasha.auth_store import AuthStore
+from visualizer.auth import AuthStore
 from visualizer.akasha.config import get_secret_key, get_secure_cookies
 from visualizer.akasha.store import DocumentStore
 

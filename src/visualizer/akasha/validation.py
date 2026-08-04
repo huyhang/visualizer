@@ -4,14 +4,9 @@ These functions have no dependency on Flask or MongoDB so they can be unit
 tested in isolation.
 """
 
-import re
 from typing import Any
 
-from .errors import InvalidDocument, InvalidEmail, InvalidSearch
-
-# Deliberately permissive: one "@", a non-empty local part, and a dotted domain.
-_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-
+from .errors import InvalidDocument, InvalidSearch
 
 # A document value must be a scalar or a flat array of scalars. ``bool`` is a
 # subclass of ``int`` and is intentionally allowed as a scalar.
@@ -45,16 +40,6 @@ def validate_document(payload: Any) -> dict:
                 "nested objects and nested arrays are not allowed."
             )
     return payload
-
-
-def validate_email(email: Any) -> str:
-    """Return a normalised (trimmed, lower-cased) email or raise ``InvalidEmail``."""
-    if not isinstance(email, str) or not email.strip():
-        raise InvalidEmail("An email address is required.")
-    normalised = email.strip().lower()
-    if not _EMAIL_RE.match(normalised):
-        raise InvalidEmail("Enter a valid email address.")
-    return normalised
 
 
 def validate_search_terms(key: str | None, text: str | None) -> tuple[str | None, str | None]:

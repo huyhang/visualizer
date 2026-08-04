@@ -12,7 +12,7 @@ import mongomock
 import pytest
 from werkzeug.security import generate_password_hash
 
-from visualizer.akasha.auth_store import AuthStore
+from visualizer.auth import AuthStore
 from visualizer.akasha.store import DocumentStore
 from visualizer.chronos.app import create_app
 from visualizer.chronos.entity_gate import FakeEntityGate, InProcessEntityGate

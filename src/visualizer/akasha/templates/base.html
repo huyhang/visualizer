@@ -4,8 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Akasha{% endblock %}</title>
+  <link rel="icon" href="{{ url_for('static', filename='akasha-icon.svg') }}">
+  <script>
+    // Set the theme before first paint (shared key with the editor), falling
+    // back to the OS preference when the user hasn't chosen one.
+    (function () {
+      try {
+        var saved = localStorage.getItem("akasha-theme") || localStorage.getItem("kb-theme");
+        var dark = saved ? saved === "dark"
+          : window.matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+      } catch (e) { document.documentElement.setAttribute("data-theme", "light"); }
+    })();
+  </script>
   <style>
-    :root {
+    :root, [data-theme="light"] {
       --bg: #f5f6fb; --surface: #ffffff; --surface-2: #f9fafc;
       --border: #e7e9f1; --text: #1f2430; --muted: #6b7280;
       --accent: #6366f1; --accent-strong: #4f46e5; --accent-soft: #eef1ff;
@@ -14,15 +27,13 @@
       --shadow: 0 1px 2px rgba(16,24,40,.04), 0 6px 20px rgba(16,24,40,.06);
       --radius: 14px;
     }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #0e1016; --surface: #171a22; --surface-2: #1d212b;
-        --border: #282d3a; --text: #e6e8ee; --muted: #98a1b2;
-        --accent: #818cf8; --accent-strong: #a5b4fc; --accent-soft: #1c2140;
-        --danger: #f87171; --danger-soft: #3a1f24; --ok: #4ade80; --ok-soft: #16311f;
-        --warn: #fbbf24; --warn-soft: #37300f;
-        --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 28px rgba(0,0,0,.4);
-      }
+    [data-theme="dark"] {
+      --bg: #0e1016; --surface: #171a22; --surface-2: #1d212b;
+      --border: #282d3a; --text: #e6e8ee; --muted: #98a1b2;
+      --accent: #818cf8; --accent-strong: #a5b4fc; --accent-soft: #1c2140;
+      --danger: #f87171; --danger-soft: #3a1f24; --ok: #4ade80; --ok-soft: #16311f;
+      --warn: #fbbf24; --warn-soft: #37300f;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 28px rgba(0,0,0,.4);
     }
     * { box-sizing: border-box; }
     html { -webkit-text-size-adjust: 100%; }
@@ -80,9 +91,10 @@
 
     /* forms */
     label { display: block; font-size: .82rem; font-weight: 600; color: var(--muted); margin: 0 0 .35rem; }
-    input[type=text], input[type=password], select {
+    input[type=text], input[type=password], input[type=search], input[type=email], select {
       width: 100%; padding: .55rem .7rem; background: var(--surface-2); color: var(--text);
       border: 1px solid var(--border); border-radius: 9px; font-size: .95rem; font-family: inherit;
+      -webkit-appearance: none; appearance: none;
       transition: border-color .15s, box-shadow .15s, background .15s;
     }
     input:focus, select:focus {
@@ -168,14 +180,17 @@
 <body>
   {% if current_user.is_authenticated %}
   <header>
-    <span class="brand"><span class="mark">AK</span> Akasha</span>
+    <span class="brand"><span class="mark"><img src="{{ url_for('static', filename='akasha-glyph.svg') }}" alt="" width="26" height="26"></span> Akasha</span>
     <nav>
-      <a href="{{ url_for('index') }}">Home</a>
+      <a href="{{ url_for('index') }}">Akasha</a>
+      <a href="{{ url_for('account_page') }}">Account</a>
       {% if current_user.is_admin %}<a href="{{ url_for('admin_page') }}">Admin</a>{% endif %}
+      <button class="link" type="button" id="theme-toggle" title="Toggle light/dark"
+              aria-label="Toggle light/dark" onclick="toggleTheme()">◐</button>
       <span class="userchip">
         <span class="avatar">{{ current_user.username[0] | upper }}</span>{{ current_user.username }}
       </span>
-      <form class="inline" method="post" action="{{ url_for('logout') }}">
+      <form class="inline" method="post" action="{{ url_for('auth.logout') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="link" type="submit">Log out</button>
       </form>
@@ -190,5 +205,13 @@
     {% endwith %}
     {% block content %}{% endblock %}
   </main>
+  <script>
+    // Flip and persist the theme (shared key with the editor's toggle).
+    function toggleTheme() {
+      var next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", next);
+      try { localStorage.setItem("akasha-theme", next); } catch (e) { /* private mode */ }
+    }
+  </script>
 </body>
 </html>

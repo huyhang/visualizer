@@ -12,9 +12,9 @@ from flask import Flask, jsonify, request
 from flask_login import current_user, login_required
 from flask_wtf.csrf import CSRFProtect
 
-from visualizer.akasha.auth import build_limiter, init_login, register_auth_routes
-from visualizer.akasha.authz import ALL_PERMS, is_allowed, perm_for_method
-from visualizer.akasha.errors import AkashaError
+from visualizer.auth import build_limiter, init_login, register_auth_routes
+from visualizer.auth.authz import ALL_PERMS, is_allowed, perm_for_method
+from visualizer.auth.errors import AuthError
 
 from .entity_gate import EntityGate
 from .errors import ChronosError, Forbidden, InvalidRevision
@@ -27,7 +27,7 @@ _EVENT = "/books/<book>/events/<event>"
 
 # Chronos grants are namespaced by this resource kind in the shared `_auth`
 # store, so a book named "x" never confers access to a akasha database
-# named "x" (and vice versa). See akasha.authz.
+# named "x" (and vice versa). See visualizer.auth.authz.
 BOOK_RESOURCE = "book"
 
 _ROLE_PERMS = {
@@ -57,7 +57,9 @@ def create_app(
     csrf = CSRFProtect(app)
     limiter = build_limiter(app, rate_limit_storage_uri)
     init_login(app, auth_store)
-    register_auth_routes(app, auth_store, csrf, limiter)
+    # API-only service: no HTML home to land on after a browser login, so the
+    # shared auth routes fall back to "/" for their (never-exercised) redirects.
+    register_auth_routes(app, auth_store, csrf, limiter, home_endpoint=None)
 
     books = BookService(story_store, entity_gate)
     plotlines = PlotlineService(story_store, entity_gate)
@@ -347,8 +349,8 @@ def _register_error_handler(app):
     def handle(err: ChronosError):
         return jsonify(err.to_dict()), err.status_code
 
-    @app.errorhandler(AkashaError)
-    def handle_auth(err: AkashaError):
-        # The shared auth routes (login/register/change-password) raise akasha
+    @app.errorhandler(AuthError)
+    def handle_auth(err: AuthError):
+        # The shared auth routes (login/register/change-password) raise auth
         # domain errors; serialise them consistently on this service too.
         return jsonify({"error": err.message}), err.status_code

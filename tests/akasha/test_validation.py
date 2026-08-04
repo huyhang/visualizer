@@ -2,16 +2,9 @@
 
 import pytest
 
-from visualizer.akasha.errors import (
-    InvalidDocument,
-    InvalidEmail,
-    InvalidSearch,
-)
-from visualizer.akasha.validation import (
-    validate_document,
-    validate_email,
-    validate_search_terms,
-)
+from visualizer.akasha.errors import InvalidDocument, InvalidSearch
+from visualizer.akasha.validation import validate_document, validate_search_terms
+from visualizer.auth import InvalidEmail, validate_email
 
 
 @pytest.mark.parametrize(

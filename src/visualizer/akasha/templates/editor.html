@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Akasha</title>
+  <link rel="icon" href="{{ url_for('static', filename='akasha-icon.svg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='editor.css') }}">
   <script>
     // Set the theme before first paint to avoid a flash of the wrong theme.
@@ -25,14 +26,15 @@
 <body>
   <header class="app-header">
     <button class="icon-btn menu-toggle" id="menu-toggle" aria-label="Toggle browser">☰</button>
-    <span class="brand"><span class="mark">AK</span><span class="brand-name">Akasha</span></span>
+    <span class="brand"><span class="mark"><img src="{{ url_for('static', filename='akasha-glyph.svg') }}" alt="" width="26" height="26"></span><span class="brand-name">Akasha</span></span>
     <div class="header-actions">
       <button class="icon-btn font-btn" id="font-toggle" aria-label="Text size" title="Text size">A</button>
       <button class="icon-btn" id="theme-toggle" aria-label="Toggle theme" title="Toggle light/dark">◐</button>
+      <a class="header-link" href="{{ url_for('account_page') }}">Account</a>
       {% if current_user.is_admin %}<a class="header-link" href="{{ url_for('admin_page') }}">Admin</a>{% endif %}
       <span class="userchip"><span class="avatar">{{ current_user.username[0] | upper }}</span>
         <span class="username">{{ current_user.username }}</span></span>
-      <form class="inline-form" method="post" action="{{ url_for('logout') }}">
+      <form class="inline-form" method="post" action="{{ url_for('auth.logout') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="link-btn" type="submit">Log out</button>
       </form>
@@ -51,7 +53,7 @@
 
     <main class="content" id="content">
       <div class="empty-state" id="empty-state">
-        <div class="empty-mark">AK</div>
+        <div class="empty-mark"><img src="{{ url_for('static', filename='akasha-glyph.svg') }}" alt="" width="54" height="54"></div>
         <p>Select an article from the browser, or create a new one.</p>
       </div>
       <article class="pane" id="pane" hidden></article>

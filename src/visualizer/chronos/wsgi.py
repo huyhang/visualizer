@@ -5,7 +5,6 @@ Wires the real seams together, all sharing one MongoClient with akasha
 env/IO lives in ``akasha.config``, injected here.
 """
 
-from visualizer.akasha.auth_store import AuthStore
 from visualizer.akasha.config import (
     get_mongo_client,
     get_rate_limit_storage_uri,
@@ -13,6 +12,7 @@ from visualizer.akasha.config import (
     get_secure_cookies,
 )
 from visualizer.akasha.store import DocumentStore
+from visualizer.auth import AuthStore
 
 from .app import create_app
 from .entity_gate import InProcessEntityGate

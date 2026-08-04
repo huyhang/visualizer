@@ -1,0 +1,351 @@
+{% extends "base.html" %}
+{% block title %}Your account — Akasha{% endblock %}
+{% block content %}
+{% macro share_item(res, contacts, roles) %}
+<li class="share-item" data-collab-url="{{ res.collab_url }}"
+    data-name="{{ ((res.doc_id ~ ' ' if res.doc_id else '') ~ res.collection ~ ' ' ~ res.database) | lower }}">
+  <button type="button" class="share-toggle" aria-expanded="false" onclick="toggle(this)">
+    <span class="chev">&#9654;</span>
+    <span class="share-name"><code>{{ res.doc_id or res.collection }}</code></span>
+    {% if res.doc_id %}
+    <span class="muted">{{ res.database }} / {{ res.collection }}</span>
+    {% else %}
+    <span class="muted">{{ res.database }}</span>
+    {% endif %}
+    <span class="share-count" hidden></span>
+  </button>
+  <div class="share-body" hidden>
+    <div class="share-people muted">Loading…</div>
+    {% if contacts %}
+    <div class="share-add">
+      <select class="share-user">
+        <option value="" selected disabled>Choose a collaborator…</option>
+        {% for name in contacts %}<option value="{{ name }}">{{ name }}</option>{% endfor %}
+      </select>
+      <select class="share-role">
+        {% for r in roles %}<option value="{{ r }}" {{ 'selected' if r == 'editor' }}>{{ r }}</option>{% endfor %}
+      </select>
+      <button type="button" class="sm" onclick="share(this)">Share</button>
+    </div>
+    {% else %}
+    <p class="muted">Add a collaborator above to share this.</p>
+    {% endif %}
+  </div>
+</li>
+{% endmacro %}
+<div class="page-header">
+  <h1>Your account</h1>
+  <p>Manage your profile and share the things you own with other people.</p>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Profile</h2>
+    <p>Signed in as <strong>{{ username }}</strong>
+      {% if role == 'admin' %}<span class="tag admin">admin</span>
+      {% else %}<span class="tag">user</span>{% endif %}
+    </p>
+  </div>
+  <form method="post" action="{{ url_for('update_own_email') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field">
+      <label for="email">Email</label>
+      <input type="text" id="email" name="email" value="{{ email or '' }}"
+             placeholder="you@example.com" required>
+    </div>
+    <button type="submit">Save email</button>
+  </form>
+  <p class="muted" style="margin-top:1rem">
+    Want a new password? <a href="{{ url_for('auth.change_password_page') }}">Change your password →</a>
+  </p>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Your collaborators</h2>
+    <p>The people you share things with. Add someone once by username, then pick
+      them when sharing any collection or article.</p>
+  </div>
+  {% if contacts %}
+  <div class="roster">
+    {% for name in contacts %}
+    <span class="chip-person">{{ name }}
+      <form method="post" action="{{ url_for('remove_contact', username=name) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="chip-x" title="Remove {{ name }}" aria-label="Remove {{ name }}">&times;</button>
+      </form>
+    </span>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">No collaborators yet. Add someone by username below.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('add_contact') }}" class="roster-add">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="text" name="username" placeholder="username" autocomplete="off" required>
+    <button type="submit" class="sm">Add collaborator</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Shared access</h2>
+    <p>Resources you own. Switch between collections and articles, filter to find
+      one, then expand it to share as a <strong>reader</strong>,
+      <strong>editor</strong> or <strong>owner</strong>. Only you (and anyone you
+      make an owner) can manage sharing.</p>
+  </div>
+
+  {% if not owned_collections and not owned_articles %}
+  <p class="muted">You don't own any collections or articles yet. Create one and it
+    will appear here to share.</p>
+  {% else %}
+  <div class="share-controls">
+    <div class="segmented">
+      <button type="button" class="seg active" data-mode="collections" onclick="switchMode(this)">
+        Collections ({{ owned_collections | length }})
+      </button>
+      <button type="button" class="seg" data-mode="articles" onclick="switchMode(this)">
+        Articles ({{ owned_articles | length }})
+      </button>
+    </div>
+    <input type="search" id="share-filter" placeholder="Filter…" autocomplete="off" oninput="filterShare()">
+  </div>
+
+  <ul class="share-list" data-mode="collections">
+    {% for res in owned_collections %}{{ share_item(res, contacts, roles) }}{% endfor %}
+  </ul>
+  <ul class="share-list" data-mode="articles" hidden>
+    {% for res in owned_articles %}{{ share_item(res, contacts, roles) }}{% endfor %}
+  </ul>
+
+  <p class="muted share-empty" hidden></p>
+  <div class="share-pager" hidden>
+    <button type="button" class="secondary sm" onclick="pageBy(-1)">← Prev</button>
+    <span class="share-pageinfo"></span>
+    <button type="button" class="secondary sm" onclick="pageBy(1)">Next →</button>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Shared with me</h2>
+    <p>Resources other people have given you access to.</p>
+  </div>
+  {% if shared_with_me %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Resource</th><th>Access</th><th>Shared by</th></tr></thead>
+      <tbody>
+        {% for s in shared_with_me %}
+        <tr>
+          <td>
+            {% if s.doc_id %}Article <code>{{ s.doc_id }}</code>
+              <span class="muted">in {{ s.database }} / {{ s.collection }}</span>
+            {% elif s.collection %}Collection <code>{{ s.collection }}</code>
+              <span class="muted">in {{ s.database }}</span>
+            {% elif s.database %}Database <code>{{ s.database }}</code>
+            {% else %}<span class="muted">Everything</span>{% endif %}
+          </td>
+          <td><span class="tag">{{ s.role }}</span></td>
+          <td>{{ s.granted_by or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">Nothing has been shared with you yet.</p>
+  {% endif %}
+</div>
+
+<style>
+  .share-list { list-style: none; margin: 0; padding: 0;
+    border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .share-item { border-top: 1px solid var(--border); }
+  .share-item:first-child { border-top: none; }
+  .share-toggle { width: 100%; justify-content: flex-start; gap: .6rem;
+    background: var(--surface); color: var(--text); border: none; border-radius: 0;
+    padding: .7rem .85rem; font-weight: 600; }
+  .share-toggle:hover { background: var(--surface-2); filter: none; }
+  .share-toggle .chev { color: var(--muted); font-size: .7rem; transition: transform .12s; }
+  .share-item.open .share-toggle .chev { transform: rotate(90deg); }
+  .share-toggle .muted { font-weight: 500; }
+  .share-count { margin-left: auto; color: var(--muted); font-weight: 500; }
+  .share-body { padding: .5rem .85rem 1rem; background: var(--surface-2);
+    border-top: 1px solid var(--border); }
+  .share-people { display: flex; flex-direction: column; gap: .4rem; margin: .3rem 0 .9rem; }
+  .person { display: flex; align-items: center; gap: .6rem; }
+  .person .who { flex: 1; }
+  .share-add { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+  .share-add .share-user { flex: 1; min-width: 12rem; width: auto; }
+  .share-add .share-role { width: auto; }
+  .roster { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
+  .chip-person { display: inline-flex; align-items: center; gap: .35rem;
+    padding: .3rem .35rem .3rem .7rem; border: 1px solid var(--border);
+    border-radius: 999px; font-size: .85rem; font-weight: 600; background: var(--surface); }
+  .chip-person form { display: inline; margin: 0; }
+  .chip-x { background: none; color: var(--muted); border: none; padding: 0 .2rem;
+    font-size: 1.05rem; line-height: 1; border-radius: 50%; }
+  .chip-x:hover { background: var(--danger-soft); color: var(--danger); filter: none; }
+  .roster-add { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+  .roster-add input { flex: 1; min-width: 12rem; width: auto; }
+  .share-controls { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; margin-bottom: .8rem; }
+  .segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+  .segmented .seg { background: var(--surface); color: var(--muted); border: none;
+    border-radius: 0; padding: .45rem .85rem; font-size: .85rem; font-weight: 600; }
+  .segmented .seg + .seg { border-left: 1px solid var(--border); }
+  .segmented .seg:hover { background: var(--surface-2); filter: none; }
+  .segmented .seg.active { background: var(--accent-soft); color: var(--accent-strong); }
+  #share-filter { flex: 1; min-width: 10rem; width: auto; }
+  .share-pager { display: flex; align-items: center; gap: .8rem; margin-top: .8rem; }
+  .share-pageinfo { color: var(--muted); font-size: .85rem; }
+  .share-empty { margin-top: .8rem; }
+</style>
+
+<script>
+  const ME = {{ username | tojson }};
+
+  function _item(el) { return el.closest('.share-item'); }
+
+  async function toggle(btn) {
+    const item = _item(btn);
+    const body = item.querySelector('.share-body');
+    const open = btn.getAttribute('aria-expanded') === 'true';
+    btn.setAttribute('aria-expanded', String(!open));
+    item.classList.toggle('open', !open);
+    body.hidden = open;
+    if (!open && !item.dataset.loaded) { await loadPeople(item); }
+  }
+
+  async function loadPeople(item) {
+    const box = item.querySelector('.share-people');
+    box.className = 'share-people muted';
+    box.textContent = 'Loading…';
+    let resp;
+    try {
+      resp = await fetch(item.dataset.collabUrl, { headers: { 'Accept': 'application/json' } });
+    } catch (e) { box.textContent = 'Could not load sharing.'; return; }
+    if (!resp.ok) { box.textContent = 'Could not load sharing.'; return; }
+    const people = (await resp.json()).collaborators.filter(c => c.username !== ME);
+    item.dataset.loaded = '1';
+    render(item, people);
+  }
+
+  function render(item, people) {
+    const box = item.querySelector('.share-people');
+    const badge = item.querySelector('.share-count');
+    badge.hidden = false;
+    badge.textContent = people.length ? people.length + ' shared' : '';
+    if (!people.length) {
+      box.className = 'share-people muted';
+      box.textContent = 'Not shared with anyone yet.';
+      return;
+    }
+    box.className = 'share-people';
+    box.textContent = '';
+    for (const c of people) {
+      const row = document.createElement('div');
+      row.className = 'person';
+      const who = document.createElement('span');
+      who.className = 'who';
+      const name = document.createElement('strong');
+      name.textContent = c.username;
+      const role = document.createElement('span');
+      role.className = 'tag';
+      role.textContent = c.role;
+      who.append(name, ' ', role);
+      const rm = document.createElement('button');
+      rm.className = 'danger sm';
+      rm.type = 'button';
+      rm.textContent = 'Remove';
+      rm.onclick = () => unshare(item, c.username);
+      row.append(who, rm);
+      box.append(row);
+    }
+  }
+
+  async function share(btn) {
+    const item = _item(btn);
+    const userInput = item.querySelector('.share-user');
+    const user = userInput.value.trim();
+    const role = item.querySelector('.share-role').value;
+    if (!user) { return; }
+    const resp = await fetch(item.dataset.collabUrl + '/' + encodeURIComponent(user), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: role }),
+    });
+    if (!resp.ok) { return alertErr(resp); }
+    userInput.value = '';
+    await reload(item);
+  }
+
+  async function unshare(item, user) {
+    const resp = await fetch(item.dataset.collabUrl + '/' + encodeURIComponent(user), { method: 'DELETE' });
+    if (!resp.ok) { return alertErr(resp); }
+    await reload(item);
+  }
+
+  async function reload(item) { item.dataset.loaded = ''; await loadPeople(item); }
+
+  async function alertErr(resp) {
+    let msg = 'Something went wrong.';
+    try { msg = (await resp.json()).error || msg; } catch (e) { /* ignore */ }
+    alert(msg);
+  }
+
+  // -- mode / filter / pagination -------------------------------------------
+  const SHARE_PAGE_SIZE = 8;
+  let shareMode = 'collections';
+  let sharePage = 1;
+
+  function activeShareList() {
+    return document.querySelector('.share-list[data-mode="' + shareMode + '"]');
+  }
+  function shareQuery() {
+    const f = document.getElementById('share-filter');
+    return f ? f.value.trim().toLowerCase() : '';
+  }
+
+  function renderShareView() {
+    for (const ul of document.querySelectorAll('.share-list')) {
+      ul.hidden = ul.dataset.mode !== shareMode;
+    }
+    const ul = activeShareList();
+    if (!ul) return;
+    const q = shareQuery();
+    const items = Array.from(ul.querySelectorAll('.share-item'));
+    const shown = items.filter(it => !q || (it.dataset.name || '').includes(q));
+    const pages = Math.max(1, Math.ceil(shown.length / SHARE_PAGE_SIZE));
+    if (sharePage > pages) sharePage = pages;
+    const start = (sharePage - 1) * SHARE_PAGE_SIZE;
+    const onPage = new Set(shown.slice(start, start + SHARE_PAGE_SIZE));
+    for (const it of items) it.hidden = !onPage.has(it);
+
+    const empty = document.querySelector('.share-empty');
+    if (empty) {
+      empty.hidden = shown.length !== 0;
+      empty.textContent = q ? 'No matches.'
+        : (shareMode === 'collections' ? "You don't own any collections yet."
+                                       : "You don't own any articles yet.");
+    }
+    const pager = document.querySelector('.share-pager');
+    if (pager) pager.hidden = shown.length <= SHARE_PAGE_SIZE;
+    const info = document.querySelector('.share-pageinfo');
+    if (info) info.textContent = 'Page ' + sharePage + ' of ' + pages;
+  }
+
+  function switchMode(btn) {
+    shareMode = btn.dataset.mode;
+    sharePage = 1;
+    for (const s of document.querySelectorAll('.seg')) s.classList.toggle('active', s === btn);
+    renderShareView();
+  }
+  function filterShare() { sharePage = 1; renderShareView(); }
+  function pageBy(delta) { sharePage = Math.max(1, sharePage + delta); renderShareView(); }
+
+  renderShareView();
+</script>
+{% endblock %}

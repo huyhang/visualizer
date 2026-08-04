@@ -9,7 +9,7 @@ import pytest
 from werkzeug.security import generate_password_hash
 
 from visualizer.akasha.app import create_app as create_docs_app
-from visualizer.akasha.authz import is_allowed
+from visualizer.auth.authz import is_allowed
 from visualizer.akasha.store import DocumentStore
 from visualizer.chronos.app import BOOK_RESOURCE
 

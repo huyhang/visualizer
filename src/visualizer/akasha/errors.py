@@ -57,60 +57,6 @@ class DocumentAlreadyExists(AkashaError):
     status_code = 409
 
 
-class InvalidCredentials(AkashaError):
-    """Raised when a login attempt has bad or missing credentials."""
-
-    status_code = 400
-
-
-class UserAlreadyExists(AkashaError):
-    """Raised when registering a username that is already taken."""
-
-    status_code = 409
-
-
-class EmailAlreadyExists(AkashaError):
-    """Raised when registering an email address that is already in use."""
-
-    status_code = 409
-
-
-class InvalidEmail(AkashaError):
-    """Raised when an email address is missing or malformed."""
-
-    status_code = 400
-
-
-class WeakPassword(AkashaError):
-    """Raised when a chosen password fails the strength policy."""
-
-    status_code = 400
-
-
-class RegistrationDisabled(AkashaError):
-    """Raised when self-registration is attempted while in invite-only mode."""
-
-    status_code = 403
-
-
-class UserNotFound(AkashaError):
-    """Raised when addressing a user account that does not exist."""
-
-    status_code = 404
-
-
-class Unauthorized(AkashaError):
-    """Raised when a request is not authenticated."""
-
-    status_code = 401
-
-
-class Forbidden(AkashaError):
-    """Raised when an authenticated user lacks permission for an action."""
-
-    status_code = 403
-
-
 class ReservedName(AkashaError):
     """Raised when a caller tries to use a reserved (internal) name."""
 

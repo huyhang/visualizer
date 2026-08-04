@@ -7,8 +7,9 @@ There is no admin bootstrap: the first account registered via ``/register``
 becomes the administrator, and every account after it is a plain user.
 """
 
+from visualizer.auth import AuthStore
+
 from .app import create_app
-from .auth_store import AuthStore
 from .config import (
     get_mongo_client,
     get_rate_limit_storage_uri,

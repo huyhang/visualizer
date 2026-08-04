@@ -48,16 +48,103 @@ CALENDAR = {
     "epoch_label": "AF",
 }
 
+# Each entity is a full article: a reserved ``title`` and wikitext ``body`` (with
+# [[col/id|label]] cross-links, resolved relative to the article's own
+# collection), plus a few infobox facts (plain scalar fields). This is exactly
+# the shape the editor reads back -- see static/js/article.js.
 CHARACTERS = {
-    "aldric": "Sir Aldric",
-    "lyra": "Lyra Vane",
-    "corwin": "Magister Corwin",
+    "aldric": {
+        "title": "Sir Aldric",
+        "role": "Knight",
+        "allegiance": "The Crown",
+        "carries": "The Ember Seal",
+        "body": (
+            "Sir Aldric is a sworn knight of [[locations/highkeep|Highkeep]], "
+            "entrusted with carrying [[items/ember-seal|the Ember Seal]] safely to "
+            "the coronation.\n\n"
+            "He rides out at dawn while the succession is still in dispute, and "
+            "hands the Seal to the spy [[lyra|Lyra Vane]] at "
+            "[[locations/emberport|Emberport]] before making for "
+            "[[locations/throne-hall|the Throne Hall]]."
+        ),
+    },
+    "lyra": {
+        "title": "Lyra Vane",
+        "role": "Spy",
+        "cover": "Dockhand",
+        "body": (
+            "Lyra Vane works the shadows of [[locations/emberport|Emberport]], "
+            "taking a dockhand's berth to watch the harbour unseen.\n\n"
+            "She receives [[items/ember-seal|the Ember Seal]] from "
+            "[[aldric|Sir Aldric]] and carries the secret of the true succession "
+            "toward [[locations/throne-hall|the coronation]]."
+        ),
+    },
+    "corwin": {
+        "title": "Magister Corwin",
+        "role": "Magister",
+        "scheme": "Contest the succession",
+        "body": (
+            "Magister Corwin is a scholar of law and ambition who drafts a writ to "
+            "contest the succession from within [[locations/highkeep|Highkeep]].\n\n"
+            "His gambit converges on the same ending as the others: "
+            "[[locations/throne-hall|the Throne Hall]], where "
+            "[[items/ember-seal|the Ember Seal]] is finally pressed to the charter."
+        ),
+    },
 }
-ITEMS = {"ember-seal": "The Ember Seal"}
+ITEMS = {
+    "ember-seal": {
+        "title": "The Ember Seal",
+        "type": "Royal artifact",
+        "function": "Makes a succession lawful",
+        "body": (
+            "The Ember Seal is the royal sigil that makes a succession lawful; "
+            "without its impression the charter is only ink.\n\n"
+            "Carried by [[characters/aldric|Sir Aldric]], passed to "
+            "[[characters/lyra|Lyra Vane]], and contested by "
+            "[[characters/corwin|Magister Corwin]], the Seal is the object every "
+            "thread of the story turns upon."
+        ),
+    }
+}
 LOCATIONS = {
-    "highkeep": "Highkeep",
-    "emberport": "Emberport",
-    "throne-hall": "The Throne Hall",
+    "highkeep": {
+        "title": "Highkeep",
+        "type": "Fortress",
+        "body": (
+            "Highkeep is the mountain fortress from which "
+            "[[characters/aldric|Sir Aldric]] departs, and where "
+            "[[characters/corwin|Magister Corwin]] drafts his contesting writ.\n\n"
+            "The road from its gates leads down to [[emberport|Emberport]] and, in "
+            "time, to [[throne-hall|the Throne Hall]]."
+        ),
+    },
+    "emberport": {
+        "title": "Emberport",
+        "type": "Harbour city",
+        "body": (
+            "Emberport is a harbour city of crowded quays and market awnings. "
+            "[[characters/lyra|Lyra Vane]] works its docks under cover, and it is "
+            "here that [[characters/aldric|Sir Aldric]] hands her "
+            "[[items/ember-seal|the Ember Seal]].\n\n"
+            "A disputed sighting later places Aldric at these quays while he is, in "
+            "truth, still on the road from [[highkeep|Highkeep]] -- the seed of the "
+            "story's continuity conflict."
+        ),
+    },
+    "throne-hall": {
+        "title": "The Throne Hall",
+        "type": "Great hall",
+        "body": (
+            "The Throne Hall is where the realm crowns its heir and "
+            "[[items/ember-seal|the Ember Seal]] is pressed to the charter at last."
+            "\n\n"
+            "Every sound thread -- [[characters/aldric|the knight's]], "
+            "[[characters/lyra|the spy's]], and [[characters/corwin|the "
+            "magister's]] -- converges here at the coronation."
+        ),
+    },
 }
 
 # id, title, location, start, end, characters, items, description
@@ -201,12 +288,12 @@ def seed_entities(client):
         ("characters", CHARACTERS), ("items", ITEMS), ("locations", LOCATIONS)
     ):
         client.post(f"{DOCS}/databases/{DB}/collections/{collection}")
-        for slug, title in entries.items():
+        for slug, document in entries.items():
             status, _ = client.upsert(
                 f"{DOCS}/databases/{DB}/collections/{collection}/documents/{slug}",
-                {"title": title},
+                document,
             )
-            show(status, f"{collection}/{slug}", title)
+            show(status, f"{collection}/{slug}", document.get("title", ""))
 
 
 def seed_book_and_events(client):

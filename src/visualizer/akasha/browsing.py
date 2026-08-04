@@ -12,7 +12,7 @@ Grant shape is the same as ``authz`` (``None`` in a scope field means "any").
 
 from typing import Iterable, Mapping
 
-from .authz import READ
+from visualizer.auth.authz import READ
 
 
 def _has_read(grant: Mapping) -> bool:

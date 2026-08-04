@@ -50,6 +50,7 @@ async function openArticle(target) {
     onNavigate: (t) => navigate(t),
     onEdit: () => openEditor({ ...target, doc: doc.document, rev: doc.rev, isNew: false }),
     onHistory: () => openHistory(target),
+    onShare: () => openShare(target),
     onDelete: (rev) => confirmDelete(target, rev),
   });
 }
@@ -96,6 +97,106 @@ function confirmDelete(target, rev) {
         } },
     ],
   });
+}
+
+// -- sharing ---------------------------------------------------------------
+
+// Resolve (and cache) the logged-in username, so we can hide the owner from a
+// resource's collaborator list.
+let mePromise = null;
+function currentUser() {
+  if (!mePromise) mePromise = api.me().then((m) => m.username).catch(() => null);
+  return mePromise;
+}
+
+// Manage who can access the current article or its collection, without leaving
+// the editor. Reuses the same collaborator API the account page uses.
+async function openShare(target) {
+  const me = await currentUser();
+  const roles = ["reader", "editor", "owner"];
+  // Scope of what we're sharing: the article id, or null for the collection.
+  let scopeId = target.id;
+
+  const scopeSel = el("select", {}, [
+    el("option", { value: "doc", text: `This article (${target.id})` }),
+    el("option", { value: "col", text: `Whole collection (${target.col})` }),
+  ]);
+  scopeSel.addEventListener("change", () => {
+    scopeId = scopeSel.value === "doc" ? target.id : null;
+    loadPeople();
+  });
+
+  const peopleBox = el("div", { class: "share-people" });
+  const addRow = el("div", { class: "share-add" });
+  const body = el("div", { class: "share-dialog" }, [
+    el("div", { class: "field" }, [el("label", { text: "Sharing" }), scopeSel]),
+    peopleBox,
+    addRow,
+  ]);
+
+  async function buildAddRow() {
+    clear(addRow);
+    let contacts = [];
+    try { contacts = (await api.contacts()).contacts; } catch (e) { /* leave empty */ }
+    if (!contacts.length) {
+      addRow.appendChild(el("p", { class: "muted" }, [
+        "Add collaborators on your ",
+        el("a", { href: "/account", text: "account page" }),
+        " to share with them.",
+      ]));
+      return;
+    }
+    const userSel = el("select", {}, [
+      el("option", { value: "", text: "Choose a collaborator…" }),
+      ...contacts.map((c) => el("option", { value: c, text: c })),
+    ]);
+    const roleSel = el("select", {}, roles.map((r) => el("option", { value: r, text: r })));
+    roleSel.value = "editor";
+    const btn = el("button", { class: "btn sm", text: "Share", onclick: async () => {
+      const user = userSel.value;
+      if (!user) return;
+      try {
+        await api.setCollaborator(target.db, target.col, scopeId, user, roleSel.value);
+        userSel.value = "";
+        await loadPeople();
+      } catch (e) { toast(e.message || "Could not share.", true); }
+    } });
+    addRow.append(userSel, roleSel, btn);
+  }
+
+  async function loadPeople() {
+    clear(peopleBox);
+    peopleBox.appendChild(el("p", { class: "muted", text: "Loading…" }));
+    let people;
+    try { people = (await api.listCollaborators(target.db, target.col, scopeId)).collaborators; }
+    catch (e) {
+      clear(peopleBox);
+      const msg = e instanceof ApiError && e.isForbidden
+        ? "Only the owner can manage sharing here."
+        : "Could not load sharing.";
+      peopleBox.appendChild(el("p", { class: "muted", text: msg }));
+      return;
+    }
+    people = people.filter((p) => p.username !== me);
+    clear(peopleBox);
+    if (!people.length) {
+      peopleBox.appendChild(el("p", { class: "muted", text: "Not shared with anyone yet." }));
+      return;
+    }
+    for (const c of people) {
+      peopleBox.appendChild(el("div", { class: "person" }, [
+        el("span", { class: "who" }, [el("strong", { text: c.username }), " ", el("span", { class: "chip", text: c.role })]),
+        el("button", { class: "btn sm danger", text: "Remove", onclick: async () => {
+          try { await api.removeCollaborator(target.db, target.col, scopeId, c.username); await loadPeople(); }
+          catch (e) { toast(e.message || "Could not remove.", true); }
+        } }),
+      ]));
+    }
+  }
+
+  modal({ title: `Share “${target.id}”`, body, actions: [{ label: "Done", variant: "secondary" }] });
+  buildAddRow();
+  loadPeople();
 }
 
 // -- create flows ----------------------------------------------------------

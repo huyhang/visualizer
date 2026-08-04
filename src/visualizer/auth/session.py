@@ -15,7 +15,7 @@ one login is used.
 
 from functools import wraps
 
-from flask import redirect, render_template, request, url_for
+from flask import Blueprint, redirect, render_template, request, url_for
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_login import (
@@ -28,7 +28,6 @@ from flask_login import (
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from .auth_store import AuthStore, registration_allowed
 from .errors import (
     EmailAlreadyExists,
     Forbidden,
@@ -40,6 +39,7 @@ from .errors import (
     WeakPassword,
 )
 from .passwords import validate_password_strength
+from .store import AuthStore, registration_allowed
 from .validation import validate_email
 
 # Pre-computed hash used to equalise login timing: when the username is unknown
@@ -50,9 +50,18 @@ _DUMMY_PASSWORD_HASH = generate_password_hash("timing-equalisation-dummy")
 # Per-IP limits applied to the auth endpoints to blunt brute-forcing and abuse.
 _AUTH_RATE_LIMIT = "5 per minute; 30 per hour"
 
-# Endpoints a user with a pending forced password change may still reach.
+# Endpoints a user with a pending forced password change may still reach. The
+# auth routes live on the ``auth`` blueprint, hence the ``auth.`` prefix; the
+# host app's ``static`` and ``health`` endpoints stay unprefixed.
 _PW_CHANGE_ALLOWED_ENDPOINTS = frozenset(
-    {"change_password_page", "change_password", "logout", "login", "static", "health"}
+    {
+        "auth.change_password_page",
+        "auth.change_password",
+        "auth.logout",
+        "auth.login",
+        "static",
+        "health",
+    }
 )
 
 
@@ -99,7 +108,7 @@ def _wants_json() -> bool:
 def init_login(app, auth_store: AuthStore) -> None:
     """Attach a configured ``LoginManager`` to ``app``."""
     login_manager = LoginManager()
-    login_manager.login_view = "login"
+    login_manager.login_view = "auth.login"
     login_manager.init_app(app)
 
     @login_manager.user_loader
@@ -118,7 +127,7 @@ def init_login(app, auth_store: AuthStore) -> None:
     def unauthorized():
         if _wants_json():
             raise Unauthorized("Authentication required.")
-        return redirect(url_for("login", next=request.path))
+        return redirect(url_for("auth.login", next=request.path))
 
 
 def admin_required(view):
@@ -160,7 +169,18 @@ def _form_error(template: str, message: str, json_error, **extra):
     ), (json_error.status_code)
 
 
-def register_auth_routes(app, auth_store: AuthStore, csrf, limiter=None) -> None:
+def register_auth_routes(
+    app, auth_store: AuthStore, csrf, limiter=None, home_endpoint="index"
+) -> None:
+    """Register the shared auth routes on ``app`` as an ``auth`` blueprint.
+
+    The blueprint carries its own templates (login / register / change-password).
+    ``home_endpoint`` is where a successful *browser* login lands -- akasha's
+    ``index``. Pass ``None`` for an API-only host (e.g. chronos), where the HTML
+    redirect paths are never exercised; it then falls back to ``/``.
+    """
+    bp = Blueprint("auth", __name__, template_folder="templates")
+
     def limit(view):
         """Apply the auth rate limit if a limiter was provided (else a no-op)."""
         return limiter.limit(_AUTH_RATE_LIMIT)(view) if limiter is not None else view
@@ -170,12 +190,14 @@ def register_auth_routes(app, auth_store: AuthStore, csrf, limiter=None) -> None
             auth_store.get_registration_mode(), auth_store.count_users()
         )
 
-    @app.get("/register")
+    def _home_url() -> str:
+        return url_for(home_endpoint) if home_endpoint else "/"
+
+    @bp.get("/register")
     def register_page():
         return render_template("register.html", registration_open=_reg_allowed())
 
-    @app.post("/register")
-    @csrf.exempt
+    @bp.post("/register")
     @limit
     def register():
         # Invite-only mode disables self-registration (except bootstrapping the
@@ -220,20 +242,19 @@ def register_auth_routes(app, auth_store: AuthStore, csrf, limiter=None) -> None
             )
         if _wants_json():
             return {"username": username, "email": email, "role": role}, 201
-        return redirect(url_for("login"))
+        return redirect(url_for("auth.login"))
 
-    @app.get("/login")
+    @bp.get("/login")
     def login():
         if current_user.is_authenticated:
-            return redirect(url_for("index"))
+            return redirect(_home_url())
         return render_template(
             "login.html",
             next=request.args.get("next", ""),
             registration_open=_reg_allowed(),
         )
 
-    @app.post("/login")
-    @csrf.exempt
+    @bp.post("/login")
     @limit
     def do_login():
         username, password = _credentials()
@@ -268,23 +289,22 @@ def register_auth_routes(app, auth_store: AuthStore, csrf, limiter=None) -> None
             }
         # A user owing a password change is sent straight to the change form.
         if record.get("must_change_password", False):
-            return redirect(url_for("change_password_page"))
+            return redirect(url_for("auth.change_password_page"))
         target = request.args.get("next") or request.form.get("next") or ""
         # Only allow same-app relative redirects.
         if not target.startswith("/"):
-            target = url_for("index")
+            target = _home_url()
         return redirect(target)
 
-    @app.post("/logout")
-    @csrf.exempt
+    @bp.post("/logout")
     @login_required
     def logout():
         logout_user()
         if _wants_json():
             return "", 204
-        return redirect(url_for("login"))
+        return redirect(url_for("auth.login"))
 
-    @app.get("/auth/me")
+    @bp.get("/auth/me")
     @login_required
     def me():
         return {
@@ -293,15 +313,14 @@ def register_auth_routes(app, auth_store: AuthStore, csrf, limiter=None) -> None
             "must_change_password": current_user.must_change_password,
         }
 
-    @app.get("/change-password")
+    @bp.get("/change-password")
     @login_required
     def change_password_page():
         return render_template(
             "change_password.html", forced=current_user.must_change_password
         )
 
-    @app.post("/change-password")
-    @csrf.exempt
+    @bp.post("/change-password")
     @limit
     @login_required
     def change_password():
@@ -322,9 +341,9 @@ def register_auth_routes(app, auth_store: AuthStore, csrf, limiter=None) -> None
         auth_store.set_password(username, generate_password_hash(new_password))
         if _wants_json():
             return {"username": username, "status": "password_changed"}
-        return redirect(url_for("index"))
+        return redirect(_home_url())
 
-    @app.before_request
+    @bp.before_app_request
     def _enforce_password_change():
         """Block a user with a pending forced change until they set a new one."""
         if not current_user.is_authenticated:
@@ -335,7 +354,10 @@ def register_auth_routes(app, auth_store: AuthStore, csrf, limiter=None) -> None
             return None
         if _wants_json():
             raise Forbidden("You must change your password before continuing.")
-        return redirect(url_for("change_password_page"))
+        return redirect(url_for("auth.change_password_page"))
+
+    csrf.exempt(bp)
+    app.register_blueprint(bp)
 
 
 def _pw_change_error(message: str, json_error):

@@ -24,19 +24,17 @@ from conftest import (
 from werkzeug.security import generate_password_hash
 
 from visualizer.akasha.app import create_app
-from visualizer.akasha.auth_store import (
+from visualizer.akasha.store import DocumentStore
+from visualizer.auth import (
+    MIN_PASSWORD_LENGTH,
     REGISTRATION_INVITE,
     REGISTRATION_OPEN,
     AuthStore,
-    registration_allowed,
-)
-from visualizer.akasha.errors import WeakPassword
-from visualizer.akasha.passwords import (
-    MIN_PASSWORD_LENGTH,
+    WeakPassword,
     generate_temp_password,
+    registration_allowed,
     validate_password_strength,
 )
-from visualizer.akasha.store import DocumentStore
 
 STRONG = "correct-horse-battery"
 STRONG2 = "another-strong-secret"

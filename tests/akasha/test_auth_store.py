@@ -3,8 +3,7 @@
 import mongomock
 import pytest
 
-from visualizer.akasha.auth_store import AuthStore
-from visualizer.akasha.errors import UserAlreadyExists, UserNotFound
+from visualizer.auth import AuthStore, UserAlreadyExists, UserNotFound
 
 
 @pytest.fixture
@@ -46,7 +45,7 @@ def test_list_users_excludes_password_hash(auth):
 
 
 def test_email_must_be_unique(auth):
-    from visualizer.akasha.errors import EmailAlreadyExists
+    from visualizer.auth import EmailAlreadyExists
 
     auth.create_user("alice", "h", email="dup@example.com")
     with pytest.raises(EmailAlreadyExists):
@@ -73,7 +72,7 @@ def test_update_user_email(auth):
 
 
 def test_update_user_email_rejects_clash_with_other_user(auth):
-    from visualizer.akasha.errors import EmailAlreadyExists
+    from visualizer.auth import EmailAlreadyExists
 
     auth.create_user("alice", "h", email="alice@example.com")
     auth.create_user("bob", "h", email="bob@example.com")
@@ -145,3 +144,73 @@ def test_grant_owner_is_idempotent_and_merges_perms(auth):
     grants = auth.grants_for("alice")
     assert len(grants) == 1
     assert set(grants[0]["perms"]) == {"read", "write"}
+
+
+def test_grants_on_lists_everyone_at_an_exact_scope(auth):
+    auth.create_user("alice", "h")
+    auth.create_user("bob", "h")
+    auth.add_grant("alice", "db", "col", None, ["read", "write"], granted_by="owner")
+    auth.add_grant("bob", "db", "col", None, ["read"], granted_by="owner")
+    # A different (deeper) scope must not be swept in.
+    auth.add_grant("bob", "db", "col", "doc", ["read"], granted_by="owner")
+
+    holders = {g["username"] for g in auth.grants_on("db", "col", None)}
+    assert holders == {"alice", "bob"}
+    # doc scope is distinct from the collection scope.
+    assert {g["username"] for g in auth.grants_on("db", "col", "doc")} == {"bob"}
+
+
+def test_grants_on_matches_none_as_wildcard_scope_not_any_value(auth):
+    auth.create_user("alice", "h")
+    auth.add_grant("alice", "db", None, None, ["read"], granted_by="owner")
+    auth.add_grant("alice", "db", "col", None, ["read"], granted_by="owner")
+    # Querying the database-wildcard scope returns only the wildcard grant,
+    # not the collection-scoped one.
+    on_db = auth.grants_on("db", None, None)
+    assert len(on_db) == 1
+    assert on_db[0]["collection"] is None
+
+
+def test_grants_on_is_namespaced_by_resource_type(auth):
+    auth.create_user("alice", "h")
+    auth.add_grant("alice", "x", None, None, ["read"], granted_by="owner")  # akasha
+    auth.add_grant(
+        "alice", "x", None, None, ["read"], granted_by="owner", resource_type="book"
+    )
+    assert len(auth.grants_on("x", None, None)) == 1  # database default
+    assert len(auth.grants_on("x", None, None, resource_type="book")) == 1
+
+
+# -- collaborator roster (contacts) ------------------------------------------
+
+
+def test_add_list_and_remove_contacts(auth):
+    auth.create_user("me", "h")
+    auth.create_user("bob", "h")
+    auth.create_user("amy", "h")
+    auth.add_contact("me", "bob")
+    auth.add_contact("me", "amy")
+    auth.add_contact("me", "bob")  # idempotent
+    assert auth.list_contacts("me") == ["amy", "bob"]
+    auth.remove_contact("me", "bob")
+    assert auth.list_contacts("me") == ["amy"]
+
+
+def test_list_contacts_empty_by_default(auth):
+    auth.create_user("me", "h")
+    assert auth.list_contacts("me") == []
+
+
+def test_add_contact_unknown_user_raises(auth):
+    auth.create_user("me", "h")
+    with pytest.raises(UserNotFound):
+        auth.add_contact("me", "ghost")
+
+
+def test_deleting_a_user_scrubs_them_from_rosters(auth):
+    auth.create_user("me", "h")
+    auth.create_user("bob", "h")
+    auth.add_contact("me", "bob")
+    auth.delete_user("bob")
+    # Gone from my roster; a deleted user is never offered again.
+    assert auth.list_contacts("me") == []

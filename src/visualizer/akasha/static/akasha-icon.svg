@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="Akasha">
+  <defs>
+    <linearGradient id="ak-g" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#4f46e5"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" fill="url(#ak-g)"/>
+  <g fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M16 15 C 12.5 13, 8.5 13, 6 14.4 L 6 24 C 8.5 22.6, 12.5 22.6, 16 24.6 C 19.5 22.6, 23.5 22.6, 26 24 L 26 14.4 C 23.5 13, 19.5 13, 16 15 Z"/>
+    <path d="M16 15 L 16 24.6"/>
+  </g>
+  <path fill="#ffffff" d="M16 4 C 16.5 7.1, 17.4 8, 20.5 8.5 C 17.4 9, 16.5 9.9, 16 13 C 15.5 9.9, 14.6 9, 11.5 8.5 C 14.6 8, 15.5 7.1, 16 4 Z"/>
+</svg>

@@ -235,3 +235,12 @@ del.d { background: var(--del-soft); color: var(--del); border-radius: 3px; padd
 }
 .muted { color: var(--muted); }
 .row-gap { display: flex; gap: .5rem; flex-wrap: wrap; }
+
+/* share dialog */
+.share-dialog select { width: auto; min-width: 12rem; }
+.share-people { display: flex; flex-direction: column; gap: .45rem; margin: .2rem 0 1rem; }
+.share-people .person { display: flex; align-items: center; gap: .6rem; }
+.share-people .who { flex: 1; }
+.share-add { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center;
+  border-top: 1px solid var(--border); padding-top: .9rem; }
+.share-add select { flex: 1; }

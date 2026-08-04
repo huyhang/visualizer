@@ -24,31 +24,51 @@ from flask_login import current_user, login_required
 from flask_wtf.csrf import CSRFProtect
 from werkzeug.security import generate_password_hash
 
-from .auth import admin_required, build_limiter, init_login, register_auth_routes
-from .auth_store import (
+from visualizer.auth import (
+    ALL_PERMS,
+    DELETE,
     REGISTRATION_MODES,
+    ROLE_PERMS,
+    AuthError,
     AuthStore,
+    Forbidden,
+    InvalidEmail,
+    UserNotFound,
+    admin_required,
+    build_limiter,
+    generate_temp_password,
+    init_login,
+    is_allowed,
+    owned_resources,
+    perm_for_method,
+    register_auth_routes,
+    resources_shared_with,
+    role_for_perms,
+    validate_email,
+    validate_password_strength,
 )
-from .authz import ALL_PERMS, is_allowed, perm_for_method
+
 from .browsing import rank_suggestions, visible_collections, visible_databases
 from .diff import diff_documents
 from .errors import (
     AkashaError,
     DocumentNotFound,
-    Forbidden,
     InvalidRevision,
     ReservedName,
-    UserNotFound,
     VersionNotFound,
 )
 from .history import find_snapshot, history_meta
-from .passwords import generate_temp_password, validate_password_strength
 from .store import DocumentStore
-from .validation import validate_document, validate_email, validate_search_terms
+from .validation import validate_document, validate_search_terms
 
 _COLLECTION_ROUTE = "/databases/<database>/collections/<collection>"
 _DOC_ROUTE = "/databases/<database>/collections/<collection>/documents/<doc_id>"
 _SEARCH_ROUTE = "/databases/<database>/collections/<collection>/search"
+
+# Per-IP limit for the self-service account endpoints. Looser than the auth
+# limit (login/register) -- these are for a logged-in user tidying their own
+# account, not a brute-force surface.
+_ACCOUNT_RATE_LIMIT = "10 per minute; 60 per hour"
 
 
 def create_app(
@@ -80,6 +100,8 @@ def create_app(
     _register_routes(app, store, auth_store, csrf)
     _register_browse_routes(app, store, auth_store, csrf)
     _register_version_routes(app, store, auth_store, csrf)
+    _register_sharing_routes(app, auth_store, csrf)
+    _register_account_routes(app, auth_store, csrf, limiter)
     _register_admin_routes(app, auth_store)
     _register_error_handlers(app)
     return app
@@ -465,6 +487,265 @@ def _render_admin(auth_store: AuthStore, selected=None, new_credential=None):
     )
 
 
+# -- owner-driven sharing ----------------------------------------------------
+
+
+def _is_owner(auth_store: AuthStore, database, collection, doc_id=None) -> bool:
+    """Whether the current user owns (holds ``delete`` on) this resource."""
+    grants = auth_store.grants_for(current_user.username)
+    return is_allowed(grants, DELETE, database, collection, doc_id)
+
+
+def _require_owner(auth_store: AuthStore, database, collection, doc_id=None) -> None:
+    """Only a resource's owner may manage who else can access it.
+
+    Ownership is holding ``delete`` at the resource's scope -- which the creator
+    gets automatically, and which a collection owner also holds over the
+    documents beneath it. The admin role does *not* confer this: content access
+    (and who may share it) follows ownership, not the admin console.
+    """
+    if not _is_owner(auth_store, database, collection, doc_id):
+        raise Forbidden("Only the owner may manage sharing for this resource.")
+
+
+def _replace_scope_grants(auth_store: AuthStore, username, database, collection, doc_id) -> None:
+    """Drop ``username``'s grant at *exactly* this akasha scope (idempotent).
+
+    Namespaced to akasha (the ``database`` resource type) and matched on the
+    exact scope tuple, so re-sharing merely replaces the role and never touches
+    a chronos grant or the user's access to a different collection/document.
+    """
+    for grant in auth_store.grants_on(database, collection, doc_id):
+        if grant["username"] == username:
+            auth_store.delete_grant(grant["id"])
+
+
+def _collaborators(auth_store: AuthStore, database, collection, doc_id) -> list[dict]:
+    """Everyone granted access to this exact scope, as ``{username, role}`` pairs.
+
+    Sorted by username for a stable display order. Includes the owner's own
+    grant; callers that render "who else can see this" filter themselves out.
+    """
+    people = [
+        {"username": g["username"], "role": role_for_perms(g["perms"])}
+        for g in auth_store.grants_on(database, collection, doc_id)
+    ]
+    return sorted(people, key=lambda p: p["username"])
+
+
+def _share(auth_store: AuthStore, database, collection, doc_id, username):
+    """Grant ``username`` a role on a resource the current user owns."""
+    _reject_reserved(database)
+    _require_owner(auth_store, database, collection, doc_id)
+    if auth_store.get_user(username) is None:
+        raise UserNotFound(f"User '{username}' does not exist.")
+    if username == current_user.username:
+        # You already own it; sharing with yourself could only *reduce* your own
+        # access, so refuse rather than risk locking an owner out.
+        raise Forbidden("You already own this resource.")
+    role = (request.get_json(silent=True) or {}).get("role", "editor")
+    perms = ROLE_PERMS.get(role)
+    if perms is None:
+        raise Forbidden(f"Unknown role '{role}'.")
+    _replace_scope_grants(auth_store, username, database, collection, doc_id)
+    auth_store.add_grant(
+        username,
+        database,
+        collection,
+        doc_id,
+        list(perms),
+        granted_by=current_user.username,
+    )
+    return jsonify(
+        {
+            "database": database,
+            "collection": collection,
+            "doc_id": doc_id,
+            "user": username,
+            "role": role,
+        }
+    )
+
+
+def _unshare(auth_store: AuthStore, database, collection, doc_id, username):
+    """Revoke ``username``'s access to a resource the current user owns."""
+    _reject_reserved(database)
+    _require_owner(auth_store, database, collection, doc_id)
+    _replace_scope_grants(auth_store, username, database, collection, doc_id)
+    return "", 204
+
+
+def _register_sharing_routes(app: Flask, auth_store: AuthStore, csrf) -> None:
+    """Owner-driven sharing: a resource's owner grants others reader/editor/owner
+    access to a collection or a single document -- without needing an admin.
+    Mirrors the collaborator model chronos already uses for books."""
+
+    _COLLAB = "/collaborators"
+
+    @app.get(_COLLECTION_ROUTE + _COLLAB)
+    @csrf.exempt
+    @login_required
+    def list_collection_collaborators(database, collection):
+        _reject_reserved(database)
+        _require_owner(auth_store, database, collection, None)
+        return jsonify(
+            {"collaborators": _collaborators(auth_store, database, collection, None)}
+        )
+
+    @app.put(_COLLECTION_ROUTE + _COLLAB + "/<username>")
+    @csrf.exempt
+    @login_required
+    def add_collection_collaborator(database, collection, username):
+        return _share(auth_store, database, collection, None, username)
+
+    @app.delete(_COLLECTION_ROUTE + _COLLAB + "/<username>")
+    @csrf.exempt
+    @login_required
+    def remove_collection_collaborator(database, collection, username):
+        return _unshare(auth_store, database, collection, None, username)
+
+    @app.get(_DOC_ROUTE + _COLLAB)
+    @csrf.exempt
+    @login_required
+    def list_document_collaborators(database, collection, doc_id):
+        _reject_reserved(database)
+        _require_owner(auth_store, database, collection, doc_id)
+        return jsonify(
+            {"collaborators": _collaborators(auth_store, database, collection, doc_id)}
+        )
+
+    @app.put(_DOC_ROUTE + _COLLAB + "/<username>")
+    @csrf.exempt
+    @login_required
+    def add_document_collaborator(database, collection, doc_id, username):
+        return _share(auth_store, database, collection, doc_id, username)
+
+    @app.delete(_DOC_ROUTE + _COLLAB + "/<username>")
+    @csrf.exempt
+    @login_required
+    def remove_document_collaborator(database, collection, doc_id, username):
+        return _unshare(auth_store, database, collection, doc_id, username)
+
+
+# -- self-service account management ------------------------------------------
+
+
+def _account_field(name: str):
+    """Read a field from a JSON body (API) or an HTML form (browser)."""
+    if request.is_json:
+        return (request.get_json(silent=True) or {}).get(name)
+    return request.form.get(name)
+
+
+def _render_account(auth_store: AuthStore):
+    """Render the account page: profile plus a compact list of the resources the
+    user owns. Each resource's collaborators are loaded on demand (see the page's
+    ``/collaborators`` fetch), so this stays cheap no matter how much is owned."""
+    username = current_user.username
+    record = auth_store.get_user(username) or {}
+    grants = auth_store.grants_for(username)
+    owned = []
+    for scope in owned_resources(grants):
+        # The GET-collaborators URL doubles as the base for the PUT/DELETE the
+        # page's sharing controls call (append ``/<username>``).
+        if scope["doc_id"] is None:
+            collab_url = url_for(
+                "list_collection_collaborators",
+                database=scope["database"],
+                collection=scope["collection"],
+            )
+        else:
+            collab_url = url_for(
+                "list_document_collaborators",
+                database=scope["database"],
+                collection=scope["collection"],
+                doc_id=scope["doc_id"],
+            )
+        owned.append({**scope, "collab_url": collab_url})
+    return render_template(
+        "account.html",
+        username=username,
+        email=record.get("email"),
+        role=record.get("role", "user"),
+        # Split by scope so the page can offer a collection view and an article
+        # view as separate, filterable/paginated modes.
+        owned_collections=[r for r in owned if r["doc_id"] is None],
+        owned_articles=[r for r in owned if r["doc_id"] is not None],
+        contacts=auth_store.list_contacts(username),
+        shared_with_me=resources_shared_with(grants, username),
+        roles=list(ROLE_PERMS.keys()),
+    )
+
+
+def _register_account_routes(app: Flask, auth_store: AuthStore, csrf, limiter) -> None:
+    """Let any logged-in user view their account and change their own email.
+    (Password changes live in the shared auth routes.)"""
+
+    def limit(view):
+        return limiter.limit(_ACCOUNT_RATE_LIMIT)(view) if limiter is not None else view
+
+    @app.get("/account")
+    @login_required
+    def account_page():
+        return _render_account(auth_store)
+
+    @app.post("/account/email")
+    @csrf.exempt
+    @limit
+    @login_required
+    def update_own_email():
+        username = current_user.username
+        raw = (_account_field("email") or "").strip()
+        if not raw:
+            if request.is_json:
+                raise InvalidEmail("An email address is required.")
+            flash("Enter an email address.", "error")
+            return redirect(url_for("account_page"))
+        try:
+            email = validate_email(raw)
+            auth_store.update_user(username, email=email)
+        except (AkashaError, AuthError) as err:
+            if request.is_json:
+                raise
+            flash(err.message, "error")
+            return redirect(url_for("account_page"))
+        if request.is_json:
+            return {"username": username, "email": email}
+        flash("Your email address was updated.", "success")
+        return redirect(url_for("account_page"))
+
+    @app.get("/account/contacts")
+    @csrf.exempt
+    @login_required
+    def list_contacts():
+        """The current user's collaborator roster (for the sharing pickers)."""
+        return {"contacts": auth_store.list_contacts(current_user.username)}
+
+    @app.post("/account/contacts")
+    @login_required
+    def add_contact():
+        username = (request.form.get("username") or "").strip()
+        if not username:
+            flash("Enter a username to add.", "error")
+            return redirect(url_for("account_page"))
+        if username == current_user.username:
+            flash("You cannot add yourself as a collaborator.", "error")
+            return redirect(url_for("account_page"))
+        try:
+            auth_store.add_contact(current_user.username, username)
+        except (AkashaError, AuthError) as err:
+            flash(err.message, "error")
+            return redirect(url_for("account_page"))
+        flash(f"Added '{username}' to your collaborators.", "success")
+        return redirect(url_for("account_page"))
+
+    @app.post("/account/contacts/<username>/delete")
+    @login_required
+    def remove_contact(username):
+        auth_store.remove_contact(current_user.username, username)
+        return redirect(url_for("account_page"))
+
+
 def _register_admin_routes(app: Flask, auth_store: AuthStore) -> None:
     @app.get("/admin")
     @admin_required
@@ -503,7 +784,7 @@ def _register_admin_routes(app: Flask, auth_store: AuthStore) -> None:
                     generate_password_hash(new_password),
                     must_change_password=True,
                 )
-        except AkashaError as err:
+        except (AkashaError, AuthError) as err:
             flash(err.message, "error")
             return redirect(url_for("admin_page", user=username))
         flash(f"User '{username}' updated.", "success")
@@ -557,7 +838,7 @@ def _register_admin_routes(app: Flask, auth_store: AuthStore) -> None:
                 role=role,
                 must_change_password=True,
             )
-        except AkashaError as err:
+        except (AkashaError, AuthError) as err:
             flash(err.message, "error")
             return redirect(url_for("admin_page"))
         # Show a generated credential once, in-page (not via a redirect that would
@@ -636,4 +917,10 @@ def _is_last_admin(auth_store: AuthStore, username: str) -> bool:
 def _register_error_handlers(app: Flask) -> None:
     @app.errorhandler(AkashaError)
     def handle_domain_error(err: AkashaError):
+        return jsonify({"error": err.message}), err.status_code
+
+    @app.errorhandler(AuthError)
+    def handle_auth_error(err: AuthError):
+        # Auth/access-control errors (login, grants, admin actions) now come from
+        # the shared ``visualizer.auth`` package with their own base class.
         return jsonify({"error": err.message}), err.status_code

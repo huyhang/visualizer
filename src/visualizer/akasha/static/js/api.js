@@ -30,8 +30,8 @@ async function request(method, url, { body, ifMatch } = {}) {
   return payload;
 }
 
-const docPath = (db, col, id) =>
-  `/databases/${enc(db)}/collections/${enc(col)}/documents/${enc(id)}`;
+const colPath = (db, col) => `/databases/${enc(db)}/collections/${enc(col)}`;
+const docPath = (db, col, id) => `${colPath(db, col)}/documents/${enc(id)}`;
 
 export const api = {
   me: () => request("GET", "/auth/me"),
@@ -66,4 +66,16 @@ export const api = {
     if (col) p.set("col", col);
     return request("GET", `/suggest?${p.toString()}`);
   },
+
+  // Your saved collaborator roster (drives the sharing pickers).
+  contacts: () => request("GET", "/account/contacts"),
+
+  // Sharing: manage who can access a collection or a single document. The
+  // server includes the owner in the list — filter yourself out client-side.
+  listCollaborators: (db, col, id) =>
+    request("GET", (id ? docPath(db, col, id) : colPath(db, col)) + "/collaborators"),
+  setCollaborator: (db, col, id, username, role) =>
+    request("PUT", (id ? docPath(db, col, id) : colPath(db, col)) + `/collaborators/${enc(username)}`, { body: { role } }),
+  removeCollaborator: (db, col, id, username) =>
+    request("DELETE", (id ? docPath(db, col, id) : colPath(db, col)) + `/collaborators/${enc(username)}`),
 };
