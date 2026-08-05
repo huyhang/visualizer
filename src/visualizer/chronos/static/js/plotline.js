@@ -27,14 +27,49 @@ function eventFetcher(book) {
   };
 }
 
+// The rail dot picks up this event's role, so the plain timeline already signals
+// where threads meet without opening the connected view.
+function dotClass(ev) {
+  if (ev.is_terminus) return " is-terminus";
+  if (ev.is_convergence) return " is-merge";
+  if (ev.is_divergence) return " is-split";
+  return "";
+}
+
+// Small, clickable "another thread meets here" hints on an event. Each opens the
+// connected-plots view focused on this event. The terminus is skipped -- every
+// thread meets there by rule, so it is a badge on the card, not an interaction.
+function eventMarks(ev, onConnectedAt) {
+  if (!onConnectedAt || ev.is_terminus) return null;
+  const shared = (ev.shared_with || []).length;
+  const chips = [];
+  if (ev.is_convergence) chips.push(markChip("⋔ threads join here", ev.id, onConnectedAt));
+  if (ev.is_divergence) chips.push(markChip("⋔ a thread departs here", ev.id, onConnectedAt));
+  if (!chips.length && shared) {
+    chips.push(markChip(`shared with ${shared} other thread${shared === 1 ? "" : "s"}`, ev.id, onConnectedAt));
+  }
+  return chips.length ? el("div", { class: "chip-row tl-marks" }, chips) : null;
+}
+
+function markChip(text, eventId, onConnectedAt) {
+  return el("button", {
+    class: "mark-chip", text, title: "See connected plots",
+    onclick: () => onConnectedAt(eventId),
+  });
+}
+
 // A vertical timeline: one row per event, ordered top-to-bottom (story order).
 // The left rail carries a node dot and the scene's timeframe; the card sits to
 // its right and expands in place on click, pushing later rows down.
 function timelineRow(book, ev, timeLabel, deps) {
+  const marks = eventMarks(ev, deps.onConnectedAt);
   return el("div", { class: "tl-row" }, [
     el("div", { class: "tl-time", text: timeLabel }),
-    el("div", { class: "tl-rail" }, el("span", { class: "tl-dot" })),
-    el("div", { class: "tl-card" }, eventCard(book, ev, { ...deps, showTime: false })),
+    el("div", { class: "tl-rail" }, el("span", { class: "tl-dot" + dotClass(ev) })),
+    el("div", { class: "tl-card" }, [
+      marks,
+      eventCard(book, ev, { ...deps, showTime: false }),
+    ].filter(Boolean)),
   ]);
 }
 
@@ -71,7 +106,19 @@ function verticalTimeline(book, events, deps) {
   return root;
 }
 
-export async function mountPlotline(container, book, plotlineId, { showEntity, onBooks, onBook }) {
+// How many distinct other threads this plotline meets, ignoring the terminus
+// (every thread meets there by rule -- counting it would say "meets everything").
+function meetCount(events) {
+  const others = new Set();
+  for (const e of events) {
+    if (e.is_terminus) continue;
+    for (const id of e.shared_with || []) others.add(id);
+  }
+  return others.size;
+}
+
+export async function mountPlotline(container, book, plotlineId,
+  { showEntity, onBooks, onBook, onConnected, onConnectedAt }) {
   clear(container);
   const loading = el("div", { class: "view" }, el("p", { class: "muted", text: "Loading plotline…" }));
   container.appendChild(loading);
@@ -91,11 +138,22 @@ export async function mountPlotline(container, book, plotlineId, { showEntity, o
   try { bookMeta = await api.getBook(book); } catch (e) { /* fall back to id */ }
 
   const events = pl.effective_events || [];
-  const deps = { getFullEvent: eventFetcher(book), showEntity };
+  const deps = { getFullEvent: eventFetcher(book), showEntity, onConnectedAt };
 
+  const meets = meetCount(events);
   const header = el("div", { class: "pl-header" }, [
     el("h1", { class: "view-title", text: pl.title || pl.id }),
     el("div", { class: "chip-row goals" }, (pl.goals || []).map((g) => el("span", { class: "chip goal", text: g }))),
+    el("div", { class: "pl-actions" }, [
+      el("button", {
+        class: "btn secondary sm", type: "button",
+        text: meets ? `Connected plots (${meets})` : "Connected plots",
+        onclick: () => onConnected && onConnected(),
+      }),
+      el("span", { class: "muted meet-hint", text: meets
+        ? `Meets ${meets} other plotline${meets === 1 ? "" : "s"} along the way.`
+        : "Runs on its own until the shared ending." }),
+    ]),
     el("p", { class: "muted axis-note", text: allScheduled(events)
       ? "Scenes top to bottom in story order — all are scheduled."
       : "Scenes top to bottom in story order — some have no timing yet." }),

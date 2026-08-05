@@ -41,7 +41,9 @@ testable.
 > **Update (as built).** The "UI comes later" non-goal has partly happened: a
 > **read-only** plotline visualiser now ships with the service (book → filtered
 > plotline table → a plotline's events as cards on a vertical timeline, with the
-> referenced Akasha articles shown inline). It is still read-only — all writing
+> referenced Akasha articles shown inline). A first graph viewer has since been
+> added on top of the same read paths — a **Connected plots** branch/merge diagram
+> reachable from any plotline (see §12). It is still read-only — all writing
 > goes through the JSON API. And rather than a second port, the two services are
 > served behind **one origin** in production: a single gunicorn co-mounts them
 > with Werkzeug's `DispatcherMiddleware` (`visualizer.wsgi:application`), akasha
@@ -1029,10 +1031,22 @@ The layering exists to make this cheap:
   cross-referencing termini) with events still book-local — not cross-book
   events; that would first require defining cross-timeline conflict semantics and
   a multi-book graph/terminus model.
-- **The `/graph` view as a real visualization.** *Deferred (future work).* The
-  API is deliberately visualization-ready — `/graph` (nodes + labeled edges +
+- **The `/graph` view as a real visualization.** *Partly built.* The API was
+  always visualization-ready — `/graph` (nodes + labeled edges +
   convergence/divergence/terminus), the event-neighborhood endpoint, titles +
   codec-formatted `when` on every node, and `status`/`/validate` for coloring.
-  A future viewer renders `/graph` laid out by tick and colored by `status`,
-  built the same vanilla-JS + SVG way as the document editor (no build
-  toolchain, LAN-friendly). Nothing in the current design needs to change for it.
+  A first viewer now ships: a **Connected plots** view (vanilla-JS + SVG, no
+  build toolchain) reachable from any plotline, rendering that thread and every
+  plotline it *actually interacts with* as a branch/merge (git-graph) diagram
+  laid out by tick. "Interacts with" deliberately excludes the terminus — because
+  every plotline ends there, counting it would make the view show the whole book
+  every time; only threads sharing a **non-terminus** event are drawn. To feed it,
+  `/graph` was enriched (additively) so one call carries everything the layout
+  needs: per-node ticks + codec labels + role flags, and a `plotlines` block with
+  each thread's title, stored `events`, `continues_into`, and resolved
+  `effective_events` (the last kept alongside the stored fields so a future *edit*
+  mode can route a change back to the right stored field, not the flattened path).
+  The reusable core — a pure `subgraph` filter + a pure git-graph `layout` + an
+  SVG renderer — is written so the **whole-book story map** is the same renderer
+  fed the full graph instead of a per-plotline slice. That whole-book map, laid
+  out by tick and colored by `status`, is the remaining *future work*.

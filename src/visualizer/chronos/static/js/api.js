@@ -50,6 +50,11 @@ export const api = {
 
   getEvent: (book, id) => request("GET", `${bookPath(book)}/events/${enc(id)}`),
 
+  // The whole book's story graph: nodes (with timing + role flags), plotline
+  // lanes, and precedence edges tagged by plotline. Drives the connected-plots
+  // view (and, later, the full story map).
+  getGraph: (book) => request("GET", `${bookPath(book)}/graph`),
+
   // Read helper: a referenced Akasha article, proxied same-origin.
   getEntity: (book, database, collection, id) =>
     request("GET", `${bookPath(book)}/ui/entity/${enc(database)}/${enc(collection)}/${enc(id)}`),

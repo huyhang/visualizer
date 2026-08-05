@@ -290,8 +290,9 @@ described. Neither of you gets blocked by the other's work.
 - **Not a plot generator.** Every event and thread is yours.
 - **Not a judge of quality.** "Consistent" means your timeline doesn't
   contradict itself — nothing about whether the story is any good.
-- **Not visual yet.** Chronos can describe the shape of your story and hand over
-  the whole map of it; drawing that map on screen is planned, not built.
+- **Partly visual.** From any plotline you can open **Connected plots** — a
+  branch/merge picture of that thread and the others it meets. Drawing the
+  *whole-book* map on one screen is still planned, not built.
 
 ---
 

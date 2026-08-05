@@ -114,8 +114,12 @@ class BookService(_Service):
 
     def graph(self, book_id) -> dict:
         book = self._book(book_id)
-        view = graph_view(effective_paths(self._plotlines(book_id)), book.terminus)
-        return present_graph(view, self._events_by_id(book_id))
+        plotlines = self._plotlines(book_id)
+        view = graph_view(effective_paths(plotlines), book.terminus)
+        return present_graph(
+            view, self._events_by_id(book_id),
+            {p.id: p for p in plotlines}, codec_for(book),
+        )
 
     def _plotline_ids(self, book_id) -> list[str]:
         return [p["id"] for p in self.store.list_plotlines(book_id)]

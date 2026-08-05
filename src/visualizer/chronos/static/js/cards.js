@@ -3,6 +3,7 @@
 // reference opens. Kept free of routing/fetching wiring -- callbacks are passed
 // in -- so each builder stays small and the behaviour is obvious.
 
+import { api } from "./api.js";
 import { el } from "./dom.js";
 import { entityTitle, plainBody, resolveEntity } from "./entities.js";
 
@@ -107,6 +108,38 @@ export function eventCard(book, summary, { getFullEvent, showEntity, showTime = 
     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); expand(); }
     if (e.key === "Escape") collapse();
   });
+  return card;
+}
+
+// The peek card a story-graph node opens: an event's full detail, fetched on
+// demand and rendered with the same body + entity chips as the inline card. Kept
+// here so the graph view reuses one event-rendering path (design: one source of
+// each response shape, one of each card).
+export function eventPeekCard(book, node, { showEntity, onClose }) {
+  const when = node.scheduled
+    ? (node.endLabel != null && node.endLabel !== node.startLabel
+      ? `${node.startLabel} → ${node.endLabel}`
+      : String(node.startLabel != null ? node.startLabel : node.startTick))
+    : "unscheduled";
+  const head = [el("span", { class: "ev-time", text: when })];
+  if (node.isTerminus) head.push(el("span", { class: "badge terminus", text: "terminus" }));
+  else if (node.isConvergence) head.push(el("span", { class: "badge merge", text: "convergence" }));
+  if (node.isDivergence) head.push(el("span", { class: "badge split", text: "divergence" }));
+
+  const detail = el("div", { class: "ev-detail" }, el("p", { class: "muted", text: "Loading…" }));
+  const card = el("article", { class: "peek-card event-peek" }, [
+    el("div", { class: "peek-head" }, [
+      el("span", { class: "peek-title", text: node.title }),
+      el("button", { class: "icon-btn sm", text: "✕", title: "Close", onclick: onClose }),
+    ]),
+    el("div", { class: "ev-head" }, head),
+    detail,
+  ]);
+
+  api.getEvent(book, node.id)
+    .then((event) => fillDetail(detail, book, event, showEntity))
+    .catch(() => detail.replaceChildren(
+      el("p", { class: "muted", text: "Could not load this event." })));
   return card;
 }
 

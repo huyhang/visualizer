@@ -21,8 +21,13 @@ Chronos references them and refuses to invent them.
 > see its events as cards on a vertical timeline — with the Akasha articles they
 > reference shown inline. Those referenced articles are fetched through Chronos
 > (so the browser stays same-origin) and are subject to **both** book-read and
-> the article's own Akasha read grant. It never writes. A full `/graph` viewer is
-> still planned (design §12).
+> the article's own Akasha read grant. It never writes.
+>
+> The timeline also flags where a thread **joins, departs, or is shared with**
+> others, and from any plotline you can open **Connected plots** — a branch/merge
+> (git-graph) diagram of just the threads that meet it (i.e. share a *non-terminus*
+> event), laid out by time and colour-coded per thread. A full whole-book **story
+> map** over the same `/graph` data is still planned (design §12).
 
 ---
 
@@ -90,6 +95,7 @@ Akasha API deliberately refuses to expose.
 | **Plotline** | An **ordered** list of events plus a non-empty set of goals. Order is the contract. May `continues_into` another plotline so a shared ending is stored once. |
 | **Book** | A collection of plotlines with one designated **Terminus**. |
 | **Terminus** | The single event every plotline in the book must end at. |
+| **Trunk** | Not a distinct type — the conventional name for the plotline that holds a **shared ending** other threads `continues_into` (see [Shared endings](#shared-endings)). |
 | **EntityRef** | A pointer to a Akasha article — `{database, collection, id}`. Must already exist. |
 
 Events, plotlines and terminus are **scoped to one book**; ids are unique within
@@ -212,7 +218,9 @@ DELETE /books/<book>/collaborators/<user>            remove (owners only)
 
 Threads that merge would otherwise repeat the whole shared tail in every
 plotline — and inserting one scene into the ending would mean editing them all.
-Instead a plotline can store just its own segment and name where it continues:
+Instead a plotline can store just its own segment and name the plotline it
+continues into. That shared-tail plotline is called the **trunk** — it is not a
+special type, just an ordinary plotline the others point at:
 
 ```
 trunk         [meet-at-emberport, the-coronation]

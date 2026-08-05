@@ -110,6 +110,7 @@ button { font-family: inherit; cursor: pointer; }
 .status-pill.conflicted { background: var(--danger-soft); color: var(--danger); }
 .badge.terminus { background: var(--warn-soft); color: var(--warn); }
 .badge.merge { background: var(--accent-soft); color: var(--accent-strong); }
+.badge.split { background: var(--ok-soft); color: var(--ok); }
 
 /* forms */
 input[type=search], input[type=text] {
@@ -229,8 +230,24 @@ input:focus {
   width: 12px; height: 12px; border-radius: 50%; background: var(--accent);
   border: 2px solid var(--surface);
 }
+/* rail dot picks up the event's role in the weave */
+.tl-dot.is-merge { background: var(--accent-strong); box-shadow: 0 0 0 3px var(--accent-soft); }
+.tl-dot.is-split { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
+.tl-dot.is-terminus { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
 .tl-card { padding: 0 0 1.25rem .35rem; min-width: 0; }
 .tl-card .event-card { width: 100%; max-width: 620px; }
+/* "another thread meets here" hints above an event card */
+.tl-marks { margin: .1rem 0 .4rem; }
+.mark-chip {
+  font-size: .72rem; font-weight: 600; cursor: pointer;
+  padding: .12rem .5rem; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent-strong);
+  border: 1px solid transparent;
+}
+.mark-chip:hover { border-color: var(--accent); }
+/* header actions on the plotline view */
+.pl-actions { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; margin: .1rem 0 .3rem; }
+.meet-hint { font-size: .82rem; }
 @media (max-width: 560px) {
   .tl-row { grid-template-columns: 3.6rem 1.1rem minmax(0, 1fr); }
   .tl-time { font-size: .68rem; }
@@ -251,6 +268,53 @@ input:focus {
 .peek-facts dt { font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-top: .5rem; }
 .peek-facts dd { margin: .1rem 0 0; font-size: .88rem; }
 .peek-text p { margin: 0 0 .6rem; font-size: .9rem; }
+.event-peek .ev-head { padding: .5rem .9rem 0; }
+/* the peek is always expanded, so reveal its detail (the base .ev-detail is
+   hidden until an inline card is expanded) */
+.event-peek .ev-detail { display: block; padding: .6rem .9rem .9rem; margin-top: 0; border-top: 0; }
+
+/* connected plots (story graph) */
+.sg-legend { display: flex; flex-wrap: wrap; gap: .4rem; margin: .2rem 0 1rem; }
+.sg-legend-chip {
+  display: inline-flex; align-items: center; gap: .4rem;
+  font-size: .8rem; font-weight: 600; padding: .2rem .6rem;
+  border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2);
+  color: var(--text);
+}
+button.sg-legend-chip { cursor: pointer; }
+button.sg-legend-chip:hover { border-color: var(--accent); }
+.sg-legend-chip.is-focus { background: var(--accent-soft); border-color: var(--accent); }
+.sg-swatch { width: .8rem; height: .8rem; border-radius: 50%; flex: none; }
+.sg-you { color: var(--muted); font-weight: 500; }
+
+.storygraph { position: relative; margin: .2rem 0 .4rem; }
+.sg-svg { position: absolute; top: 0; left: 0; overflow: visible; }
+.sg-edge { fill: none; stroke-width: 2.5; opacity: .85; }
+.sg-edge.is-focus { stroke-width: 3.6; opacity: 1; }
+.sg-dot { stroke: var(--surface); stroke-width: 2; }
+.sg-dot.is-merge, .sg-dot.is-split { stroke-width: 2.5; }
+.sg-ring { fill: none; stroke-width: 2; opacity: .7; }
+.sg-focus-ring { fill: none; stroke: var(--accent); stroke-width: 2.5; opacity: .9; }
+
+.sg-rows { position: absolute; top: 0; right: 0; }
+/* calendar period bands, echoing the single-plotline timeline headers */
+.sg-head { position: absolute; display: flex; align-items: center; gap: .45rem; transform: translateY(-30%); }
+.sg-head-top { font-size: 1rem; font-weight: 800; letter-spacing: -.01em; }
+.sg-head-top::before { content: ""; width: 11px; height: 11px; border-radius: 3px; background: var(--accent); }
+.sg-head-sub { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.sg-head-sub::before { content: ""; width: 8px; height: 8px; border-radius: 50%; border: 2px solid var(--accent); box-sizing: border-box; }
+.sg-row {
+  position: absolute; transform: translateY(-50%);
+  display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap;
+  text-align: left; width: 100%; cursor: pointer;
+  background: none; border: none; padding: .15rem .3rem; border-radius: 8px;
+  color: var(--text);
+}
+.sg-row:hover { background: var(--surface-2); }
+.sg-row.focused { background: var(--accent-soft); }
+.sg-row-title { font-weight: 600; font-size: .92rem; }
+.sg-row-when { color: var(--muted); font-size: .76rem; }
+.sg-row-badges { gap: .25rem; }
 
 /* toast */
 .toast {

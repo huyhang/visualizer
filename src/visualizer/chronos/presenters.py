@@ -180,7 +180,8 @@ def present_event(public: dict, codec: TimeCodec, window: Window | None = None) 
 
 
 def _event_summary(
-    event: Event, codec: TimeCodec, shared_with: list[str], is_convergence: bool, is_terminus: bool
+    event: Event, codec: TimeCodec, shared_with: list[str],
+    is_convergence: bool, is_divergence: bool, is_terminus: bool,
 ) -> dict:
     body = event.description
     preview = (body[:140] + "…") if len(body) > 140 else body
@@ -202,7 +203,11 @@ def _event_summary(
         "items": [i.to_dict() for i in event.items],
         "description_preview": preview,
         "shared_with": shared_with,
+        # Where this thread meets others: threads merge in (convergence) or split
+        # off (divergence) here. The single-plotline timeline surfaces these so a
+        # writer sees an interaction without opening the connected-plots view.
         "is_convergence": is_convergence,
+        "is_divergence": is_divergence,
         "is_terminus": is_terminus,
     }
 
@@ -245,6 +250,7 @@ def present_plotline(
     last_event = path[-1] if path else None
     graph = build_graph(paths)
     convergence = {n for n in graph if graph.in_degree(n) > 1}
+    divergence = {n for n in graph if graph.out_degree(n) > 1}
     membership = {
         eid: sorted(pid for pid, evs in paths.items() if eid in evs and pid != this.id)
         for eid in path
@@ -257,6 +263,7 @@ def present_plotline(
                 codec,
                 shared_with=membership.get(eid, []),
                 is_convergence=eid in convergence,
+                is_divergence=eid in divergence,
                 is_terminus=eid == book.terminus,
             )
             for eid in path
@@ -406,15 +413,61 @@ def present_validate(report: BookReport, codec: TimeCodec) -> dict:
     }
 
 
-def present_graph(view: dict, events_by_id: dict[str, Event]) -> dict:
-    def title(eid: str) -> str | None:
+def present_graph(
+    view: dict,
+    events_by_id: dict[str, Event],
+    plotlines_by_id: dict[str, Plotline],
+    codec: TimeCodec,
+) -> dict:
+    """The whole story graph, enriched so a client can lay it out by tick and
+    colour it by role in a single call (design §7.4, §12).
+
+    Each node carries its timing (ticks + codec labels) and its role flags
+    (convergence/divergence/terminus). The ``plotlines`` block gives one lane per
+    thread: its title, its **stored** own segment (``events``) and its
+    ``continues_into`` alongside the **resolved** ``effective_events`` -- keeping
+    stored-vs-inherited provenance recoverable so a future editor can route an
+    edit back to the right stored field, not the flattened path.
+    """
+    convergence = set(view["convergence"])
+    divergence = set(view["divergence"])
+    terminus = view["terminus"]
+
+    def node(eid: str) -> dict:
         e = events_by_id.get(eid)
-        return e.display_title if e else None
+        return {
+            "id": eid,
+            "title": e.display_title if e else None,
+            "start_tick": e.start_tick if e else None,
+            "end_tick": e.end_tick if e else None,
+            "start_label": _label(e.start_tick, codec) if e else None,
+            "end_label": _label(e.end_tick, codec) if e else None,
+            # Coarse-to-fine label components, so a client groups by year/month
+            # (the same way the single-plotline timeline does) without re-parsing
+            # the string. Null when unscheduled.
+            "start_parts": codec.parts(e.start_tick) if (e and e.is_scheduled) else None,
+            "end_parts": codec.parts(e.end_tick) if (e and e.is_scheduled) else None,
+            "scheduled": e.is_scheduled if e else False,
+            "is_convergence": eid in convergence,
+            "is_divergence": eid in divergence,
+            "is_terminus": eid == terminus,
+        }
+
+    def lane(pid: str, effective: list[str]) -> dict:
+        pl = plotlines_by_id.get(pid)
+        return {
+            "id": pid,
+            "title": pl.display_title if pl else pid,
+            "events": list(pl.events) if pl else list(effective),
+            "continues_into": pl.continues_into if pl else None,
+            "effective_events": list(effective),
+        }
 
     return {
-        "nodes": [{"id": eid, "title": title(eid)} for eid in view["nodes"]],
+        "nodes": [node(eid) for eid in view["nodes"]],
         "edges": view["edges"],
         "convergence": view["convergence"],
         "divergence": view["divergence"],
-        "terminus": view["terminus"],
+        "terminus": terminus,
+        "plotlines": [lane(pid, view["paths"][pid]) for pid in sorted(view["paths"])],
     }

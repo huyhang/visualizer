@@ -160,6 +160,49 @@ def test_graph(seeded, client):
     assert view["terminus"] == "t"
 
 
+def test_graph_nodes_carry_timing_and_role_for_layout(seeded, client):
+    # The connected-plots / story-map viewer lays out by tick and colours by role
+    # from a single /graph call -- so every node carries its timing + flags.
+    _build_converging_story(client)
+    nodes = {n["id"]: n for n in client.get(f"/books/{BOOK}/graph").get_json()["nodes"]}
+    assert nodes["m"]["start_tick"] == 20 and nodes["m"]["scheduled"]
+    assert nodes["m"]["is_convergence"] and not nodes["m"]["is_divergence"]
+    assert nodes["t"]["is_terminus"] and not nodes["a"]["is_terminus"]
+    # Codec-split parts, so the view groups by period exactly like the timeline.
+    assert nodes["m"]["start_parts"] == ["20"] and nodes["m"]["end_parts"] == ["30"]
+
+
+def test_graph_lanes_record_stored_and_resolved_paths(seeded, client):
+    # One lane per thread, with stored-vs-inherited provenance kept recoverable so
+    # a future editor can route an edit back to the right stored field.
+    _make_book(client)
+    for eid, s, e in [("a", 0, 10), ("m", 20, 30), ("t", 40, 50)]:
+        client.post(f"/books/{BOOK}/events/{eid}", json=_event("highkeep", s, e))
+    client.post(f"/books/{BOOK}/plotlines/trunk", json={"events": ["m", "t"], "goals": ["g"]})
+    client.post(f"/books/{BOOK}/plotlines/knights",
+                json={"title": "The Knight's Road", "events": ["a"], "goals": ["g"],
+                      "continues_into": "trunk"})
+    client.post(f"/books/{BOOK}/terminus/t")
+    lanes = {p["id"]: p for p in client.get(f"/books/{BOOK}/graph").get_json()["plotlines"]}
+    assert lanes["knights"]["title"] == "The Knight's Road"
+    assert lanes["knights"]["events"] == ["a"]                 # stored own segment
+    assert lanes["knights"]["continues_into"] == "trunk"
+    assert lanes["knights"]["effective_events"] == ["a", "m", "t"]  # resolved path
+
+
+def test_expanded_summary_marks_divergence(seeded, client):
+    # A thread splitting off is now visible in the single-plotline timeline.
+    _make_book(client)
+    for eid, s, e in [("start", 0, 10), ("x", 20, 30), ("y", 20, 30), ("t", 40, 50)]:
+        client.post(f"/books/{BOOK}/events/{eid}", json=_event("highkeep", s, e))
+    client.post(f"/books/{BOOK}/plotlines/one", json={"events": ["start", "x", "t"], "goals": ["g"]})
+    client.post(f"/books/{BOOK}/plotlines/two", json={"events": ["start", "y", "t"], "goals": ["g"]})
+    client.post(f"/books/{BOOK}/terminus/t")
+    body = client.get(f"/books/{BOOK}/plotlines/one?expand=events").get_json()
+    start = next(e for e in body["effective_events"] if e["id"] == "start")
+    assert start["is_divergence"] and not start["is_convergence"]
+
+
 def test_neighborhood(seeded, client):
     _build_converging_story(client)
     n = client.get(f"/books/{BOOK}/events/m/plotlines").get_json()

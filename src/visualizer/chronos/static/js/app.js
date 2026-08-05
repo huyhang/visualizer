@@ -9,10 +9,11 @@
 // return to the table. Entity references open an article "peek" card in #peek.
 
 import { api, ApiError, BASE } from "./api.js";
-import { articleCard } from "./cards.js";
+import { articleCard, eventPeekCard } from "./cards.js";
 import { $, clear } from "./dom.js";
 import { mountBooks } from "./books.js";
 import { mountPlotline } from "./plotline.js";
+import { mountConnected } from "./storygraph.js";
 import { mountPlotlineTable } from "./table.js";
 import { initFontScale } from "./fontscale.js";
 import { initTheme } from "./theme.js";
@@ -27,6 +28,8 @@ const go = (hash) => { window.location.hash = hash; };
 const toBooks = () => go("#/");
 const toBook = (book) => go(`#/${enc(book)}`);
 const toPlotline = (book, pl) => go(`#/${enc(book)}/${enc(pl)}`);
+const toConnected = (book, pl) => go(`#/${enc(book)}/${enc(pl)}/connected`);
+const toConnectedAt = (book, pl, ev) => go(`#/${enc(book)}/${enc(pl)}/connected/${enc(ev)}`);
 
 function parseHash() {
   const raw = window.location.hash.replace(/^#\/?/, "");
@@ -42,6 +45,12 @@ function showEntity(ref) {
   peek.appendChild(articleCard(currentBook, ref, { onClose: clearPeek }));
 }
 
+// A story-graph node click opens the event's full detail in the same peek slot.
+function showEventPeek(node) {
+  clear(peek);
+  peek.appendChild(eventPeekCard(currentBook, node, { showEntity, onClose: clearPeek }));
+}
+
 // -- routing -----------------------------------------------------------------
 
 let currentBook = null;
@@ -54,9 +63,20 @@ function route() {
     mountBooks(content, { onOpen: toBook });
   } else if (parts.length === 1) {
     mountPlotlineTable(content, parts[0], { onOpen: (pl) => toPlotline(parts[0], pl), onBooks: toBooks });
+  } else if (parts[2] === "connected") {
+    mountConnected(content, parts[0], parts[1], {
+      focusEvent: parts[3] || null,
+      showEventPeek,
+      onBooks: toBooks,
+      onBook: () => toBook(parts[0]),
+      onTimeline: () => toPlotline(parts[0], parts[1]),
+      onPlotline: (pl) => toConnected(parts[0], pl),
+    });
   } else {
     mountPlotline(content, parts[0], parts[1], {
       showEntity, onBooks: toBooks, onBook: () => toBook(parts[0]),
+      onConnected: () => toConnected(parts[0], parts[1]),
+      onConnectedAt: (ev) => toConnectedAt(parts[0], parts[1], ev),
     });
   }
 }

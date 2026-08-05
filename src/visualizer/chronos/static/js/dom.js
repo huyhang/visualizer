@@ -24,6 +24,25 @@ export function el(tag, attrs = {}, children = []) {
 
 export function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
 
+// SVG sibling of el(): builds elements in the SVG namespace (createElement makes
+// inert HTML nodes for <svg>/<path>/<circle>…). Same attr/child conventions,
+// minus HTML-only shortcuts (no class=/text= special-casing beyond text).
+const SVG_NS = "http://www.w3.org/2000/svg";
+export function svgEl(tag, attrs = {}, children = []) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v == null) continue;
+    if (k === "text") node.textContent = v;
+    else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2), v);
+    else node.setAttribute(k, v);
+  }
+  for (const child of [].concat(children)) {
+    if (child == null) continue;
+    node.appendChild(typeof child === "string" ? document.createTextNode(child) : child);
+  }
+  return node;
+}
+
 let toastTimer = null;
 export function toast(message, isError = false) {
   const node = $("#toast");

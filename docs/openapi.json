@@ -1765,7 +1765,12 @@
             "description": "Other plotlines that also contain this event (convergence/divergence)."
           },
           "is_convergence": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "More than one thread merges into this event (in-degree > 1)."
+          },
+          "is_divergence": {
+            "type": "boolean",
+            "description": "More than one thread splits out of this event (out-degree > 1)."
           },
           "is_terminus": {
             "type": "boolean"
@@ -2031,16 +2036,7 @@
           "nodes": {
             "type": "array",
             "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "title": {
-                  "type": "string",
-                  "nullable": true
-                }
-              }
+              "$ref": "#/components/schemas/GraphNode"
             }
           },
           "edges": {
@@ -2066,13 +2062,30 @@
           "terminus": {
             "type": "string",
             "nullable": true
+          },
+          "plotlines": {
+            "type": "array",
+            "description": "One lane per thread, name-ordered. Carries the stored own segment and continues_into alongside the resolved effective path, so a client can draw lanes and a future editor can route edits to the right stored field.",
+            "items": {
+              "$ref": "#/components/schemas/GraphPlotline"
+            }
           }
         },
         "example": {
           "nodes": [
             {
               "id": "aldric-departs",
-              "title": "Aldric Departs"
+              "title": "Aldric Departs",
+              "start_tick": 0,
+              "end_tick": 10,
+              "start_label": "0",
+              "end_label": "10",
+              "start_parts": ["0"],
+              "end_parts": ["10"],
+              "scheduled": true,
+              "is_convergence": false,
+              "is_divergence": false,
+              "is_terminus": false
             }
           ],
           "edges": [
@@ -2085,11 +2098,119 @@
             }
           ],
           "convergence": [
-            "meet-at-emberport",
-            "the-coronation"
+            "meet-at-emberport"
           ],
           "divergence": [],
-          "terminus": "the-coronation"
+          "terminus": "the-coronation",
+          "plotlines": [
+            {
+              "id": "knights-road",
+              "title": "The Knight's Road",
+              "events": [
+                "aldric-departs"
+              ],
+              "continues_into": "trunk",
+              "effective_events": [
+                "aldric-departs",
+                "meet-at-emberport",
+                "the-coronation"
+              ]
+            }
+          ]
+        }
+      },
+      "GraphNode": {
+        "type": "object",
+        "description": "An event as a graph node, with its timing and its role in the story graph, so a client can lay it out by tick and colour it by role.",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "start_tick": {
+            "type": "integer",
+            "nullable": true
+          },
+          "end_tick": {
+            "type": "integer",
+            "nullable": true
+          },
+          "start_label": {
+            "type": "string",
+            "nullable": true
+          },
+          "end_label": {
+            "type": "string",
+            "nullable": true
+          },
+          "start_parts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "description": "The start label pre-split into coarse-to-fine components (one per calendar cycle, then the clock+epoch); null when unscheduled. Lets a UI group by period without parsing the string."
+          },
+          "end_parts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "description": "The end label pre-split into coarse-to-fine components; null when unscheduled."
+          },
+          "scheduled": {
+            "type": "boolean"
+          },
+          "is_convergence": {
+            "type": "boolean"
+          },
+          "is_divergence": {
+            "type": "boolean"
+          },
+          "is_terminus": {
+            "type": "boolean"
+          }
+        }
+      },
+      "GraphPlotline": {
+        "type": "object",
+        "description": "A thread as a lane in the story graph.",
+        "required": [
+          "id",
+          "effective_events"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "events": {
+            "type": "array",
+            "description": "The thread's stored own segment (before continuation resolution).",
+            "items": {
+              "type": "string"
+            }
+          },
+          "continues_into": {
+            "type": "string",
+            "nullable": true
+          },
+          "effective_events": {
+            "type": "array",
+            "description": "The resolved path: own segment followed by the continuation chain.",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       },
       "GraphEdge": {

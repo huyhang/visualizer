@@ -158,4 +158,7 @@ def graph_view(paths: dict[str, list[str]], terminus_id: str | None) -> dict:
         "convergence": convergence,
         "divergence": divergence,
         "terminus": terminus_id,
+        # The resolved path of each plotline, so a client can draw one lane per
+        # thread (order preserved) without re-deriving it from the edges.
+        "paths": {pid: list(events) for pid, events in paths.items()},
     }

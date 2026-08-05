@@ -143,6 +143,16 @@ def test_graph_is_acyclic_and_marks_convergence():
     assert is_acyclic(build_graph(effective_paths(_ember_plotlines())))
 
 
+def test_graph_view_exposes_each_plotlines_resolved_path():
+    # A client draws one lane per thread from these, order preserved, without
+    # re-deriving the path from the edges.
+    view = graph_view(effective_paths(_ember_plotlines()), "the-coronation")
+    assert view["paths"] == {
+        "knights-road": ["aldric-departs", "meet-at-emberport", "the-coronation"],
+        "spys-shadow": ["lyra-infiltrates", "meet-at-emberport", "the-coronation"],
+    }
+
+
 def test_neighborhood_convergence_point():
     n = neighborhood(effective_paths(_ember_plotlines()), "meet-at-emberport", "the-coronation")
     assert n.role == "convergence"
