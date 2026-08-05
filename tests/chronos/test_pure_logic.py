@@ -196,6 +196,31 @@ def test_mixed_radix_format():
     assert codec.format(200) == "Year 1, Month 1, Day 9, 08:00 AF"
 
 
+def test_mixed_radix_parts_are_coarse_to_fine():
+    codec = MixedRadixCodec(
+        cycles=[{"name": "day", "size": 24}, {"name": "month", "size": 30},
+                {"name": "year", "size": 12}],
+        base_unit="hour", epoch_label="AF",
+    )
+    assert codec.parts(200) == ["Year 1", "Month 1", "Day 9", "08:00 AF"]
+    # parts join back to exactly the formatted label.
+    assert ", ".join(codec.parts(200)) == codec.format(200)
+
+
+def test_mixed_radix_parts_use_fantasy_cycle_names():
+    codec = MixedRadixCodec(
+        cycles=[{"name": "span", "size": 10}, {"name": "moon", "size": 8},
+                {"name": "age", "size": 100}],
+        base_unit="bell", epoch_label="SR",
+    )
+    # Age/Moon/Span, coarse-to-fine, plus the clock -- no hardcoded year/month.
+    assert codec.parts(0) == ["Age 1", "Moon 1", "Span 1", "00:00 SR"]
+
+
+def test_identity_codec_parts_is_single_component():
+    assert IdentityCodec().parts(200) == ["200"]
+
+
 def test_codec_for_defaults_to_identity():
     assert isinstance(codec_for(Book("b")), IdentityCodec)
     assert isinstance(codec_for({"calendar": None}), IdentityCodec)

@@ -193,6 +193,26 @@ input:focus {
 
 /* vertical timeline */
 .timeline-v { margin-top: .5rem; }
+
+/* nested period headers (calendar-driven depth): a prominent top band, then
+   muted sub-bands, each indented one level; events sit under the deepest. */
+.tl-head { display: flex; align-items: center; gap: .5rem; }
+.tl-head-top {
+  font-size: 1.05rem; font-weight: 800; letter-spacing: -.01em; margin: 1.4rem 0 .2rem;
+}
+.tl-head-top:first-child { margin-top: .2rem; }
+.tl-head-top::before {
+  content: ""; width: 12px; height: 12px; border-radius: 3px; background: var(--accent);
+}
+.tl-head-sub {
+  font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--muted); margin: .6rem 0 .2rem;
+}
+.tl-head-sub::before {
+  content: ""; width: 9px; height: 9px; border-radius: 50%;
+  border: 2px solid var(--accent); box-sizing: border-box;
+}
+
 .tl-row { display: grid; grid-template-columns: 5.5rem 1.5rem minmax(0, 1fr); align-items: start; }
 .tl-time {
   text-align: right; padding: .55rem .6rem 0 0; color: var(--muted);

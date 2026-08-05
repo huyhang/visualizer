@@ -13,6 +13,8 @@ from .errors import InvalidTimeframe
 class TimeCodec(Protocol):
     def format(self, tick: int) -> str: ...
 
+    def parts(self, tick: int) -> list[str]: ...
+
     def parse(self, label: str) -> int: ...
 
 
@@ -21,6 +23,10 @@ class IdentityCodec:
 
     def format(self, tick: int) -> str:
         return str(tick)
+
+    def parts(self, tick: int) -> list[str]:
+        # A bare tick has no coarser structure -- a single component.
+        return [self.format(tick)]
 
     def parse(self, label: str) -> int:
         try:
@@ -59,15 +65,25 @@ class MixedRadixCodec:
         parts.append(value)  # the open-ended top cycle
         return parts
 
-    def format(self, tick: int) -> str:
+    def parts(self, tick: int) -> list[str]:
+        """The label's display components, coarse-to-fine: one per cycle (largest
+        first), then the base-unit clock with the epoch appended.
+
+        ``format`` is just these joined by ``", "``. Exposing the split lets a UI
+        group and relabel on structured data instead of re-parsing the string --
+        robust to any cycle names and any calendar depth (design §4.1).
+        """
         base_rem, *cycle_parts = self._components(tick)
         # cycle_parts aligns with self._names (the last is the open top cycle).
-        labelled = []
-        for name, part in zip(reversed(self._names), reversed(cycle_parts)):
-            labelled.append(f"{name.capitalize()} {part + 1}")
-        clock = f"{base_rem:02d}:00"
-        pieces = ", ".join(labelled) + f", {clock}"
-        return f"{pieces} {self._epoch}".strip()
+        labelled = [
+            f"{name.capitalize()} {part + 1}"
+            for name, part in zip(reversed(self._names), reversed(cycle_parts))
+        ]
+        labelled.append(f"{base_rem:02d}:00 {self._epoch}".strip())
+        return labelled
+
+    def format(self, tick: int) -> str:
+        return ", ".join(self.parts(tick))
 
     def parse(self, label: str) -> int:
         raise InvalidTimeframe(

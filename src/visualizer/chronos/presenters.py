@@ -191,6 +191,11 @@ def _event_summary(
         "end_tick": event.end_tick,
         "start_label": _label(event.start_tick, codec),
         "end_label": _label(event.end_tick, codec),
+        # The label pre-split into coarse-to-fine components by the codec, so a UI
+        # can group by year/month (or any fantasy cycle) without re-parsing the
+        # string. Null when unscheduled.
+        "start_parts": codec.parts(event.start_tick) if event.is_scheduled else None,
+        "end_parts": codec.parts(event.end_tick) if event.is_scheduled else None,
         "scheduled": event.is_scheduled,
         "location": event.location.to_dict(),
         "characters": [c.to_dict() for c in event.characters],

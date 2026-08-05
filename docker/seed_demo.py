@@ -21,7 +21,12 @@ Usage (from the repo root, stack already up):
     python docker/seed_demo.py --fix    # repair all three; leaves it CONSISTENT
     python docker/seed_demo.py --mixed  # also add "The Cartographer's Doubt", a
                                         # thread mixing scheduled + undated scenes
-                                        # (combine with --fix if you like)
+    python docker/seed_demo.py --periods  # also add "The Long Survey", a thread
+                                          # spanning several months/years (shows the
+                                          # visualiser's nested year/month rail).
+                                          # Runs past the terminus, so it adds one
+                                          # (soft) convergence finding by design.
+                                          # Flags combine, e.g. --fix --mixed --periods.
 
 Re-running is safe: existing records are updated rather than duplicated.
 """
@@ -239,6 +244,30 @@ MIXED_PLOTLINE = ("cartographers-doubt", "The Cartographer's Doubt",
                   ["cartographer-sets-out", "a-rumor-in-the-market", "crossing-the-fens",
                    "the-unmarked-road", "the-coronation"], None)
 
+# -- optional: a thread spanning several periods (enabled with --periods) --------
+# Scenes stepping into Year 1/Month 2 and Year 2/Month 1, so the visualiser's rail
+# shows its nested year -> month grouping (not just a single band). Also uses Mira,
+# so no temporal conflict. Ticks follow the CALENDAR above: day=24, month=720
+# (30d), year=8640 (12mo) -- Y1 M1 D15 -> 336, Y1 M2 D5 -> 816, Y2 M1 D2 -> 8664.
+# NOTE: it deliberately runs *past* the coronation, so it cannot end at the
+# terminus -- it adds one soft convergence finding (by design), independent of --fix.
+LONG_SURVEY_EVENTS = [
+    ("survey-first-light", "Survey: First Light", "highkeep", 336, 348,
+     ["mira-the-cartographer"], [],
+     "Mira records the first true survey line from Highkeep."),
+    ("survey-second-month", "Survey: The Second Month", "emberport", 816, 828,
+     ["mira-the-cartographer"], [],
+     "A month on, Mira reworks the coast at Emberport."),
+    ("survey-a-year-on", "Survey: A Year On", "highkeep", 8664, 8676,
+     ["mira-the-cartographer"], [],
+     "A full year later, Mira returns to close the map."),
+]
+
+LONG_SURVEY_PLOTLINE = ("the-long-survey", "The Long Survey",
+                        ["Chart the realm across the seasons"],
+                        ["survey-first-light", "survey-second-month", "survey-a-year-on"],
+                        None)
+
 
 class Client:
     """Cookie-preserving JSON HTTP client (one session across both services)."""
@@ -382,16 +411,20 @@ def seed_plotlines(client, witness):
     show(status, f"terminus = {TERMINUS}")
 
 
-def seed_experiment(client):
-    step("chronos: a mixed-timing thread to experiment with (--mixed)")
-    # A fresh cartographer, so this thread can never conflict with the main cast.
+def ensure_cartographer(client):
+    """Upsert the fresh character both optional threads use, so they can never
+    temporally conflict with the main cast. Idempotent (safe if both run)."""
     status, _ = client.upsert(
         f"{DOCS}/databases/{DB}/collections/characters/documents/mira-the-cartographer",
         CARTOGRAPHER,
     )
     show(status, "characters/mira-the-cartographer", CARTOGRAPHER["title"])
 
-    for spec in MIXED_EVENTS:
+
+def seed_thread(client, event_specs, plotline):
+    """Upsert a thread's events then its plotline, reporting each one's timing
+    and the plotline's ordering / terminus verdicts."""
+    for spec in event_specs:
         eid, payload = event_payload(spec)
         status, body = client.upsert(f"{CHRONOS}/books/{BOOK}/events/{eid}", payload)
         when = ""
@@ -399,7 +432,7 @@ def seed_experiment(client):
             when = body.get("start_label") if body.get("scheduled") else "unscheduled"
         show(status, f"event {eid}", when or "")
 
-    pid, title, goals, evs, into = MIXED_PLOTLINE
+    pid, title, goals, evs, into = plotline
     body = {"title": title, "goals": goals, "events": evs}
     if into:
         body["continues_into"] = into
@@ -410,6 +443,19 @@ def seed_experiment(client):
         detail = (f"ordering={st['ordering']['state']}, "
                   f"ends_at_terminus={st['ends_at_terminus']['state']}")
     show(status, f"plotline {pid}", detail)
+
+
+def seed_experiment(client):
+    step("chronos: a mixed-timing thread to experiment with (--mixed)")
+    ensure_cartographer(client)
+    seed_thread(client, MIXED_EVENTS, MIXED_PLOTLINE)
+
+
+def seed_periods(client):
+    step("chronos: a multi-period thread for the nested year/month rail (--periods)")
+    ensure_cartographer(client)
+    # Runs past the terminus by design, so expect ends_at_terminus=conflicted.
+    seed_thread(client, LONG_SURVEY_EVENTS, LONG_SURVEY_PLOTLINE)
 
 
 # -- reporting ---------------------------------------------------------------
@@ -444,7 +490,7 @@ def report(client):
         print(f"    - [{f['plotline']}] {f['reason']} (stops at '{f.get('last_event')}')")
 
 
-def next_steps(fixed, mixed):
+def next_steps(fixed, mixed, periods):
     step("what to try next")
     base = f"{CHRONOS}/books/{BOOK}"
     print(f"  curl -b cookies.txt {base}                      # one-glance status")
@@ -463,11 +509,18 @@ def next_steps(fixed, mixed):
     else:
         print("\n  Add a thread that mixes scheduled and undated scenes with --mixed:")
         print("    python docker/seed_demo.py --mixed")
+    if periods:
+        print(f"  curl -b cookies.txt {base}/plotlines/the-long-survey?expand=events"
+              "  # the multi-period thread")
+    else:
+        print("\n  Add a thread spanning several months/years (nested rail) with --periods:")
+        print("    python docker/seed_demo.py --periods")
 
 
 def main():
     fix = "--fix" in sys.argv
     mixed = "--mixed" in sys.argv
+    periods = "--periods" in sys.argv
     client = Client()
     login(client)
     seed_entities(client)
@@ -477,6 +530,8 @@ def main():
 
     if mixed:
         seed_experiment(client)
+    if periods:
+        seed_periods(client)
 
     if fix:
         step("repairing the story")
@@ -491,7 +546,7 @@ def main():
         show(status, "pointed the witness thread at the trunk so it reaches the terminus")
 
     report(client)
-    next_steps(fix, mixed)
+    next_steps(fix, mixed, periods)
     print(f"\nExplore: {CHRONOS}/books/{BOOK}   |   articles UI: {DOCS}/")
 
 

@@ -4,9 +4,9 @@
 // time), and the breadcrumb returns to the book's plotline table.
 
 import { api } from "./api.js";
-import { eventCard, eventTimeframe } from "./cards.js";
+import { eventCard } from "./cards.js";
 import { clear, el } from "./dom.js";
-import { allScheduled } from "./timeaxis.js";
+import { allScheduled, groupByPeriod } from "./timeaxis.js";
 
 function breadcrumb(bookTitle, book, plName, onBooks, onBook) {
   return el("nav", { class: "crumbs" }, [
@@ -30,16 +30,45 @@ function eventFetcher(book) {
 // A vertical timeline: one row per event, ordered top-to-bottom (story order).
 // The left rail carries a node dot and the scene's timeframe; the card sits to
 // its right and expands in place on click, pushing later rows down.
-function timelineRow(book, ev, deps) {
+function timelineRow(book, ev, timeLabel, deps) {
   return el("div", { class: "tl-row" }, [
-    el("div", { class: "tl-time", text: eventTimeframe(ev) }),
+    el("div", { class: "tl-time", text: timeLabel }),
     el("div", { class: "tl-rail" }, el("span", { class: "tl-dot" })),
     el("div", { class: "tl-card" }, eventCard(book, ev, { ...deps, showTime: false })),
   ]);
 }
 
+const INDENT_REM = 1; // left indent per header level (calendar-driven depth)
+
+function headerRow(level, label) {
+  // Level 0 is the prominent top band; deeper levels are muted sub-bands, each
+  // indented one more step.
+  return el("div", {
+    class: level === 0 ? "tl-head tl-head-top" : "tl-head tl-head-sub",
+    style: `margin-left:${level * INDENT_REM}rem`,
+    text: label,
+  });
+}
+
 function verticalTimeline(book, events, deps) {
-  return el("div", { class: "timeline-v" }, events.map((ev) => timelineRow(book, ev, deps)));
+  // Promote coarse calendar components to nested rail headers (year, month, ...),
+  // with each period's events grouped beneath so their rail connects and
+  // separates cleanly from the next. Depth is decided by the calendar.
+  const root = el("div", { class: "timeline-v" });
+  let bucket = null;
+  for (const item of groupByPeriod(events)) {
+    if (item.type === "header") {
+      root.appendChild(headerRow(item.level, item.label));
+      bucket = null; // a new header starts a fresh event group
+    } else {
+      if (!bucket) {
+        bucket = el("div", { class: "tl-events", style: `margin-left:${item.depth * INDENT_REM}rem` });
+        root.appendChild(bucket);
+      }
+      bucket.appendChild(timelineRow(book, item.event, item.label, deps));
+    }
+  }
+  return root;
 }
 
 export async function mountPlotline(container, book, plotlineId, { showEntity, onBooks, onBook }) {

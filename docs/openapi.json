@@ -1722,6 +1722,22 @@
             "type": "string",
             "nullable": true
           },
+          "start_parts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "description": "The start label pre-split into coarse-to-fine components (one per calendar cycle, then the clock+epoch); null when unscheduled. Lets a UI group by period without parsing the string."
+          },
+          "end_parts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "description": "The end label pre-split into coarse-to-fine components (one per calendar cycle, then the clock+epoch); null when unscheduled. Lets a UI group by period without parsing the string."
+          },
           "location": {
             "$ref": "#/components/schemas/EntityRef"
           },

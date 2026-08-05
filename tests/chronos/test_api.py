@@ -135,6 +135,24 @@ def test_plotline_expand(seeded, client):
     assert m["is_convergence"] and m["shared_with"] == ["spies"]
 
 
+def test_expanded_summary_carries_structured_label_parts(seeded, client):
+    _make_book(client, calendar={
+        "cycles": [{"name": "day", "size": 24}, {"name": "month", "size": 30},
+                   {"name": "year", "size": 12}],
+        "base_unit": "hour", "epoch_label": "AF",
+    })
+    client.post(f"/books/{BOOK}/events/meet", json=_event("emberport", 200, 210))
+    client.post(f"/books/{BOOK}/events/soon", json={"location": ref("emberport", "locations").to_dict()})
+    client.post(f"/books/{BOOK}/plotlines/pl", json={"events": ["meet", "soon"], "goals": ["g"]})
+    events = {e["id"]: e for e in
+              client.get(f"/books/{BOOK}/plotlines/pl?expand=events").get_json()["effective_events"]}
+    # Scheduled event: coarse-to-fine components straight from the codec.
+    assert events["meet"]["start_parts"] == ["Year 1", "Month 1", "Day 9", "08:00 AF"]
+    assert events["meet"]["end_parts"][:3] == ["Year 1", "Month 1", "Day 9"]
+    # Unscheduled event: null parts.
+    assert events["soon"]["start_parts"] is None and events["soon"]["end_parts"] is None
+
+
 def test_graph(seeded, client):
     _build_converging_story(client)
     view = client.get(f"/books/{BOOK}/graph").get_json()
