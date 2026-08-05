@@ -38,6 +38,16 @@ testable.
 - No automatic *resolution* of conflicts — Chronos **detects and reports**;
   the writer decides what to change.
 
+> **Update (as built).** The "UI comes later" non-goal has partly happened: a
+> **read-only** plotline visualiser now ships with the service (book → filtered
+> plotline table → a plotline's events as cards on a vertical timeline, with the
+> referenced Akasha articles shown inline). It is still read-only — all writing
+> goes through the JSON API. And rather than a second port, the two services are
+> served behind **one origin** in production: a single gunicorn co-mounts them
+> with Werkzeug's `DispatcherMiddleware` (`visualizer.wsgi:application`), akasha
+> at `/` and chronos at `/timeline` — one reverse-proxy rule, one cookie, no
+> CORS. See the root [README](../../README.md#services) and `visualizer/gateway.py`.
+
 ---
 
 ## 2. Principles (consistent with the existing codebase)

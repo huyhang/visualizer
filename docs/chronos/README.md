@@ -41,17 +41,20 @@ echo "SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))')" >
 docker compose -f docker/docker-compose.nas.yml up --build -d
 ```
 
-| Service | Host port | Purpose |
-| --- | --- | --- |
-| `akasha` | 5002 | articles: characters, items, locations |
-| `chronos` | 5003 | books, plotlines, events |
-| `mongo` | *(internal only)* | shared storage |
+Both services run in one process behind a single origin (port `5002`): akasha at
+`/`, chronos at `/timeline`.
+
+| Path | Purpose |
+| --- | --- |
+| `5002/` | akasha — articles: characters, items, locations |
+| `5002/timeline` | chronos — books, plotlines, events (+ the visualiser) |
+| `mongo` | *(internal only)* — shared storage |
 
 Check both are alive:
 
 ```bash
-curl -s localhost:5002/health   # {"status":"ok"}
-curl -s localhost:5003/health   # {"service":"chronos","status":"ok"}
+curl -s localhost:5002/health            # {"status":"ok"}
+curl -s localhost:5002/timeline/health   # {"service":"chronos","status":"ok"}
 ```
 
 **Configuration** (environment variables, set in `docker/.env`):
@@ -65,7 +68,13 @@ curl -s localhost:5003/health   # {"service":"chronos","status":"ok"}
 Chronos stores everything in a reserved `_chronos` database, which the
 Akasha API deliberately refuses to expose.
 
-> **Run locally without Docker** (needs a reachable MongoDB):
+> **Run locally without Docker** (needs a reachable MongoDB). Either run the
+> combined app on one port —
+> ```bash
+> SECRET_KEY=dev MONGO_URI=mongodb://localhost:27017 \
+>   gunicorn -b localhost:5002 visualizer.wsgi:application   # akasha at /, chronos at /timeline
+> ```
+> — or run chronos standalone on its own port for API work:
 > ```bash
 > SECRET_KEY=dev MONGO_URI=mongodb://localhost:27017 \
 >   gunicorn -b localhost:5003 visualizer.chronos.wsgi:app
@@ -286,7 +295,7 @@ The same `code`/`evidence` vocabulary appears in `status` verdicts and
 Creating a book makes you its **owner**. Owners invite others:
 
 ```bash
-curl -X PUT localhost:5003/books/ember-pact/collaborators/finn \
+curl -X PUT localhost:5002/timeline/books/ember-pact/collaborators/finn \
   -H 'Content-Type: application/json' -d '{"role":"editor"}'
 ```
 

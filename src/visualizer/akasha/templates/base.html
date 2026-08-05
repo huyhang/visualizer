@@ -63,7 +63,10 @@
     header nav { display: flex; align-items: center; gap: .35rem; }
     header nav a { padding: .35rem .7rem; border-radius: 8px; color: var(--muted); font-weight: 600; font-size: .9rem; }
     header nav a:hover { background: var(--surface-2); color: var(--text); text-decoration: none; }
-    .service-switch { display: inline-flex; align-items: center; gap: .2rem; }
+    .service-switch {
+      display: inline-flex; align-items: center; gap: .2rem;
+      padding-right: .5rem; margin-right: .15rem; border-right: 1px solid var(--border);
+    }
     .service-switch a.active { background: var(--accent-soft); color: var(--accent-strong); }
     .userchip { display: inline-flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .85rem; padding-left: .5rem; }
     .userchip .avatar {

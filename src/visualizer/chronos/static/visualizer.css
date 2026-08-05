@@ -45,13 +45,18 @@ button { font-family: inherit; cursor: pointer; }
   background: linear-gradient(135deg, var(--accent), var(--accent-strong));
 }
 .tagline { color: var(--muted); font-size: .85rem; }
-.service-switch { display: inline-flex; align-items: center; gap: .2rem; margin-left: .4rem; }
+.service-switch {
+  display: inline-flex; align-items: center; gap: .2rem;
+  padding-right: .5rem; margin-right: .15rem; border-right: 1px solid var(--border);
+}
 .service-switch a {
   color: var(--muted); font-weight: 600; font-size: .85rem; padding: .3rem .6rem; border-radius: 8px;
 }
 .service-switch a:hover { background: var(--surface-2); text-decoration: none; }
 .service-switch a.active { background: var(--accent-soft); color: var(--accent-strong); }
 .header-actions { margin-left: auto; display: flex; align-items: center; gap: .5rem; }
+.header-link { color: var(--muted); font-weight: 600; font-size: .9rem; padding: .3rem .5rem; border-radius: 8px; }
+.header-link:hover { background: var(--surface-2); text-decoration: none; }
 .userchip { display: inline-flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .85rem; }
 .userchip .avatar {
   width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
@@ -152,12 +157,22 @@ input:focus {
 
 /* event cards */
 .event-card {
+  position: relative;
   border: 1px solid var(--border); background: var(--surface); border-radius: 12px;
   box-shadow: var(--shadow); padding: .8rem .9rem; cursor: pointer;
   transition: box-shadow .15s ease, border-color .15s ease; outline: none;
 }
 .event-card:hover, .event-card:focus-visible { border-color: var(--accent); }
-.event-card.expanded { box-shadow: var(--shadow-lg); border-color: var(--accent); }
+.event-card.expanded { box-shadow: var(--shadow-lg); border-color: var(--accent); cursor: default; }
+.ev-close {
+  display: none; position: absolute; top: .5rem; right: .5rem;
+  width: 26px; height: 26px; border-radius: 8px; place-items: center;
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--muted);
+  font-size: .85rem; line-height: 1;
+}
+.ev-close:hover { border-color: var(--accent); color: var(--text); }
+.event-card.expanded .ev-close { display: grid; }
+.event-card.expanded .ev-title { padding-right: 2rem; } /* clear the close button */
 .ev-head { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; margin-bottom: .25rem; }
 .ev-time { font-size: .74rem; color: var(--muted); font-weight: 600; }
 .ev-title { font-size: 1rem; font-weight: 700; margin: 0 0 .2rem; letter-spacing: -.01em; }

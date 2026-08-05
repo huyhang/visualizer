@@ -106,6 +106,9 @@ def register_service_links(app, akasha_url: str, chronos_url: str, current: str)
     links = {
         "akasha": akasha_url,
         "chronos": chronos_url,
+        # Account and Admin are akasha-owned pages; expose them so either service's
+        # header can link to them under the shared origin.
+        "account": akasha_url.rstrip("/") + "/account",
         "admin": akasha_url.rstrip("/") + "/admin",
         "current": current,
     }

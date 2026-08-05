@@ -4,8 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chronos — plotline visualiser</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236366f1'/%3E%3Ctext x='16' y='22' font-size='18' font-family='sans-serif' font-weight='800' fill='white' text-anchor='middle'%3EC%3C/text%3E%3C/svg%3E">
+  <link rel="icon" href="{{ url_for('static', filename='chronos-icon.svg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='visualizer.css') }}">
+  <script>
+    // The path this app is mounted under ("" standalone, "/timeline" behind the
+    // single-origin gateway). The JS prepends it to API/login paths so the SPA
+    // works at either mount. url_for above already handles static/CSS.
+    window.__BASE__ = {{ request.script_root | tojson }};
+  </script>
   <script>
     // Set theme + font size before first paint to avoid a flash of the wrong one.
     (function () {
@@ -24,15 +30,16 @@
 </head>
 <body>
   <header class="app-header">
-    <span class="brand"><span class="mark">C</span><span class="brand-name">Chronos</span></span>
-    <nav class="service-switch" aria-label="Switch service">
-      <a href="{{ service_links.akasha }}"{% if service_links.current == 'akasha' %} class="active" aria-current="page"{% endif %}>Articles</a>
-      <a href="{{ service_links.chronos }}"{% if service_links.current == 'chronos' %} class="active" aria-current="page"{% endif %}>Timeline</a>
-      {% if current_user.is_admin %}<a href="{{ service_links.admin }}">Admin</a>{% endif %}
-    </nav>
+    <span class="brand"><span class="mark"><img src="{{ url_for('static', filename='chronos-glyph.svg') }}" alt="" width="26" height="26"></span><span class="brand-name">Chronos</span></span>
     <div class="header-actions">
+      <nav class="service-switch" aria-label="Switch service">
+        <a href="{{ service_links.akasha }}"{% if service_links.current == 'akasha' %} class="active" aria-current="page"{% endif %}>Articles</a>
+        <a href="{{ service_links.chronos }}"{% if service_links.current == 'chronos' %} class="active" aria-current="page"{% endif %}>Timeline</a>
+        {% if current_user.is_admin %}<a href="{{ service_links.admin }}">Admin</a>{% endif %}
+      </nav>
       <button class="icon-btn font-btn" id="font-toggle" aria-label="Text size" title="Text size">A</button>
       <button class="icon-btn" id="theme-toggle" aria-label="Toggle theme" title="Toggle light/dark">◐</button>
+      <a class="header-link" href="{{ service_links.account }}">Account</a>
       <span class="userchip"><span class="avatar">{{ current_user.username[0] | upper }}</span>
         <span class="username">{{ current_user.username }}</span></span>
       <form class="inline-form" method="post" action="{{ url_for('auth.logout') }}">

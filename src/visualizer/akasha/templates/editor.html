@@ -27,12 +27,12 @@
   <header class="app-header">
     <button class="icon-btn menu-toggle" id="menu-toggle" aria-label="Toggle browser">☰</button>
     <span class="brand"><span class="mark"><img src="{{ url_for('static', filename='akasha-glyph.svg') }}" alt="" width="26" height="26"></span><span class="brand-name">Akasha</span></span>
-    <nav class="service-switch" aria-label="Switch service">
-      <a href="{{ service_links.akasha }}"{% if service_links.current == 'akasha' %} class="active" aria-current="page"{% endif %}>Articles</a>
-      <a href="{{ service_links.chronos }}"{% if service_links.current == 'chronos' %} class="active" aria-current="page"{% endif %}>Timeline</a>
-      {% if current_user.is_admin %}<a href="{{ service_links.admin }}">Admin</a>{% endif %}
-    </nav>
     <div class="header-actions">
+      <nav class="service-switch" aria-label="Switch service">
+        <a href="{{ service_links.akasha }}"{% if service_links.current == 'akasha' %} class="active" aria-current="page"{% endif %}>Articles</a>
+        <a href="{{ service_links.chronos }}"{% if service_links.current == 'chronos' %} class="active" aria-current="page"{% endif %}>Timeline</a>
+        {% if current_user.is_admin %}<a href="{{ service_links.admin }}">Admin</a>{% endif %}
+      </nav>
       <button class="icon-btn font-btn" id="font-toggle" aria-label="Text size" title="Text size">A</button>
       <button class="icon-btn" id="theme-toggle" aria-label="Toggle theme" title="Toggle light/dark">◐</button>
       <a class="header-link" href="{{ url_for('account_page') }}">Account</a>

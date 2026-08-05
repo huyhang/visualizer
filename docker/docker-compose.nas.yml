@@ -1,8 +1,9 @@
-# The stack: akasha + chronos + MongoDB.
+# The stack: one combined app + MongoDB.
 #
-# Built on slim python images (docker/Dockerfile.*) and marked
-# `restart: unless-stopped` so it survives NAS reboots. This is the only
-# compose file — it serves local development and the NAS alike.
+# akasha and chronos run in a single gunicorn behind one origin
+# (docker/Dockerfile -> visualizer.wsgi:application): akasha at `/`, chronos at
+# `/timeline`. One published port -> one Synology reverse-proxy entry, one
+# cookie, no CORS. `restart: unless-stopped` so it survives NAS reboots.
 #
 # Deploy (from the repo root on the NAS):
 #   SECRET_KEY is required — put it in docker/.env (auto-loaded), e.g.
@@ -11,19 +12,21 @@
 #   or on the CLI:
 #     docker compose -f docker/docker-compose.nas.yml up --build -d
 #
-# Ports (DSM itself uses 5000/5001, so those are avoided):
-#   5002 -> akasha  (articles/entities)
-#   5003 -> chronos (plotlines/timeline)
-# Both share one MongoDB and one SECRET_KEY, so a single login works across
-# them (one identity, one `_auth` grant store). Put them behind Synology's
-# reverse proxy for HTTPS, then set SESSION_COOKIE_SECURE=true in docker/.env.
+# One port (DSM itself uses 5000/5001, so those are avoided):
+#   5002/          -> akasha  (articles/entities, and the shared /login)
+#   5002/timeline  -> chronos (the plotline visualiser)
+# Point one Synology reverse-proxy rule (one hostname) at this port, enable
+# HTTPS, then set SESSION_COOKIE_SECURE=true in docker/.env.
+#
+# To run the two services on separate ports instead (development), build
+# Dockerfile.akasha / Dockerfile.chronos (visualizer.{akasha,chronos}.wsgi).
 name: visualizer
 
 services:
-  akasha:
+  app:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.akasha
+      dockerfile: docker/Dockerfile
     ports:
       - "5002:5000"
     environment:
@@ -31,34 +34,13 @@ services:
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required — set it in docker/.env}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       VERSIONS_KEEP: ${VERSIONS_KEEP:-20}
-      # Browser-facing URLs for the header's service switcher. Defaults suit
-      # localhost; set both (e.g. https://myworld/akasha) behind a reverse proxy.
-      AKASHA_URL: ${AKASHA_URL:-http://localhost:5002}
-      CHRONOS_URL: ${CHRONOS_URL:-http://localhost:5003}
       # In-memory auth rate limiting by default; point at a shared backend (e.g.
       # redis://redis:6379) to hold limits across multiple gunicorn workers.
       RATELIMIT_STORAGE_URI: ${RATELIMIT_STORAGE_URI:-memory://}
-    depends_on:
-      mongo:
-        condition: service_healthy
-    restart: unless-stopped
-
-  chronos:
-    # The plotline & timeline API. Shares mongo (entities live in
-    # akasha) and the same SECRET_KEY so one session covers both.
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.chronos
-    ports:
-      - "5003:5000"
-    environment:
-      MONGO_URI: mongodb://mongo:27017
-      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required — set it in docker/.env}
-      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
-      RATELIMIT_STORAGE_URI: ${RATELIMIT_STORAGE_URI:-memory://}
-      # Browser-facing URLs for the header's service switcher (see akasha above).
-      AKASHA_URL: ${AKASHA_URL:-http://localhost:5002}
-      CHRONOS_URL: ${CHRONOS_URL:-http://localhost:5003}
+      # The header switcher's links. Relative paths keep it same-origin; override
+      # only if a reverse proxy serves the services on different hosts/paths.
+      AKASHA_URL: ${AKASHA_URL:-/}
+      CHRONOS_URL: ${CHRONOS_URL:-/timeline}
     depends_on:
       mongo:
         condition: service_healthy

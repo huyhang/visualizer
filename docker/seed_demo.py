@@ -19,17 +19,24 @@ Run it, then look at `GET /books/ember-pact/validate`.
 Usage (from the repo root, stack already up):
     python docker/seed_demo.py          # seed; leaves the book CONFLICTED
     python docker/seed_demo.py --fix    # repair all three; leaves it CONSISTENT
+    python docker/seed_demo.py --mixed  # also add "The Cartographer's Doubt", a
+                                        # thread mixing scheduled + undated scenes
+                                        # (combine with --fix if you like)
 
 Re-running is safe: existing records are updated rather than duplicated.
 """
 
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
 
-DOCS = "http://localhost:5002"
-CHRONOS = "http://localhost:5003"
+# Defaults target the single-origin stack (docker-compose.nas.yml): akasha at
+# `/`, chronos under `/timeline`, both on one port. Override via env to point at
+# a split/dev deployment, e.g. CHRONOS_BASE=http://localhost:5003.
+DOCS = os.environ.get("AKASHA_BASE", "http://localhost:5002")
+CHRONOS = os.environ.get("CHRONOS_BASE", "http://localhost:5002/timeline")
 
 USER = "mara"
 PASSWORD = "ember-pact-demo"
@@ -195,6 +202,43 @@ WITNESS_FIXED = (*WITNESS_BROKEN[:3], ["aldric-at-emberport"], "trunk")
 
 TERMINUS = "the-coronation"
 
+# -- optional: a mixed-timing thread for experimentation (enabled with --mixed) --
+# Some scenes are scheduled, some have no timing yet, so the visualiser's vertical
+# timeline shows both dated nodes and "unscheduled" ones (with inferred windows).
+# It uses its OWN character, so it can never temporally conflict with the main
+# cast, and converges on the terminus, so it leaves the book's status unchanged.
+CARTOGRAPHER = {
+    "title": "Mira the Cartographer",
+    "role": "Cartographer",
+    "body": (
+        "Mira surveys the disputed march between [[locations/highkeep|Highkeep]] "
+        "and [[locations/emberport|Emberport]], mapping roads the crown has "
+        "forgotten."
+    ),
+}
+
+# Same 8-field shape as EVENTS; start=end=None means the scene is unscheduled.
+MIXED_EVENTS = [
+    ("cartographer-sets-out", "The Cartographer Sets Out", "highkeep", 0, 12,
+     ["mira-the-cartographer"], [],
+     "Mira leaves Highkeep at dawn to survey the disputed march."),
+    ("a-rumor-in-the-market", "A Rumor in the Market", "emberport", None, None,
+     ["mira-the-cartographer"], [],
+     "In the Emberport market Mira hears of an unmarked road -- when, no one agrees."),
+    ("crossing-the-fens", "Crossing the Fens", "emberport", 48, 72,
+     ["mira-the-cartographer"], ["ember-seal"],
+     "Mira crosses the fens with the survey in hand."),
+    ("the-unmarked-road", "The Unmarked Road", "highkeep", None, None,
+     ["mira-the-cartographer"], [],
+     "The road Mira was warned of -- its timing still a mystery."),
+]
+
+# Ends on the shared terminus so the thread converges (ordering stays clean).
+MIXED_PLOTLINE = ("cartographers-doubt", "The Cartographer's Doubt",
+                  ["Map the disputed lands", "Reach the coronation with the survey"],
+                  ["cartographer-sets-out", "a-rumor-in-the-market", "crossing-the-fens",
+                   "the-unmarked-road", "the-coronation"], None)
+
 
 class Client:
     """Cookie-preserving JSON HTTP client (one session across both services)."""
@@ -245,15 +289,19 @@ def ref(collection, id_):
 
 def event_payload(spec):
     eid, title, loc, start, end, chars, items, desc = spec
-    return eid, {
+    payload = {
         "title": title,
         "location": ref("locations", loc),
-        "start_tick": start,
-        "end_tick": end,
         "characters": [ref("characters", c) for c in chars],
         "items": [ref("items", i) for i in items],
         "description": desc,
     }
+    # Ticks are both-or-neither: start=end=None marks an *unscheduled* scene (one
+    # with no timing yet), which Chronos keeps out of the timing checks.
+    if start is not None and end is not None:
+        payload["start_tick"] = start
+        payload["end_tick"] = end
+    return eid, payload
 
 
 def step(label):
@@ -334,6 +382,36 @@ def seed_plotlines(client, witness):
     show(status, f"terminus = {TERMINUS}")
 
 
+def seed_experiment(client):
+    step("chronos: a mixed-timing thread to experiment with (--mixed)")
+    # A fresh cartographer, so this thread can never conflict with the main cast.
+    status, _ = client.upsert(
+        f"{DOCS}/databases/{DB}/collections/characters/documents/mira-the-cartographer",
+        CARTOGRAPHER,
+    )
+    show(status, "characters/mira-the-cartographer", CARTOGRAPHER["title"])
+
+    for spec in MIXED_EVENTS:
+        eid, payload = event_payload(spec)
+        status, body = client.upsert(f"{CHRONOS}/books/{BOOK}/events/{eid}", payload)
+        when = ""
+        if body:
+            when = body.get("start_label") if body.get("scheduled") else "unscheduled"
+        show(status, f"event {eid}", when or "")
+
+    pid, title, goals, evs, into = MIXED_PLOTLINE
+    body = {"title": title, "goals": goals, "events": evs}
+    if into:
+        body["continues_into"] = into
+    status, result = client.upsert(f"{CHRONOS}/books/{BOOK}/plotlines/{pid}", body)
+    detail = ""
+    if status < 400:
+        st = result["status"]
+        detail = (f"ordering={st['ordering']['state']}, "
+                  f"ends_at_terminus={st['ends_at_terminus']['state']}")
+    show(status, f"plotline {pid}", detail)
+
+
 # -- reporting ---------------------------------------------------------------
 
 
@@ -366,7 +444,7 @@ def report(client):
         print(f"    - [{f['plotline']}] {f['reason']} (stops at '{f.get('last_event')}')")
 
 
-def next_steps(fixed):
+def next_steps(fixed, mixed):
     step("what to try next")
     base = f"{CHRONOS}/books/{BOOK}"
     print(f"  curl -b cookies.txt {base}                      # one-glance status")
@@ -379,16 +457,26 @@ def next_steps(fixed):
     else:
         print("\n  Run with --fix to repair all three problems and see it go green:")
         print("    python docker/seed_demo.py --fix")
+    if mixed:
+        print(f"  curl -b cookies.txt {base}/plotlines/cartographers-doubt?expand=events"
+              "  # the mixed-timing thread")
+    else:
+        print("\n  Add a thread that mixes scheduled and undated scenes with --mixed:")
+        print("    python docker/seed_demo.py --mixed")
 
 
 def main():
     fix = "--fix" in sys.argv
+    mixed = "--mixed" in sys.argv
     client = Client()
     login(client)
     seed_entities(client)
     seed_book_and_events(client)
     demo_hard_rule(client)
     seed_plotlines(client, WITNESS_BROKEN)
+
+    if mixed:
+        seed_experiment(client)
 
     if fix:
         step("repairing the story")
@@ -403,7 +491,7 @@ def main():
         show(status, "pointed the witness thread at the trunk so it reaches the terminus")
 
     report(client)
-    next_steps(fix)
+    next_steps(fix, mixed)
     print(f"\nExplore: {CHRONOS}/books/{BOOK}   |   articles UI: {DOCS}/")
 
 

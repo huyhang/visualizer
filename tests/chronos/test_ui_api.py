@@ -83,6 +83,13 @@ def test_header_switcher_links_to_akasha(seeded, client):
     assert ">Admin<" not in html                        # writer is not an admin
 
 
+def test_header_has_account_link(seeded, client):
+    # akasha_url defaults to http://localhost:5002 in the test app, so the link
+    # is that base + /account (relative "/account" under the single-origin gateway).
+    html = client.get("/").get_data(as_text=True)
+    assert ">Account<" in html and "/account" in html
+
+
 def test_header_switcher_shows_admin_for_admins(seeded, app):
     from tests.chronos.conftest import _login
 

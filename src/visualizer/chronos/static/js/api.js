@@ -3,6 +3,11 @@
 
 const enc = encodeURIComponent;
 
+// The path Chronos is mounted under: "" when served standalone, "/timeline"
+// behind the single-origin gateway. Prepended to every request so the same JS
+// works at either mount (set by the template from request.script_root).
+export const BASE = (typeof window !== "undefined" && window.__BASE__) || "";
+
 export class ApiError extends Error {
   constructor(status, body) {
     super((body && body.error) || `HTTP ${status}`);
@@ -14,7 +19,7 @@ export class ApiError extends Error {
 }
 
 async function request(method, url) {
-  const resp = await fetch(url, { method, headers: { Accept: "application/json" } });
+  const resp = await fetch(BASE + url, { method, headers: { Accept: "application/json" } });
   if (resp.status === 204) return null;
   let payload = null;
   try { payload = await resp.json(); } catch (e) { /* empty body */ }

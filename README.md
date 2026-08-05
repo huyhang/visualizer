@@ -20,10 +20,13 @@ designed to run comfortably on a home NAS.
 
 ## Services
 
-| Service | Port | What it does | Docs |
+Both services run in **one process behind a single origin** (port `5002`):
+akasha at `/`, chronos at `/timeline` — one login, one reverse-proxy entry.
+
+| Service | Path | What it does | Docs |
 | --- | --- | --- | --- |
-| **akasha** | 5002 | A Wikipedia-style article store and editor: characters, items, locations, lore — with linking, versioning and diffs. Has a web UI. | [README](docs/akasha/README.md) · [design](docs/akasha/editor-design.md) |
-| **chronos** | 5003 | A plotline & timeline API for fiction writers: books, events and plotlines, checked for continuity errors. Ships with a read-only plotline visualiser at `/`. | [README](docs/chronos/README.md) · [plain-language overview](docs/chronos/OVERVIEW.md) · [design](docs/chronos/design.md) |
+| **akasha** | `/` | A Wikipedia-style article store and editor: characters, items, locations, lore — with linking, versioning and diffs. Has a web UI. | [README](docs/akasha/README.md) · [design](docs/akasha/editor-design.md) |
+| **chronos** | `/timeline` | A plotline & timeline API for fiction writers: books, events and plotlines, checked for continuity errors, with a read-only plotline visualiser. | [README](docs/chronos/README.md) · [plain-language overview](docs/chronos/OVERVIEW.md) · [design](docs/chronos/design.md) |
 | **mongo** | *internal* | Shared storage. Deliberately not published to the host. | — |
 
 The two are named for what they hold: **Akasha** (the aether said to record all
@@ -34,6 +37,20 @@ Akasha. Chronos never invents them — it *references* them, and refuses a
 reference to something that doesn't exist. So there is one canon, and the
 timeline is checked against it.
 
+**One process, one origin.** In production the two apps are served by a single
+gunicorn behind one origin (port `5002`) — akasha at `/`, chronos at `/timeline`
+— composed with Werkzeug's `DispatcherMiddleware` (`visualizer.wsgi:application`,
+see [`src/visualizer/gateway.py`](src/visualizer/gateway.py)). They already share
+one MongoDB, one `_auth` store and one `SECRET_KEY`, and chronos calls akasha
+in-process (no service-to-service HTTP), so co-mounting them changes nothing about
+how they work — it just gives **one reverse-proxy rule, one cookie and no CORS**,
+which is exactly what the Synology reverse-proxy deployment wants. It's a *front
+door*, not a merge: each app keeps its own factory and test suite, and the
+per-service entrypoints (`visualizer.akasha.wsgi` / `visualizer.chronos.wsgi`)
+still run a single service on its own port for development. The header's
+`AKASHA_URL` / `CHRONOS_URL` default to the relative paths `/` and `/timeline`;
+set them if a proxy serves the services on different hosts.
+
 ---
 
 ## Run it
@@ -43,14 +60,15 @@ timeline is checked against it.
 #    One value, shared by both services, so a single login covers them.
 echo "SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))')" > docker/.env
 
-# 2. Build and start all three containers
+# 2. Build and start the stack (one app container + mongo)
 docker compose -f docker/docker-compose.nas.yml up --build -d
 ```
 
 - **http://localhost:5002/** — the article editor. **Register the first account;
   it becomes the administrator.**
-- **http://localhost:5003/** — the read-only plotline visualiser.
-- **http://localhost:5003/health** — chronos liveness.
+- **http://localhost:5002/timeline** — the read-only plotline visualiser.
+- **http://localhost:5002/health** — akasha liveness;
+  **/timeline/health** — chronos liveness.
 
 Each service's README documents its own configuration, API and deployment
 notes. For a NAS install, see
@@ -93,8 +111,8 @@ Inspect it yourself, then watch it go green:
 curl -s -c /tmp/c -X POST localhost:5002/login -H 'Content-Type: application/json' \
   -d '{"username":"mara","password":"ember-pact-demo"}'
 
-curl -s -b /tmp/c localhost:5003/books/ember-pact/validate   # the full report
-curl -s -b /tmp/c localhost:5003/books/ember-pact/graph      # how the threads connect
+curl -s -b /tmp/c localhost:5002/timeline/books/ember-pact/validate   # the full report
+curl -s -b /tmp/c localhost:5002/timeline/books/ember-pact/graph      # how the threads connect
 
 python docker/seed_demo.py --fix                             # repair; status -> CONSISTENT
 ```

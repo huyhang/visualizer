@@ -8,7 +8,7 @@
 // ever visualised at a time; the breadcrumbs (and the browser Back button)
 // return to the table. Entity references open an article "peek" card in #peek.
 
-import { api, ApiError } from "./api.js";
+import { api, ApiError, BASE } from "./api.js";
 import { articleCard } from "./cards.js";
 import { $, clear } from "./dom.js";
 import { mountBooks } from "./books.js";
@@ -74,7 +74,7 @@ async function boot() {
     await api.me(); // confirm the session before rendering
   } catch (e) {
     if (e instanceof ApiError && (e.status === 401 || e.isForbidden)) {
-      window.location.href = "/login";
+      window.location.href = BASE + "/login";
       return;
     }
   }

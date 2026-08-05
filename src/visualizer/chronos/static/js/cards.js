@@ -73,7 +73,17 @@ export function eventCard(book, summary, { getFullEvent, showEntity, showTime = 
   head.push(...badges(summary));
 
   const detail = el("div", { class: "ev-detail" }, el("p", { class: "muted", text: "Loading…" }));
+
+  const collapse = () => card.classList.remove("expanded");
+  // A close button, shown (via CSS) only while expanded: the card now stays open
+  // until dismissed, rather than collapsing when the mouse leaves.
+  const closeBtn = el("button", {
+    class: "ev-close", type: "button", "aria-label": "Close", title: "Close", text: "✕",
+    onclick: (e) => { e.stopPropagation(); collapse(); },
+  });
+
   const card = el("article", { class: "event-card", tabindex: "0" }, [
+    closeBtn,
     head.length ? el("div", { class: "ev-head" }, head) : null,
     el("h3", { class: "ev-title", text: summary.title }),
     el("div", { class: "ev-loc-line" }, [el("span", { class: "ev-at", text: "at " }), loc]),
@@ -90,12 +100,11 @@ export function eventCard(book, summary, { getFullEvent, showEntity, showTime = 
       .then((event) => fillDetail(detail, book, event, showEntity))
       .catch(() => { detail.replaceChildren(el("p", { class: "muted", text: "Could not load detail." })); loaded = false; });
   };
-  const collapse = () => card.classList.remove("expanded");
 
   card.addEventListener("click", expand);
-  card.addEventListener("mouseleave", collapse);
   card.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); card.classList.contains("expanded") ? collapse() : expand(); }
+    if (e.target !== card) return; // let chips / the close button handle their own keys
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); expand(); }
     if (e.key === "Escape") collapse();
   });
   return card;

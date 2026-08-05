@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="Chronos">
+  <defs>
+    <linearGradient id="ch-g" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#4f46e5"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" fill="url(#ch-g)"/>
+  <g fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M9 6 H23"/>
+    <path d="M9 26 H23"/>
+    <path d="M11 6 C 11 12, 13.6 14.6, 16 16 C 18.4 14.6, 21 12, 21 6"/>
+    <path d="M11 26 C 11 20, 13.6 17.4, 16 16 C 18.4 17.4, 21 20, 21 26"/>
+  </g>
+  <path fill="#ffffff" d="M16 16.4 C 14 17.8, 12.9 20.4, 12.7 23.4 C 14.9 22.5, 17.1 22.5, 19.3 23.4 C 19.1 20.4, 18 17.8, 16 16.4 Z"/>
+  <path fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" d="M16 16.6 L16 19.6"/>
+</svg>
