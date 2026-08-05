@@ -144,16 +144,17 @@ export async function mountPlotline(container, book, plotlineId,
   const header = el("div", { class: "pl-header" }, [
     el("h1", { class: "view-title", text: pl.title || pl.id }),
     el("div", { class: "chip-row goals" }, (pl.goals || []).map((g) => el("span", { class: "chip goal", text: g }))),
-    el("div", { class: "pl-actions" }, [
+    // Only offer "Connected plots" when this thread actually meets another; a
+    // solo thread would just lead to an empty "runs on its own" view.
+    meets ? el("div", { class: "pl-actions" }, [
       el("button", {
         class: "btn secondary sm", type: "button",
-        text: meets ? `Connected plots (${meets})` : "Connected plots",
+        text: `Connected plots (${meets})`,
         onclick: () => onConnected && onConnected(),
       }),
-      el("span", { class: "muted meet-hint", text: meets
-        ? `Meets ${meets} other plotline${meets === 1 ? "" : "s"} along the way.`
-        : "Runs on its own until the shared ending." }),
-    ]),
+      el("span", { class: "muted meet-hint",
+        text: `Meets ${meets} other plotline${meets === 1 ? "" : "s"} along the way.` }),
+    ]) : null,
     el("p", { class: "muted axis-note", text: allScheduled(events)
       ? "Scenes top to bottom in story order — all are scheduled."
       : "Scenes top to bottom in story order — some have no timing yet." }),
