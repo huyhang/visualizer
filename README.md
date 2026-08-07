@@ -71,9 +71,9 @@ docker compose -f docker/docker-compose.nas.yml up --build -d
 - **http://localhost:5002/health** — akasha liveness;
   **/timeline/health** — chronos liveness.
 
-Each service's README documents its own configuration, API and deployment
-notes. For a NAS install, see
-[Deploy on a Synology NAS](docs/akasha/README.md#deploy-on-a-synology-nas).
+Each service's README documents its own configuration and API. For a NAS
+install — including HTTPS, updating to a new commit, and backups — see
+[Deploy on a Synology NAS](docs/synology-deployment.md).
 
 > Before exposing any of this beyond localhost, read [`SECURITY.md`](SECURITY.md)
 > — it lists what protections exist and what hardening is still required.
@@ -131,8 +131,8 @@ src/visualizer/
   akasha/   articles, auth, grants, versioning, web UI
   chronos/           books, plotlines, events, story graph
 tests/               one suite per service (in-memory MongoDB)
-docker/              Dockerfiles, the compose stack, demo seed script
-docs/                per-service READMEs and design documents
+docker/              Dockerfiles, the compose stack, demo seed + backup scripts
+docs/                per-service READMEs, design documents, NAS deployment
 ```
 
 Both services follow the same conventions: **inversion of control** (every

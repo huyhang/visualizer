@@ -418,6 +418,14 @@ Log in as `mara` / `ember-pact-demo` to explore the result.
 
 ---
 
+## Backups
+
+Chronos shares one MongoDB with akasha, so backups are a stack-level concern:
+`docker/backup.sh` plus a DSM scheduled task, documented under
+[Synology deployment → Backups](../synology-deployment.md#backups).
+
+---
+
 ## Development & tests
 
 Use the repo's **`visualizer` conda env (Python 3.11)** — see the root

@@ -157,7 +157,8 @@ Ordered roughly by priority. Items marked *(partial)* have some support already.
 1. **TLS / HTTPS everywhere.** Session cookies over plain HTTP can be
    intercepted. Terminate TLS at a reverse proxy, set
    `SESSION_COOKIE_SECURE=true`, add **HSTS**, and redirect HTTP→HTTPS.
-   *(partial: the cookie flag and a Synology reverse-proxy guide exist; TLS
+   *(partial: the cookie flag and a
+   [Synology reverse-proxy guide](docs/synology-deployment.md#https) exist; TLS
    itself is not provided by the app.)*
 2. **Enable MongoDB authentication + network isolation.** Mongo currently runs
    with **no authentication** (it is only unexposed by network placement). Enable

@@ -362,25 +362,9 @@ optimistic concurrency; a stale value returns `409`.
 
 ## Deploy on a Synology NAS
 
-> Before exposing this beyond localhost, read [`SECURITY.md`](../../SECURITY.md) —
-> it lists the security measures in place and the hardening still required
-> (TLS, MongoDB auth, rate limiting, non-root container, and more).
-
-The same `docker/docker-compose.nas.yml` runs on a Synology NAS with **Container
-Manager** (any "+" model). MongoDB 7 needs a CPU with AVX; on one without, change
-`mongo:7` to `mongo:4.4` in the compose file.
-
-1. Put the repo on the NAS and set `SECRET_KEY` in `docker/.env` (as above).
-2. In Container Manager create a **Project** pointing at
-   `docker/docker-compose.nas.yml` (or run the `docker compose … up --build -d`
-   command). The app is published on host port **5002** (DSM uses 5000/5001).
-
-**HTTPS (recommended).** Terminate TLS with Synology's built-in reverse proxy —
-**Control Panel → Login Portal → Advanced → Reverse Proxy** — pointing an HTTPS
-hostname at `http://localhost:5002`, bind a Let's Encrypt certificate to it, then
-add `SESSION_COOKIE_SECURE=true` to `docker/.env` and redeploy so the session
-cookie is only ever sent over HTTPS. (With that set, logging in over plain HTTP
-won't work — use the `https://` address.)
+Install, HTTPS, updating to a new commit, and backups are stack-level concerns —
+one compose file brings up both services and their shared MongoDB — so they live
+in one place: **[Synology deployment](../synology-deployment.md)**.
 
 ---
 
