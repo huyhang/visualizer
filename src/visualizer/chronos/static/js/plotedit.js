@@ -22,6 +22,8 @@ import { api } from "./api.js";
 import { eventTimeframe } from "./cards.js";
 import { clear, el, toast } from "./dom.js";
 import { findingList, markerClass, problemBanner, verdictNotes } from "./findings.js";
+import { focusToggle } from "./focus.js";
+import { showScene } from "./peek.js";
 import { confirmModal, modal, suggestBox } from "./picker.js";
 import { loadScope, sceneForm } from "./sceneform.js";
 
@@ -308,6 +310,8 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
         el("h2", { class: "section-title", text: "Scenes" }),
         el("span", { class: "muted section-hint",
           text: state.checking ? "checking…" : "drag to reorder, or focus a scene and press ↑ / ↓" }),
+        display.some((r) => (r.findings || []).length)
+          ? focusToggle(((state.preview || {}).status || {}).conflicts) : null,
       ]),
       list,
       el("div", { class: "editor-scene-actions" }, [
@@ -376,7 +380,9 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
   function jumpTo(eventId) {
     const target = view.querySelector(`[data-event="${CSS.escape(eventId)}"]`);
     if (!target) {
-      toast("That scene is on another thread.");
+      // Not on this thread -- show it beside the editor. Often the fix is to
+      // that scene's timing, and you cannot decide without seeing it.
+      showScene(book, { id: eventId });
       return;
     }
     target.scrollIntoView({ block: "center", behavior: "smooth" });

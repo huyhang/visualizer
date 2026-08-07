@@ -254,7 +254,9 @@ input:focus {
 }
 
 /* article peek card */
-.peek { position: fixed; top: 4rem; right: 1rem; width: 360px; max-width: calc(100vw - 2rem); z-index: 60; }
+/* above .modal-overlay (90): a finding inside the editor can open a scene
+   from another thread, and it has to land in front of the modal. */
+.peek { position: fixed; top: 4rem; right: 1rem; width: 360px; max-width: calc(100vw - 2rem); z-index: 95; }
 .peek-card {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   box-shadow: var(--shadow-lg); max-height: calc(100vh - 6rem); overflow: auto;
@@ -380,9 +382,12 @@ button.sg-legend-chip:hover { border-color: var(--accent); }
 }
 .banner-link:hover { border-color: var(--danger); }
 
-/* the rail dot when a scene has a problem */
-.tl-dot.has-conflict { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
-.tl-dot.has-hint { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+/* The rail dot when a scene has a problem. Scoped to "not focus mode" for two
+   reasons: it turns the marks off with one class, and the extra specificity is
+   what makes a marker outrank the role colour (.is-terminus etc.) while shown —
+   so in focus mode the dot quietly reverts to its role instead of going blank. */
+body:not(.focus-mode) .tl-dot.has-conflict { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+body:not(.focus-mode) .tl-dot.has-hint { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
 
 /* plotline table health column */
 .health-flag {
@@ -443,8 +448,8 @@ select {
   border: 1px solid var(--border); background: var(--surface);
   border-radius: 12px; padding: .55rem .7rem; margin-bottom: .45rem;
 }
-.scene-row.has-conflict { border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
-.scene-row.has-hint { border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+body:not(.focus-mode) .scene-row.has-conflict { border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
+body:not(.focus-mode) .scene-row.has-hint { border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
 .scene-row.inherited { background: var(--surface-2); opacity: .85; }
 .scene-row.dragging { opacity: .4; }
 .scene-row.drop-before { box-shadow: 0 -3px 0 0 var(--accent); }
@@ -521,3 +526,16 @@ select {
 .modal-panel.wide { width: min(760px, 100%); }
 .editor-view .editor-fields { max-width: none; }
 .editor-view .scene-row, .editor-view .findings { max-width: none; }
+
+/* ---------------------------------------------------------------------------
+   Focus mode — the marks are hidden, never unmade. Nothing here stops a finding
+   being computed; the toggle button keeps stating the count so a quiet screen
+   is never mistaken for a sound story. Scoped to the plotline view and the
+   editor: the book's table keeps its health column on purpose.
+   --------------------------------------------------------------------------- */
+.focus-mode .findings,
+.focus-mode .banner.conflict { display: none; }
+/* a mode switch, not an action: it sits at the far right of its row. Applied
+   only where it is the last child, so it never shoves later controls along. */
+.pl-actions .focus-btn:last-child,
+.section-head .focus-btn:last-child { margin-left: auto; }

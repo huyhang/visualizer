@@ -12,17 +12,17 @@
 // return to the table. Entity references open an article "peek" card in #peek.
 
 import { api, ApiError, BASE } from "./api.js";
-import { articleCard, eventPeekCard } from "./cards.js";
-import { $, clear } from "./dom.js";
+import { $ } from "./dom.js";
+import { clearPeek, showArticle, showScene } from "./peek.js";
 import { mountBooks } from "./books.js";
 import { mountPlotline } from "./plotline.js";
 import { mountConnected } from "./storygraph.js";
 import { mountPlotlineTable } from "./table.js";
+import { applyFocus } from "./focus.js";
 import { initFontScale } from "./fontscale.js";
 import { initTheme } from "./theme.js";
 
 const content = $("#content");
-const peek = $("#peek");
 
 // -- navigation --------------------------------------------------------------
 
@@ -39,20 +39,11 @@ function parseHash() {
   return raw.split("/").filter((s) => s.length).map(decodeURIComponent);
 }
 
-// -- entity peek card --------------------------------------------------------
+// -- the peek slot -----------------------------------------------------------
+// Owned by peek.js; these just bind it to whichever book is on screen.
 
-function clearPeek() { clear(peek); }
-
-function showEntity(ref) {
-  clear(peek);
-  peek.appendChild(articleCard(currentBook, ref, { onClose: clearPeek }));
-}
-
-// A story-graph node click opens the event's full detail in the same peek slot.
-function showEventPeek(node) {
-  clear(peek);
-  peek.appendChild(eventPeekCard(currentBook, node, { showEntity, onClose: clearPeek }));
-}
+const showEntity = (ref) => showArticle(currentBook, ref);
+const showEventPeek = (node) => showScene(currentBook, node);
 
 // -- routing -----------------------------------------------------------------
 
@@ -97,6 +88,7 @@ function route() {
 function initChrome() {
   initTheme($("#theme-toggle"));
   initFontScale($("#font-toggle"));
+  applyFocus(); // restore "hide the marks" from last time
 }
 
 async function boot() {

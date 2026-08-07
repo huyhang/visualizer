@@ -5,9 +5,11 @@
 
 import { api } from "./api.js";
 import { eventCard } from "./cards.js";
-import { clear, el, toast } from "./dom.js";
+import { clear, el } from "./dom.js";
 import { findingList, markerClass, problemBanner, verdictNotes } from "./findings.js";
+import { focusToggle } from "./focus.js";
 import { openPlotlineEditor } from "./plotedit.js";
+import { showScene } from "./peek.js";
 import { allScheduled, groupByPeriod } from "./timeaxis.js";
 
 function breadcrumb(bookTitle, book, plName, onBooks, onBook) {
@@ -29,16 +31,15 @@ function eventFetcher(book) {
   };
 }
 
-// The rail dot picks up this event's role, so the plain timeline already signals
-// where threads meet without opening the connected view. A scene with a problem
-// overrides that: a contradiction outranks a junction for the reader's attention.
+// The rail dot carries both what this scene *is* in the weave and whether it has
+// a problem. The marker wins while it is showing -- a contradiction outranks a
+// junction for the reader's attention -- and in focus mode the CSS drops the
+// marker so the role underneath shows through instead of the dot going blank.
 function dotClass(ev) {
-  const marker = markerClass(ev);
-  if (marker) return marker;
-  if (ev.is_terminus) return " is-terminus";
-  if (ev.is_convergence) return " is-merge";
-  if (ev.is_divergence) return " is-split";
-  return "";
+  const role = ev.is_terminus ? " is-terminus"
+    : ev.is_convergence ? " is-merge"
+      : ev.is_divergence ? " is-split" : "";
+  return role + markerClass(ev);
 }
 
 // Small, clickable "another thread meets here" hints on an event. Each opens the
@@ -124,12 +125,15 @@ function meetCount(events) {
   return others.size;
 }
 
-// Scroll to a scene on this page and flash it -- what a finding's "show" link
-// and the problem banner both do.
-function jumpTo(container, eventId) {
+// Show a scene a finding names. If it is on this page, scroll to it and flash
+// it; if it is not, it belongs to another thread -- open it in the peek panel
+// rather than refusing. The cross-thread case is the one worth reaching: a
+// conflict with a thread you were not looking at is the thing you could not
+// have found any other way.
+function jumpTo(container, book, eventId) {
   const target = container.querySelector(`[data-event="${CSS.escape(eventId)}"]`);
   if (!target) {
-    toast("That scene is not on this plotline.");
+    showScene(book, { id: eventId });
     return;
   }
   target.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -160,7 +164,7 @@ export async function mountPlotline(container, book, plotlineId,
   const events = pl.effective_events || [];
   const deps = {
     getFullEvent: eventFetcher(book), showEntity, onConnectedAt,
-    onJump: (id) => jumpTo(container, id),
+    onJump: (id) => jumpTo(container, book, id),
   };
 
   // Where to land when the editor closes: the thread is gone, it moved, or it
@@ -191,6 +195,10 @@ export async function mountPlotline(container, book, plotlineId,
       }) : null,
       meets ? el("span", { class: "muted meet-hint",
         text: `Meets ${meets} other plotline${meets === 1 ? "" : "s"} along the way.` }) : null,
+      // Last, and pushed to the right: a mode switch, not one of the actions.
+      // Offered only when there is something to hide.
+      events.some((e) => (e.findings || []).length)
+        ? focusToggle((pl.status || {}).conflicts) : null,
     ].filter(Boolean)),
     el("p", { class: "muted axis-note", text: allScheduled(events)
       ? "Scenes top to bottom in story order — all are scheduled."
@@ -204,7 +212,7 @@ export async function mountPlotline(container, book, plotlineId,
   container.appendChild(el("div", { class: "view plotline-view" }, [
     breadcrumb(bookMeta.title || book, book, pl.title || pl.id, onBooks, onBook),
     header,
-    problemBanner(events, pl.status, { onJump: (id) => jumpTo(container, id) }),
+    problemBanner(events, pl.status, { onJump: (id) => jumpTo(container, book, id) }),
     verdictNotes(pl.status, events),
     body,
   ]));

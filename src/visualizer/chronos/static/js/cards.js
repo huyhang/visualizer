@@ -115,32 +115,56 @@ export function eventCard(book, summary, { getFullEvent, showEntity, showTime = 
 // demand and rendered with the same body + entity chips as the inline card. Kept
 // here so the graph view reuses one event-rendering path (design: one source of
 // each response shape, one of each card).
+// `node` may be a story-graph node -- which already knows the scene's timing and
+// its role in the weave -- or as little as `{id}`, when a finding points at a
+// scene on some other thread. Anything not supplied is filled in from the scene
+// once it loads, rather than guessed: a scheduled scene must never be labelled
+// "unscheduled" just because the caller had nothing to say about it.
 export function eventPeekCard(book, node, { showEntity, onClose }) {
-  const when = node.scheduled
-    ? (node.endLabel != null && node.endLabel !== node.startLabel
-      ? `${node.startLabel} → ${node.endLabel}`
-      : String(node.startLabel != null ? node.startLabel : node.startTick))
-    : "unscheduled";
-  const head = [el("span", { class: "ev-time", text: when })];
-  if (node.isTerminus) head.push(el("span", { class: "badge terminus", text: "terminus" }));
-  else if (node.isConvergence) head.push(el("span", { class: "badge merge", text: "convergence" }));
-  if (node.isDivergence) head.push(el("span", { class: "badge split", text: "divergence" }));
+  const known = node.scheduled !== undefined;
+  const time = el("span", { class: "ev-time", text: known ? nodeTimeframe(node) : "…" });
+  const head = el("div", { class: "ev-head" }, [time, ...roleBadges(node)]);
+  const title = el("span", { class: "peek-title", text: node.title || node.id });
 
   const detail = el("div", { class: "ev-detail" }, el("p", { class: "muted", text: "Loading…" }));
   const card = el("article", { class: "peek-card event-peek" }, [
     el("div", { class: "peek-head" }, [
-      el("span", { class: "peek-title", text: node.title }),
+      title,
       el("button", { class: "icon-btn sm", text: "✕", title: "Close", onclick: onClose }),
     ]),
-    el("div", { class: "ev-head" }, head),
+    head,
     detail,
   ]);
 
   api.getEvent(book, node.id)
-    .then((event) => fillDetail(detail, book, event, showEntity))
-    .catch(() => detail.replaceChildren(
-      el("p", { class: "muted", text: "Could not load this event." })));
+    .then((event) => {
+      if (!known) {
+        time.textContent = eventTimeframe(event);
+        if (event.title) title.textContent = event.title;
+      }
+      fillDetail(detail, book, event, showEntity);
+    })
+    .catch(() => {
+      time.textContent = "";
+      detail.replaceChildren(el("p", { class: "muted", text: "Could not load this scene." }));
+    });
   return card;
+}
+
+function nodeTimeframe(node) {
+  if (!node.scheduled) return "unscheduled";
+  if (node.endLabel != null && node.endLabel !== node.startLabel) {
+    return `${node.startLabel} → ${node.endLabel}`;
+  }
+  return String(node.startLabel != null ? node.startLabel : node.startTick);
+}
+
+function roleBadges(node) {
+  const out = [];
+  if (node.isTerminus) out.push(el("span", { class: "badge terminus", text: "terminus" }));
+  else if (node.isConvergence) out.push(el("span", { class: "badge merge", text: "convergence" }));
+  if (node.isDivergence) out.push(el("span", { class: "badge split", text: "divergence" }));
+  return out;
 }
 
 function factValue(value) {
