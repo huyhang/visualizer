@@ -41,23 +41,43 @@ export function toast(message, isError = false) {
   toastTimer = setTimeout(() => { node.hidden = true; }, 3200);
 }
 
-export function modal({ title, body, actions }) {
-  const scrim = el("div", { class: "modal-scrim" });
-  const close = () => scrim.remove();
+// A modal over the page. Escape, the ✕ and the backdrop all dismiss it, and the
+// first field takes focus so a dialog can be filled in without reaching for the
+// mouse. Returns `close` so a caller's action can dismiss it once its work is
+// done. `onClose` fires however it was dismissed — a caller waiting on an answer
+// needs to hear about a cancel too.
+export function modal({ title, body, actions, onClose }) {
+  const close = () => {
+    document.removeEventListener("keydown", onKey);
+    scrim.remove();
+    if (onClose) onClose();
+  };
+  const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
+
   const foot = el("div", { class: "modal-foot" },
     (actions || []).map((a) =>
       el("button", {
         class: "btn " + (a.variant || "secondary"),
+        type: "button",
         text: a.label,
         onclick: () => a.onClick ? a.onClick(close) : close(),
       })));
-  const dialog = el("div", { class: "modal" }, [
-    el("div", { class: "modal-head", text: title }),
+  const dialog = el("div", { class: "modal", role: "dialog", "aria-modal": "true" }, [
+    el("div", { class: "modal-head" }, [
+      el("span", { class: "modal-title", text: title }),
+      el("button", { class: "icon-btn sm", type: "button", text: "✕", title: "Close", onclick: () => close() }),
+    ]),
     el("div", { class: "modal-body" }, [body]),
     foot,
   ]);
-  scrim.appendChild(dialog);
-  scrim.addEventListener("click", (e) => { if (e.target === scrim) close(); });
+  const scrim = el("div", {
+    class: "modal-scrim",
+    onclick: (e) => { if (e.target === scrim) close(); },
+  }, [dialog]);
+
+  document.addEventListener("keydown", onKey);
   document.body.appendChild(scrim);
+  const first = dialog.querySelector("input, select, textarea");
+  if (first) first.focus();
   return close;
 }

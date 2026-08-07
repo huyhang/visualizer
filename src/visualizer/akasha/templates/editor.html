@@ -26,7 +26,7 @@
 <body>
   <header class="app-header">
     <button class="icon-btn menu-toggle" id="menu-toggle" aria-label="Toggle browser">☰</button>
-    <span class="brand"><span class="mark"><img src="{{ url_for('static', filename='akasha-glyph.svg') }}" alt="" width="26" height="26"></span><span class="brand-name">Akasha</span></span>
+    <a class="brand" id="home-link" href="#/" title="All {{ terms.database.many }}"><span class="mark"><img src="{{ url_for('static', filename='akasha-glyph.svg') }}" alt="" width="26" height="26"></span><span class="brand-name">Akasha</span></a>
     <div class="header-actions">
       <nav class="service-switch" aria-label="Switch service">
         <a href="{{ service_links.akasha }}"{% if service_links.current == 'akasha' %} class="active" aria-current="page"{% endif %}>Articles</a>
@@ -52,15 +52,13 @@
         <input type="search" id="search-box" placeholder="Search titles…" autocomplete="off">
         <button class="btn sm" id="new-article-btn" title="New article">＋ New</button>
       </div>
-      <nav class="tree" id="tree" aria-label="Databases"></nav>
+      <nav class="tree" id="tree" aria-label="{{ terms.database.Many }}"></nav>
     </aside>
 
     <main class="content" id="content">
-      <div class="empty-state" id="empty-state">
-        <div class="empty-mark"><img src="{{ url_for('static', filename='akasha-glyph.svg') }}" alt="" width="54" height="54"></div>
-        <p>Select an article from the browser, or create a new one.</p>
-      </div>
-      <article class="pane" id="pane" hidden></article>
+      <!-- Every route renders here: the grid of worlds, one world's categories,
+           one category's article list, or one article. -->
+      <article class="pane" id="pane"></article>
     </main>
   </div>
 

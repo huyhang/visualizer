@@ -1,5 +1,19 @@
-// Main orchestrator: wires the browser, viewer, editor and history together,
-// with hash-based routing (#/db/col/id) so links and reloads are shareable.
+// Main orchestrator: a hash router over four levels of the hierarchy, wiring
+// the browse views, the tree, the viewer, the editor and the history together.
+//
+//   #/                  -> pick a world
+//   #/<db>              -> pick a category
+//   #/<db>/<col>        -> that category's filtered, paginated article list
+//   #/<db>/<col>/<id>   -> one article
+//   #/_search           -> search a category in detail
+//
+// Every level having a route is what makes the rest possible: a page to browse,
+// and somewhere for a "New …" button to live that already knows where it is.
+// (`_search` cannot collide with a real world — the API reserves every name
+// beginning with an underscore.)
+//
+// Creating and sharing are modals rather than routes: they are detours from
+// reading, and closing one should put you back exactly where you were.
 
 import { $, el, clear, toast, modal } from "./dom.js";
 import { api, ApiError } from "./api.js";
@@ -10,44 +24,104 @@ import { renderArticle } from "./viewer.js";
 import { renderEditor } from "./editor.js";
 import { renderHistory } from "./history.js";
 import { invalidate } from "./links.js";
+import { mountCollections, mountDatabases } from "./namespaces.js";
+import { mountArticles } from "./articles.js";
+import { mountSearch } from "./search.js";
+import { timeAgo } from "./views.js";
+import { T } from "./terms.js";
+import {
+  confirmDeleteDatabase, createLinkTarget, ensureCollection, newArticleDialog,
+  newCollectionDialog, newDatabaseDialog,
+} from "./create.js";
+
+const SEARCH_ROUTE = "_search";
 
 const pane = $("#pane");
-const emptyState = $("#empty-state");
 const sidebar = $("#sidebar");
 
-const browser = new Browser($("#tree"), { onOpen: (t) => navigate(t) });
+// Where the reader currently is, so a "New article" pressed from the header
+// arrives with the world and category already filled in.
+let scope = {};
 
-function showPane() { emptyState.hidden = true; pane.hidden = false; }
-function showEmpty() { pane.hidden = true; emptyState.hidden = false; }
-function closeDrawer() { sidebar.classList.remove("open"); $("#scrim").hidden = true; }
+// -- navigation --------------------------------------------------------------
 
-function keyOf(t) { return `${t.db}/${t.col}/${t.id}`; }
-function navigate(target) { location.hash = `#/${enc(target.db)}/${enc(target.col)}/${enc(target.id)}`; }
 const enc = encodeURIComponent;
+const go = (hash) => { location.hash = hash; };
+const toHome = () => go("#/");
+const toDatabase = (db) => go(`#/${enc(db)}`);
+const toCollection = (db, col) => go(`#/${enc(db)}/${enc(col)}`);
+const toArticle = (t) => go(`#/${enc(t.db)}/${enc(t.col)}/${enc(t.id)}`);
+const toSearch = () => go(`#/${SEARCH_ROUTE}`);
 
 function parseHash() {
-  const m = location.hash.match(/^#\/([^/]+)\/([^/]+)\/([^/]+)$/);
-  if (!m) return null;
-  return { db: decodeURIComponent(m[1]), col: decodeURIComponent(m[2]), id: decodeURIComponent(m[3]) };
+  return location.hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
 }
 
-async function openFromHash() {
-  const target = parseHash();
-  if (!target) { showEmpty(); return; }
+function closeDrawer() {
+  sidebar.classList.remove("open");
+  $("#scrim").hidden = true;
+}
+
+// -- routing -----------------------------------------------------------------
+
+const browseHandlers = {
+  onHome: toHome,
+  onDatabase: toDatabase,
+  onCollection: toCollection,
+  onArticle: (t) => toArticle(t),
+  onCreate: (db, col) => (db ? newArticle({ db, col }) : newDatabase()),
+  onDeleteDatabase: (db) => confirmDeleteDatabase(db, {
+    onDeleted: () => { browser.load(); toHome(); },
+  }),
+  // A restored article is back in every listing, so the tree has to be told.
+  onRestored: (db, col) => { invalidate({ db, col }); browser.refresh(db, col); },
+};
+
+async function route() {
   closeDrawer();
-  browser.setActive(keyOf(target));
+  const parts = parseHash();
+
+  if (parts[0] === SEARCH_ROUTE) {
+    browser.setActive("");
+    // Keep the scope we arrived with, so the form opens on the collection you
+    // were just reading rather than making you choose it again.
+    return mountSearch(pane, scope, browseHandlers);
+  }
+  scope = { db: parts[0], col: parts[1], id: parts[2] };
+
+  if (parts.length === 0) {
+    browser.setActive("");
+    return mountDatabases(pane, { ...browseHandlers, onCreate: newDatabase });
+  }
+  if (parts.length === 1) {
+    browser.setActive("");
+    return mountCollections(pane, parts[0], { ...browseHandlers, onCreate: newCollection });
+  }
+  if (parts.length === 2) {
+    browser.setActive("");
+    return mountArticles(pane, parts[0], parts[1], browseHandlers);
+  }
+  const target = { db: parts[0], col: parts[1], id: parts[2] };
+  browser.reveal(target);
   await openArticle(target);
 }
 
+const browser = new Browser($("#tree"), {
+  onArticle: (t) => toArticle(t),
+  onDatabase: toDatabase,
+  onCollection: toCollection,
+});
+
+// -- reading an article ------------------------------------------------------
+
 async function openArticle(target) {
-  showPane();
   clear(pane);
   pane.appendChild(el("p", { class: "muted", text: "Loading…" }));
   let doc;
   try { doc = await api.getDoc(target.db, target.col, target.id); }
   catch (e) { return renderError(e, target); }
   await renderArticle(pane, { ...target, doc: doc.document, rev: doc.rev }, {
-    onNavigate: (t) => navigate(t),
+    onNavigate: (t) => toArticle(t),
     onEdit: () => openEditor({ ...target, doc: doc.document, rev: doc.rev, isNew: false }),
     onHistory: () => openHistory(target),
     onShare: () => openShare(target),
@@ -57,28 +131,90 @@ async function openArticle(target) {
 
 function renderError(e, target) {
   clear(pane);
-  const msg = e instanceof ApiError && e.isForbidden ? "You do not have access to this article."
-    : e instanceof ApiError && e.isNotFound ? "This article does not exist."
-    : "Could not load this article.";
-  pane.appendChild(el("div", { class: "pane-toolbar" }, [el("span", { class: "crumbs", text: `${target.db} › ${target.col} › ${target.id}` })]));
-  pane.appendChild(el("p", { class: "muted", text: msg }));
-  if (e instanceof ApiError && e.isNotFound) {
-    pane.appendChild(el("button", { class: "btn", text: "Create this article", onclick: () => openEditor({ ...target, doc: {}, rev: null, isNew: true }) }));
-  }
+  const msg = e instanceof ApiError && e.isForbidden ? `You do not have access to this ${T.document.one}.`
+    : e instanceof ApiError && e.isNotFound ? `This ${T.document.one} does not exist.`
+    : `Could not load this ${T.document.one}.`;
+  const note = el("p", { class: "muted", text: msg });
+  const actions = el("div", { class: "row-gap" });
+  pane.appendChild(el("div", { class: "pane-toolbar" }, [
+    el("span", { class: "crumbs", text: `${target.db} › ${target.col} › ${target.id}` }),
+  ]));
+  pane.append(note, actions);
+  if (!(e instanceof ApiError && e.isNotFound)) return;
+
+  actions.appendChild(el("button", {
+    class: "btn secondary", type: "button", text: `Create this ${T.document.one}`,
+    onclick: () => openEditor({ ...target, doc: {}, rev: null, isNew: true }),
+  }));
+  offerRestore(target, note, actions);
 }
 
+// A deleted article still answers for its history, so this page is the one place
+// a writer can be standing when they most need it back — the chronos report and
+// a stale link both send them here. Asked only after the read has 404'd, so a
+// live article costs nothing.
+async function offerRestore(target, note, actions) {
+  let versions;
+  try { versions = (await api.listVersions(target.db, target.col, target.id)).versions; }
+  catch (err) { return; }  // never existed, or its history is gone with it
+  const newest = versions[0];
+  if (!newest || newest.op !== "delete") return;
+  // Skip the tombstone: the version worth bringing back is the one before it.
+  const restorable = versions.find((v) => v.op !== "delete");
+
+  note.textContent = `Deleted by ${newest.author || "someone"} ${timeAgo(newest.timestamp)}.`;
+  if (!restorable) {
+    actions.appendChild(el("span", { class: "muted", text:
+      "Its history has been pruned, so there is no version left to restore." }));
+    return;
+  }
+  actions.insertBefore(el("button", {
+    class: "btn", type: "button", text: "Restore",
+    onclick: async () => {
+      try { await api.restore(target.db, target.col, target.id, restorable.rev); }
+      catch (err) { toast(err.message || "Could not restore it.", true); return; }
+      toast(`Restored “${target.id}”.`);
+      invalidate(target);
+      browser.refresh(target.db, target.col);
+      route();
+    },
+  }), actions.firstChild);
+}
+
+// -- writing -----------------------------------------------------------------
+
 function openEditor(ctx) {
-  showPane();
   renderEditor(pane, ctx, {
-    onSaved: (rev) => { invalidate(ctx); browser.load(); navigate(ctx); if (parseHash() && keyOf(parseHash()) === keyOf(ctx)) openFromHash(); },
-    onCancel: () => ctx.isNew ? showEmpty() : openArticle(ctx),
+    // The editor does not know about namespaces: if this article's category
+    // has not been made yet, that happens here, on the way to the first save.
+    onCreate: async (document) => {
+      if (ctx.pendingCollection) await ensureCollection(ctx.db, ctx.col);
+      return api.createDoc(ctx.db, ctx.col, ctx.id, document);
+    },
+    onSaved: () => afterSave(ctx),
+    onCancel: () => {
+      if (!ctx.isNew) return openArticle(ctx);
+      // Backing out of the first article in a brand-new category: that
+      // category was never created, so there is no page of it to return to.
+      return ctx.pendingCollection ? toDatabase(ctx.db) : toCollection(ctx.db, ctx.col);
+    },
     onReload: () => openArticle(ctx),
-    onCreateLink: (query, scope) => createLinkTarget(query, scope),
+    onCreateLink: (query, scopeOfLink) => createLinkTarget(query, scopeOfLink)
+      .then((target) => { if (target) browser.refresh(target.db, target.col); return target; }),
   });
 }
 
+function afterSave(ctx) {
+  invalidate(ctx);
+  browser.refresh(ctx.db, ctx.col);
+  const parts = parseHash();
+  const alreadyHere = parts.length === 3
+    && parts[0] === ctx.db && parts[1] === ctx.col && parts[2] === ctx.id;
+  if (alreadyHere) route();
+  else toArticle(ctx);
+}
+
 function openHistory(target) {
-  showPane();
   renderHistory(pane, target, {
     onBack: () => openArticle(target),
     onRestored: () => { invalidate(target); openArticle(target); },
@@ -87,19 +223,55 @@ function openHistory(target) {
 
 function confirmDelete(target, rev) {
   modal({
-    title: "Delete this article?",
-    body: el("p", { text: `“${target.id}” will be removed. Its version history is kept, and it can be recreated later.` }),
+    title: `Delete this ${T.document.one}?`,
+    // Says where recovery lives, now that there is somewhere to point at.
+    body: el("p", { text:
+      `“${target.id}” will be removed from ${T.collection.many}, search and links. `
+      + `Its history is kept: you can bring it back from the deleted list on this `
+      + `${T.collection.one}'s page, or from this address.` }),
     actions: [
       { label: "Cancel", variant: "secondary" },
       { label: "Delete", variant: "danger", onClick: async (close) => {
-          try { await api.deleteDoc(target.db, target.col, target.id, rev); toast("Article deleted."); close(); invalidate(target); browser.load(); location.hash = ""; showEmpty(); }
-          catch (e) { toast(e.message || "Delete failed.", true); }
+          try {
+            await api.deleteDoc(target.db, target.col, target.id, rev);
+            toast(`${T.document.One} deleted.`);
+            close();
+            invalidate(target);
+            browser.refresh(target.db, target.col);
+            toCollection(target.db, target.col);
+          } catch (e) { toast(e.message || "Delete failed.", true); }
         } },
     ],
   });
 }
 
-// -- sharing ---------------------------------------------------------------
+// -- create flows ------------------------------------------------------------
+
+function newDatabase() {
+  newDatabaseDialog({
+    onCreated: (db, col) => { browser.load(); toCollection(db, col); },
+  });
+}
+
+function newCollection(db) {
+  newCollectionDialog(db, {
+    onCreated: (col) => { browser.refresh(db); toCollection(db, col); },
+  });
+}
+
+// The category is deliberately *not* created here — only when the article is
+// saved — so backing out of the editor leaves nothing behind.
+function newArticle(where = {}) {
+  newArticleDialog({ db: where.db ?? scope.db, col: where.col ?? scope.col }, {
+    onOpen: ({ db, col, id, title, pendingCollection }) => openEditor({
+      db, col, id,
+      doc: title ? { title } : {},
+      rev: null, isNew: true, pendingCollection,
+    }),
+  });
+}
+
+// -- sharing -----------------------------------------------------------------
 
 // Resolve (and cache) the logged-in username, so we can hide the owner from a
 // resource's collaborator list.
@@ -114,12 +286,12 @@ function currentUser() {
 async function openShare(target) {
   const me = await currentUser();
   const roles = ["reader", "editor", "owner"];
-  // Scope of what we're sharing: the article id, or null for the collection.
+  // Scope of what we're sharing: the article id, or null for the category.
   let scopeId = target.id;
 
   const scopeSel = el("select", {}, [
-    el("option", { value: "doc", text: `This article (${target.id})` }),
-    el("option", { value: "col", text: `Whole collection (${target.col})` }),
+    el("option", { value: "doc", text: `This ${T.document.one} (${target.id})` }),
+    el("option", { value: "col", text: `Whole ${T.collection.one} (${target.col})` }),
   ]);
   scopeSel.addEventListener("change", () => {
     scopeId = scopeSel.value === "doc" ? target.id : null;
@@ -152,7 +324,7 @@ async function openShare(target) {
     ]);
     const roleSel = el("select", {}, roles.map((r) => el("option", { value: r, text: r })));
     roleSel.value = "editor";
-    const btn = el("button", { class: "btn sm", text: "Share", onclick: async () => {
+    const btn = el("button", { class: "btn sm", type: "button", text: "Share", onclick: async () => {
       const user = userSel.value;
       if (!user) return;
       try {
@@ -186,7 +358,7 @@ async function openShare(target) {
     for (const c of people) {
       peopleBox.appendChild(el("div", { class: "person" }, [
         el("span", { class: "who" }, [el("strong", { text: c.username }), " ", el("span", { class: "chip", text: c.role })]),
-        el("button", { class: "btn sm danger", text: "Remove", onclick: async () => {
+        el("button", { class: "btn sm danger", type: "button", text: "Remove", onclick: async () => {
           try { await api.removeCollaborator(target.db, target.col, scopeId, c.username); await loadPeople(); }
           catch (e) { toast(e.message || "Could not remove.", true); }
         } }),
@@ -199,99 +371,50 @@ async function openShare(target) {
   loadPeople();
 }
 
-// -- create flows ----------------------------------------------------------
-
-function slugify(text) {
-  return text.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "untitled";
-}
-
-// Create-on-the-fly from the link picker: make a stub article, return its target.
-function createLinkTarget(query, scope) {
-  return new Promise((resolve) => {
-    const slug = el("input", { type: "text", value: slugify(query) });
-    const colIn = el("input", { type: "text", value: scope.col });
-    const close = modal({
-      title: `Create “${query}”`,
-      body: el("div", {}, [
-        el("div", { class: "field" }, [el("label", { text: "Collection" }), colIn]),
-        el("div", { class: "field" }, [el("label", { text: "Slug (id)" }), slug]),
-      ]),
-      actions: [
-        { label: "Cancel", variant: "secondary", onClick: (c) => { c(); resolve(null); } },
-        { label: "Create", variant: "primary", onClick: async (c) => {
-            const target = { db: scope.db, col: colIn.value.trim(), id: slug.value.trim(), title: query };
-            try {
-              await ensureCollection(target.db, target.col);
-              await api.createDoc(target.db, target.col, target.id, { title: query });
-              toast(`Created “${query}”.`); c(); browser.load(); resolve(target);
-            } catch (e) { toast(e.message || "Could not create.", true); }
-          } },
-      ],
-    });
-  });
-}
-
-async function ensureCollection(db, col) {
-  try { await api.createCollection(db, col); }
-  catch (e) { if (!(e instanceof ApiError && e.status === 409)) throw e; }
-}
-
-function newArticleFlow() {
-  const dbIn = el("input", { type: "text", placeholder: "database" });
-  const colIn = el("input", { type: "text", placeholder: "collection" });
-  const titleIn = el("input", { type: "text", placeholder: "Article title" });
-  const slugIn = el("input", { type: "text", placeholder: "slug (id)" });
-  titleIn.addEventListener("input", () => { if (!slugIn._touched) slugIn.value = slugify(titleIn.value); });
-  slugIn.addEventListener("input", () => { slugIn._touched = true; });
-  modal({
-    title: "New article",
-    body: el("div", {}, [
-      el("div", { class: "field" }, [el("label", { text: "Database" }), dbIn]),
-      el("div", { class: "field" }, [el("label", { text: "Collection" }), colIn]),
-      el("div", { class: "field" }, [el("label", { text: "Title" }), titleIn]),
-      el("div", { class: "field" }, [el("label", { text: "Slug (id)" }), slugIn]),
-    ]),
-    actions: [
-      { label: "Cancel", variant: "secondary" },
-      { label: "Continue", variant: "primary", onClick: async (close) => {
-          const db = dbIn.value.trim(), col = colIn.value.trim(), id = slugIn.value.trim();
-          if (!db || !col || !id) { toast("Database, collection and slug are required.", true); return; }
-          try { await ensureCollection(db, col); }
-          catch (e) { toast(e.message || "Could not create the collection.", true); return; }
-          close();
-          openEditor({ db, col, id, doc: titleIn.value ? { title: titleIn.value.trim() } : {}, rev: null, isNew: true });
-        } },
-    ],
-  });
-}
-
-// -- search (link-style type-ahead in the sidebar) -------------------------
+// -- sidebar search (type-ahead over titles and slugs) -----------------------
 
 let searchTimer = null;
+let searchSeq = 0;
+
 function initSearch() {
   const box = $("#search-box");
+  const tree = $("#tree");
   box.addEventListener("input", () => {
     clearTimeout(searchTimer);
     const q = box.value.trim();
     if (!q) { browser.load(); return; }
     searchTimer = setTimeout(async () => {
+      // Out-of-order guard: a slow early query must not overwrite a fast later
+      // one and leave the wrong results on screen.
+      const mine = ++searchSeq;
       let res;
-      try { res = await api.suggest(q); } catch (e) { return; }
-      const tree = $("#tree"); clear(tree);
-      if (!res.suggestions.length) { tree.appendChild(el("div", { class: "tree-empty", text: "No matches." })); return; }
+      try { res = await api.suggest(q, scope.db, scope.col); } catch (e) { return; }
+      if (mine !== searchSeq) return;
+      clear(tree);
       for (const s of res.suggestions) {
         tree.appendChild(el("div", { class: "tree-node" }, [
-          el("div", { class: "tree-row", onclick: () => navigate({ db: s.database, col: s.collection, id: s.slug }) }, [
-            el("span", { class: "twisty", text: "·" }),
-            el("span", { text: s.title || s.slug }),
+          el("button", {
+            class: "suggest-row", type: "button",
+            onclick: () => toArticle({ db: s.database, col: s.collection, id: s.slug }),
+          }, [
+            el("span", { class: "suggest-title", text: s.title || s.slug }),
+            // Which world this came from — two characters can share a name.
+            el("span", { class: "suggest-scope muted", text: `${s.database_title} › ${s.collection_title}` }),
           ]),
         ]));
       }
+      if (!res.suggestions.length) {
+        tree.appendChild(el("div", { class: "tree-empty", text: "No matching titles." }));
+      }
+      tree.appendChild(el("button", {
+        class: "tree-more", type: "button", text: `Search inside ${T.document.many} →`,
+        onclick: () => { box.value = ""; toSearch(); },
+      }));
     }, 200);
   });
 }
 
-// -- boot ------------------------------------------------------------------
+// -- boot --------------------------------------------------------------------
 
 function initChrome() {
   initTheme($("#theme-toggle"));
@@ -301,11 +424,12 @@ function initChrome() {
     $("#scrim").hidden = !open;
   });
   $("#scrim").addEventListener("click", closeDrawer);
-  $("#new-article-btn").addEventListener("click", newArticleFlow);
+  $("#home-link").addEventListener("click", (e) => { e.preventDefault(); toHome(); });
+  $("#new-article-btn").addEventListener("click", () => newArticle());
   initSearch();
 }
 
 initChrome();
 browser.load();
-window.addEventListener("hashchange", openFromHash);
-openFromHash();
+window.addEventListener("hashchange", route);
+route();

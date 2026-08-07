@@ -98,8 +98,10 @@ export function renderEditor(container, ctx, handlers) {
     }
     saveBtn.disabled = true; status.textContent = "Saving…";
     try {
+      // Creating goes through the caller: a brand-new article's collection may
+      // not exist yet, and whether to make one is not the editor's business.
       const result = isNew
-        ? await api.createDoc(db, col, id, document)
+        ? await handlers.onCreate(document)
         : await api.updateDoc(db, col, id, document, rev);
       toast(isNew ? "Article created." : "Saved.");
       handlers.onSaved(result.rev);

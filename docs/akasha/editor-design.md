@@ -114,12 +114,80 @@ All new endpoints are authenticated and authorized through the existing
 
 | Method | Path | Returns |
 | --- | --- | --- |
-| GET | `/databases` | databases the user can see (admin: all) |
-| GET | `/databases/<db>/collections` | collections the user can see under `db` |
-| GET | `/databases/<db>/collections/<col>/documents?limit=&after=` | paginated `read`-able doc ids + title preview |
+| GET | `/databases` | databases the user can see, each with `{title, collections, articles}` |
+| GET | `/databases/<db>/collections` | collections under `db`, with `{title, articles, can_write, can_delete}` |
+| GET | `/databases/<db>/collections/<col>/documents?filter=&page=&per_page=` | one page of `read`-able articles + `{page, pages, total, can_write, can_delete}` |
+| GET | `/recent?limit=` | most recently written readable articles, newest first |
+| GET | `/databases/<db>/collections/<col>/deleted` | tombstones + `restore_rev` + `can_restore`, so recovery is browsable |
+| DELETE | `/databases/<db>/collections/<col>?purge=` | drop a collection you own once no live article is left; drops the database too if it was the last |
+| DELETE | `/databases/<db>` | drop a database with no collections left |
+
+Each level answers with enough to **render a page**, not just a list of names:
+how much is inside, and whether the caller may add to it — so the browser can
+show counts and never draw a button that would only earn a `403`.
 
 Visibility is computed by a pure `browsing` helper over the user's grants and
-the raw listing, so it is unit-testable without Mongo.
+the raw listing, so it is unit-testable without Mongo. So are the filter,
+ordering and paging: `browse_articles(rows, query, page, per_page)` is the same
+shape as `chronos.browsing._browse`, and clamps an out-of-range page to the last
+one rather than erroring — which is what happens when a filter narrows the list
+under someone who was on page 4. The filter matches every typed word against the
+whole article (slug, title and field values), so the box on a collection page is
+the full-text search the API always had.
+
+**Readable names.** A namespace is addressed by its slug and always will be, so
+`labels.derive_title` renders one for display instead: `ember-pact` -> "Ember
+Pact", `lord-of-the-rings` -> "Lord of the Rings", and a name that already has a
+capital is returned untouched (title-casing `McTavish` would ruin it). Nothing is
+stored, so it needs no migration and applies to everything that already exists.
+
+It is derived **server-side** and shipped as `title` beside `name` — the browser
+prints what it is given rather than deriving its own subtly different version.
+That matters because both the SPA and the Jinja pages need it, and this way there
+is one implementation rather than the pair that `terms.py`/`terms.js` has to keep
+in step. Templates get it as the `| title_of` filter.
+
+Counting is grant-aware but not expensive: a user holding a collection-wide
+`read` gets one `count_documents`, and only someone with document-scoped grants
+pays for a per-id check — and then over ids alone, not whole documents.
+
+**Recovering a deleted article.** A delete is soft, so nothing is destroyed —
+but a tombstone is hidden from every listing, search and suggestion, which for a
+while meant an article could only be recovered by already knowing the slug you
+had lost. Two routes back, both reading the history the tombstone still carries:
+
+- Its **own address** still answers. The read 404s, so the page asks for
+  `/versions`; a newest snapshot with `op: delete` means it was deleted rather
+  than never written, and the page says by whom and when and offers *Restore*.
+  This is the route a stale `[[link]]` and the Chronos `MISSING_ENTITY` finding
+  both lead to, which is why it had to work.
+- Its **category page** carries a collapsed drawer listing what was deleted from
+  it, for when the slug is the thing you have forgotten. Loaded on demand, so a
+  category with nothing deleted pays nothing.
+
+Which version comes back is `history.last_live_snapshot` — the newest snapshot
+that still holds a body, skipping the tombstone. It returns `None` when pruning
+has aged out every body, and the UI says *history pruned* rather than offering a
+button that would 404.
+
+**Deleting a namespace** distinguishes two kinds of "not empty". A **live**
+article always refuses: emptying a collection is the article endpoint's job, not
+a side effect of tidying. A **tombstone** holds no article, only the version
+history of one that was deleted — so it refuses by default, and goes only when
+the caller passes `?purge=1`, having been told how many there are. Without that
+escape hatch a collection that had ever held anything could never be removed,
+because deletes are soft; with it, the one irreversible act in akasha is behind
+a dialog that names what it costs.
+
+Dropping the last collection drops the database, so an abandoned "new article"
+cannot strand a namespace nobody can reach — and it is also the only way a
+database goes, since MongoDB does not keep one with no collections in it.
+`DELETE /databases/<db>` is a safety net for a shell left by an older version;
+it is gated on nothing but login, exactly like *creating* a namespace, because
+an empty database holds nothing to protect and emptying it was already
+owner-only. The browse response carries `empty` so the UI can tell "there is
+nothing here" apart from "there is nothing here *you* may read", and only offers
+the button for the first.
 
 ### Suggest (link type-ahead)
 
@@ -153,7 +221,10 @@ Flask-WTF `csrf_token` protection.
   (added/removed/changed), with a **word-level inline diff** on changed string
   values (via stdlib `difflib`); added/removed elements for arrays.
 - `history.py` — build a snapshot record and apply keep-last-N pruning.
-- `browsing.py` — `visible_databases/collections(grants, listing)` grant filters.
+- `browsing.py` — `visible_databases/collections(grants, listing)` grant filters,
+  `can_write_in_collection` / `can_delete_collection` (the permission hints the
+  browse responses carry), and the article-list transform:
+  `matches_all_words`, `browse_articles`, `most_recent`.
 
 Linking token parsing, wikitext rendering, and shortest-token computation are
 **frontend** concerns (see below); the backend only resolves reads and powers
@@ -227,6 +298,38 @@ view (so a body diff reads as formatted prose, Wikipedia-style).
   it edits the same document through the same validation/OCC/versioning path.
 - Small ES modules, one responsibility each: `api.js`, `browser.js`,
   `viewer.js`, `editor.js`, `links.js`, `wikitext.js`, `history.js`, `theme.js`.
+
+### Browsing: a route per level
+
+The hash router covers every level of the hierarchy, not just the leaf:
+
+    #/                  pick a database        (cards + "recently edited")
+    #/<db>              pick a collection      (cards)
+    #/<db>/<col>        the article list       (filter, order, pages)
+    #/<db>/<col>/<id>   one article
+    #/_search           search a collection in detail
+
+Giving each level a page is what makes the rest possible: somewhere to browse,
+and somewhere for a **"New …" button that already knows where it is** to live.
+Creating is therefore *scoped* — the collection page's "New article" asks only
+for a title; the header's asks for the rest with dropdowns of what already
+exists, never a blank box you must fill from memory. (`_search` cannot collide
+with a real database: the API reserves every `_`-prefixed name.)
+
+Nothing is created as a side effect of opening a dialog. A new article's
+collection is created on **save** (`pendingCollection`), routed through the
+caller rather than the editor — which knows about articles, not namespaces — so
+backing out leaves nothing behind. Cancelling then returns to the database page,
+since the collection's own page does not exist yet.
+
+The tree keeps its shape: it remembers what was expanded, refreshes one branch
+rather than rebuilding from the root, unfolds to reveal an article opened from a
+link, and says how many articles it is *not* showing instead of truncating in
+silence. Its counts are corrected from the listing that just loaded, so they do
+not drift from what is beneath them.
+
+New view modules: `views.js` (breadcrumbs, heading, cards, pager, `timeAgo`),
+`namespaces.js`, `articles.js`, `create.js`, `search.js`.
 
 ## Configuration
 

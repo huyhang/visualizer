@@ -276,6 +276,7 @@ def present_plotline(
     events_by_id: dict[str, Event],
     codec: TimeCodec,
     expand: bool = False,
+    missing_refs=(),
 ) -> dict:
     this = Plotline.from_storage(public)
     paths = effective_paths([*(p for p in plotlines if p.id != this.id), this])
@@ -295,7 +296,7 @@ def present_plotline(
     # The same per-scene findings the editor marks up, computed once: their count
     # is part of every plotline's status, so a caller learns whether the thread
     # holds together without asking for the expanded path.
-    findings = findings_for_path(path, events_by_id, paths, codec)
+    findings = findings_for_path(path, events_by_id, paths, codec, missing_refs)
 
     if expand:
         # ``resolve`` concatenates this plotline's own segment first, so the
@@ -498,6 +499,14 @@ def present_validate(report: BookReport, codec: TimeCodec) -> dict:
             "terminus": report.convergence.terminus if report.convergence else None,
             "failures": report.convergence.failures if report.convergence else [],
         },
+        # Articles a scene names that have since been deleted from Akasha.
+        # Always something that went missing *underneath* a finished scene:
+        # writes refuse an unknown reference, and nothing in Akasha knows to
+        # warn a writer that a timeline points at what they are deleting.
+        "missing_entities": [
+            {"event": m.event, "role": m.role, "ref": m.ref.to_dict()}
+            for m in report.missing_entities
+        ],
         # A to-do list, not a fault: scenes still waiting for timing, each with
         # the window its neighbours imply.
         "unscheduled": [

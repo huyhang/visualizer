@@ -52,7 +52,7 @@ testable.
 > and the editor's live conflict marking comes from a **preview** endpoint that
 > runs the candidate through the ordinary presenter without persisting it, so no
 > story rule is reimplemented in the browser. Per-scene findings are computed by
-> `plotline_health` (§5, §8.1), which is the same three rules as `/validate`,
+> `plotline_health` (§5, §8.1), which is the same rules as `/validate`,
 > attributed to the scene the writer should look at. Prose editing remains out of
 > scope. And rather than a second port, the two services are
 > served behind **one origin** in production: a single gunicorn co-mounts them

@@ -111,6 +111,14 @@ class FakeEntityGate(_MissingMixin):
         # Default to a minimal article so ``fetch`` has something to return.
         self._docs[ref] = document if document is not None else {"title": ref.id}
 
+    def remove(self, ref: EntityRef) -> None:
+        """Make a ref stop existing -- an article deleted out from under a scene.
+
+        The interesting case for the whole-book report: writes refuse an unknown
+        reference, so the only way a book ends up holding one is this.
+        """
+        self._docs.pop(ref, None)
+
     def exists(self, ref: EntityRef) -> bool:
         return ref in self._docs
 

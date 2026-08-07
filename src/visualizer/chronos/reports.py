@@ -1,21 +1,26 @@
 """Whole-book invariant aggregation (design §7.3) -- pure, no I/O.
 
-Composes the three story-logic checks over a book's events and plotlines into
-one report. Under the all-soft model (§8.1) this is what `status` and
-`/validate` are built from -- the same functions used everywhere else, just run
-across the whole book. Services load the data; this module only computes.
+Composes the whole-book checks over a book's events and plotlines into one
+report: the three story-logic rules, plus whether the Akasha articles the scenes
+name still exist (the one thing here that needs an answer from outside, so the
+caller resolves it and passes it in -- see ``build_report``).
+
+Under the all-soft model (§8.1) this is what `status` and `/validate` are built
+from -- the same functions used everywhere else, just run across the whole book.
+Services load the data; this module only computes.
 
 Every check runs on **effective paths** (``continuation``), so a thread stored
 as a segment plus a ``continues_into`` is judged on the full path it actually
 follows -- including the junction into the continuation it joins.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from .book_rules import ConvergenceReport, validate_convergence
 from .conflicts import Conflict, all_conflicts
 from .continuation import effective_paths
-from .models import Event, Plotline
+from .models import EntityRef, Event, Plotline
 from .ordering import Violation, validate_order
 from .scheduling import Window, unscheduled_windows
 
@@ -26,12 +31,61 @@ class OrderingIssue:
     violation: Violation
 
 
+@dataclass(frozen=True)
+class MissingEntity:
+    """A scene pointing at an Akasha article that is no longer there.
+
+    Writes already refuse an unknown reference, so this can only be an article
+    deleted *after* the scene naming it was written -- which nothing tells the
+    writer at the time, because Akasha holds no back-reference to Chronos.
+    """
+
+    event: str
+    role: str  # "location" | "character" | "item"
+    ref: EntityRef
+
+
+def entity_roles(event: Event) -> list[tuple[str, EntityRef]]:
+    """This scene's references, each labelled by the part it plays in it.
+
+    The role is what makes the finding actionable: a missing *location* leaves
+    the scene nowhere, while a missing character is one name out of a cast.
+    """
+    return [
+        ("location", event.location),
+        *(("character", ref) for ref in event.characters),
+        *(("item", ref) for ref in event.items),
+    ]
+
+
+def dangling_references(
+    events: Iterable[Event], missing_refs: Iterable[EntityRef]
+) -> list[MissingEntity]:
+    """Which scenes point at articles that are gone.
+
+    Takes the refs *already known* to be missing rather than looking anything
+    up: existence is I/O, so the service asks the entity gate once for the whole
+    book and this stays pure. Ordered by scene, then by the order the refs
+    appear on it, so the report reads the same way twice.
+    """
+    gone = set(missing_refs)
+    if not gone:
+        return []
+    return [
+        MissingEntity(event.id, role, ref)
+        for event in sorted(events, key=lambda e: e.id)
+        for role, ref in entity_roles(event)
+        if ref in gone
+    ]
+
+
 @dataclass
 class BookReport:
     temporal_conflicts: list[Conflict] = field(default_factory=list)
     ordering: list[OrderingIssue] = field(default_factory=list)
     convergence: ConvergenceReport | None = None
     unscheduled: dict[str, Window] = field(default_factory=dict)
+    missing_entities: list[MissingEntity] = field(default_factory=list)
 
     @property
     def impossible_windows(self) -> dict[str, Window]:
@@ -51,6 +105,7 @@ class BookReport:
             not self.temporal_conflicts
             and not self.ordering
             and not self.impossible_windows
+            and not self.missing_entities
             and (self.convergence is None or self.convergence.ok)
         )
 
@@ -68,8 +123,18 @@ def path_ordering_issue(
 
 
 def build_report(
-    events: list[Event], plotlines: list[Plotline], terminus: str | None
+    events: list[Event],
+    plotlines: list[Plotline],
+    terminus: str | None,
+    missing_refs: Iterable[EntityRef] = (),
 ) -> BookReport:
+    """Compose every whole-book check.
+
+    ``missing_refs`` is the one thing this module cannot work out for itself --
+    whether an Akasha article still exists is I/O — so the caller resolves it and
+    passes the answer in. Defaulting to "none reported" keeps the pure checks
+    callable on their own, which is how they are unit tested.
+    """
     by_id = {e.id: e for e in events}
     paths = effective_paths(plotlines)
     ordering = [
@@ -82,4 +147,5 @@ def build_report(
         ordering=ordering,
         convergence=validate_convergence(paths, terminus),
         unscheduled=unscheduled_windows(events, paths),
+        missing_entities=dangling_references(events, missing_refs),
     )

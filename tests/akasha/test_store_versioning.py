@@ -113,6 +113,25 @@ def test_list_documents_pagination(store):
     assert [d["id"] for d in page2] == ["c", "d"]
 
 
+def test_list_documents_carries_last_write_metadata(store):
+    """Browse rows say who touched an article and when, read off its history."""
+    store.create(DB, COL, "a", {"n": 1}, author="bilbo")
+    store.update(DB, COL, "a", {"n": 2}, expected_rev=1, author="frodo")
+    listed = store.list_documents(DB, COL)[0]
+    assert listed["author"] == "frodo"
+    assert listed["updated"]  # an ISO timestamp
+    # ...and only on the browse listing: a plain read is unchanged.
+    assert "author" not in store.get(DB, COL, "a")
+
+
+def test_counting_and_listing_ids_skip_deleted(store):
+    store.create(DB, COL, "a", {"n": 1})
+    store.create(DB, COL, "b", {"n": 2})
+    store.delete(DB, COL, "a", expected_rev=1)
+    assert store.count_documents(DB, COL) == 1
+    assert store.document_ids(DB, COL) == ["b"]
+
+
 def test_internal_fields_never_leak(store):
     store.create(DB, COL, "a", {"_id": "x", "_rev": 99, "_history": [], "name": "A"})
     got = store.get(DB, COL, "a")

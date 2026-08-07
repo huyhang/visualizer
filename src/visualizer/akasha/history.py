@@ -63,3 +63,19 @@ def find_snapshot(history: list[dict], rev: int) -> dict | None:
         if snapshot.get("rev") == rev:
             return snapshot
     return None
+
+
+def last_live_snapshot(history: list[dict]) -> dict | None:
+    """The newest snapshot that still holds a body -- what a restore brings back.
+
+    A delete records a tombstone whose ``document`` is ``None``, so the version
+    worth restoring is the one before it. ``None`` when every retained snapshot
+    is a deletion, which is what pruning eventually leaves behind: history is
+    capped, so a document deleted and re-deleted often enough really can become
+    unrecoverable, and a caller has to be able to say so rather than offer a
+    button that cannot work.
+    """
+    for snapshot in reversed(history or ()):
+        if snapshot.get("document") is not None:
+            return snapshot
+    return None

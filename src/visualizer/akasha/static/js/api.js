@@ -40,12 +40,36 @@ export const api = {
   listCollections: (db) => request("GET", `/databases/${enc(db)}/collections`),
   createCollection: (db, col) =>
     request("POST", `/databases/${enc(db)}/collections/${enc(col)}`),
-  listDocuments: (db, col, { limit, after } = {}) => {
+  // Only ever succeeds when no live document is left; the server drops the
+  // database too when this was its last collection. `purge` additionally
+  // discards the version history of documents deleted from it, which is the
+  // only way a collection that has ever held something can go.
+  deleteCollection: (db, col, { purge } = {}) =>
+    request("DELETE", colPath(db, col) + (purge ? "?purge=1" : "")),
+  deleteDatabase: (db) => request("DELETE", `/databases/${enc(db)}`),
+
+  // One page of a collection, filtered server-side across the whole article.
+  listDocuments: (db, col, { filter, page, perPage } = {}) => {
     const p = new URLSearchParams();
-    if (limit) p.set("limit", limit);
-    if (after) p.set("after", after);
+    if (filter) p.set("filter", filter);
+    if (page) p.set("page", page);
+    if (perPage) p.set("per_page", perPage);
     const q = p.toString();
-    return request("GET", `/databases/${enc(db)}/collections/${enc(col)}/documents${q ? "?" + q : ""}`);
+    return request("GET", `${colPath(db, col)}/documents${q ? "?" + q : ""}`);
+  },
+  recent: (limit) => request("GET", `/recent${limit ? `?limit=${limit}` : ""}`),
+
+  // Articles deleted from a collection, each with the revision a restore would
+  // bring back (null when history has been pruned down to deletions alone).
+  listDeleted: (db, col) => request("GET", colPath(db, col) + "/deleted"),
+
+  // Field-aware search within one collection: `key` finds articles that *have*
+  // a field, `text` finds articles that mention something.
+  search: (db, col, { key, text } = {}) => {
+    const p = new URLSearchParams();
+    if (key) p.set("key", key);
+    if (text) p.set("text", text);
+    return request("GET", `${colPath(db, col)}/search?${p.toString()}`);
   },
 
   getDoc: (db, col, id) => request("GET", docPath(db, col, id)),

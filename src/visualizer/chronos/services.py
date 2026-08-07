@@ -75,7 +75,23 @@ class _Service:
 
     def _report(self, book: Book):
         events = list(self._events_by_id(book.id).values())
-        return build_report(events, self._plotlines(book.id), book.terminus)
+        return build_report(
+            events, self._plotlines(book.id), book.terminus,
+            missing_refs=self._missing_refs(events),
+        )
+
+    def _missing_refs(self, events) -> list:
+        """Akasha articles this book's scenes point at that are no longer there.
+
+        Writes already refuse an unknown reference, so anything here was deleted
+        after the scene naming it was written. Asked once for the whole book and
+        de-duplicated by the gate, so a cast of twenty across sixty scenes costs
+        twenty lookups rather than sixty -- each a keyed read, and the same seam
+        every write already goes through.
+        """
+        return self.entities.missing(
+            ref for event in events for ref in event.entity_refs()
+        )
 
     def _require_book(self, book_id: str) -> Book:
         return self._book(book_id)
@@ -258,9 +274,11 @@ class PlotlineService(_Service):
             )
 
     def _present(self, book, public) -> dict:
+        events_by_id = self._events_by_id(book.id)
         return present_plotline(
-            public, book, self._plotlines(book.id), self._events_by_id(book.id),
+            public, book, self._plotlines(book.id), events_by_id,
             codec_for(book),
+            missing_refs=self._missing_refs(events_by_id.values()),
         )
 
     def create(self, book_id, plotline_id, payload, author=None) -> dict:
@@ -274,9 +292,11 @@ class PlotlineService(_Service):
     def get(self, book_id, plotline_id, expand=False) -> dict:
         book = self._book(book_id)
         public = self.store.get_plotline(book_id, plotline_id)
+        events_by_id = self._events_by_id(book_id)
         return present_plotline(
-            public, book, self._plotlines(book_id), self._events_by_id(book_id),
+            public, book, self._plotlines(book_id), events_by_id,
             codec_for(book), expand=expand,
+            missing_refs=self._missing_refs(events_by_id.values()),
         )
 
     def update(self, book_id, plotline_id, payload, expected_rev=None, author=None) -> dict:
@@ -373,7 +393,9 @@ class VisualizerService(_Service):
         # still surfaces the thread -- the same path the plotline view shows.
         paths = effective_paths(plotlines)
         # Counted for the whole book at once, not once per thread.
-        counts = conflict_counts(paths, events_by_id)
+        counts = conflict_counts(
+            paths, events_by_id, self._missing_refs(events_by_id.values())
+        )
         rows = [self._row(pl, paths, events_by_id, book_id, counts) for pl in plotlines]
         return browse_plotlines(rows, query=query, page=page, per_page=per_page)
 
@@ -447,9 +469,11 @@ class VisualizerService(_Service):
         public = {
             **candidate.to_storage(), "id": plotline_id, "book": book_id, "rev": 0,
         }
+        events_by_id = self._events_by_id(book_id)
         presented = present_plotline(
-            public, book, self._plotlines(book_id), self._events_by_id(book_id),
+            public, book, self._plotlines(book_id), events_by_id,
             codec_for(book), expand=True,
+            missing_refs=self._missing_refs(events_by_id.values()),
         )
         return as_preview(presented, book_id)
 

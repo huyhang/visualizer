@@ -3,9 +3,9 @@
 ``reports`` answers a whole-*book* question -- "does this story hold together?"
 -- and ``/validate`` lists the answer by category. An editor asks a narrower one:
 "which **scene on this thread** should I mark, and what do I say about it?" This
-module answers that, running the same three rules (``conflicts``, ``ordering``,
-``scheduling``) over one effective path and attaching each result to the scene it
-belongs to.
+module answers that, running the same rules (``conflicts``, ``ordering``,
+``scheduling``, and missing article references) over one effective path and
+attaching each result to the scene it belongs to.
 
 Two deliberate differences from the book report, both because a writer is looking
 at a list of scenes rather than a verdict:
@@ -21,12 +21,14 @@ use display titles and codec-formatted ticks, because they are read by a
 novelist, not a machine -- the machine-readable ids stay in ``events``.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from .calendar import TimeCodec
 from .conflicts import all_conflicts, find_temporal_conflicts
 from .models import EntityRef, Event
 from .ordering import all_violations
+from .reports import entity_roles
 from .scheduling import unscheduled_windows, window_for
 
 CONFLICT = "conflict"
@@ -112,6 +114,40 @@ def _ordering_findings(ordered: list[Event], title) -> dict[str, list[Finding]]:
     return by_id
 
 
+def _missing_entity_findings(
+    scene: Event, missing: frozenset[EntityRef]
+) -> list[Finding]:
+    """This scene names an Akasha article that no longer exists (§8.1).
+
+    Referential integrity is a hard rule on write, so this can only appear by an
+    article being deleted *underneath* a finished scene -- Akasha holds no
+    back-reference to Chronos and cannot warn anyone at the time. Reported on
+    read is the only place left to catch it.
+
+    One finding per scene rather than per reference: the writer's next move is to
+    open the scene either way, and three chips saying the same thing is noise.
+    """
+    gone = [(role, ref) for role, ref in entity_roles(scene) if ref in missing]
+    if not gone:
+        return []
+    roles = ", ".join(sorted({role for role, _ in gone}))
+    subject = _names([ref.id for _, ref in gone])
+    verb = "is" if len(gone) == 1 else "are"
+    return [
+        Finding(
+            code="MISSING_ENTITY",
+            severity=CONFLICT,
+            message=(
+                f"{subject} {verb} named here ({roles}) but no longer in the "
+                "article store. Restore the article, or edit this scene to stop "
+                "naming it."
+            ),
+            refs=tuple(ref for _, ref in gone),
+            doc=f"{_DESIGN}#81",
+        )
+    ]
+
+
 def _timing_finding(
     scene: Event, paths: dict[str, list[str]], by_id: dict[str, Event], codec: TimeCodec
 ) -> Finding | None:
@@ -173,7 +209,9 @@ def conflict_count(findings: dict[str, list[Finding]]) -> int:
 
 
 def conflict_counts(
-    paths: dict[str, list[str]], events_by_id: dict[str, Event]
+    paths: dict[str, list[str]],
+    events_by_id: dict[str, Event],
+    missing_refs: Iterable[EntityRef] = (),
 ) -> dict[str, int]:
     """How many distinct problems every thread has, in one pass over the book.
 
@@ -185,6 +223,11 @@ def conflict_counts(
     """
     events = list(events_by_id.values())
     conflicts = all_conflicts(events)
+    missing = frozenset(missing_refs)
+    # One per scene, matching what `_missing_entity_findings` emits.
+    dangling = {
+        e.id for e in events if any(ref in missing for _, ref in entity_roles(e))
+    }
     impossible = {
         eid for eid, window in unscheduled_windows(events, paths).items()
         if window.impossible
@@ -199,6 +242,7 @@ def conflict_counts(
             sum(1 for c in conflicts if c.this_id in members or c.other_id in members)
             + len(all_violations(ordered))
             + len(members & impossible)
+            + len(members & dangling)
         )
     return counts
 
@@ -208,6 +252,7 @@ def findings_for_path(
     events_by_id: dict[str, Event],
     paths: dict[str, list[str]],
     codec: TimeCodec,
+    missing_refs: Iterable[EntityRef] = (),
 ) -> dict[str, list[Finding]]:
     """Every finding for one thread's effective path, keyed by event id.
 
@@ -217,7 +262,10 @@ def findings_for_path(
         still needs to see it here.
     :param paths: every thread's effective path, so an unscheduled scene's window
         accounts for all the threads it appears on.
+    :param missing_refs: Akasha articles the caller has already found to be gone
+        (existence is I/O; this module only decides what to say about it).
     """
+    missing = frozenset(missing_refs)
     ordered = [events_by_id[eid] for eid in path if eid in events_by_id]
     all_events = list(events_by_id.values())
 
@@ -232,6 +280,7 @@ def findings_for_path(
         found = [
             *_conflict_findings(scene, all_events, title),
             *ordering.get(scene.id, []),
+            *_missing_entity_findings(scene, missing),
         ]
         timing = _timing_finding(scene, paths, events_by_id, codec)
         if timing is not None:

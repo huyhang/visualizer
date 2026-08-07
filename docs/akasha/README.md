@@ -81,16 +81,49 @@ you have been granted. This includes admins: the admin role governs account and
 access *management*, not content access, so an admin sees another user's articles
 only where they have explicitly granted themselves (or been granted) access.
 
-**Browse & read.** The left panel is a lazy-loading tree of *databases →
-collections → articles*. Open an article to read it rendered as a page: a title
-heading, the prose body, and an **infobox** of the remaining fields on the side.
-The search box at the top finds articles by title across everything you can read.
+> **A note on names.** The UI speaks to a novelist: a **world** holds
+> **categories** (characters, locations, lore…) of **articles**. The API keeps
+> MongoDB's words for the same three things — *database → collection →
+> document* — because that triple is the addressing scheme behind every link,
+> grant and chronos reference. The mapping is one table, in
+> [`terms.py`](../../src/visualizer/akasha/terms.py).
+>
+> Individual worlds and categories are printed readably too: `ember-pact` shows
+> as **Ember Pact**, `lord-of-the-rings` as **Lord of the Rings**. The title is
+> *derived* from the slug ([`labels.py`](../../src/visualizer/akasha/labels.py)) —
+> nothing is stored, so it applies to everything that already exists, and a name
+> that already has capitals is left exactly as you spelled it. The slug stays
+> beside it on cards and in URLs, because that is what `[[links]]` point at.
+
+**Browse & read.** Every level has a page of its own. The home page is a grid of
+your worlds with what is in each, plus the articles you edited most recently;
+opening one shows its categories; opening a category shows a filtered,
+paginated list of its articles. The left panel is the same hierarchy as a
+lazy-loading tree — a shortcut, not the only way in: clicking a *name* opens
+that level's page, while the twisty beside it unfolds in place.
+
+Open an article to read it rendered as a page: a title heading, the prose body,
+and an **infobox** of the remaining fields on the side.
+
+**Find things.** The sidebar box is a type-ahead over titles, showing which world
+and category each match came from. The filter on a category page is a *full-text*
+search of that category — it matches words from anywhere in an article, not just
+its name. **Search inside articles →** opens a detailed search that can also find
+every article carrying a given field.
 
 **Follow links.** Words wrapped in `[[…]]` render as tappable links to other
 articles; clicking one opens it. Links to articles that don't exist (or that you
 can't read) show as dimmed "red links".
 
-**Create & edit.** Hit **New** (or **Edit** on an open article) to get:
+**Create.** The **New** button on each page already knows where you are: on a
+category page it asks only for a title, on a world page it makes a category, and
+on the home page it makes a world. The one in the header offers dropdowns of what
+already exists, pre-filled from wherever you were — you never retype a name that
+is sitting in a list beside you. A new article's category is created when the
+article is **saved**, so backing out of the editor leaves nothing behind.
+
+**Edit.** **Edit** on an open article (or a **New** that you carried through)
+gives you:
 
 - a **Title** field,
 - a **body editor** using a wikitext subset — `'''bold'''`, `''italic''`,
@@ -109,8 +142,24 @@ word-level highlighting on prose) and **Restore** (re-applies that version as a
 new revision). If someone else saved while you were editing, the editor detects
 it on save and shows you the differences so nothing is silently overwritten.
 
-**Delete.** Removing an article hides it but keeps its version history; you can
-recreate the same id later.
+**Delete & restore.** Removing an article hides it from every listing, search
+and link, but keeps its version history — it is never destroyed by a delete. Two
+ways back: the article's own address still answers, offering **Restore** and
+saying who removed it and when; and its category page carries a collapsed
+**"N articles deleted"** drawer listing everything removed from it, with a
+Restore beside each. A row says *history pruned* when the version cap has
+finally aged out every body (nothing is left to bring back), and *not yours to
+restore* when you may read it but not write it. A **category** can be deleted from its own page once
+no article is left in it — and if it still holds the history of articles deleted
+from it, the dialog says so and how much, because discarding that is the one
+thing here you cannot undo. Deleting the last category in a world deletes the
+world too.
+
+**Rename.** There is no rename, by design: an article's slug and its
+world/category names *are* its address, pointed at by every `[[link]]`, every
+grant and every chronos reference. To rename, create under the new name, repoint
+what referred to it, and delete the old — which is why the new-article dialog
+warns that the slug is permanent.
 
 **Theme, text size & mobile.** Toggle light/dark with the ◐ button, and cycle the
 text size (Normal → Large → Larger → Largest) with the **A** button — both are
@@ -265,16 +314,53 @@ print(r.status_code)                     # 409
 
 ### Browse
 
+Each level says how much is inside it and what you may do there, so a browser
+can draw a page rather than just a list of names.
+
 ```python
 print(s.get(f"{BASE}/databases").json())
-# {'databases': ['middle-earth', ...]}
+# {'databases': [{'name': 'middle-earth', 'title': 'Middle Earth',
+#                 'collections': 3, 'articles': 61}, ...]}
+# `title` is a readable rendering of `name`, never a replacement for it — every
+# path, link and grant still uses the slug.
 
 print(s.get(f"{BASE}/databases/middle-earth/collections").json())
-# {'database': 'middle-earth', 'collections': ['lord-of-the-rings']}
+# {'database': 'middle-earth',
+#  'collections': [{'name': 'lord-of-the-rings', 'articles': 42,
+#                   'can_write': True, 'can_delete': True}]}
 
-print(s.get(f"{col}/documents").json())
-# {'documents': [{'id': 'aragorn', 'title': 'Aragorn', 'rev': 2, ...}, ...]}
-# supports ?limit= and ?after=<id> for paging
+# One page of articles, ordered by title. `filter` matches every word against
+# the whole article — title, slug and field values — so it finds a character by
+# a word from their body. Counts and permissions are per-caller.
+print(s.get(f"{col}/documents", params={"filter": "isildur", "page": 1, "per_page": 25}).json())
+# {'documents': [{'id': 'aragorn', 'title': 'Aragorn', 'rev': 2,
+#                 'updated': '2026-08-07T20:49:23+00:00', 'author': 'huy', ...}],
+#  'page': 1, 'per_page': 25, 'total': 1, 'pages': 1,
+#  'can_write': True, 'can_delete': True}
+# An out-of-range page is clamped to the last one rather than erroring.
+
+# The most recently written articles across every readable namespace.
+print(s.get(f"{BASE}/recent", params={"limit": 8}).json())
+# {'documents': [{'id': 'aragorn', 'database': 'middle-earth', ...}, ...]}
+```
+
+### Remove a namespace
+
+Only if you own it, and only once no *live* article is left — this is for tidying
+away a collection made by mistake, not a bulk delete. A tombstone is the harder
+case: it holds no article, only the version history of one that was deleted, so
+it blocks the drop until you say explicitly that the history may go.
+
+```python
+s.delete(col)              # 409 while any live article is in it
+s.delete(col)              # 409 again if it holds the history of deleted ones
+s.delete(col, params={"purge": 1})   # 200 — that history is discarded
+
+# {'database': ..., 'collection': ..., 'purged': 3, 'database_removed': True}
+# `database_removed` is true when this was the last collection: MongoDB drops a
+# database with the last collection in it, so that is also how a database goes.
+# `DELETE /databases/<db>` exists for a shell left behind by an older version;
+# on a live MongoDB you will not find one, because it cleans up after itself.
 ```
 
 ### Suggest (link type-ahead)
@@ -340,10 +426,14 @@ authenticated session.
 | POST   | `/login` | start a session (`{username, password}`) |
 | POST   | `/logout` | end the session |
 | GET    | `/auth/me` | the current user (`{username, role}`) |
-| GET    | `/databases` | list readable databases |
-| GET    | `/databases/<db>/collections` | list readable collections |
+| GET    | `/databases` | readable databases, each with `title` (derived from the name), and its collection/article counts |
+| GET    | `/databases/<db>/collections` | readable collections, each with `title`, counts and `can_write`/`can_delete`, plus `empty` (whether the database really holds nothing, as opposed to nothing *you* may read) |
 | POST   | `/databases/<db>/collections/<col>` | create the database + collection (409 if exists) |
-| GET    | `/databases/<db>/collections/<col>/documents` | list readable articles (`?limit=&after=`) |
+| DELETE | `/databases/<db>/collections/<col>?purge=` | drop a collection you own once no live article is left (409 otherwise); `purge=1` also discards the history of deleted ones. Takes the database with it if it was the last one |
+| DELETE | `/databases/<db>` | drop a database with no collections left (409 otherwise) |
+| GET    | `/databases/<db>/collections/<col>/documents` | one page of readable articles (`?filter=&page=&per_page=`), plus `deleted` (tombstones the owner would lose) |
+| GET    | `/recent?limit=` | most recently written readable articles, newest first |
+| GET    | `/databases/<db>/collections/<col>/deleted` | tombstones in a collection: what was deleted, by whom, and the `restore_rev` a restore would re-apply (`null` when history has been pruned to deletions alone) |
 | POST   | `/databases/<db>/collections/<col>/documents/<id>` | create an article (404 if namespace missing, 409 if id exists) |
 | GET    | `…/documents/<id>` | read (404 if missing); returns `rev` + `ETag` |
 | PUT    | `…/documents/<id>` | replace (404 if missing; 409 if `If-Match` rev is stale) |

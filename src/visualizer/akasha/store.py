@@ -33,13 +33,15 @@ from pymongo.errors import DuplicateKeyError
 
 from .errors import (
     CollectionAlreadyExists,
+    CollectionNotEmpty,
     CollectionNotFound,
+    DatabaseNotEmpty,
     DatabaseNotFound,
     DocumentAlreadyExists,
     DocumentNotFound,
     RevisionConflict,
 )
-from .history import CREATE, DELETE, UPDATE, make_snapshot, prune
+from .history import CREATE, DELETE, UPDATE, last_live_snapshot, make_snapshot, prune
 
 _DEFAULT_VERSIONS_KEEP = 20
 
@@ -84,6 +86,53 @@ class DocumentStore:
         self._client[database].create_collection(collection)
         return {"database": database, "collection": collection}
 
+    def delete_collection(
+        self, database: str, collection: str, purge_history: bool = False
+    ) -> dict:
+        """Drop an empty collection, and its database when it was the last one.
+
+        Two different kinds of "not empty", answered differently:
+
+        - A **live** document always refuses. Emptying a collection is the
+          article endpoint's job, not a side effect of tidying a namespace.
+        - A **tombstone** holds no article, only the version history of one that
+          was deleted. It refuses by default, so nobody loses that history by
+          accident, and is discarded only when the caller asks explicitly --
+          having been told how many there are.
+
+        Dropping the last collection drops the database with it, so an abandoned
+        "new article" cannot strand a namespace nobody can get rid of. Returns
+        what was destroyed, so the caller can say so.
+        """
+        self._require_namespace(database, collection)
+        live = self.count_documents(database, collection)
+        if live:
+            raise CollectionNotEmpty(
+                f"Collection '{collection}' still holds {live} article(s); "
+                "delete those first."
+            )
+        purged = self.count_deleted(database, collection)
+        if purged and not purge_history:
+            raise CollectionNotEmpty(
+                f"Collection '{collection}' holds the version history of {purged} "
+                "deleted article(s); deleting it would discard that history."
+            )
+        self._client[database].drop_collection(collection)
+        database_removed = not self._client[database].list_collection_names()
+        if database_removed:
+            self._client.drop_database(database)
+        return {"purged": purged, "database_removed": database_removed}
+
+    def delete_database(self, database: str) -> None:
+        """Drop a database that has no collections left (a leftover shell)."""
+        if not self._database_exists(database):
+            raise DatabaseNotFound(f"Database '{database}' does not exist.")
+        if self._client[database].list_collection_names():
+            raise DatabaseNotEmpty(
+                f"Database '{database}' still has collections; delete those first."
+            )
+        self._client.drop_database(database)
+
     def _database_exists(self, database: str) -> bool:
         return database in self._client.list_database_names()
 
@@ -127,7 +176,63 @@ class DocumentStore:
         cursor = self._collection(database, collection).find(query).sort("_id", 1)
         if limit:
             cursor = cursor.limit(limit)
-        return [self._to_public(stored) for stored in cursor]
+        return [
+            {**self._to_public(stored), **self._last_write(stored)} for stored in cursor
+        ]
+
+    def count_documents(self, database: str, collection: str) -> int:
+        """How many live documents a collection holds."""
+        self._require_namespace(database, collection)
+        return self._collection(database, collection).count_documents(
+            {"_deleted": {"$ne": True}}
+        )
+
+    def count_deleted(self, database: str, collection: str) -> int:
+        """How many tombstones a collection holds.
+
+        Soft-deleted articles: gone from every listing, but still carrying the
+        version history that made the delete reversible.
+        """
+        self._require_namespace(database, collection)
+        return self._collection(database, collection).count_documents({"_deleted": True})
+
+    def list_deleted(self, database: str, collection: str) -> list[dict]:
+        """The tombstones in a collection: what was deleted, and what would come back.
+
+        A delete replaces the body with a tombstone, so there is nothing left to
+        read a title from -- it comes from the newest snapshot that still had
+        one, which is what the article was called when it went. ``restore_rev``
+        is that snapshot's revision, the one a restore would re-apply; it is
+        ``None`` when history has been pruned down to deletions alone and there
+        is nothing left to bring back.
+        """
+        self._require_namespace(database, collection)
+        cursor = self._collection(database, collection).find({"_deleted": True})
+        out = []
+        for stored in cursor:
+            history = list(stored.get("_history", []))
+            live = last_live_snapshot(history)
+            newest = history[-1] if history else {}
+            out.append(
+                {
+                    "id": stored["_id"],
+                    "title": (live or {}).get("document", {}).get("title"),
+                    "rev": stored.get("_rev", 1),
+                    "deleted_at": newest.get("timestamp"),
+                    "deleted_by": newest.get("author"),
+                    "restore_rev": (live or {}).get("rev"),
+                }
+            )
+        return sorted(out, key=lambda d: d["id"])
+
+    def document_ids(self, database: str, collection: str) -> list[str]:
+        """Just the ids of the live documents -- the cheap read for counting
+        what a user with document-scoped grants is allowed to see."""
+        self._require_namespace(database, collection)
+        cursor = self._collection(database, collection).find(
+            {"_deleted": {"$ne": True}}, {"_id": 1}
+        )
+        return [stored["_id"] for stored in cursor]
 
     # -- (de)serialisation ---------------------------------------------------
 
@@ -149,6 +254,18 @@ class DocumentStore:
             "document": cls._body(stored),
             "rev": stored.get("_rev", 1),
         }
+
+    @staticmethod
+    def _last_write(stored: dict) -> dict:
+        """When, and by whom, this document was last written.
+
+        Read off the newest retained snapshot rather than stored separately, so
+        it cannot drift from the history. Both fields are ``None`` for a document
+        written before versioning, which is the honest answer.
+        """
+        history = stored.get("_history") or []
+        newest = history[-1] if history else {}
+        return {"updated": newest.get("timestamp"), "author": newest.get("author")}
 
     def _replacement(self, doc_id: str, body: dict, rev: int, history: list[dict]) -> dict:
         return {**body, "_id": doc_id, "_rev": rev, "_history": history}

@@ -8,9 +8,9 @@
     <span class="chev">&#9654;</span>
     <span class="share-name"><code>{{ res.doc_id or res.collection }}</code></span>
     {% if res.doc_id %}
-    <span class="muted">{{ res.database }} / {{ res.collection }}</span>
+    <span class="muted">{{ res.database | title_of }} / {{ res.collection | title_of }}</span>
     {% else %}
-    <span class="muted">{{ res.database }}</span>
+    <span class="muted">{{ res.database | title_of }}</span>
     {% endif %}
     <span class="share-count" hidden></span>
   </button>
@@ -64,7 +64,7 @@
   <div class="card-head">
     <h2>Your collaborators</h2>
     <p>The people you share things with. Add someone once by username, then pick
-      them when sharing any collection or article.</p>
+      them when sharing any {{ terms.collection.one }} or {{ terms.document.one }}.</p>
   </div>
   {% if contacts %}
   <div class="roster">
@@ -90,20 +90,20 @@
 <div class="card">
   <div class="card-head">
     <h2>Shared access</h2>
-    <p>Resources you own. Switch between collections and articles, filter to find
+    <p>Resources you own. Switch between {{ terms.collection.many }} and {{ terms.document.many }}, filter to find
       one, then expand it to share as a <strong>reader</strong>,
       <strong>editor</strong> or <strong>owner</strong>. Only you (and anyone you
       make an owner) can manage sharing.</p>
   </div>
 
   {% if not owned_collections and not owned_articles %}
-  <p class="muted">You don't own any collections or articles yet. Create one and it
+  <p class="muted">You don't own any {{ terms.collection.many }} or {{ terms.document.many }} yet. Create one and it
     will appear here to share.</p>
   {% else %}
   <div class="share-controls">
     <div class="segmented">
       <button type="button" class="seg active" data-mode="collections" onclick="switchMode(this)">
-        Collections ({{ owned_collections | length }})
+        {{ terms.collection.Many }} ({{ owned_collections | length }})
       </button>
       <button type="button" class="seg" data-mode="articles" onclick="switchMode(this)">
         Articles ({{ owned_articles | length }})
@@ -142,10 +142,10 @@
         <tr>
           <td>
             {% if s.doc_id %}Article <code>{{ s.doc_id }}</code>
-              <span class="muted">in {{ s.database }} / {{ s.collection }}</span>
-            {% elif s.collection %}Collection <code>{{ s.collection }}</code>
-              <span class="muted">in {{ s.database }}</span>
-            {% elif s.database %}Database <code>{{ s.database }}</code>
+              <span class="muted">in {{ s.database | title_of }} / {{ s.collection | title_of }}</span>
+            {% elif s.collection %}{{ terms.collection.One }} <code>{{ s.collection }}</code>
+              <span class="muted">in {{ s.database | title_of }}</span>
+            {% elif s.database %}{{ terms.database.One }} <code>{{ s.database }}</code>
             {% else %}<span class="muted">Everything</span>{% endif %}
           </td>
           <td><span class="tag">{{ s.role }}</span></td>
@@ -328,8 +328,9 @@
     if (empty) {
       empty.hidden = shown.length !== 0;
       empty.textContent = q ? 'No matches.'
-        : (shareMode === 'collections' ? "You don't own any collections yet."
-                                       : "You don't own any articles yet.");
+        : (shareMode === 'collections'
+            ? "You don't own any {{ terms.collection.many }} yet."
+            : "You don't own any {{ terms.document.many }} yet.");
     }
     const pager = document.querySelector('.share-pager');
     if (pager) pager.hidden = shown.length <= SHARE_PAGE_SIZE;

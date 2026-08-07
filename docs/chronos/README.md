@@ -180,9 +180,16 @@ a save, for any book, solo or shared.
 | **Temporal conflict** — a character in two *different* locations at overlapping times | `GET /books/<book>/validate`, book `status` |
 | **Ordering** — a plotline's events not in non-overlapping order | plotline `status.ordering` |
 | **Convergence** — a plotline not ending at the terminus | plotline `status.ends_at_terminus` |
+| **Missing article** — a scene naming a character, item or location that has been deleted from Akasha | `validate.missing_entities`, book `status`, the scene's findings |
 
 A book reports `status: "consistent"` or `"conflicted"`. Draft freely; reconcile
 when you're ready.
+
+The last one is the only rule that can start failing without anyone touching the
+timeline: Akasha holds no back-reference to Chronos, so deleting an article says
+nothing about the scenes that name it. Writes still refuse an unknown reference,
+so a dangling one is always an article removed *after* the scene was written —
+and Akasha's deletes are soft, so restoring the article clears the report.
 
 ---
 

@@ -4,7 +4,9 @@ import pytest
 
 from visualizer.akasha.errors import (
     CollectionAlreadyExists,
+    CollectionNotEmpty,
     CollectionNotFound,
+    DatabaseNotEmpty,
     DatabaseNotFound,
     DocumentAlreadyExists,
     DocumentNotFound,
@@ -85,6 +87,79 @@ def test_create_collection_duplicate_raises(store):
     store.create_collection("newdb", "newcol")
     with pytest.raises(CollectionAlreadyExists):
         store.create_collection("newdb", "newcol")
+
+
+def test_delete_collection_removes_an_empty_namespace(store):
+    store.create_collection("newdb", "keep")
+    store.create_collection("newdb", "drop")
+    store.delete_collection("newdb", "drop")
+    assert store.list_collections("newdb") == ["keep"]
+
+
+def test_deleting_the_last_collection_drops_the_database(store):
+    store.create_collection("newdb", "only")
+    store.delete_collection("newdb", "only")
+    assert "newdb" not in store.list_databases()
+
+
+def test_delete_collection_refuses_while_documents_remain(store):
+    store.create_collection("newdb", "full")
+    store.create("newdb", "full", "x", {"a": 1})
+    with pytest.raises(CollectionNotEmpty):
+        store.delete_collection("newdb", "full")
+
+
+def test_delete_collection_refuses_over_a_tombstone(store):
+    """A soft-deleted document still carries history worth keeping."""
+    store.create_collection("newdb", "full")
+    store.create("newdb", "full", "x", {"a": 1})
+    store.delete("newdb", "full", "x", expected_rev=1)
+    with pytest.raises(CollectionNotEmpty):
+        store.delete_collection("newdb", "full")
+
+
+def test_purging_discards_tombstones_and_says_how_many(store):
+    """The only way a collection that has ever held something can go."""
+    store.create_collection("newdb", "full")
+    store.create("newdb", "full", "x", {"a": 1})
+    store.create("newdb", "full", "y", {"a": 2})
+    store.delete("newdb", "full", "x", expected_rev=1)
+    store.delete("newdb", "full", "y", expected_rev=1)
+    assert store.count_deleted("newdb", "full") == 2
+    assert store.delete_collection("newdb", "full", purge_history=True) == {
+        "purged": 2, "database_removed": True,
+    }
+
+
+def test_purging_still_refuses_over_a_live_article(store):
+    """Purging discards *history*; emptying a collection is a separate act."""
+    store.create_collection("newdb", "full")
+    store.create("newdb", "full", "x", {"a": 1})
+    with pytest.raises(CollectionNotEmpty):
+        store.delete_collection("newdb", "full", purge_history=True)
+
+
+def test_delete_collection_reports_whether_the_database_survived(store):
+    store.create_collection("newdb", "keep")
+    store.create_collection("newdb", "drop")
+    assert store.delete_collection("newdb", "drop") == {
+        "purged": 0, "database_removed": False,
+    }
+
+
+def test_delete_collection_requires_it_to_exist(store):
+    with pytest.raises(CollectionNotFound):
+        store.delete_collection(DB, "ghostcol")
+
+
+def test_delete_database_refuses_while_collections_remain(store):
+    with pytest.raises(DatabaseNotEmpty):
+        store.delete_database(DB)
+
+
+def test_delete_database_requires_it_to_exist(store):
+    with pytest.raises(DatabaseNotFound):
+        store.delete_database("ghostdb")
 
 
 def test_create_document_requires_existing_database(store):

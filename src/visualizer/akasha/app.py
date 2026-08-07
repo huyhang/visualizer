@@ -27,8 +27,10 @@ from werkzeug.security import generate_password_hash
 from visualizer.auth import (
     ALL_PERMS,
     DELETE,
+    READ,
     REGISTRATION_MODES,
     ROLE_PERMS,
+    WRITE,
     AuthError,
     AuthStore,
     Forbidden,
@@ -49,7 +51,16 @@ from visualizer.auth import (
     validate_password_strength,
 )
 
-from .browsing import rank_suggestions, visible_collections, visible_databases
+from .browsing import (
+    DEFAULT_PER_PAGE,
+    browse_articles,
+    can_delete_collection,
+    can_write_in_collection,
+    most_recent,
+    rank_suggestions,
+    visible_collections,
+    visible_databases,
+)
 from .diff import diff_documents
 from .errors import (
     AkashaError,
@@ -59,7 +70,9 @@ from .errors import (
     VersionNotFound,
 )
 from .history import find_snapshot, history_meta
+from .labels import derive_title
 from .store import DocumentStore
+from .terms import TERMS
 from .validation import validate_document, validate_search_terms
 
 _COLLECTION_ROUTE = "/databases/<database>/collections/<collection>"
@@ -101,6 +114,12 @@ def create_app(
     register_auth_routes(app, auth_store, csrf, limiter)
     register_service_links(app, akasha_url, chronos_url, current="akasha")
 
+    # Every template can say "world"/"category" without hard-coding it; see
+    # ``terms.py`` for why the API keeps the MongoDB names regardless. The same
+    # goes for ``| title_of``, which prints a slug readably.
+    app.context_processor(lambda: {"terms": TERMS})
+    app.add_template_filter(derive_title, "title_of")
+
     _register_routes(app, store, auth_store, csrf)
     _register_browse_routes(app, store, auth_store, csrf)
     _register_version_routes(app, store, auth_store, csrf)
@@ -134,10 +153,14 @@ def _authorize(auth_store: AuthStore, method: str, database, collection, doc_id=
         )
 
 
-def _can_read(auth_store: AuthStore, database, collection, doc_id=None) -> bool:
-    """Whether the current user may read a resource (per their grants)."""
-    grants = auth_store.grants_for(current_user.username)
-    return is_allowed(grants, "read", database, collection, doc_id)
+def _revoke_scope(auth_store: AuthStore, database, collection) -> None:
+    """Drop every grant naming exactly this collection.
+
+    Called when the collection itself goes, so a namespace that no longer exists
+    stops being offered for sharing on its owners' account pages.
+    """
+    for grant in auth_store.grants_on(database, collection, None):
+        auth_store.delete_grant(grant["id"])
 
 
 def _expected_rev() -> int | None:
@@ -194,6 +217,43 @@ def _register_routes(app: Flask, store: DocumentStore, auth_store: AuthStore, cs
             current_user.username, database, collection, None, list(ALL_PERMS)
         )
         return jsonify(result), 201
+
+    @app.delete(_COLLECTION_ROUTE)
+    @csrf.exempt
+    @login_required
+    def delete_collection(database, collection):
+        """Drop an empty collection you own -- and its database, if it was the
+        last one in it.
+
+        Owner-only, and only while no live article is inside: this exists so a
+        namespace made by mistake can be tidied away, not as a bulk delete.
+        ``?purge=1`` additionally discards the version history of articles that
+        were deleted from it, which is the only way a collection that has ever
+        held something can go. Its grants go with it, so a namespace that no
+        longer exists stops haunting its owners' account pages.
+        """
+        _reject_reserved(database)
+        _require_owner(auth_store, database, collection, None)
+        result = store.delete_collection(
+            database, collection, purge_history=_flag_arg("purge")
+        )
+        _revoke_scope(auth_store, database, collection)
+        return jsonify({"database": database, "collection": collection, **result})
+
+    @app.delete("/databases/<database>")
+    @csrf.exempt
+    @login_required
+    def delete_database(database):
+        """Drop a database that has no collections left.
+
+        Gated on nothing but being logged in, exactly like *creating* a
+        namespace: an empty database holds nothing to protect, and emptying it
+        was already an owner-only act. This clears shells left behind by older
+        versions, which created the namespace before the article was written.
+        """
+        _reject_reserved(database)
+        store.delete_database(database)
+        return "", 204
 
     @app.post(_DOC_ROUTE)
     @csrf.exempt
@@ -271,51 +331,143 @@ def _filter_readable(auth_store: AuthStore, database, collection, results):
 
 
 _SUGGEST_LIMIT = 12
-_LIST_DEFAULT_LIMIT = 100
-_LIST_MAX_LIMIT = 500
+_RECENT_DEFAULT = 8
+_RECENT_MAX = 50
 
 
 def _register_browse_routes(app: Flask, store: DocumentStore, auth_store: AuthStore, csrf) -> None:
-    """Grant-filtered listing of databases, collections and documents, plus the
-    link-suggestion type-ahead used by the editor."""
+    """Grant-filtered listing of databases, collections and documents, the
+    "recently edited" strip the home view opens with, and the link-suggestion
+    type-ahead used by the editor.
+
+    Each level answers with enough to *render a page* rather than just names: how
+    much is inside, and whether the caller may add to it -- so the browser can
+    show counts and hide buttons that would only earn a 403.
+    """
 
     @app.get("/databases")
     @csrf.exempt
     @login_required
     def list_databases():
-        databases = visible_databases(
-            auth_store.grants_for(current_user.username), store.list_databases()
+        grants = auth_store.grants_for(current_user.username)
+        databases = visible_databases(grants, store.list_databases())
+        return jsonify(
+            {"databases": [_database_summary(store, grants, db) for db in databases]}
         )
-        return jsonify({"databases": databases})
 
     @app.get("/databases/<database>/collections")
     @csrf.exempt
     @login_required
     def list_collections(database):
         _reject_reserved(database)
-        collections = visible_collections(
-            auth_store.grants_for(current_user.username),
-            database,
-            store.list_collections(database),
+        grants = auth_store.grants_for(current_user.username)
+        present = store.list_collections(database)
+        collections = visible_collections(grants, database, present)
+        return jsonify(
+            {
+                "database": database,
+                "title": derive_title(database),
+                "collections": [
+                    _collection_summary(store, grants, database, collection)
+                    for collection in collections
+                ],
+                # Whether the database is *actually* empty, not merely empty as
+                # far as this caller can see. Seeing no collections usually means
+                # you may not read the ones that are there, and offering to
+                # delete a database in that state would be a lie.
+                "empty": not present,
+            }
         )
-        return jsonify({"database": database, "collections": collections})
 
     @app.get("/databases/<database>/collections/<collection>/documents")
     @csrf.exempt
     @login_required
     def list_documents(database, collection):
+        """One filtered, ordered page of the articles the caller may read.
+
+        Filtering reaches the whole article, not just its title, so the box on a
+        collection page is the full-text search the API always had and the
+        browser never offered.
+        """
         _reject_reserved(database)
-        limit = _parse_limit(request.args.get("limit"))
-        after = request.args.get("after") or None
-        docs = store.list_documents(database, collection, limit=limit, after=after)
-        items = [
-            _document_preview(database, collection, doc)
-            for doc in docs
-            if _can_read(auth_store, database, collection, doc["id"])
+        grants = auth_store.grants_for(current_user.username)
+        rows = _readable_rows(store, grants, database, collection)
+        page = browse_articles(
+            rows,
+            request.args.get("filter", ""),
+            _int_arg("page", 1),
+            _int_arg("per_page", DEFAULT_PER_PAGE),
+        )
+        can_delete = can_delete_collection(grants, database, collection)
+        can_write = can_write_in_collection(grants, database, collection)
+        return jsonify(
+            {
+                "database": database,
+                "collection": collection,
+                "database_title": derive_title(database),
+                "collection_title": derive_title(collection),
+                "can_write": can_write,
+                "can_delete": can_delete,
+                # How many tombstones are here: what deleting the collection
+                # would cost, and how many articles could be brought back.
+                # Counted only for someone who could act on either.
+                "deleted": (
+                    store.count_deleted(database, collection)
+                    if (can_write or can_delete) else 0
+                ),
+                **page,
+            }
+        )
+
+    @app.get(_COLLECTION_ROUTE + "/deleted")
+    @csrf.exempt
+    @login_required
+    def list_deleted_documents(database, collection):
+        """The articles deleted from this collection, and what would come back.
+
+        Deletes are soft, so a tombstone still holds the history that makes it
+        recoverable -- but nothing lists it, which until now meant a deleted
+        article could only be found by already knowing its slug. Grant-filtered
+        per article like every other listing, and each row says whether *this*
+        caller may restore it, so the button is only drawn when it would work.
+        """
+        _reject_reserved(database)
+        grants = auth_store.grants_for(current_user.username)
+        rows = [
+            {
+                **row,
+                "database": database,
+                "collection": collection,
+                "can_restore": (
+                    row["restore_rev"] is not None
+                    and is_allowed(grants, WRITE, database, collection, row["id"])
+                ),
+            }
+            for row in store.list_deleted(database, collection)
+            if is_allowed(grants, READ, database, collection, row["id"])
         ]
         return jsonify(
-            {"database": database, "collection": collection, "documents": items}
+            {"database": database, "collection": collection, "documents": rows}
         )
+
+    @app.get("/recent")
+    @csrf.exempt
+    @login_required
+    def recent_documents():
+        """The articles written to most recently, newest first.
+
+        Scans every readable namespace, the same reach ``/suggest`` has -- but
+        once per visit to the home view rather than once per keystroke, which is
+        what makes it affordable at the scale this runs.
+        """
+        limit = max(1, min(_int_arg("limit", _RECENT_DEFAULT), _RECENT_MAX))
+        grants = auth_store.grants_for(current_user.username)
+        rows = [
+            row
+            for database, collection in _visible_namespaces(store, grants)
+            for row in _readable_rows(store, grants, database, collection)
+        ]
+        return jsonify({"documents": most_recent(rows, limit)})
 
     @app.get("/suggest")
     @csrf.exempt
@@ -326,51 +478,124 @@ def _register_browse_routes(app: Flask, store: DocumentStore, auth_store: AuthSt
             return jsonify({"suggestions": []})
         current_db = request.args.get("db") or None
         current_col = request.args.get("col") or None
-        matches = _gather_suggestions(store, auth_store, query)
+        grants = auth_store.grants_for(current_user.username)
+        matches = _gather_suggestions(store, grants, query)
         ranked = rank_suggestions(matches, current_db, current_col)
         return jsonify({"suggestions": ranked[:_SUGGEST_LIMIT]})
 
 
-def _parse_limit(raw: str | None) -> int:
-    if not raw:
-        return _LIST_DEFAULT_LIMIT
+def _flag_arg(name: str) -> bool:
+    """A boolean query flag: present, and not spelled as a denial."""
+    raw = request.args.get(name)
+    return raw is not None and raw.lower() not in ("", "0", "false", "no")
+
+
+def _int_arg(name: str, default: int) -> int:
+    """A positive integer query param, falling back rather than 400-ing.
+
+    A malformed ``?page=`` comes from a hand-edited URL, not from a bug worth
+    interrupting someone's browsing over.
+    """
     try:
-        return max(1, min(_LIST_MAX_LIMIT, int(raw)))
+        return int(request.args.get(name, ""))
     except ValueError:
-        return _LIST_DEFAULT_LIMIT
+        return default
 
 
-def _document_preview(database, collection, doc: dict) -> dict:
-    """Lightweight browse entry: id (slug), title if present, and rev."""
+def _field_values(body: dict) -> list[str]:
+    """Every scalar the article holds, flattened -- the filter's haystack."""
+    values: list[str] = []
+    for value in body.values():
+        if isinstance(value, list):
+            values.extend(str(v) for v in value)
+        elif value is not None:
+            values.append(str(value))
+    return values
+
+
+def _article_row(database, collection, doc: dict) -> dict:
+    """A browse row: what the list renders, plus the text the filter reads."""
     body = doc.get("document", {})
     return {
         "id": doc["id"],
         "title": body.get("title"),
         "database": database,
         "collection": collection,
+        "database_title": derive_title(database),
+        "collection_title": derive_title(collection),
         "rev": doc.get("rev"),
+        "updated": doc.get("updated"),
+        "author": doc.get("author"),
+        "fields": _field_values(body),
     }
 
 
-def _visible_namespaces(store: DocumentStore, auth_store: AuthStore):
-    """Yield (database, collection) pairs the current user may read within."""
-    grants = auth_store.grants_for(current_user.username)
-    databases = visible_databases(grants, store.list_databases())
-    for database in databases:
-        collections = visible_collections(
+def _readable_rows(store: DocumentStore, grants, database, collection) -> list[dict]:
+    """Browse rows for every article in a collection the user may read."""
+    return [
+        _article_row(database, collection, doc)
+        for doc in store.list_documents(database, collection)
+        if is_allowed(grants, READ, database, collection, doc["id"])
+    ]
+
+
+def _readable_count(store: DocumentStore, grants, database, collection) -> int:
+    """How many articles the user can see in a collection.
+
+    The ordinary case -- a grant covering the whole collection -- is a single
+    count. Only someone holding document-scoped grants pays for a per-id check,
+    and then we read ids alone rather than whole documents.
+    """
+    if is_allowed(grants, READ, database, collection, None):
+        return store.count_documents(database, collection)
+    return sum(
+        1
+        for doc_id in store.document_ids(database, collection)
+        if is_allowed(grants, READ, database, collection, doc_id)
+    )
+
+
+def _collection_summary(store: DocumentStore, grants, database, collection) -> dict:
+    return {
+        "name": collection,
+        "title": derive_title(collection),
+        "articles": _readable_count(store, grants, database, collection),
+        "can_write": can_write_in_collection(grants, database, collection),
+        "can_delete": can_delete_collection(grants, database, collection),
+    }
+
+
+def _database_summary(store: DocumentStore, grants, database) -> dict:
+    collections = visible_collections(
+        grants, database, store.list_collections(database)
+    )
+    return {
+        "name": database,
+        "title": derive_title(database),
+        "collections": len(collections),
+        "articles": sum(
+            _readable_count(store, grants, database, collection)
+            for collection in collections
+        ),
+    }
+
+
+def _visible_namespaces(store: DocumentStore, grants):
+    """Yield (database, collection) pairs the user may read within."""
+    for database in visible_databases(grants, store.list_databases()):
+        for collection in visible_collections(
             grants, database, store.list_collections(database)
-        )
-        for collection in collections:
+        ):
             yield database, collection
 
 
-def _gather_suggestions(store: DocumentStore, auth_store: AuthStore, query: str) -> list[dict]:
+def _gather_suggestions(store: DocumentStore, grants, query: str) -> list[dict]:
     """Find readable articles whose slug or title matches ``query``."""
     needle = query.lower()
     matches: list[dict] = []
-    for database, collection in _visible_namespaces(store, auth_store):
+    for database, collection in _visible_namespaces(store, grants):
         for doc in store.search(database, collection, text=query):
-            if not _can_read(auth_store, database, collection, doc["id"]):
+            if not is_allowed(grants, READ, database, collection, doc["id"]):
                 continue
             title = doc["document"].get("title")
             if needle in doc["id"].lower() or (title and needle in title.lower()):
@@ -380,6 +605,8 @@ def _gather_suggestions(store: DocumentStore, auth_store: AuthStore, query: str)
                         "title": title,
                         "database": database,
                         "collection": collection,
+                        "database_title": derive_title(database),
+                        "collection_title": derive_title(collection),
                     }
                 )
     return matches

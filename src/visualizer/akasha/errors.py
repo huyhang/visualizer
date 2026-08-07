@@ -51,6 +51,22 @@ class CollectionAlreadyExists(AkashaError):
     status_code = 409
 
 
+class CollectionNotEmpty(AkashaError):
+    """Raised when dropping a collection that still holds documents.
+
+    Including tombstoned ones: a soft-deleted document still carries its version
+    history, and dropping the collection would discard it silently.
+    """
+
+    status_code = 409
+
+
+class DatabaseNotEmpty(AkashaError):
+    """Raised when dropping a database that still holds collections."""
+
+    status_code = 409
+
+
 class DocumentAlreadyExists(AkashaError):
     """Raised when creating a document whose id is already taken."""
 
