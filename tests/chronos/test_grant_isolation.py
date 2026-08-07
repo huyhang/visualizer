@@ -9,8 +9,8 @@ import pytest
 from werkzeug.security import generate_password_hash
 
 from visualizer.akasha.app import create_app as create_docs_app
-from visualizer.auth.authz import is_allowed
 from visualizer.akasha.store import DocumentStore
+from visualizer.auth.authz import is_allowed
 from visualizer.chronos.app import BOOK_RESOURCE
 
 # The collision case: a book and a akasha database with the SAME name.

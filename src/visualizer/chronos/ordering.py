@@ -26,13 +26,24 @@ class Violation:
         return f"end({self.before_end}) > start({self.after_start})"
 
 
-def validate_order(events_in_order: list[Event]) -> Violation | None:
-    """Return the first out-of-order pair, else None.
+def all_violations(events_in_order: list[Event]) -> list[Violation]:
+    """Every out-of-order pair, in path order.
 
     Unscheduled scenes are skipped: a scene with no timing yet cannot be out of
     order, and the scheduled scenes around it must still run forwards.
+
+    ``validate_order`` answers "is this thread sound?" and stops at the first
+    problem. An editor asks a different question -- "which scenes should I mark?"
+    -- and needs them all, so reordering one pair does not hide the next.
     """
-    for prev, nxt in pairwise([e for e in events_in_order if e.is_scheduled]):
-        if prev.end_tick > nxt.start_tick:
-            return Violation(prev.id, nxt.id, prev.end_tick, nxt.start_tick)
-    return None
+    return [
+        Violation(prev.id, nxt.id, prev.end_tick, nxt.start_tick)
+        for prev, nxt in pairwise([e for e in events_in_order if e.is_scheduled])
+        if prev.end_tick > nxt.start_tick
+    ]
+
+
+def validate_order(events_in_order: list[Event]) -> Violation | None:
+    """Return the first out-of-order pair, else None."""
+    violations = all_violations(events_in_order)
+    return violations[0] if violations else None

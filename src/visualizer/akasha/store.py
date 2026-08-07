@@ -24,8 +24,9 @@ id revives it.
 """
 
 import json
-from datetime import datetime, timezone
-from typing import Any, Callable, Iterator
+from collections.abc import Callable, Iterator
+from datetime import UTC, datetime
+from typing import Any
 
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
@@ -44,7 +45,7 @@ _DEFAULT_VERSIONS_KEEP = 20
 
 
 def _default_clock() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class DocumentStore:

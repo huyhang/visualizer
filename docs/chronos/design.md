@@ -38,13 +38,23 @@ testable.
 - No automatic *resolution* of conflicts — Chronos **detects and reports**;
   the writer decides what to change.
 
-> **Update (as built).** The "UI comes later" non-goal has partly happened: a
-> **read-only** plotline visualiser now ships with the service (book → filtered
-> plotline table → a plotline's events as cards on a vertical timeline, with the
-> referenced Akasha articles shown inline). A first graph viewer has since been
-> added on top of the same read paths — a **Connected plots** branch/merge diagram
-> reachable from any plotline (see §12). It is still read-only — all writing
-> goes through the JSON API. And rather than a second port, the two services are
+> **Update (as built).** The "UI comes later" non-goal has happened: a plotline
+> visualiser now ships with the service (book → filtered plotline table → a
+> plotline's events as cards on a vertical timeline, with the referenced Akasha
+> articles shown inline). A first graph viewer has since been added on top of the
+> same read paths — a **Connected plots** branch/merge diagram reachable from any
+> plotline (see §12).
+>
+> It is no longer read-only: **plotlines can be created, edited (including
+> drag-to-reorder), and deleted from the UI**, and scenes can be written and
+> corrected in place. Every write goes through the same JSON routes and the same
+> `If-Match` concurrency as an API client — there is one write path, not two —
+> and the editor's live conflict marking comes from a **preview** endpoint that
+> runs the candidate through the ordinary presenter without persisting it, so no
+> story rule is reimplemented in the browser. Per-scene findings are computed by
+> `plotline_health` (§5, §8.1), which is the same three rules as `/validate`,
+> attributed to the scene the writer should look at. Prose editing remains out of
+> scope. And rather than a second port, the two services are
 > served behind **one origin** in production: a single gunicorn co-mounts them
 > with Werkzeug's `DispatcherMiddleware` (`visualizer.wsgi:application`), akasha
 > at `/` and chronos at `/timeline` — one reverse-proxy rule, one cookie, no
@@ -76,6 +86,24 @@ These mirror `docs/akasha/editor-design.md` on purpose — a reader who knows
   document`.
 - **Optimistic concurrency, reused.** Books, plotlines, and events all carry a
   `_rev` and take an `If-Match` precondition, identical to documents today.
+- **Optimise what is perceptible, and only after measuring.** The bar is
+  milliseconds at a realistic book size (100–1000 scenes), not a complexity
+  class. Work that is already imperceptible is *finished*: leave it alone and
+  spend the budget on the principles above instead — this is a tool for one
+  novelist and a few friends (see [OVERVIEW](OVERVIEW.md)), so a clever
+  optimisation nobody can feel is a cost, not a win. Two rules of thumb:
+  - **Measure first.** Reason about big-O to know *where* to look, then quote
+    real numbers before changing anything. Guesses are wrong in both directions:
+    the character index that was supposed to make conflict detection near-linear
+    bought 15%, while the time sweep beside it bought 18×.
+  - **Weight by how often it fires.** A quadratic that runs once on an admin
+    endpoint is cheaper than a linear one on every keystroke. What justified the
+    2026-08-06 rewrite of `all_conflicts` was not that it was O(n²), but that
+    `GET /books/{book}` and `GET /books/{book}/ui/plotlines` run on *every*
+    screen and together cost ~400 ms at 1000 scenes (now ~50 ms). The editor's
+    drag-preview stayed O(path × scenes) by explicit decision: 19 ms at 300
+    scenes, 63 ms at 1000, behind a 250 ms debounce — nobody can feel it, so
+    rewriting it would have bought complexity and nothing else.
 
 ---
 

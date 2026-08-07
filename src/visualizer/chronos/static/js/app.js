@@ -1,8 +1,11 @@
-// Orchestrator + hash router for the read-only plotline visualiser.
+// Orchestrator + hash router for the plotline visualiser.
 //
-//   #/                     -> pick a book
-//   #/<book>               -> that book's filtered, paginated plotline table
-//   #/<book>/<plotline>    -> one plotline, its events as cards (+ time axis)
+//   #/                        -> pick a book
+//   #/<book>                  -> that book's filtered, paginated plotline table
+//   #/<book>/<plotline>       -> one plotline, its events as cards (+ time axis)
+//
+// The plotline editor is a modal, not a route: editing is a detour from reading,
+// and closing it should put you back exactly where you were.
 //
 // Each route mounts exactly one view into #content, so only a single plotline is
 // ever visualised at a time; the breadcrumbs (and the browser Back button)
@@ -62,7 +65,10 @@ function route() {
   if (parts.length === 0) {
     mountBooks(content, { onOpen: toBook });
   } else if (parts.length === 1) {
-    mountPlotlineTable(content, parts[0], { onOpen: (pl) => toPlotline(parts[0], pl), onBooks: toBooks });
+    mountPlotlineTable(content, parts[0], {
+      onOpen: (pl) => toPlotline(parts[0], pl),
+      onBooks: toBooks,
+    });
   } else if (parts[2] === "connected") {
     mountConnected(content, parts[0], parts[1], {
       focusEvent: parts[3] || null,
@@ -77,6 +83,11 @@ function route() {
       showEntity, onBooks: toBooks, onBook: () => toBook(parts[0]),
       onConnected: () => toConnected(parts[0], parts[1]),
       onConnectedAt: (ev) => toConnectedAt(parts[0], parts[1], ev),
+      // The editor is a modal; when it saves under a new id or deletes the
+      // thread, the router follows it to wherever it now lives.
+      onGone: () => toBook(parts[0]),
+      onRenamed: (id) => toPlotline(parts[0], id),
+      onSaved: () => route(),
     });
   }
 }

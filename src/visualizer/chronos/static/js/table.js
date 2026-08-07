@@ -9,6 +9,7 @@
 
 import { api } from "./api.js";
 import { clear, el, toast } from "./dom.js";
+import { openPlotlineEditor } from "./plotedit.js";
 
 const PER_PAGE = 20;
 const lastState = {}; // book -> { query, page }
@@ -23,6 +24,18 @@ function breadcrumb(bookTitle, onBooks) {
 
 function goalCells(goals) {
   return el("div", { class: "chip-row" }, (goals || []).map((g) => el("span", { class: "chip", text: g })));
+}
+
+// How many problems this thread has (server-counted, so it matches what the
+// plotline view will say). Silent when there are none: a column of green ticks
+// would be noise, and its absence is already the signal.
+function healthCell(count) {
+  if (!count) return el("span", { class: "muted", text: "—" });
+  return el("span", {
+    class: "health-flag",
+    title: "Open the plotline to see what is wrong.",
+    text: `${count} problem${count === 1 ? "" : "s"}`,
+  });
 }
 
 function pager(data, onPage) {
@@ -41,9 +54,12 @@ function table(rows, onOpen) {
   const body = rows.map((pl) => el("tr", { class: "pl-row", onclick: () => onOpen(pl.id) }, [
     el("td", {}, el("span", { class: "pl-name", text: pl.name })),
     el("td", {}, goalCells(pl.goals)),
+    el("td", {}, healthCell(pl.conflicts)),
   ]));
   return el("div", { class: "table-wrap" }, el("table", { class: "pl-table" }, [
-    el("thead", {}, el("tr", {}, [el("th", { text: "Plotline" }), el("th", { text: "Goals" })])),
+    el("thead", {}, el("tr", {}, [
+      el("th", { text: "Plotline" }), el("th", { text: "Goals" }), el("th", { text: "Health" }),
+    ])),
     el("tbody", {}, body),
   ]));
 }
@@ -65,7 +81,18 @@ export async function mountPlotlineTable(container, book, { onOpen, onBooks }) {
   container.appendChild(el("div", { class: "view table-view" }, [
     breadcrumb(bookMeta.title || book, onBooks),
     el("h1", { class: "view-title", text: bookMeta.title || book }),
-    el("div", { class: "filter-bar" }, filterBox),
+    el("div", { class: "filter-bar" }, [
+      filterBox,
+      (bookMeta.permissions || {}).write
+        ? el("button", {
+            class: "btn sm", type: "button", text: "+ New plotline",
+            // A modal, so the filter and page you were on survive the detour.
+            onclick: () => openPlotlineEditor(book, null, {
+              after: ({ saved }) => { if (saved) render(); },
+            }),
+          })
+        : null,
+    ].filter(Boolean)),
     results,
   ]));
 

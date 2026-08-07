@@ -14,9 +14,9 @@ from conftest import (
 )
 
 from visualizer.akasha.app import create_app
-from visualizer.auth import AuthStore
 from visualizer.akasha.config import get_secret_key, get_secure_cookies
 from visualizer.akasha.store import DocumentStore
+from visualizer.auth import AuthStore
 
 
 def test_create_app_requires_a_secret_key():

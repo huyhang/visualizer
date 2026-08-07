@@ -218,6 +218,16 @@ def test_live_response_conforms(schema_doc, story_client, url, schema):
     _validator(schema_doc, schema).validate(resp.get_json())
 
 
+def test_live_preview_conforms(schema_doc, story_client):
+    """The editor's dry-run: same presenter, its own documented shape."""
+    resp = story_client.post(
+        f"/books/{BOOK}/ui/plotline-preview",
+        json={"id": "knights", "events": ["a", "m"], "goals": ["g"]},
+    )
+    assert resp.status_code == 200, resp.get_json()
+    _validator(schema_doc, "PlotlinePreviewResult").validate(resp.get_json())
+
+
 def test_live_error_conforms(schema_doc, story_client):
     """An error body must match the Finding schema, including its code enum."""
     resp = story_client.post(f"/books/{BOOK}/events/ghost", json=_event(characters=("nobody",)))

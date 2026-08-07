@@ -22,7 +22,8 @@ from visualizer.auth.authz import ALL_PERMS, is_allowed, perm_for_method
 from visualizer.auth.errors import AuthError
 
 from .entity_gate import EntityGate
-from .errors import ChronosError, Forbidden, InvalidRevision
+from .errors import ChronosError, Forbidden, InvalidRevision, InvalidTimeframe
+from .presenters import with_permissions
 from .services import BookService, EventService, PlotlineService, VisualizerService
 from .store import StoryStore
 
@@ -73,7 +74,7 @@ def create_app(
     events = EventService(story_store, entity_gate)
     visualizer = VisualizerService(story_store, entity_gate)
 
-    _register_routes(app, csrf, auth_store, books, plotlines, events)
+    _register_routes(app, csrf, auth_store, books, plotlines, events, visualizer)
     _register_ui_routes(app, csrf, auth_store, visualizer)
     _register_error_handler(app)
     return app
@@ -135,7 +136,7 @@ def _truthy(value) -> bool:
 # -- routes ------------------------------------------------------------------
 
 
-def _register_routes(app, csrf, auth_store, books, plotlines, events):
+def _register_routes(app, csrf, auth_store, books, plotlines, events, visualizer):
     @app.get("/health")
     @csrf.exempt
     def health():
@@ -167,7 +168,13 @@ def _register_routes(app, csrf, auth_store, books, plotlines, events):
     @login_required
     def get_book(book):
         _authorize(auth_store, "GET", book)
-        return _resp(books.get(book))
+        # The visualiser asks for the book before it draws anything, so this is
+        # where it learns whether to offer editing at all.
+        return _resp(with_permissions(
+            books.get(book),
+            write=_book_allowed(auth_store, "write", book),
+            delete=_is_owner(auth_store, book),
+        ))
 
     @app.put(_BOOK)
     @csrf.exempt
@@ -258,6 +265,19 @@ def _register_routes(app, csrf, auth_store, books, plotlines, events):
         return "", 204
 
     # -- events --------------------------------------------------------------
+
+    @app.get(_BOOK + "/events")
+    @csrf.exempt
+    @login_required
+    def list_events(book):
+        """The book's scenes in story order -- summaries, filtered and paged.
+
+        Lives on the core API rather than under ``/ui`` because "what scenes are
+        in this book?" is a question any client has; the editor's picker is only
+        its first caller. Full records come from ``GET .../events/<event>``.
+        """
+        _authorize(auth_store, "GET", book)
+        return jsonify(visualizer.browse_events(book, **_browse_args()))
 
     @app.post(_EVENT)
     @csrf.exempt
@@ -353,16 +373,24 @@ def _replace_book_grants(auth_store, username: str, book: str) -> None:
             auth_store.delete_grant(grant["id"])
 
 
-# -- read-only visualiser UI -------------------------------------------------
+# -- visualiser UI -----------------------------------------------------------
+
+# How many article suggestions the picker offers at once.
+_SUGGEST_LIMIT = 20
 
 
 def _register_ui_routes(app, csrf, auth_store, visualizer):
-    """The single-page plotline visualiser: an HTML shell plus two read seams.
+    """The single-page plotline visualiser: an HTML shell plus its helper seams.
 
-    The SPA (served at ``/``) reads plotlines/events through the existing JSON
-    API and adds two book-scoped helpers the API lacks: a paginated, filtered,
-    name-ordered plotline listing, and a proxy that reads a referenced Akasha
-    article so the browser stays same-origin.
+    The SPA (served at ``/``) reads and writes plotlines/events through the
+    existing JSON API, and adds the book-scoped helpers that API lacks: ordered,
+    filtered, paginated listings of plotlines and scenes; a proxy that reads (and
+    searches) referenced Akasha articles so the browser stays same-origin; and a
+    preview that costs nothing, so the editor can show what a candidate ordering
+    would do before it is saved.
+
+    Every write the editor performs goes through the ordinary plotline/event
+    routes above -- ``If-Match`` and all -- so there is one write path, not two.
     """
 
     @app.get("/")
@@ -375,14 +403,17 @@ def _register_ui_routes(app, csrf, auth_store, visualizer):
     @login_required
     def ui_list_plotlines(book):
         _authorize(auth_store, "GET", book)
-        return jsonify(
-            visualizer.browse_plotlines(
-                book,
-                query=request.args.get("filter", ""),
-                page=_positive_int(request.args.get("page"), 1),
-                per_page=_positive_int(request.args.get("per_page"), None),
-            )
-        )
+        return jsonify(visualizer.browse_plotlines(book, **_browse_args()))
+
+    @app.post(_BOOK + "/ui/plotline-preview")
+    @csrf.exempt
+    @login_required
+    def ui_preview_plotline(book):
+        # Writes nothing, but it is an editing affordance: gate it on the
+        # permission the save will need, so the UI cannot preview happily and
+        # then be refused.
+        _authorize(auth_store, "POST", book)
+        return jsonify(visualizer.preview_plotline(book, request.get_json(silent=True) or {}))
 
     @app.get(_BOOK + "/ui/entity/<database>/<collection>/<entity_id>")
     @csrf.exempt
@@ -396,13 +427,72 @@ def _register_ui_routes(app, csrf, auth_store, visualizer):
         _authorize_entity_read(auth_store, database, collection, entity_id)
         return jsonify(visualizer.fetch_entity(database, collection, entity_id))
 
+    @app.get(_BOOK + "/ui/ticks")
+    @csrf.exempt
+    @login_required
+    def ui_format_ticks(book):
+        """What the book's calendar calls these ticks -- the scene form's live
+        "240 means Day 11" hint. One way only: labels are formatted here because
+        a fantasy calendar cannot be parsed back (see calendar.py)."""
+        _authorize(auth_store, "GET", book)
+        return jsonify(visualizer.format_ticks(book, _ticks_arg()))
+
+    @app.get(_BOOK + "/ui/entities")
+    @csrf.exempt
+    @login_required
+    def ui_search_entities(book):
+        """Type-ahead over the articles a new scene could reference."""
+        _authorize(auth_store, "GET", book)
+        found = visualizer.search_entities(
+            book,
+            collection=request.args.get("collection", "characters"),
+            query=(request.args.get("q") or "").strip(),
+            database=request.args.get("database") or None,
+        )
+        # The same per-article gate the fetch proxy applies, now over a list: a
+        # picker must never suggest something Akasha would refuse to open.
+        found["results"] = [
+            r for r in found["results"]
+            if _may_read_entity(auth_store, r["database"], r["collection"], r["id"])
+        ][:_SUGGEST_LIMIT]
+        return jsonify(found)
+
+
+# A timeframe has two ends; a couple of spare slots cost nothing and keep one
+# caller from asking for a thousand labels.
+_MAX_TICKS = 8
+
+
+def _ticks_arg() -> list[int]:
+    """The ``?tick=`` values, as integers. Non-integers are a client bug, not a
+    story problem, so they are rejected rather than quietly dropped."""
+    raw = request.args.getlist("tick")[:_MAX_TICKS]
+    try:
+        return [int(value) for value in raw]
+    except (TypeError, ValueError):
+        raise InvalidTimeframe("Each 'tick' must be an integer.")
+
+
+def _browse_args() -> dict:
+    """The filter/page/per_page trio every browse endpoint accepts."""
+    return {
+        "query": request.args.get("filter", ""),
+        "page": _positive_int(request.args.get("page"), 1),
+        "per_page": _positive_int(request.args.get("per_page"), None),
+    }
+
+
+def _may_read_entity(auth_store, database: str, collection: str, entity_id: str) -> bool:
+    """Whether Akasha would let this user read that article, mirroring Akasha's
+    own document authorization: the default ``database`` grant hierarchy,
+    everyone (admins included) subject to their grants. See visualizer.auth.authz."""
+    grants = auth_store.grants_for(current_user.username)
+    return is_allowed(grants, "read", database, collection, entity_id)
+
 
 def _authorize_entity_read(auth_store, database: str, collection: str, entity_id: str) -> None:
-    """Require Akasha ``read`` on the referenced article, mirroring Akasha's own
-    document authorization: the default ``database`` grant hierarchy, everyone
-    (admins included) subject to their grants. See visualizer.auth.authz."""
-    grants = auth_store.grants_for(current_user.username)
-    if not is_allowed(grants, "read", database, collection, entity_id):
+    """Raise unless the current user may read the referenced article."""
+    if not _may_read_entity(auth_store, database, collection, entity_id):
         raise Forbidden(
             f"You do not have 'read' permission on '{database}/{collection}/{entity_id}'."
         )

@@ -5,7 +5,9 @@
 
 import { api } from "./api.js";
 import { eventCard } from "./cards.js";
-import { clear, el } from "./dom.js";
+import { clear, el, toast } from "./dom.js";
+import { findingList, markerClass, problemBanner, verdictNotes } from "./findings.js";
+import { openPlotlineEditor } from "./plotedit.js";
 import { allScheduled, groupByPeriod } from "./timeaxis.js";
 
 function breadcrumb(bookTitle, book, plName, onBooks, onBook) {
@@ -28,8 +30,11 @@ function eventFetcher(book) {
 }
 
 // The rail dot picks up this event's role, so the plain timeline already signals
-// where threads meet without opening the connected view.
+// where threads meet without opening the connected view. A scene with a problem
+// overrides that: a contradiction outranks a junction for the reader's attention.
 function dotClass(ev) {
+  const marker = markerClass(ev);
+  if (marker) return marker;
   if (ev.is_terminus) return " is-terminus";
   if (ev.is_convergence) return " is-merge";
   if (ev.is_divergence) return " is-split";
@@ -63,11 +68,13 @@ function markChip(text, eventId, onConnectedAt) {
 // its right and expands in place on click, pushing later rows down.
 function timelineRow(book, ev, timeLabel, deps) {
   const marks = eventMarks(ev, deps.onConnectedAt);
-  return el("div", { class: "tl-row" }, [
+  return el("div", { class: "tl-row", dataset: { event: ev.id } }, [
     el("div", { class: "tl-time", text: timeLabel }),
     el("div", { class: "tl-rail" }, el("span", { class: "tl-dot" + dotClass(ev) })),
     el("div", { class: "tl-card" }, [
       marks,
+      // What is wrong with this scene, above the card so it is read first.
+      findingList(book, ev, { onJump: deps.onJump }),
       eventCard(book, ev, { ...deps, showTime: false }),
     ].filter(Boolean)),
   ]);
@@ -117,8 +124,21 @@ function meetCount(events) {
   return others.size;
 }
 
+// Scroll to a scene on this page and flash it -- what a finding's "show" link
+// and the problem banner both do.
+function jumpTo(container, eventId) {
+  const target = container.querySelector(`[data-event="${CSS.escape(eventId)}"]`);
+  if (!target) {
+    toast("That scene is not on this plotline.");
+    return;
+  }
+  target.scrollIntoView({ block: "center", behavior: "smooth" });
+  target.classList.add("flash");
+  setTimeout(() => target.classList.remove("flash"), 1200);
+}
+
 export async function mountPlotline(container, book, plotlineId,
-  { showEntity, onBooks, onBook, onConnected, onConnectedAt }) {
+  { showEntity, onBooks, onBook, onConnected, onConnectedAt, onGone, onRenamed, onSaved }) {
   clear(container);
   const loading = el("div", { class: "view" }, el("p", { class: "muted", text: "Loading plotline…" }));
   container.appendChild(loading);
@@ -138,23 +158,40 @@ export async function mountPlotline(container, book, plotlineId,
   try { bookMeta = await api.getBook(book); } catch (e) { /* fall back to id */ }
 
   const events = pl.effective_events || [];
-  const deps = { getFullEvent: eventFetcher(book), showEntity, onConnectedAt };
+  const deps = {
+    getFullEvent: eventFetcher(book), showEntity, onConnectedAt,
+    onJump: (id) => jumpTo(container, id),
+  };
+
+  // Where to land when the editor closes: the thread is gone, it moved, or it
+  // is still here and just needs redrawing.
+  const editorClosed = ({ saved, deleted, id }) => {
+    if (deleted) return onGone && onGone();
+    if (!saved) return;
+    if (id && id !== plotlineId) return onRenamed && onRenamed(id);
+    if (onSaved) onSaved();
+  };
 
   const meets = meetCount(events);
+  const canEdit = (bookMeta.permissions || {}).write;
   const header = el("div", { class: "pl-header" }, [
     el("h1", { class: "view-title", text: pl.title || pl.id }),
     el("div", { class: "chip-row goals" }, (pl.goals || []).map((g) => el("span", { class: "chip goal", text: g }))),
-    // Only offer "Connected plots" when this thread actually meets another; a
-    // solo thread would just lead to an empty "runs on its own" view.
-    meets ? el("div", { class: "pl-actions" }, [
-      el("button", {
+    el("div", { class: "pl-actions" }, [
+      canEdit ? el("button", {
+        class: "btn sm", type: "button", text: "Edit plotline",
+        onclick: () => openPlotlineEditor(book, plotlineId, { after: editorClosed }),
+      }) : null,
+      // Only offer "Connected plots" when this thread actually meets another; a
+      // solo thread would just lead to an empty "runs on its own" view.
+      meets ? el("button", {
         class: "btn secondary sm", type: "button",
         text: `Connected plots (${meets})`,
         onclick: () => onConnected && onConnected(),
-      }),
-      el("span", { class: "muted meet-hint",
-        text: `Meets ${meets} other plotline${meets === 1 ? "" : "s"} along the way.` }),
-    ]) : null,
+      }) : null,
+      meets ? el("span", { class: "muted meet-hint",
+        text: `Meets ${meets} other plotline${meets === 1 ? "" : "s"} along the way.` }) : null,
+    ].filter(Boolean)),
     el("p", { class: "muted axis-note", text: allScheduled(events)
       ? "Scenes top to bottom in story order — all are scheduled."
       : "Scenes top to bottom in story order — some have no timing yet." }),
@@ -167,6 +204,8 @@ export async function mountPlotline(container, book, plotlineId,
   container.appendChild(el("div", { class: "view plotline-view" }, [
     breadcrumb(bookMeta.title || book, book, pl.title || pl.id, onBooks, onBook),
     header,
+    problemBanner(events, pl.status, { onJump: (id) => jumpTo(container, id) }),
+    verdictNotes(pl.status, events),
     body,
   ]));
 }

@@ -13,6 +13,7 @@ from .conflicts import Conflict
 from .continuation import Resolution, effective_paths, resolve
 from .models import Book, Event, Plotline
 from .ordering import Violation
+from .plotline_health import Finding, conflict_count, findings_for_path
 from .reports import BookReport
 from .scheduling import Window
 
@@ -51,6 +52,11 @@ def _when(event: Event, codec: TimeCodec, span: bool = False) -> str:
     if span and event.end_tick != event.start_tick:
         return f"{start} → {codec.format(event.end_tick)}"
     return start
+
+
+def event_when(event: Event, codec: TimeCodec) -> str:
+    """The human timeframe for one scene: 'unscheduled', a tick, or a span."""
+    return _when(event, codec, span=True)
 
 
 def _window(window: Window | None, codec: TimeCodec) -> dict | None:
@@ -179,9 +185,33 @@ def present_event(public: dict, codec: TimeCodec, window: Window | None = None) 
     }
 
 
+def event_finding(finding: Finding) -> dict:
+    """One per-scene finding, in the shared finding vocabulary (code/message/doc).
+
+    ``severity`` separates a contradiction the writer should fix from a hint
+    (``info``) they may ignore; ``events`` names the other scenes involved so a
+    UI can link straight to them; ``refs`` names the Akasha articles the message
+    quotes, so a UI can show their titles instead of their slugs.
+    """
+    out = {
+        "code": finding.code,
+        "severity": finding.severity,
+        "message": finding.message,
+        "events": list(finding.events),
+        # The Akasha articles the message names, by id. A client holding the
+        # article grant can resolve each to its title and substitute it into the
+        # message; one that does not keeps the id, which is the correct outcome.
+        "refs": [ref.to_dict() for ref in finding.refs],
+    }
+    if finding.doc:
+        out["doc"] = finding.doc
+    return out
+
+
 def _event_summary(
     event: Event, codec: TimeCodec, shared_with: list[str],
     is_convergence: bool, is_divergence: bool, is_terminus: bool,
+    owned: bool = True, findings: list[Finding] = (),
 ) -> dict:
     body = event.description
     preview = (body[:140] + "…") if len(body) > 140 else body
@@ -209,6 +239,12 @@ def _event_summary(
         "is_convergence": is_convergence,
         "is_divergence": is_divergence,
         "is_terminus": is_terminus,
+        # Whether this scene sits in the plotline's *own* stored segment. A scene
+        # inherited through ``continues_into`` belongs to the thread it is stored
+        # on, so an editor must send the writer there rather than reorder it here.
+        "owned": owned,
+        # What is wrong (or merely worth knowing) about this scene on this thread.
+        "findings": [event_finding(f) for f in findings],
     }
 
 
@@ -256,7 +292,15 @@ def present_plotline(
         for eid in path
     }
 
+    # The same per-scene findings the editor marks up, computed once: their count
+    # is part of every plotline's status, so a caller learns whether the thread
+    # holds together without asking for the expanded path.
+    findings = findings_for_path(path, events_by_id, paths, codec)
+
     if expand:
+        # ``resolve`` concatenates this plotline's own segment first, so the
+        # inherited tail is exactly the part of the path past its own length.
+        own_length = len(this.events)
         events_field = [
             _event_summary(
                 events_by_id[eid],
@@ -265,8 +309,10 @@ def present_plotline(
                 is_convergence=eid in convergence,
                 is_divergence=eid in divergence,
                 is_terminus=eid == book.terminus,
+                owned=index < own_length,
+                findings=findings.get(eid, []),
             )
-            for eid in path
+            for index, eid in enumerate(path)
             if eid in events_by_id
         ]
     else:
@@ -287,6 +333,7 @@ def present_plotline(
             "ends_at_terminus": _terminus_verdict(last_event, book.terminus),
             "continuation": _continuation_verdict(resolution),
             "span": _span(ordered, codec),
+            "conflicts": conflict_count(findings),
         },
         "_links": {
             "self": _plotline_url(public["book"], this.id),
@@ -298,6 +345,25 @@ def present_plotline(
         },
         "_schema": f"{_SCHEMA}/Plotline",
     }
+
+
+def as_preview(plotline: dict, book_id: str) -> dict:
+    """Re-label a presented plotline as the *candidate* it actually is.
+
+    The preview runs a draft through ``present_plotline`` on purpose -- that is
+    what guarantees the editor and a save cannot disagree. But the result must
+    not then claim to be a stored plotline: it has no revision, and its id may
+    name nothing at all. So the revision goes, ``self`` goes (it would 404), and
+    ``kind`` says plainly what this is.
+    """
+    out = {k: v for k, v in plotline.items() if k not in ("rev", "_links", "_schema")}
+    out["kind"] = "plotline-preview"
+    out["_links"] = {
+        "book": _book_url(book_id),
+        "validate": _book_url(book_id) + "/validate",
+    }
+    out["_schema"] = f"{_SCHEMA}/PlotlinePreviewResult"
+    return out
 
 
 def _ordering_violation(ordered: list[Event]) -> Violation | None:
@@ -390,6 +456,34 @@ def present_book(public: dict, report: BookReport, plotline_ids: list[str]) -> d
             "graph": _book_url(public["id"]) + "/graph",
         },
     }
+
+
+def present_ticks(ticks: list[int], codec: TimeCodec) -> dict:
+    """Translate raw ticks into what the book's calendar calls them.
+
+    A writer typing ``240`` into a timeframe field should not have to do
+    mixed-radix arithmetic in their head to know that is Day 11. The codec is
+    the only thing that knows -- and it only goes one way (``parse`` is
+    deliberately unimplemented for fantasy calendars) -- so the browser asks
+    rather than guessing.
+    """
+    return {
+        "ticks": [
+            {"tick": tick, "label": codec.format(tick), "parts": codec.parts(tick)}
+            for tick in ticks
+        ]
+    }
+
+
+def with_permissions(book: dict, write: bool, delete: bool) -> dict:
+    """Tell the caller what it may do with this book, so a UI can decide what to
+    offer before the writer clicks it.
+
+    Authorization itself stays in the web layer (it needs the request's identity
+    and the shared grant store); this only shapes the answer, keeping every
+    response field defined in one place.
+    """
+    return {**book, "permissions": {"write": write, "delete": delete}}
 
 
 def present_validate(report: BookReport, codec: TimeCodec) -> dict:

@@ -3,8 +3,10 @@
 from visualizer.chronos.browsing import (
     DEFAULT_PER_PAGE,
     MAX_PER_PAGE,
+    browse_events,
     browse_plotlines,
     clamp_per_page,
+    dominant_database,
     matches_all_words,
     searchable_text,
 )
@@ -119,4 +121,72 @@ def test_presented_rows_drop_filter_only_fields():
         "book": "ember-pact",
         "name": "Knight's Road",
         "goals": ["Deliver Seal"],
+        "conflicts": 0,
     }
+
+
+# -- scenes (the editor's picker) --------------------------------------------
+
+
+def scene(id_, name=None, start=None, location="highkeep", keywords=(), book="ember-pact"):
+    return {
+        "id": id_,
+        "book": book,
+        "name": name,
+        "when": "unscheduled" if start is None else str(start),
+        "scheduled": start is not None,
+        "start_tick": start,
+        "end_tick": None if start is None else start + 10,
+        "location": location,
+        "keywords": list(keywords),
+        "plotlines": [],
+    }
+
+
+def test_scenes_are_ordered_by_time_not_by_name():
+    rows = [scene("z", name="Zephyr", start=0), scene("a", name="Aldric", start=40)]
+    assert [e["id"] for e in browse_events(rows)["events"]] == ["z", "a"]
+
+
+def test_undated_scenes_sort_last_by_name():
+    rows = [scene("u2", name="Wake"), scene("u1", name="Ambush"), scene("s", name="Set", start=99)]
+    assert [e["id"] for e in browse_events(rows)["events"]] == ["s", "u1", "u2"]
+
+
+def test_scenes_are_findable_by_place_and_cast():
+    rows = [scene("a", name="Departure", keywords=["highkeep", "aldric"])]
+    assert browse_events(rows, query="aldric")["events"][0]["id"] == "a"
+    assert browse_events(rows, query="highkeep")["events"][0]["id"] == "a"
+    assert browse_events(rows, query="lyra")["events"] == []
+
+
+def test_scene_rows_are_trimmed_to_what_the_picker_shows():
+    out = browse_events([scene("a", name="Departure", start=0, keywords=["aldric"])])
+    assert set(out["events"][0]) == {
+        "id", "book", "title", "when", "scheduled", "start_tick", "end_tick",
+        "location", "plotlines",
+    }
+    assert out["events"][0]["title"] == "Departure"
+
+
+def test_scene_pagination_reports_the_same_facts_as_plotlines():
+    rows = [scene(f"e{i}", name=f"Scene {i}", start=i) for i in range(25)]
+    page2 = browse_events(rows, page=2, per_page=10)
+    assert page2["total"] == 25 and page2["pages"] == 3 and page2["page"] == 2
+    assert page2["events"][0]["id"] == "e10"
+
+
+# -- entity scope ------------------------------------------------------------
+
+
+def test_dominant_database_is_the_one_the_book_mostly_references():
+    assert dominant_database(["ember-pact", "ember-pact", "shared-lore"], "book") == "ember-pact"
+
+
+def test_dominant_database_falls_back_when_there_is_nothing_to_go_on():
+    assert dominant_database([], "ember-pact") == "ember-pact"
+    assert dominant_database([None, ""], "ember-pact") == "ember-pact"
+
+
+def test_dominant_database_breaks_ties_by_name_so_the_answer_is_stable():
+    assert dominant_database(["zeta", "alpha"], "book") == "alpha"

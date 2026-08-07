@@ -65,12 +65,47 @@ def find_temporal_conflicts(candidate: Event, others: list[Event]) -> list[Confl
     return [c for c in found if c is not None]
 
 
+def _by_character(events: list[Event]) -> dict[EntityRef, list[int]]:
+    """Positions of the scheduled events each character appears in.
+
+    Only scenes sharing a character can possibly conflict, so this index is what
+    lets ``all_conflicts`` skip the pairs that never had a chance. Unscheduled
+    scenes have no interval and are left out entirely.
+    """
+    buckets: dict[EntityRef, list[int]] = {}
+    for position, event in enumerate(events):
+        if not event.is_scheduled:
+            continue
+        for character in set(event.characters):
+            buckets.setdefault(character, []).append(position)
+    return buckets
+
+
 def all_conflicts(events: list[Event]) -> list[Conflict]:
-    """Every conflicting unordered pair across a whole book (each pair once)."""
-    out: list[Conflict] = []
-    for i, a in enumerate(events):
-        for b in events[i + 1 :]:
-            conflict = _conflicts_with(a, b)
-            if conflict is not None:
-                out.append(conflict)
-    return out
+    """Every conflicting unordered pair across a whole book (each pair once).
+
+    Two filters, both exact, so the result is identical to comparing all
+    n(n-1)/2 pairs -- just without doing that:
+
+    * a conflict *requires a shared character*, so only scenes that share one are
+      ever compared (``_by_character``);
+    * within one character, a conflict *requires overlapping time*, so their
+      scenes are swept in start order and the scan stops at the first scene that
+      begins after the current one ends -- nothing later can reach back.
+
+    A book whose scenes mostly run one after another therefore costs about what
+    it takes to read them, rather than the square of their number. Pairs are
+    still returned in input order, so the report reads exactly the same.
+    """
+    pairs: set[tuple[int, int]] = set()
+    for positions in _by_character(events).values():
+        in_time = sorted(positions, key=lambda p: events[p].start_tick)
+        for index, first in enumerate(in_time):
+            ends = events[first].end_tick
+            for second in in_time[index + 1 :]:
+                if events[second].start_tick >= ends:
+                    break  # sorted by start: no later scene can overlap either
+                pairs.add((min(first, second), max(first, second)))
+
+    found = (_conflicts_with(events[i], events[j]) for i, j in sorted(pairs))
+    return [c for c in found if c is not None]

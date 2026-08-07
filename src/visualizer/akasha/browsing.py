@@ -10,7 +10,7 @@ the admin role governs account/access management, not content visibility.)
 Grant shape is the same as ``authz`` (``None`` in a scope field means "any").
 """
 
-from typing import Iterable, Mapping
+from collections.abc import Iterable, Mapping
 
 from visualizer.auth.authz import READ
 

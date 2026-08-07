@@ -329,3 +329,195 @@ button.sg-legend-chip:hover { border-color: var(--accent); }
   .peek { top: auto; bottom: 0; right: 0; left: 0; width: auto; }
   .peek-card { max-height: 60vh; border-radius: var(--radius) var(--radius) 0 0; }
 }
+
+/* ---------------------------------------------------------------------------
+   Editing: findings, the plotline editor, modals and pickers.
+   --------------------------------------------------------------------------- */
+
+/* findings — what is wrong with a scene, said where the scene is */
+.findings { display: flex; flex-direction: column; gap: .3rem; margin: .1rem 0 .4rem; max-width: 620px; }
+.finding {
+  display: flex; align-items: baseline; gap: .45rem;
+  font-size: .8rem; line-height: 1.4; padding: .3rem .6rem; border-radius: 9px;
+  border: 1px solid transparent;
+}
+.finding.conflict { background: var(--danger-soft); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 25%, transparent); }
+.finding.hint { background: var(--warn-soft); color: var(--warn); }
+.finding-mark {
+  flex: none; width: 1.05rem; height: 1.05rem; border-radius: 50%;
+  display: inline-grid; place-items: center; font-size: .7rem; font-weight: 800;
+  background: currentColor; color: var(--surface); align-self: center;
+}
+.finding-text { flex: 1; }
+.finding-jump {
+  flex: none; background: none; border: none; padding: 0 .15rem; font: inherit;
+  font-weight: 700; color: inherit; text-decoration: underline; cursor: pointer;
+}
+
+/* a scene the writer was sent to, briefly highlighted */
+.flash { animation: flash 1.2s ease-out; border-radius: 12px; }
+@keyframes flash {
+  from { background: var(--accent-soft); }
+  to { background: transparent; }
+}
+
+/* problem banner */
+.banner {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: .7rem .9rem; margin: 0 0 1rem; background: var(--surface);
+}
+.banner.conflict { border-color: color-mix(in srgb, var(--danger) 35%, transparent); background: var(--danger-soft); }
+.banner-head { display: flex; align-items: center; gap: .45rem; color: var(--danger); font-size: .92rem; }
+.banner-mark {
+  width: 1.15rem; height: 1.15rem; border-radius: 50%; display: grid; place-items: center;
+  background: var(--danger); color: #fff; font-size: .75rem; font-weight: 800;
+}
+.banner-body { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .45rem; }
+.banner-link {
+  background: var(--surface); border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+  color: var(--text); font: inherit; font-size: .8rem; font-weight: 600;
+  padding: .15rem .55rem; border-radius: 999px; cursor: pointer;
+}
+.banner-link:hover { border-color: var(--danger); }
+
+/* the rail dot when a scene has a problem */
+.tl-dot.has-conflict { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+.tl-dot.has-hint { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+
+/* plotline table health column */
+.health-flag {
+  display: inline-block; font-size: .78rem; font-weight: 700; white-space: nowrap;
+  padding: .1rem .5rem; border-radius: 999px;
+  background: var(--danger-soft); color: var(--danger);
+}
+.filter-bar { display: flex; align-items: center; gap: .6rem; }
+
+/* buttons the editor adds */
+.btn.danger { background: var(--danger); color: #fff; }
+.btn.danger.ghost { background: var(--surface-2); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
+.btn.danger.ghost:hover { border-color: var(--danger); filter: none; }
+
+/* forms */
+.field { margin: 0 0 .9rem; }
+.field-label { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; margin-bottom: .25rem; }
+.field-hint { margin: .25rem 0 0; font-size: .78rem; }
+.field-row { display: flex; gap: .8rem; flex-wrap: wrap; }
+.field-row .field { flex: 1 1 10rem; }
+textarea {
+  width: 100%; padding: .55rem .7rem; background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 9px; font-size: .92rem; font-family: inherit;
+  resize: vertical;
+}
+textarea:focus { outline: none; background: var(--surface); border-color: var(--accent); }
+select {
+  padding: .45rem .5rem; background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 9px; font-size: .85rem; font-family: inherit;
+}
+.form-actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-top: 1rem; }
+.form-error { color: var(--danger); font-size: .85rem; margin: .5rem 0 0; }
+.form-error.list { padding-left: 1.1rem; }
+.inline-controls { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+
+/* editor layout */
+.editor-fields { max-width: 620px; margin-bottom: 1.4rem; }
+.editor-section { margin-bottom: 1.2rem; }
+.section-head { display: flex; align-items: baseline; gap: .6rem; margin-bottom: .5rem; }
+.section-title { font-size: 1.05rem; font-weight: 800; letter-spacing: -.01em; margin: 0; }
+.section-hint { font-size: .8rem; }
+.editor-scene-actions { display: flex; gap: .5rem; margin-top: .7rem; }
+.editor-actions { border-top: 1px solid var(--border); padding-top: .9rem; }
+.save-note { font-size: .8rem; margin: .5rem 0 0; }
+
+/* goal chips */
+.goal-editor { display: flex; flex-direction: column; gap: .4rem; }
+.chip.removable { display: inline-flex; align-items: center; gap: .3rem; }
+.ref-remove {
+  background: none; border: none; padding: 0; color: inherit; opacity: .6;
+  font-size: .7rem; line-height: 1; cursor: pointer;
+}
+.ref-remove:hover { opacity: 1; }
+
+/* a draggable scene row */
+.scene-row {
+  display: flex; align-items: flex-start; gap: .6rem; max-width: 720px;
+  border: 1px solid var(--border); background: var(--surface);
+  border-radius: 12px; padding: .55rem .7rem; margin-bottom: .45rem;
+}
+.scene-row.has-conflict { border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
+.scene-row.has-hint { border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.scene-row.inherited { background: var(--surface-2); opacity: .85; }
+.scene-row.dragging { opacity: .4; }
+.scene-row.drop-before { box-shadow: 0 -3px 0 0 var(--accent); }
+.scene-row.drop-after { box-shadow: 0 3px 0 0 var(--accent); }
+.scene-handle { cursor: grab; color: var(--muted); font-size: 1rem; line-height: 1.6; user-select: none; }
+.scene-row.inherited .scene-handle { cursor: default; font-size: .8rem; }
+.scene-main { flex: 1; min-width: 0; }
+.scene-head { display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap; }
+.scene-when { font-size: .74rem; color: var(--muted); font-weight: 600; }
+.scene-title { font-weight: 600; }
+.badge.inherited-badge { background: var(--surface-3); color: var(--muted); }
+.scene-tools { display: flex; gap: .25rem; flex: none; }
+.scene-main .findings { margin: .35rem 0 0; }
+
+/* modal */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 90; display: grid; place-items: start center;
+  padding: 4rem 1rem 2rem; background: rgba(16, 24, 40, .45); overflow: auto;
+}
+.modal-panel {
+  width: min(560px, 100%); background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow-lg);
+}
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+  padding: .8rem 1rem; border-bottom: 1px solid var(--border);
+}
+.modal-title { font-weight: 700; }
+.modal-body { padding: 1rem; }
+
+/* tabs inside a modal */
+.tabs { display: flex; gap: .3rem; margin-bottom: .9rem; }
+.tab {
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--muted);
+  font: inherit; font-size: .84rem; font-weight: 600; padding: .35rem .7rem;
+  border-radius: 9px; cursor: pointer;
+}
+.tab.active { background: var(--accent-soft); color: var(--accent-strong); border-color: transparent; }
+
+/* type-ahead */
+.suggest-results { margin-top: .5rem; max-height: 15rem; overflow: auto; }
+.suggest-row {
+  display: flex; align-items: baseline; gap: .5rem; width: 100%; text-align: left;
+  background: none; border: none; border-radius: 9px; padding: .4rem .5rem;
+  color: var(--text); font: inherit; cursor: pointer;
+}
+.suggest-row:hover { background: var(--surface-2); }
+.suggest-title { font-weight: 600; font-size: .9rem; }
+.suggest-sub { font-size: .78rem; }
+.suggest-empty { padding: .5rem; font-size: .85rem; }
+
+/* article reference fields */
+.ref-field { display: flex; flex-direction: column; gap: .45rem; }
+.ref-chips { display: flex; flex-wrap: wrap; gap: .3rem; font-size: .82rem; }
+.ref-chip {
+  display: inline-flex; align-items: center; gap: .35rem;
+  background: var(--accent-soft); color: var(--accent-strong);
+  padding: .12rem .55rem; border-radius: 999px;
+}
+.ref-search { display: flex; gap: .4rem; align-items: flex-start; }
+.ref-search .suggest { flex: 1; }
+/* when a field has only one collection it could mean, say so rather than
+   offering a chooser whose only use would be picking the wrong kind of thing */
+.ref-collection.static { font-size: .78rem; padding: .5rem .1rem 0 0; white-space: nowrap; }
+
+/* timeframe: the live calendar reading sits between the fields and the hint */
+.timing { margin-bottom: .9rem; }
+.timing .field-row .field { margin-bottom: .2rem; }
+.tick-preview {
+  min-height: 1.2rem; margin: .1rem 0 .1rem; font-weight: 600; color: var(--accent-strong);
+}
+
+/* the editor lives in a modal: give it room and let the body scroll */
+.modal-panel.wide { width: min(760px, 100%); }
+.editor-view .editor-fields { max-width: none; }
+.editor-view .scene-row, .editor-view .findings { max-width: none; }

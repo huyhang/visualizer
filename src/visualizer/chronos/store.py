@@ -15,7 +15,7 @@ a noted future addition.
 """
 
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
@@ -38,7 +38,7 @@ _INTERNAL = {"_id", "_rev", "_deleted", "book", "id", "created_by", "updated_by"
 
 
 def _default_clock() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class StoryStore:

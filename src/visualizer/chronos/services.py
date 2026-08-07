@@ -10,7 +10,12 @@ are enforced hard here.
 from __future__ import annotations
 
 from .book_rules import graph_view, neighborhood
-from .browsing import DEFAULT_PER_PAGE, browse_plotlines
+from .browsing import (
+    DEFAULT_PER_PAGE,
+    browse_events,
+    browse_plotlines,
+    dominant_database,
+)
 from .calendar import codec_for
 from .continuation import effective_paths, resolve, would_cycle
 from .entity_gate import EntityGate
@@ -23,12 +28,16 @@ from .errors import (
     TerminusInUse,
 )
 from .models import Book, EntityRef, Event, Plotline
+from .plotline_health import conflict_counts
 from .presenters import (
+    as_preview,
+    event_when,
     present_book,
     present_event,
     present_graph,
     present_neighborhood,
     present_plotline,
+    present_ticks,
     present_validate,
 )
 from .reports import build_report
@@ -39,6 +48,11 @@ from .validation import (
     validate_event_payload,
     validate_plotline_payload,
 )
+
+# Stand-ins used only while previewing a plotline that has no id or goals yet.
+# They never reach the store -- a preview writes nothing.
+DRAFT_PLOTLINE_ID = "(new plotline)"
+DRAFT_GOAL = "(unset)"
 
 
 class _Service:
@@ -65,6 +79,18 @@ class _Service:
 
     def _require_book(self, book_id: str) -> Book:
         return self._book(book_id)
+
+    def _check_event_refs(self, book_id: str, plotline: Plotline) -> None:
+        """Referential, so hard (§8.1): a thread cannot list a scene that is not
+        in the book. Shared by the writers and by the editor's preview, so a
+        draft is judged by exactly the rule its save will face."""
+        known = set(self._events_by_id(book_id))
+        unknown = [e for e in plotline.events if e not in known]
+        if unknown:
+            raise InvalidPlotline(
+                "Plotline references events that do not exist in this book.",
+                evidence={"unknown_events": unknown},
+            )
 
 
 class BookService(_Service):
@@ -209,15 +235,6 @@ class EventService(_Service):
 
 
 class PlotlineService(_Service):
-    def _check_event_refs(self, book_id, plotline: Plotline) -> None:
-        known = set(self._events_by_id(book_id))
-        unknown = [e for e in plotline.events if e not in known]
-        if unknown:
-            raise InvalidPlotline(
-                "Plotline references events that do not exist in this book.",
-                evidence={"unknown_events": unknown},
-            )
-
     def _check_continuation(self, book_id, plotline: Plotline) -> None:
         """Referential + structural checks on ``continues_into`` -- both hard.
 
@@ -332,13 +349,18 @@ class PlotlineService(_Service):
 
 
 class VisualizerService(_Service):
-    """Read-only orchestration behind the plotline visualiser UI.
+    """Orchestration behind the plotline visualiser and its editor.
 
-    Two use-cases the SPA needs and the JSON API does not already offer: a
-    name-ordered, word-filtered, paginated table of a book's plotlines, and a
-    same-origin proxy for the Akasha articles those plotlines reference (so the
-    browser never talks cross-service). All the interesting logic is the pure
-    ``browsing`` module and the ``EntityGate`` seam; this just loads and hands off.
+    The use-cases the SPA needs and the JSON API does not already offer: ordered,
+    filtered, paginated tables of a book's plotlines and scenes; a same-origin
+    proxy for the Akasha articles those scenes reference (so the browser never
+    talks cross-service); and a **preview**, which answers "what would this
+    thread look like if I saved it?" without writing anything.
+
+    All the interesting logic is in the pure modules (``browsing``,
+    ``plotline_health``) and the ``EntityGate`` seam; this just loads and hands
+    off. Writes still go through the plotline/event services -- nothing here
+    persists.
     """
 
     def browse_plotlines(
@@ -350,11 +372,13 @@ class VisualizerService(_Service):
         # Filter on the *resolved* path so a word from a shared/continued scene
         # still surfaces the thread -- the same path the plotline view shows.
         paths = effective_paths(plotlines)
-        rows = [self._row(pl, paths, events_by_id, book_id) for pl in plotlines]
+        # Counted for the whole book at once, not once per thread.
+        counts = conflict_counts(paths, events_by_id)
+        rows = [self._row(pl, paths, events_by_id, book_id, counts) for pl in plotlines]
         return browse_plotlines(rows, query=query, page=page, per_page=per_page)
 
     @staticmethod
-    def _row(pl: Plotline, paths, events_by_id, book_id) -> dict:
+    def _row(pl: Plotline, paths, events_by_id, book_id, counts) -> dict:
         path = paths.get(pl.id, list(pl.events))
         titles = [events_by_id[eid].display_title for eid in path if eid in events_by_id]
         return {
@@ -363,8 +387,110 @@ class VisualizerService(_Service):
             "name": pl.display_title,
             "goals": list(pl.goals),
             "event_titles": titles,
+            "conflicts": counts.get(pl.id, 0),
         }
+
+    # -- scenes ---------------------------------------------------------------
+
+    def browse_events(
+        self, book_id, query: str = "", page: int = 1, per_page: int = DEFAULT_PER_PAGE
+    ) -> dict:
+        """The book's scenes in story order -- what the editor picks from."""
+        book = self._require_book(book_id)
+        codec = codec_for(book)
+        paths = effective_paths(self._plotlines(book_id))
+        rows = [
+            self._event_row(event, codec, paths, book_id)
+            for event in self._events_by_id(book_id).values()
+        ]
+        return browse_events(rows, query=query, page=page, per_page=per_page)
+
+    @staticmethod
+    def _event_row(event: Event, codec, paths, book_id) -> dict:
+        return {
+            "id": event.id,
+            "book": book_id,
+            "name": event.display_title,
+            "when": event_when(event, codec),
+            "scheduled": event.is_scheduled,
+            "start_tick": event.start_tick,
+            "end_tick": event.end_tick,
+            "location": event.location.id,
+            # Findable by where it happens and who is in it, not just its title.
+            "keywords": [ref.id for ref in event.entity_refs()],
+            "plotlines": sorted(pid for pid, path in paths.items() if event.id in path),
+        }
+
+    # -- preview --------------------------------------------------------------
+
+    def preview_plotline(self, book_id, payload) -> dict:
+        """Present a *candidate* thread exactly as saving it would present it.
+
+        The editor calls this after every reorder, so the writer sees a fix (or a
+        break) land as they drag. It runs the candidate through the same
+        presenter as a stored plotline, which is the point: live feedback and the
+        saved result cannot drift apart, and no rule has to be reimplemented in
+        the browser.
+
+        Nothing is written, and no id needs to exist yet -- a plotline being
+        drafted previews the same way one being edited does.
+        """
+        book = self._require_book(book_id)
+        body = dict(payload or {})
+        plotline_id = body.get("id") or DRAFT_PLOTLINE_ID
+        if not body.get("goals"):
+            # Goals feed no rule; a draft that has not named one yet must still
+            # be able to see its conflicts.
+            body["goals"] = [DRAFT_GOAL]
+        candidate = validate_plotline_payload(plotline_id, body)
+        self._check_event_refs(book_id, candidate)
+        public = {
+            **candidate.to_storage(), "id": plotline_id, "book": book_id, "rev": 0,
+        }
+        presented = present_plotline(
+            public, book, self._plotlines(book_id), self._events_by_id(book_id),
+            codec_for(book), expand=True,
+        )
+        return as_preview(presented, book_id)
+
+    # -- the calendar ----------------------------------------------------------
+
+    def format_ticks(self, book_id, ticks: list[int]) -> dict:
+        """What this book's calendar calls these ticks (see ``present_ticks``)."""
+        book = self._require_book(book_id)
+        return present_ticks(ticks, codec_for(book))
+
+    # -- akasha articles ------------------------------------------------------
 
     def fetch_entity(self, database: str, collection: str, entity_id: str) -> dict:
         """Return one referenced Akasha article for display, or raise 404."""
         return self.entities.fetch(EntityRef(database, collection, entity_id))
+
+    def search_entities(self, book_id, collection: str, query: str, database=None) -> dict:
+        """Offer the articles a new scene could reference.
+
+        Which Akasha database and collections a book uses is the writer's
+        convention, not Chronos's rule, so the default scope is read off the
+        scenes that already exist (see ``dominant_database``).
+        """
+        scope = self.entity_scope(book_id)
+        database = database or scope["database"]
+        return {
+            "database": database,
+            "collection": collection,
+            "collections": scope["collections"],
+            "results": self.entities.search(database, collection, query),
+        }
+
+    def entity_scope(self, book_id) -> dict:
+        """The Akasha database and collections this book's scenes already use."""
+        refs = [
+            ref
+            for event in self._events_by_id(book_id).values()
+            for ref in event.entity_refs()
+        ]
+        database = dominant_database((r.database for r in refs), book_id)
+        return {
+            "database": database,
+            "collections": sorted({r.collection for r in refs if r.database == database}),
+        }

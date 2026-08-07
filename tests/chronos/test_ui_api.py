@@ -126,7 +126,7 @@ def test_lists_plotlines_ordered_by_name(book_with_plotlines):
     assert [p["name"] for p in body["plotlines"]] == ["The Knight's Road", "The Spy's Shadow"]
     assert body["total"] == 2 and body["page"] == 1 and body["pages"] == 1
     # Filter-only fields are not leaked into the table rows.
-    assert set(body["plotlines"][0]) == {"id", "book", "name", "goals"}
+    assert set(body["plotlines"][0]) == {"id", "book", "name", "goals", "conflicts"}
 
 
 def test_filter_matches_event_title_on_effective_path(book_with_plotlines):
@@ -224,3 +224,377 @@ def test_entity_proxy_requires_book_read_permission(book_with_plotlines, app):
 def test_entity_proxy_requires_auth(seeded):
     resp = seeded.test_client().get(f"/books/{BOOK}/ui/entity/ember-pact/characters/aldric")
     assert resp.status_code in (302, 401)
+
+
+# -- what the writer may do --------------------------------------------------
+
+
+def test_book_says_what_the_current_user_may_do(book_with_plotlines):
+    # The writer created the book, so they own it outright.
+    perms = book_with_plotlines.get(f"/books/{BOOK}").get_json()["permissions"]
+    assert perms == {"write": True, "delete": True}
+
+
+def test_a_reader_is_told_they_may_not_edit(book_with_plotlines, app, auth_store):
+    from tests.chronos.conftest import ADMIN_USER, _login
+    from visualizer.chronos.app import BOOK_RESOURCE
+
+    auth_store.grant_owner(ADMIN_USER, BOOK, None, None, ["read"], resource_type=BOOK_RESOURCE)
+    reader = app.test_client()
+    _login(reader, ADMIN_USER, "admin-pass")
+    perms = reader.get(f"/books/{BOOK}").get_json()["permissions"]
+    assert perms == {"write": False, "delete": False}
+
+
+def test_the_table_flags_threads_that_have_problems(book_with_plotlines):
+    # Neither seeded thread reaches a terminus (none is set) and both run
+    # forwards, so both are clean.
+    rows = book_with_plotlines.get(f"/books/{BOOK}/ui/plotlines").get_json()["plotlines"]
+    assert [r["conflicts"] for r in rows] == [0, 0]
+
+    # Put the knight's two scenes in the wrong order: one problem, one thread.
+    book_with_plotlines.put(
+        f"/books/{BOOK}/plotlines/knights-road",
+        json={"events": ["coronation", "aldric-departs"], "goals": ["Deliver the Seal"]},
+    )
+    rows = book_with_plotlines.get(f"/books/{BOOK}/ui/plotlines").get_json()["plotlines"]
+    assert {r["id"]: r["conflicts"] for r in rows} == {"knights-road": 1, "spys-shadow": 0}
+
+
+# -- the scene picker --------------------------------------------------------
+
+
+def test_lists_scenes_in_story_order(book_with_plotlines):
+    resp = book_with_plotlines.get(f"/books/{BOOK}/events")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert [e["id"] for e in body["events"]] == [
+        "aldric-departs", "harbor-exchange", "coronation",
+    ]
+    assert body["events"][0]["when"] == "0 → 10"
+    assert body["events"][0]["plotlines"] == ["knights-road"]
+
+
+def test_undated_scenes_come_last(book_with_plotlines):
+    _event(book_with_plotlines, "someday", start=None, end=None, title="Someday")
+    ids = [e["id"] for e in book_with_plotlines.get(f"/books/{BOOK}/events").get_json()["events"]]
+    assert ids[-1] == "someday"
+
+
+def test_scenes_are_findable_by_cast_and_place(book_with_plotlines):
+    _event(book_with_plotlines, "lyras-errand", "emberport", 60, 70,
+           characters=("lyra",), title="Lyra's Errand")
+    found = book_with_plotlines.get(f"/books/{BOOK}/events?filter=lyra").get_json()
+    assert [e["id"] for e in found["events"]] == ["lyras-errand"]
+    at_port = book_with_plotlines.get(f"/books/{BOOK}/events?filter=emberport").get_json()
+    assert {e["id"] for e in at_port["events"]} == {"harbor-exchange", "lyras-errand"}
+
+
+def test_scene_listing_requires_read_permission(book_with_plotlines, app):
+    from tests.chronos.conftest import _login
+
+    other = app.test_client()
+    _login(other, "admin", "admin-pass")
+    assert other.get(f"/books/{BOOK}/events").status_code == 403
+
+
+# -- preview -----------------------------------------------------------------
+
+
+def _preview(client, **body):
+    return client.post(f"/books/{BOOK}/ui/plotline-preview", json=body)
+
+
+def test_preview_marks_an_out_of_order_pair_without_saving_it(book_with_plotlines):
+    resp = _preview(
+        book_with_plotlines,
+        id="knights-road",
+        events=["coronation", "aldric-departs"],
+        goals=["Deliver the Seal"],
+    )
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["status"]["ordering"]["state"] == "conflicted"
+    marked = {e["id"]: [f["code"] for f in e["findings"]] for e in body["effective_events"]}
+    assert marked == {
+        "coronation": ["ORDERING_VIOLATION"], "aldric-departs": ["ORDERING_VIOLATION"],
+    }
+    # ...and the stored thread is untouched.
+    stored = book_with_plotlines.get(f"/books/{BOOK}/plotlines/knights-road").get_json()
+    assert stored["events"] == ["aldric-departs", "coronation"]
+    assert stored["rev"] == 1
+
+
+def test_preview_of_a_sound_order_reports_nothing(book_with_plotlines):
+    body = _preview(
+        book_with_plotlines, id="knights-road",
+        events=["aldric-departs", "coronation"], goals=["Deliver the Seal"],
+    ).get_json()
+    assert all(e["findings"] == [] for e in body["effective_events"])
+    assert body["status"]["ordering"]["state"] == "ok"
+
+
+def test_preview_works_for_a_plotline_that_does_not_exist_yet(book_with_plotlines):
+    # A brand-new thread has no id and no goals yet; it must still be judged, or
+    # the editor would give no feedback until after the first save.
+    resp = _preview(book_with_plotlines, events=["coronation", "harbor-exchange"])
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert [e["id"] for e in body["effective_events"]] == ["coronation", "harbor-exchange"]
+    assert body["status"]["ordering"]["state"] == "conflicted"
+
+
+def test_preview_does_not_pretend_to_be_a_saved_plotline(book_with_plotlines):
+    # It runs through the same presenter, which is the point -- but a draft has
+    # no revision, and its id may name nothing, so a `self` link would 404.
+    body = _preview(book_with_plotlines, events=["coronation"]).get_json()
+    assert body["kind"] == "plotline-preview"
+    assert "rev" not in body
+    assert "self" not in body["_links"]
+    assert set(body["_links"]) == {"book", "validate"}
+    # ...while still carrying everything the editor draws.
+    assert body["effective_events"] and "status" in body
+
+
+def test_preview_resolves_a_candidate_continuation(book_with_plotlines):
+    body = _preview(
+        book_with_plotlines, events=["aldric-departs"], continues_into="spys-shadow"
+    ).get_json()
+    # The inherited tail shows up in the path, marked as not this thread's own.
+    assert [e["id"] for e in body["effective_events"]] == [
+        "aldric-departs", "harbor-exchange", "coronation",
+    ]
+    assert [e["owned"] for e in body["effective_events"]] == [True, False, False]
+
+
+def test_preview_rejects_a_scene_that_does_not_exist(book_with_plotlines):
+    resp = _preview(book_with_plotlines, events=["ghost-scene"])
+    assert resp.status_code == 400
+    assert resp.get_json()["code"] == "INVALID_PLOTLINE"
+
+
+def test_preview_rejects_an_empty_thread(book_with_plotlines):
+    # A plotline needs at least one of its own scenes, continuation or not.
+    assert _preview(book_with_plotlines, events=[]).status_code == 400
+
+
+def test_preview_requires_write_permission(book_with_plotlines, app, auth_store):
+    from tests.chronos.conftest import ADMIN_USER, _login
+    from visualizer.chronos.app import BOOK_RESOURCE
+
+    auth_store.grant_owner(ADMIN_USER, BOOK, None, None, ["read"], resource_type=BOOK_RESOURCE)
+    reader = app.test_client()
+    _login(reader, ADMIN_USER, "admin-pass")
+    resp = reader.post(f"/books/{BOOK}/ui/plotline-preview", json={"events": ["coronation"]})
+    assert resp.status_code == 403
+
+
+# -- the article picker ------------------------------------------------------
+
+
+def test_entity_search_offers_readable_articles(book_with_plotlines):
+    body = book_with_plotlines.get(
+        f"/books/{BOOK}/ui/entities?q=al&collection=characters"
+    ).get_json()
+    assert body["database"] == BOOK           # read off the book's existing scenes
+    assert body["collections"] == ["characters", "locations"]
+    assert [r["id"] for r in body["results"]] == ["aldric"]
+    assert body["results"][0]["title"] == "Sir Aldric"
+
+
+def test_entity_search_hides_what_akasha_would_refuse(book_with_plotlines):
+    # The writer holds read on 'characters' only -- locations must not be
+    # offered, exactly as the article proxy refuses to open them.
+    body = book_with_plotlines.get(
+        f"/books/{BOOK}/ui/entities?q=highkeep&collection=locations"
+    ).get_json()
+    assert body["results"] == []
+
+
+def test_entity_search_requires_book_read_permission(book_with_plotlines, app):
+    from tests.chronos.conftest import _login
+
+    other = app.test_client()
+    _login(other, "admin", "admin-pass")
+    assert other.get(f"/books/{BOOK}/ui/entities?q=a").status_code == 403
+
+
+# -- the editing round trip --------------------------------------------------
+
+
+def test_a_thread_can_be_reordered_and_the_problem_goes_away(book_with_plotlines):
+    broken = book_with_plotlines.put(
+        f"/books/{BOOK}/plotlines/knights-road",
+        json={"events": ["coronation", "aldric-departs"], "goals": ["Deliver the Seal"]},
+    ).get_json()
+    assert broken["status"]["ordering"]["state"] == "conflicted"
+
+    fixed = book_with_plotlines.put(
+        f"/books/{BOOK}/plotlines/knights-road",
+        json={"events": ["aldric-departs", "coronation"], "goals": ["Deliver the Seal"]},
+        headers={"If-Match": str(broken["rev"])},
+    )
+    assert fixed.status_code == 200
+    assert fixed.get_json()["status"]["ordering"]["state"] == "ok"
+
+
+def test_a_stale_edit_is_refused_rather_than_overwriting(book_with_plotlines):
+    book_with_plotlines.put(
+        f"/books/{BOOK}/plotlines/knights-road",
+        json={"events": ["coronation"], "goals": ["Deliver the Seal"]},
+    )
+    stale = book_with_plotlines.put(
+        f"/books/{BOOK}/plotlines/knights-road",
+        json={"events": ["aldric-departs"], "goals": ["Deliver the Seal"]},
+        headers={"If-Match": "1"},
+    )
+    assert stale.status_code == 409
+    assert stale.get_json()["code"] == "REVISION_CONFLICT"
+
+
+def test_expanded_events_mark_which_scenes_this_thread_owns(book_with_plotlines):
+    book_with_plotlines.post(
+        f"/books/{BOOK}/plotlines/prelude",
+        json={
+            "events": ["aldric-departs"],
+            "goals": ["Set out"],
+            "continues_into": "spys-shadow",
+        },
+    )
+    body = book_with_plotlines.get(
+        f"/books/{BOOK}/plotlines/prelude?expand=events"
+    ).get_json()
+    assert [(e["id"], e["owned"]) for e in body["effective_events"]] == [
+        ("aldric-departs", True), ("harbor-exchange", False), ("coronation", False),
+    ]
+
+
+def test_plotline_status_counts_its_problems(book_with_plotlines):
+    sound = book_with_plotlines.get(f"/books/{BOOK}/plotlines/knights-road").get_json()
+    assert sound["status"]["conflicts"] == 0
+
+    broken = book_with_plotlines.put(
+        f"/books/{BOOK}/plotlines/knights-road",
+        json={"events": ["coronation", "aldric-departs"], "goals": ["Deliver the Seal"]},
+    ).get_json()
+    # One problem the writer would recognise as one, though both scenes are marked.
+    assert broken["status"]["conflicts"] == 1
+
+
+# -- naming a tick in the book's calendar ------------------------------------
+
+
+@pytest.fixture
+def calendared(book_with_plotlines):
+    """The demo calendar: hours, 24 to a day, 30 days to a month, 12 to a year."""
+    book = book_with_plotlines.get(f"/books/{BOOK}").get_json()
+    book_with_plotlines.put(f"/books/{BOOK}", json={
+        "title": book["title"],
+        "calendar": {
+            "base_unit": "hour",
+            "cycles": [
+                {"name": "day", "size": 24},
+                {"name": "month", "size": 30},
+                {"name": "year", "size": 12},
+            ],
+            "epoch_label": "AF",
+        },
+    })
+    return book_with_plotlines
+
+
+def test_ticks_are_named_by_the_books_calendar(calendared):
+    resp = calendared.get(f"/books/{BOOK}/ui/ticks?tick=240&tick=264")
+    assert resp.status_code == 200
+    ticks = resp.get_json()["ticks"]
+    assert [t["tick"] for t in ticks] == [240, 264]  # answered in the order asked
+    assert ticks[0]["label"] == "Year 1, Month 1, Day 11, 00:00 AF"
+    assert ticks[0]["parts"] == ["Year 1", "Month 1", "Day 11", "00:00 AF"]
+
+
+def test_ticks_match_what_a_saved_scene_will_show(calendared):
+    # The form's preview and the timeline must agree, or the writer is being
+    # told two different things about the same number.
+    _event(calendared, "trial", "highkeep", 240, 264, title="The Trial")
+    event = calendared.get(f"/books/{BOOK}/events/trial").get_json()
+    preview = calendared.get(f"/books/{BOOK}/ui/ticks?tick=240").get_json()["ticks"][0]
+    assert preview["label"] == event["start_label"]
+
+
+def test_a_book_without_a_calendar_just_echoes_the_number(book_with_plotlines):
+    ticks = book_with_plotlines.get(f"/books/{BOOK}/ui/ticks?tick=240").get_json()["ticks"]
+    assert ticks[0]["label"] == "240"
+
+
+def test_ticks_rejects_something_that_is_not_a_tick(calendared):
+    resp = calendared.get(f"/books/{BOOK}/ui/ticks?tick=soon")
+    assert resp.status_code == 400
+    assert resp.get_json()["code"] == "INVALID_TIMEFRAME"
+
+
+def test_ticks_asks_for_no_more_than_a_handful(calendared):
+    # A timeframe has two ends; the cap keeps one caller from asking for a
+    # thousand labels.
+    many = "&".join(f"tick={n}" for n in range(50))
+    assert len(calendared.get(f"/books/{BOOK}/ui/ticks?{many}").get_json()["ticks"]) == 8
+
+
+def test_ticks_needs_book_read_permission(calendared, app):
+    from tests.chronos.conftest import _login
+
+    other = app.test_client()
+    _login(other, "admin", "admin-pass")
+    assert other.get(f"/books/{BOOK}/ui/ticks?tick=0").status_code == 403
+
+
+def test_findings_hand_over_the_articles_they_name(book_with_plotlines):
+    # 'aldric' is at highkeep 0-10 on the knight's thread; put him at emberport
+    # over the same hours and the thread has a contradiction to explain.
+    _event(book_with_plotlines, "quay-sighting", "emberport", 5, 15, title="The Quay Sighting")
+    book_with_plotlines.put(
+        f"/books/{BOOK}/plotlines/knights-road",
+        json={"events": ["aldric-departs", "quay-sighting", "coronation"],
+              "goals": ["Deliver the Seal"]},
+    )
+    body = book_with_plotlines.get(
+        f"/books/{BOOK}/plotlines/knights-road?expand=events"
+    ).get_json()
+    finding = next(
+        f for e in body["effective_events"] for f in e["findings"]
+        if f["code"] == "TEMPORAL_CONFLICT"
+    )
+    # Ids are quoted so a client can substitute titles by exact match...
+    assert "'aldric'" in finding["message"]
+    # ...and the articles to resolve come with the finding.
+    assert {(r["collection"], r["id"]) for r in finding["refs"]} == {
+        ("characters", "aldric"), ("locations", "emberport"),
+    }
+
+
+def test_the_scene_a_finding_names_uses_its_own_title_not_its_id(book_with_plotlines):
+    # Event titles are Chronos's own data, so they are resolved server-side --
+    # only Akasha articles are left as ids for the client to look up.
+    book_with_plotlines.put(
+        f"/books/{BOOK}/plotlines/knights-road",
+        json={"events": ["coronation", "aldric-departs"], "goals": ["Deliver the Seal"]},
+    )
+    body = book_with_plotlines.get(
+        f"/books/{BOOK}/plotlines/knights-road?expand=events"
+    ).get_json()
+    messages = [f["message"] for e in body["effective_events"] for f in e["findings"]]
+    assert any("'The Coronation'" in m for m in messages)
+    assert not any("'coronation'" in m for m in messages)
+
+
+def test_the_table_and_the_plotline_view_agree_about_a_thread(book_with_plotlines):
+    # Two different code paths compute this number; a writer must never see the
+    # table say 1 and the thread itself say 2.
+    book_with_plotlines.put(
+        f"/books/{BOOK}/plotlines/knights-road",
+        json={"events": ["coronation", "aldric-departs"], "goals": ["Deliver the Seal"]},
+    )
+    _event(book_with_plotlines, "quay-sighting", "emberport", 5, 15, title="The Quay Sighting")
+    rows = book_with_plotlines.get(f"/books/{BOOK}/ui/plotlines").get_json()["plotlines"]
+    for row in rows:
+        thread = book_with_plotlines.get(f"/books/{BOOK}/plotlines/{row['id']}").get_json()
+        assert row["conflicts"] == thread["status"]["conflicts"], row["id"]

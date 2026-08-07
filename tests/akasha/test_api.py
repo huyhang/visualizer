@@ -1,6 +1,6 @@
 """HTTP-level tests for the Flask app against an in-memory MongoDB."""
 
-from conftest import COLLECTION, DB, collection_url, doc_url, search_url
+from conftest import collection_url, doc_url, search_url
 
 
 def test_health(client):

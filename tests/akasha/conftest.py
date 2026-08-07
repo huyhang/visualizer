@@ -11,8 +11,8 @@ import pytest
 from werkzeug.security import generate_password_hash
 
 from visualizer.akasha.app import create_app
-from visualizer.auth import AuthStore
 from visualizer.akasha.store import DocumentStore
+from visualizer.auth import AuthStore
 
 DB = "testdb"
 COLLECTION = "things"

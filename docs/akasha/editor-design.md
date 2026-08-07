@@ -30,6 +30,12 @@ is the source of truth for anything this doc drifts from.
   concepts.
 - **Small, modular routes.** New endpoints live in focused registration
   functions so `app.py` stays a thin orchestrator.
+- **Optimise what is perceptible, and only after measuring.** The bar is
+  milliseconds at a realistic size, not a complexity class — measure before
+  changing anything, and weight the cost by how often the call actually fires.
+  Work that is already imperceptible is finished; leave it alone rather than
+  spending the simplicity budget on it. Stated in full, with the numbers that
+  produced it, in [chronos/design.md §2](../chronos/design.md#2-principles-consistent-with-the-existing-codebase).
 
 ## Data model
 

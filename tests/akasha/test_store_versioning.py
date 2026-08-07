@@ -1,6 +1,6 @@
 """DocumentStore tests for optimistic concurrency and embedded versioning."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import mongomock
 import pytest
@@ -9,7 +9,7 @@ from visualizer.akasha.errors import DocumentNotFound, RevisionConflict
 from visualizer.akasha.store import DocumentStore
 
 DB, COL = "earth", "lotr"
-FIXED = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+FIXED = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
 
 
 @pytest.fixture

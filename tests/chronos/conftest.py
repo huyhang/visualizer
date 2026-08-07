@@ -6,20 +6,20 @@ the Chronos store and a akasha ``DocumentStore`` -- exactly as
 production shares one Mongo.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import mongomock
 import pytest
 from werkzeug.security import generate_password_hash
 
-from visualizer.auth import AuthStore
 from visualizer.akasha.store import DocumentStore
+from visualizer.auth import AuthStore
 from visualizer.chronos.app import create_app
 from visualizer.chronos.entity_gate import FakeEntityGate, InProcessEntityGate
 from visualizer.chronos.models import EntityRef
 from visualizer.chronos.store import StoryStore
 
-FIXED_TIME = datetime(2026, 1, 1, tzinfo=timezone.utc)
+FIXED_TIME = datetime(2026, 1, 1, tzinfo=UTC)
 
 ADMIN_USER = "admin"
 ADMIN_PASS = "admin-pass"

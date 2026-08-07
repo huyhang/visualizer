@@ -14,20 +14,26 @@ Chronos references them and refuses to invent them.
 - **Want the rationale?** Read [design.md](design.md) — the
   full design and the decisions behind it.
 - **Want the contract?** See [openapi.json](../openapi.json).
+- **Wondering what the UI can't do yet?** See
+  [ui-api-gaps.md](ui-api-gaps.md) — the audited list of API capabilities the
+  browser has no way to reach.
 
-> **Mostly an API.** Books and events are created and edited over the JSON API
-> below. There is now a **read-only visualiser** served at `/`: pick a book,
-> browse its plotlines (name-ordered, word-filtered, paginated), and open one to
-> see its events as cards on a vertical timeline — with the Akasha articles they
+> **An API with a visualiser on top.** Served at `/`: pick a book, browse its
+> plotlines (name-ordered, word-filtered, paginated), and open one to see its
+> events as cards on a vertical timeline — with the Akasha articles they
 > reference shown inline. Those referenced articles are fetched through Chronos
 > (so the browser stays same-origin) and are subject to **both** book-read and
-> the article's own Akasha read grant. It never writes.
+> the article's own Akasha read grant.
 >
 > The timeline also flags where a thread **joins, departs, or is shared with**
 > others, and from any plotline you can open **Connected plots** — a branch/merge
 > (git-graph) diagram of just the threads that meet it (i.e. share a *non-terminus*
 > event), laid out by time and colour-coded per thread. A full whole-book **story
 > map** over the same `/graph` data is still planned (design §12).
+>
+> **Plotlines can now be written from the UI** — see
+> [Editing plotlines](#editing-plotlines-in-the-ui). Books, terminus and
+> collaborators are still API-only.
 
 ---
 
@@ -204,6 +210,7 @@ PUT    /books/<book>/plotlines/<plotline>            replace (reorder / edit goa
 POST   /books/<book>/plotlines/<plotline>/inline     absorb its continuation chain
 DELETE /books/<book>/plotlines/<plotline>[?inline=true]   block if depended on, unless inlining
 
+GET    /books/<book>/events                          the book's scenes, in story order
 POST   /books/<book>/events/<event>                  create
 GET    /books/<book>/events/<event>
 PUT    /books/<book>/events/<event>
@@ -212,6 +219,17 @@ GET    /books/<book>/events/<event>/plotlines[?relation=converging|diverging|thr
 
 PUT    /books/<book>/collaborators/<user>            invite / set role (owners only)
 DELETE /books/<book>/collaborators/<user>            remove (owners only)
+```
+
+The visualiser adds a few book-scoped helpers of its own. They compute nothing
+the rules above do not — they exist so the browser can stay same-origin and ask
+one question per screen:
+
+```
+GET    /books/<book>/ui/plotlines    filtered, name-ordered, paginated table
+POST   /books/<book>/ui/plotline-preview   judge a candidate thread; writes nothing
+GET    /books/<book>/ui/entities     type-ahead over referenceable Akasha articles
+GET    /books/<book>/ui/entity/<db>/<collection>/<id>   read one article
 ```
 
 ### Shared endings
@@ -284,6 +302,47 @@ into / diverge out of *this* event", with titles, times and a prose summary.
 **Convergence** means in-degree > 1 (more than one distinct *predecessor*);
 **divergence** means out-degree > 1. Two plotlines arriving from the same prior
 event are not a convergence — the merge already happened upstream.
+
+### Editing plotlines in the UI
+
+A plotline view has an **Edit plotline** button (and the book's table a **New
+plotline** one) for anyone with `write` on the book — `GET /books/<book>` now
+reports `permissions`, so the UI knows before it offers.
+
+The editor opens as a modal over whatever you were reading — editing a thread is
+a detour, and closing it puts you back on the same table page, same filter. Drag
+the scenes into the order you want (or focus one and press ↑ / ↓, which also
+works without a mouse), add or remove them, rename the thread, adjust its goals,
+point it at a thread to continue into — then **Save**, which is one `PUT`
+carrying `If-Match`. A save that would overwrite someone else's edit is refused
+(409) rather than winning silently, and Cancel costs nothing.
+
+Two things make it more than a list editor:
+
+- **Conflicts appear as you drag.** Every change is sent to
+  `POST /books/<book>/ui/plotline-preview`, which presents the *candidate*
+  thread exactly as saving it would — resolved path, per-scene findings, status
+  — without writing. The result says `kind: "plotline-preview"` and carries no
+  `rev` or `self` link, because the thread it describes may not exist yet. So the same rules that judge a saved thread judge the draft,
+  and no rule is reimplemented in the browser. Findings still never block a save
+  (§8.1): the marks tell you what does not add up; you decide.
+- **Inherited scenes are locked.** A thread that `continues_into` another shows
+  that thread's scenes greyed out: they are stored elsewhere, so reordering them
+  here would be a lie. Each expanded scene says which it is (`owned`).
+
+Scenes themselves can be written and corrected from the same screen — **Add
+scene → Write a new scene**, or ✎ on a scene you already have (fixing a scene's
+timing is usually how you fix a conflict). Characters, items and places are
+chosen from a picker that searches the real Akasha canon through
+`GET /books/<book>/ui/entities`, filtered to articles you may read: Chronos still
+refuses to invent them. Each field searches its own kind of article, so a
+character cannot be filed as a place.
+
+A plotline needs at least one of its **own** scenes, so a thread that is nothing
+but a continuation of another cannot be expressed; the form says so rather than
+letting you hit a 422. Deleting a thread that others continue into is refused
+until you agree to absorb it into them (the `?inline=true` path), which keeps
+their stories intact.
 
 ### Errors
 
@@ -376,7 +435,7 @@ touch a database.
 
 | Module | Role |
 | --- | --- |
-| `timeline`, `conflicts`, `ordering`, `book_rules`, `reports`, `calendar`, `validation`, `models` | **pure logic** — no I/O, no Flask; where correctness lives |
+| `timeline`, `conflicts`, `ordering`, `book_rules`, `reports`, `plotline_health`, `browsing`, `calendar`, `validation`, `models` | **pure logic** — no I/O, no Flask; where correctness lives |
 | `store.StoryStore` | persistence seam (Mongo, OCC, injected clock) |
 | `entity_gate.EntityGate` | the boundary to Akasha (`InProcessEntityGate`, `FakeEntityGate`) |
 | `services` | orchestration: load → validate purely → persist → present |

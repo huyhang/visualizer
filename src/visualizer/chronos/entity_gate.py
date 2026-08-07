@@ -26,6 +26,8 @@ class EntityGate(Protocol):
 
     def fetch(self, ref: EntityRef) -> dict: ...
 
+    def search(self, database: str, collection: str, text: str) -> list[dict]: ...
+
 
 class _MissingMixin:
     def missing(self, refs: Iterable[EntityRef]) -> list[EntityRef]:
@@ -68,6 +70,34 @@ class InProcessEntityGate(_MissingMixin):
             # a Chronos not-found so the web layer answers 404, not 500.
             raise EntityNotFound(str(exc), evidence={"ref": ref.to_dict()}) from exc
 
+    def search(self, database: str, collection: str, text: str) -> list[dict]:
+        try:
+            found = self._store.search(database, collection, text=text)
+        except AkashaError:
+            # An unknown/reserved database or collection is "nothing to offer",
+            # not an error: the writer is typing into a picker.
+            return []
+        # The store matches anywhere in the body; a picker should match what the
+        # writer can see -- the slug or the title (mirrors akasha's /suggest).
+        needle = (text or "").lower()
+        out = []
+        for doc in found:
+            document = doc.get("document", {})
+            title = document.get("title") or ""
+            if needle in doc["id"].lower() or needle in title.lower():
+                out.append(_candidate(database, collection, doc["id"], document))
+        return out
+
+
+def _candidate(database: str, collection: str, entity_id: str, document: dict) -> dict:
+    """One article offered by the picker: the ref, plus a title to show."""
+    return {
+        "database": database,
+        "collection": collection,
+        "id": entity_id,
+        "title": document.get("title") or entity_id,
+    }
+
 
 class FakeEntityGate(_MissingMixin):
     """Test double: an explicit set of refs that exist, each with a document."""
@@ -90,3 +120,13 @@ class FakeEntityGate(_MissingMixin):
                 f"'{ref.id}' does not exist.", evidence={"ref": ref.to_dict()}
             )
         return {"id": ref.id, "document": self._docs[ref], "rev": 1}
+
+    def search(self, database: str, collection: str, text: str) -> list[dict]:
+        needle = (text or "").lower()
+        return [
+            _candidate(ref.database, ref.collection, ref.id, doc)
+            for ref, doc in self._docs.items()
+            if ref.database == database
+            and ref.collection == collection
+            and (needle in ref.id.lower() or needle in str(doc.get("title", "")).lower())
+        ]

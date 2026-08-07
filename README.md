@@ -26,7 +26,7 @@ akasha at `/`, chronos at `/timeline` — one login, one reverse-proxy entry.
 | Service | Path | What it does | Docs |
 | --- | --- | --- | --- |
 | **akasha** | `/` | A Wikipedia-style article store and editor: characters, items, locations, lore — with linking, versioning and diffs. Has a web UI. | [README](docs/akasha/README.md) · [design](docs/akasha/editor-design.md) |
-| **chronos** | `/timeline` | A plotline & timeline API for fiction writers: books, events and plotlines, checked for continuity errors, with a read-only plotline visualiser. | [README](docs/chronos/README.md) · [plain-language overview](docs/chronos/OVERVIEW.md) · [design](docs/chronos/design.md) |
+| **chronos** | `/timeline` | A plotline & timeline API for fiction writers: books, events and plotlines, checked for continuity errors, with a plotline visualiser and editor. | [README](docs/chronos/README.md) · [plain-language overview](docs/chronos/OVERVIEW.md) · [design](docs/chronos/design.md) |
 | **mongo** | *internal* | Shared storage. Deliberately not published to the host. | — |
 
 The two are named for what they hold: **Akasha** (the aether said to record all
@@ -66,7 +66,8 @@ docker compose -f docker/docker-compose.nas.yml up --build -d
 
 - **http://localhost:5002/** — the article editor. **Register the first account;
   it becomes the administrator.**
-- **http://localhost:5002/timeline** — the read-only plotline visualiser.
+- **http://localhost:5002/timeline** — the plotline visualiser: browse your
+  threads, see where they contradict each other, and reorder them.
 - **http://localhost:5002/health** — akasha liveness;
   **/timeline/health** — chronos liveness.
 

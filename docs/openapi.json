@@ -880,6 +880,220 @@
           }
         }
       }
+    },
+    "/books/{book}/ui/plotline-preview": {
+      "post": {
+        "tags": [
+          "visualizer"
+        ],
+        "summary": "Judge a candidate plotline without saving it",
+        "description": "Returns the candidate judged exactly as `GET /books/{book}/plotlines/{plotline}?expand=events` would judge it once saved: its resolved path, its per-scene findings and its status. Writes nothing, and the plotline need not exist yet -- this is what lets the editor show a reorder's effect while the writer drags, without reimplementing any rule in the browser.\n\nThe result is deliberately **not** a `Plotline`: it carries no `rev` and no `self` link, because the thread it describes may not exist. Everything else is the same shape, from the same presenter.\n\nRequires `write`, because it is an editing affordance: previewing must not succeed where saving would be refused.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/BookId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlotlinePreview"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The candidate, judged as if saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlotlinePreviewResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/books/{book}/ui/entities": {
+      "get": {
+        "tags": [
+          "visualizer"
+        ],
+        "summary": "Search the Akasha articles a scene could reference",
+        "description": "Type-ahead for the new-scene form, proxied same-origin so the browser never talks cross-service. Matches an article's slug or title. Two gates, as with the article proxy: `read` on the book, then Akasha `read` on each result -- so the picker never suggests something Akasha would refuse to open.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/BookId"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "What the writer has typed so far."
+          },
+          {
+            "name": "collection",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Which collection to search (defaults to `characters`)."
+          },
+          {
+            "name": "database",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Override the searched database (defaults to the one this book's scenes mostly reference)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Up to 20 readable matches.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntitySuggestions"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/books/{book}/events": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "List a book's scenes (filtered, ordered, paginated)",
+        "description": "The book's scenes in story order -- scheduled by time, undated last -- narrowed to those whose title, place or cast contain all the words in `filter`. Summaries only; the full record for one scene is `GET /books/{book}/events/{event}`.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/BookId"
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Space-separated words; a row matches only if it contains all of them."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "1-indexed page number (clamped into range)."
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "Page size (defaults to 20, capped at 100)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of scenes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventPage"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/books/{book}/ui/ticks": {
+      "get": {
+        "tags": [
+          "visualizer"
+        ],
+        "summary": "Name these ticks in the book's calendar",
+        "description": "Formats raw ticks through the book's calendar, so the scene form can show what `240` means as the writer types it. Up to 8 per request; a non-integer `tick` is a 400.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/BookId"
+          },
+          {
+            "name": "tick",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            },
+            "style": "form",
+            "explode": true,
+            "description": "Repeat once per tick, e.g. `?tick=240&tick=264`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One entry per tick, in the order asked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TickLabels"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1135,6 +1349,9 @@
           },
           "_links": {
             "$ref": "#/components/schemas/Links"
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/Permissions"
           }
         },
         "example": {
@@ -1172,6 +1389,10 @@
             "self": "/books/ember-pact",
             "validate": "/books/ember-pact/validate",
             "graph": "/books/ember-pact/graph"
+          },
+          "permissions": {
+            "write": true,
+            "delete": true
           }
         }
       },
@@ -1547,7 +1768,8 @@
             },
             "continuation": {
               "state": "ok"
-            }
+            },
+            "conflicts": 0
           },
           "_links": {
             "self": "/books/ember-pact/plotlines/knights-road",
@@ -1627,6 +1849,10 @@
           },
           "continuation": {
             "$ref": "#/components/schemas/Verdict"
+          },
+          "conflicts": {
+            "type": "integer",
+            "description": "How many distinct problems this thread has on its effective path (temporal conflicts, ordering violations, scenes with no possible time). A pair problem counts once; informational hints are not counted. Per-scene detail is in `effective_events[].findings` (with `?expand=events`)."
           }
         }
       },
@@ -1779,6 +2005,19 @@
             "type": "boolean",
             "readOnly": true,
             "description": "False while the scene has no timing yet. Unscheduled scenes are skipped by conflict and ordering checks."
+          },
+          "owned": {
+            "type": "boolean",
+            "readOnly": true,
+            "description": "Whether this scene sits in the plotline's own stored `events` segment. False for a scene inherited through `continues_into`: it belongs to the plotline it is stored on, so an edit must be routed there."
+          },
+          "findings": {
+            "type": "array",
+            "readOnly": true,
+            "items": {
+              "$ref": "#/components/schemas/EventFinding"
+            },
+            "description": "What is wrong (or merely worth knowing) about this scene on this thread. Soft: findings are reported, never blocking (design 8.1)."
           }
         }
       },
@@ -2714,7 +2953,8 @@
           "id",
           "book",
           "name",
-          "goals"
+          "goals",
+          "conflicts"
         ],
         "properties": {
           "id": {
@@ -2732,6 +2972,11 @@
             "items": {
               "type": "string"
             }
+          },
+          "conflicts": {
+            "type": "integer",
+            "readOnly": true,
+            "description": "How many distinct problems this thread has on its effective path (temporal conflicts, ordering violations, scenes with no possible time). A pair problem counts once. 0 means it holds together."
           }
         }
       },
@@ -2777,6 +3022,194 @@
               "goals": [
                 "Deliver the Ember Seal",
                 "Reach the coronation alive"
+              ],
+              "conflicts": 0
+            }
+          ],
+          "page": 1,
+          "per_page": 20,
+          "total": 1,
+          "pages": 1
+        }
+      },
+      "Permissions": {
+        "type": "object",
+        "readOnly": true,
+        "description": "What the caller may do with this book, so a UI can decide what to offer before the writer clicks it. Returned by `GET /books/{book}` only.",
+        "required": [
+          "write",
+          "delete"
+        ],
+        "properties": {
+          "write": {
+            "type": "boolean",
+            "description": "May create and edit plotlines and events."
+          },
+          "delete": {
+            "type": "boolean",
+            "description": "May delete them (book owner)."
+          }
+        }
+      },
+      "EventFinding": {
+        "type": "object",
+        "description": "One thing worth saying about one scene on one thread. The same rules as `/validate`, attributed to the scene the writer should look at.",
+        "required": [
+          "code",
+          "severity",
+          "message",
+          "events",
+          "refs"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "TEMPORAL_CONFLICT",
+              "ORDERING_VIOLATION",
+              "IMPOSSIBLE_WINDOW",
+              "UNSCHEDULED"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "conflict",
+              "info"
+            ],
+            "description": "`conflict` is a contradiction to fix; `info` is a hint (e.g. the window an undated scene must fall inside)."
+          },
+          "message": {
+            "type": "string",
+            "description": "Written for the novelist, not the machine."
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Other scenes involved. A pair problem is reported on both scenes, phrased from each one's point of view."
+          },
+          "doc": {
+            "type": "string",
+            "description": "Where the rule is defined."
+          },
+          "refs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EntityRef"
+            },
+            "description": "The Akasha articles this message quotes, by id. Their titles live in Akasha and the reader may not hold a grant on them, so the message uses ids; a client that can read an article may substitute its title for the quoted `'id'`."
+          }
+        },
+        "example": {
+          "code": "ORDERING_VIOLATION",
+          "severity": "conflict",
+          "message": "'The Harbor Exchange' has not ended when this scene begins.",
+          "events": [
+            "harbor-exchange"
+          ],
+          "doc": "docs/chronos/design.md#52",
+          "refs": []
+        }
+      },
+      "EventRow": {
+        "type": "object",
+        "description": "One scene as offered by the editor's picker.",
+        "required": [
+          "id",
+          "book",
+          "title",
+          "when",
+          "scheduled",
+          "location",
+          "plotlines"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "book": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "description": "Display name (title, or id when untitled)."
+          },
+          "when": {
+            "type": "string",
+            "description": "Human timeframe: a label, a span, or 'unscheduled'."
+          },
+          "scheduled": {
+            "type": "boolean"
+          },
+          "start_tick": {
+            "type": "integer",
+            "nullable": true
+          },
+          "end_tick": {
+            "type": "integer",
+            "nullable": true
+          },
+          "location": {
+            "type": "string",
+            "description": "Id of the location article."
+          },
+          "plotlines": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Plotlines whose effective path already contains this scene."
+          }
+        }
+      },
+      "EventPage": {
+        "type": "object",
+        "description": "One page of a book's scenes, filtered by word and ordered by time (undated scenes last).",
+        "required": [
+          "events",
+          "page",
+          "per_page",
+          "total",
+          "pages"
+        ],
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EventRow"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "description": "1-indexed current page (clamped into range)."
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer",
+            "description": "Total scenes matching the filter."
+          },
+          "pages": {
+            "type": "integer",
+            "description": "Total pages at this page size (>= 1)."
+          }
+        },
+        "example": {
+          "events": [
+            {
+              "id": "aldric-departs",
+              "book": "ember-pact",
+              "title": "Aldric Departs",
+              "when": "Year 1, Month 1, Day 1, 00:00 AF",
+              "scheduled": true,
+              "start_tick": 0,
+              "end_tick": 24,
+              "location": "highkeep",
+              "plotlines": [
+                "knights-road"
               ]
             }
           ],
@@ -2784,6 +3217,255 @@
           "per_page": 20,
           "total": 1,
           "pages": 1
+        }
+      },
+      "PlotlinePreview": {
+        "type": "object",
+        "description": "A candidate plotline to judge without saving it. Same fields as PlotlineWrite, plus the id it would be saved under. `goals` may be omitted while drafting -- they feed no rule.",
+        "required": [
+          "events"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The plotline being edited, or the id a new one will take. Omit for an unnamed draft."
+          },
+          "title": {
+            "type": "string"
+          },
+          "events": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            },
+            "description": "Ordered event ids -- the candidate's own segment. Must exist in the book."
+          },
+          "goals": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "continues_into": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "example": {
+          "id": "knights-road",
+          "title": "The Knight's Road",
+          "events": [
+            "aldric-departs",
+            "harbor-exchange"
+          ],
+          "goals": [
+            "Deliver the Ember Seal"
+          ],
+          "continues_into": null
+        }
+      },
+      "EntityCandidate": {
+        "type": "object",
+        "description": "One Akasha article the picker offers, already filtered to what the caller may read.",
+        "required": [
+          "database",
+          "collection",
+          "id",
+          "title"
+        ],
+        "properties": {
+          "database": {
+            "type": "string"
+          },
+          "collection": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "description": "The article's title, or its id when untitled."
+          }
+        }
+      },
+      "EntitySuggestions": {
+        "type": "object",
+        "description": "Type-ahead results for the article picker, plus the scope they were read from.",
+        "required": [
+          "database",
+          "collection",
+          "collections",
+          "results"
+        ],
+        "properties": {
+          "database": {
+            "type": "string",
+            "description": "The Akasha database searched: the one this book's scenes mostly reference, or the book id when it has none yet."
+          },
+          "collection": {
+            "type": "string"
+          },
+          "collections": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Collections this book's existing scenes reference in that database, so a picker can offer them."
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EntityCandidate"
+            }
+          }
+        },
+        "example": {
+          "database": "ember-pact",
+          "collection": "characters",
+          "collections": [
+            "characters",
+            "items",
+            "locations"
+          ],
+          "results": [
+            {
+              "database": "ember-pact",
+              "collection": "characters",
+              "id": "aldric",
+              "title": "Sir Aldric"
+            }
+          ]
+        }
+      },
+      "PlotlinePreviewResult": {
+        "type": "object",
+        "description": "A candidate plotline, presented by the same code that presents a stored one -- which is the point: the editor's live feedback and the eventual save cannot disagree. Distinguished by `kind`, and missing `rev`/`_links.self`, because it describes something unsaved.",
+        "required": [
+          "kind",
+          "id",
+          "book",
+          "goals",
+          "events",
+          "effective_events",
+          "status"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "plotline-preview"
+            ],
+            "readOnly": true
+          },
+          "id": {
+            "type": "string",
+            "description": "The candidate's id, or a stand-in for an unnamed draft."
+          },
+          "title": {
+            "type": "string",
+            "nullable": true,
+            "description": "Optional short display name; defaults to id."
+          },
+          "book": {
+            "type": "string"
+          },
+          "goals": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            },
+            "description": "Non-empty set of goals."
+          },
+          "events": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            },
+            "description": "This plotline's OWN segment, as stored -- ordered event ids. Send this back on a write."
+          },
+          "continues_into": {
+            "type": "string",
+            "nullable": true,
+            "description": "Id of the plotline this thread continues into, so a shared ending is stored once. Null when the thread carries its own full path."
+          },
+          "effective_events": {
+            "type": "array",
+            "readOnly": true,
+            "description": "The resolved full path: own segment followed by the continuation chain. Bare ids by default; EventSummary objects when ?expand=events.",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/components/schemas/EventSummary"
+                }
+              ]
+            }
+          },
+          "status": {
+            "$ref": "#/components/schemas/PlotlineStatus"
+          },
+          "_links": {
+            "$ref": "#/components/schemas/Links"
+          },
+          "_schema": {
+            "type": "string",
+            "readOnly": true
+          }
+        }
+      },
+      "TickLabels": {
+        "type": "object",
+        "description": "What a book's calendar calls a set of ticks. One direction only: a fantasy calendar's labels cannot be parsed back into ticks (see `Calendar`), so a client sends integers and gets names.",
+        "required": [
+          "ticks"
+        ],
+        "properties": {
+          "ticks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "tick",
+                "label",
+                "parts"
+              ],
+              "properties": {
+                "tick": {
+                  "type": "integer"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "parts": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "The label split coarse-to-fine, as in EventSummary.start_parts."
+                }
+              }
+            }
+          }
+        },
+        "example": {
+          "ticks": [
+            {
+              "tick": 240,
+              "label": "Year 1, Month 1, Day 11, 00:00 AF",
+              "parts": [
+                "Year 1",
+                "Month 1",
+                "Day 11",
+                "00:00 AF"
+              ]
+            }
+          ]
         }
       }
     }
