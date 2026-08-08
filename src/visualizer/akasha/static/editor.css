@@ -100,10 +100,12 @@ a.brand:hover { text-decoration: none; opacity: .85; }
 .tree-row.active { background: var(--accent-soft); font-weight: 600; }
 .tree-row.active .tree-label { color: var(--accent-strong); }
 .tree-row .twisty {
-  width: .9rem; color: var(--muted); font-size: .7rem; text-align: center; flex: none;
+  width: 1.15rem; color: var(--muted); font-size: 1rem; line-height: 1;
+  font-weight: 600; text-align: center; flex: none;
   order: -2;  /* always leftmost: it is the thing you click to unfold */
 }
 .tree-row.branch .twisty { cursor: pointer; }
+.tree-row.branch:hover .twisty { color: var(--accent); }
 
 /* One glyph per level, so the three depths read as three kinds of thing rather
    than as three amounts of indentation. It sits between the twisty and the

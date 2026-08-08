@@ -180,14 +180,14 @@ export class Browser {
   _branch({ key, level, label, meta, onOpen, loadChildren }) {
     const children = el("div", { class: "tree-children", role: "group" });
     children.hidden = true;
-    const twisty = el("span", { class: "twisty", text: "▸", "aria-hidden": "true" });
+    const twisty = el("span", { class: "twisty", text: "+", "aria-hidden": "true" });
     const countEl = meta != null ? el("span", { class: "tree-count", text: String(meta) }) : null;
     const setCount = (n) => { if (countEl) countEl.textContent = String(n); };
     let loaded = false;
 
     const expand = async () => {
       children.hidden = false;
-      twisty.textContent = "▾";
+      twisty.textContent = "−";
       row.setAttribute("aria-expanded", "true");
       this.open.add(key);
       if (!loaded) { loaded = true; await loadChildren(children, setCount); }
@@ -195,7 +195,7 @@ export class Browser {
     };
     const collapse = () => {
       children.hidden = true;
-      twisty.textContent = "▸";
+      twisty.textContent = "+";
       row.setAttribute("aria-expanded", "false");
       this.open.delete(key);
       this._refreshTabStop();
