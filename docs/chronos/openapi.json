@@ -3,7 +3,7 @@
   "info": {
     "title": "Chronos API",
     "version": "0.1.0",
-    "description": "Plotline & timeline API for fiction writers (see docs/chronos/design.md).\n\nTwo classes of rule govern writes. **Referential** rules are hard: a bad reference, an impossible timeframe, or deleting something still in use is rejected. **Story-logic** rules (temporal conflict, plotline ordering, convergence on the terminus) are soft: the write always succeeds and the finding is reported in the book's `status` and in `GET /books/{book}/validate`.\n\nEvery response separates stored fields (editable; send them back on a write) from computed fields (`status`, `_links`, `_schema`, `rev`) which are read-only.",
+    "description": "Plotline & timeline API for fiction writers (see docs/chronos/design.md).\n\nTwo classes of rule govern writes. **Referential** rules are hard: a bad reference, an impossible timeframe, or deleting something still in use is rejected. **Story-logic** rules (temporal conflict, plotline ordering, convergence on the terminus) are soft: the write always succeeds and the finding is reported in the book's `status` and in `GET /books/{book}/validate`.\n\nEvery response separates stored fields (editable; send them back on a write) from computed fields (`status`, `_links`, `rev`) which are read-only.",
     "license": {
       "name": "See repository"
     }
@@ -1656,7 +1656,7 @@
       },
       "Plotline": {
         "type": "object",
-        "description": "One thread of a book: an ordered segment of events plus goals. `events` is what is stored; when `continues_into` is set the thread carries on into another plotline, and `effective_events` is the resolved full path every rule is judged on. `status`, `_links`, `_schema`, `rev` and `effective_events` are server-computed (readOnly).",
+        "description": "One thread of a book: an ordered segment of events plus goals. `events` is what is stored; when `continues_into` is set the thread carries on into another plotline, and `effective_events` is the resolved full path every rule is judged on. `status`, `_links`, `rev` and `effective_events` are server-computed (readOnly).",
         "required": [
           "kind",
           "id",
@@ -1713,11 +1713,6 @@
           },
           "_links": {
             "$ref": "#/components/schemas/Links"
-          },
-          "_schema": {
-            "type": "string",
-            "readOnly": true,
-            "description": "JSON-Schema pointer for this shape."
           },
           "continues_into": {
             "type": "string",
@@ -1781,7 +1776,6 @@
               "/books/ember-pact/events/aldric-departs"
             ]
           },
-          "_schema": "/openapi.json#/components/schemas/Plotline",
           "continues_into": "trunk",
           "effective_events": [
             "aldric-departs",
@@ -3426,10 +3420,6 @@
           },
           "_links": {
             "$ref": "#/components/schemas/Links"
-          },
-          "_schema": {
-            "type": "string",
-            "readOnly": true
           }
         }
       },

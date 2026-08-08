@@ -1,0 +1,2468 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Akasha API",
+    "version": "0.1.0",
+    "description": "The canon half of the visualizer stack: a store of flat JSON articles with linking, fine-grained sharing and per-article version history.\n\n**Names are addresses.** The triple `database / collection / id` keys every grant, every `[[wikilink]]` and every Chronos `EntityRef`, which is why nothing here renames one. The UI shows a friendlier reading of them (`ember-pact` as \"Ember Pact\", collections as \"categories\"); that is presentation only and never reaches this API.\n\n**Deletes are soft.** A deleted article keeps its version history and can be restored; only `DELETE …/collections/{collection}?purge=1` destroys anything for good."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5002",
+      "description": "Local docker compose stack"
+    },
+    {
+      "url": "/",
+      "description": "Same origin as the akasha service"
+    }
+  ],
+  "tags": [
+    {
+      "name": "browse",
+      "description": "Finding your way around: databases, collections, listings and search"
+    },
+    {
+      "name": "articles",
+      "description": "Reading and writing articles"
+    },
+    {
+      "name": "versions",
+      "description": "History, comparison and restore"
+    },
+    {
+      "name": "sharing",
+      "description": "Granting others access (owners only)"
+    },
+    {
+      "name": "account",
+      "description": "Your own profile and collaborator roster"
+    },
+    {
+      "name": "auth",
+      "description": "Sessions, shared with Chronos"
+    },
+    {
+      "name": "service",
+      "description": "Operational endpoints"
+    }
+  ],
+  "security": [
+    {
+      "sessionCookie": []
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "service"
+        ],
+        "summary": "Liveness probe",
+        "description": "The only route that needs no session.",
+        "responses": {
+          "200": {
+            "description": "Alive.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/register": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Create an account",
+        "description": "The first account ever registered becomes the administrator. Sends JSON back only when asked for JSON; a browser form gets a redirect. Does not log you in.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/Credentials"
+        },
+        "responses": {
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Registered"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Start a session",
+        "description": "One session covers both services: Akasha and Chronos share a `SECRET_KEY`.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/Credentials"
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in; the session cookie is set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Identity"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "End the session",
+        "responses": {
+          "302": {
+            "description": "Redirects to the login page; the cookie is cleared."
+          }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Who am I",
+        "responses": {
+          "200": {
+            "description": "The current user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Identity"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/databases": {
+      "get": {
+        "tags": [
+          "browse"
+        ],
+        "summary": "List readable databases",
+        "description": "Grant-filtered: a database appears when you can read *something* in it. Reserved (`_`-prefixed) databases are never listed.",
+        "responses": {
+          "200": {
+            "description": "Databases, with counts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatabaseList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/databases/{database}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Database"
+        }
+      ],
+      "delete": {
+        "tags": [
+          "browse"
+        ],
+        "summary": "Delete a database with no collections left",
+        "description": "Gated on nothing but being logged in, exactly like creating a namespace: an empty database holds nothing to protect, and emptying it was already owner-only. In practice you will not find one — MongoDB drops a database with its last collection — so this exists for a shell left by an older version.",
+        "responses": {
+          "204": {
+            "description": "Dropped."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/databases/{database}/collections": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Database"
+        }
+      ],
+      "get": {
+        "tags": [
+          "browse"
+        ],
+        "summary": "List readable collections",
+        "responses": {
+          "200": {
+            "description": "Collections, with counts and permissions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/databases/{database}/collections/{collection}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Database"
+        },
+        {
+          "$ref": "#/components/parameters/Collection"
+        }
+      ],
+      "post": {
+        "tags": [
+          "browse"
+        ],
+        "summary": "Create a collection (and its database)",
+        "description": "Any authenticated user may create a namespace, and owns what they make.",
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NamespaceResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "browse"
+        ],
+        "summary": "Delete an empty collection you own",
+        "description": "Refuses while a **live** article remains: emptying a collection is the article endpoint's job. A **tombstone** is the harder case — it holds no article, only the version history of one that was deleted — so it also refuses by default, and goes only with `?purge=1`. Dropping the last collection drops the database with it.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Purge"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dropped; says what went with it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NamespaceDeleted"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/databases/{database}/collections/{collection}/documents": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Database"
+        },
+        {
+          "$ref": "#/components/parameters/Collection"
+        }
+      ],
+      "get": {
+        "tags": [
+          "browse"
+        ],
+        "summary": "One page of a collection's articles",
+        "description": "`filter` matches every whitespace-separated word against the whole article — slug, title and field values — so it is a full-text search of the collection, not just its names. Ordered by title. An out-of-range `page` is clamped to the last one.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Filter"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PerPage"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of articles.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticlePage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/databases/{database}/collections/{collection}/deleted": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Database"
+        },
+        {
+          "$ref": "#/components/parameters/Collection"
+        }
+      ],
+      "get": {
+        "tags": [
+          "browse"
+        ],
+        "summary": "Articles deleted from this collection",
+        "description": "Deletes are soft, so a tombstone still holds the history that makes it recoverable — but nothing else lists it, which would otherwise mean recovery required already knowing the slug you had lost.",
+        "responses": {
+          "200": {
+            "description": "Tombstones and how to undo them.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/databases/{database}/collections/{collection}/search": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Database"
+        },
+        {
+          "$ref": "#/components/parameters/Collection"
+        }
+      ],
+      "get": {
+        "tags": [
+          "browse"
+        ],
+        "summary": "Search one collection by field and text",
+        "description": "`key` finds documents that *have* a top-level field at all; `text` is a case-insensitive substring over the whole body. At least one is required.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SearchKey"
+          },
+          {
+            "$ref": "#/components/parameters/SearchText"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching documents, in full.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResults"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/databases/{database}/collections/{collection}/documents/{doc_id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Database"
+        },
+        {
+          "$ref": "#/components/parameters/Collection"
+        },
+        {
+          "$ref": "#/components/parameters/DocId"
+        }
+      ],
+      "post": {
+        "tags": [
+          "articles"
+        ],
+        "summary": "Create an article",
+        "description": "404 when the namespace does not exist, 409 when a live document already has this id. Creating over a tombstone revives it, keeping its history. The creator owns what they create.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/DocumentWrite"
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResult"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "articles"
+        ],
+        "summary": "Read an article",
+        "responses": {
+          "200": {
+            "description": "The document.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResult"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "articles"
+        ],
+        "summary": "Replace an article",
+        "description": "A full replace, not a merge. `If-Match` is optional but enforced when present: send the rev you read and a concurrent change gives you 409 instead of silently clobbering it. Omitting it is last-write-wins.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/DocumentWrite"
+        },
+        "responses": {
+          "200": {
+            "description": "Replaced.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResult"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "articles"
+        ],
+        "summary": "Delete an article",
+        "description": "Soft: the document leaves every listing, search and link, but its version history is kept and it can be restored. Nothing warns you that a Chronos scene may reference it — that shows up in the book's report.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted (soft)."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/databases/{database}/collections/{collection}/documents/{doc_id}/versions": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Database"
+        },
+        {
+          "$ref": "#/components/parameters/Collection"
+        },
+        {
+          "$ref": "#/components/parameters/DocId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "versions"
+        ],
+        "summary": "List retained versions",
+        "description": "Answers for a **deleted** document too, which is what makes recovery possible from its own address.",
+        "responses": {
+          "200": {
+            "description": "Newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/databases/{database}/collections/{collection}/documents/{doc_id}/versions/{rev}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Database"
+        },
+        {
+          "$ref": "#/components/parameters/Collection"
+        },
+        {
+          "$ref": "#/components/parameters/DocId"
+        },
+        {
+          "$ref": "#/components/parameters/Rev"
+        }
+      ],
+      "get": {
+        "tags": [
+          "versions"
+        ],
+        "summary": "Read one version, body included",
+        "description": "404 when that revision is no longer retained.",
+        "responses": {
+          "200": {
+            "description": "The snapshot.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Snapshot"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/databases/{database}/collections/{collection}/documents/{doc_id}/diff": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Database"
+        },
+        {
+          "$ref": "#/components/parameters/Collection"
+        },
+        {
+          "$ref": "#/components/parameters/DocId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "versions"
+        ],
+        "summary": "Compare two versions",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/DiffFrom"
+          },
+          {
+            "$ref": "#/components/parameters/DiffTo"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A field-by-field diff.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Diff"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/databases/{database}/collections/{collection}/documents/{doc_id}/restore/{rev}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Database"
+        },
+        {
+          "$ref": "#/components/parameters/Collection"
+        },
+        {
+          "$ref": "#/components/parameters/DocId"
+        },
+        {
+          "$ref": "#/components/parameters/Rev"
+        }
+      ],
+      "post": {
+        "tags": [
+          "versions"
+        ],
+        "summary": "Restore a version as a new revision",
+        "description": "Never rewinds: the old body is re-applied as the next revision, so the restore is itself in the history. Revives a deleted document. A deletion snapshot cannot be restored (404) — restore the version before it.",
+        "responses": {
+          "200": {
+            "description": "Restored.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentResult"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/databases/{database}/collections/{collection}/collaborators": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Database"
+        },
+        {
+          "$ref": "#/components/parameters/Collection"
+        }
+      ],
+      "get": {
+        "tags": [
+          "sharing"
+        ],
+        "summary": "Who can access this collection",
+        "description": "Owner-only. Ownership is holding `delete` at this scope, which the creator gets automatically; the admin role does not confer it.",
+        "responses": {
+          "200": {
+            "description": "Everyone granted at this exact scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollaboratorList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/databases/{database}/collections/{collection}/collaborators/{username}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Database"
+        },
+        {
+          "$ref": "#/components/parameters/Collection"
+        },
+        {
+          "$ref": "#/components/parameters/Username"
+        }
+      ],
+      "put": {
+        "tags": [
+          "sharing"
+        ],
+        "summary": "Share this collection",
+        "description": "Owner-only, and idempotent: re-sharing replaces the role. You cannot share with yourself — it could only reduce your own access.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/RoleWrite"
+        },
+        "responses": {
+          "200": {
+            "description": "Shared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollaboratorResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "sharing"
+        ],
+        "summary": "Stop sharing this collection",
+        "responses": {
+          "204": {
+            "description": "Revoked."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/databases/{database}/collections/{collection}/documents/{doc_id}/collaborators": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Database"
+        },
+        {
+          "$ref": "#/components/parameters/Collection"
+        },
+        {
+          "$ref": "#/components/parameters/DocId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "sharing"
+        ],
+        "summary": "Who can access this article",
+        "description": "Owner-only. Ownership is holding `delete` at this scope, which the creator gets automatically; the admin role does not confer it.",
+        "responses": {
+          "200": {
+            "description": "Everyone granted at this exact scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollaboratorList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/databases/{database}/collections/{collection}/documents/{doc_id}/collaborators/{username}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Database"
+        },
+        {
+          "$ref": "#/components/parameters/Collection"
+        },
+        {
+          "$ref": "#/components/parameters/DocId"
+        },
+        {
+          "$ref": "#/components/parameters/Username"
+        }
+      ],
+      "put": {
+        "tags": [
+          "sharing"
+        ],
+        "summary": "Share this article",
+        "description": "Owner-only, and idempotent: re-sharing replaces the role. You cannot share with yourself — it could only reduce your own access.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/RoleWrite"
+        },
+        "responses": {
+          "200": {
+            "description": "Shared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollaboratorResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "sharing"
+        ],
+        "summary": "Stop sharing this article",
+        "responses": {
+          "204": {
+            "description": "Revoked."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/recent": {
+      "get": {
+        "tags": [
+          "browse"
+        ],
+        "summary": "Recently written articles",
+        "description": "Across every readable namespace. Scans them all, the same reach `/suggest` has — affordable because it answers a page load, not a keystroke.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecentList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/suggest": {
+      "get": {
+        "tags": [
+          "browse"
+        ],
+        "summary": "Link type-ahead over titles and slugs",
+        "description": "Matches slug or title only. An empty `q` returns nothing rather than everything.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Query"
+          },
+          {
+            "$ref": "#/components/parameters/ScopeDb"
+          },
+          {
+            "$ref": "#/components/parameters/ScopeCol"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ranked, capped suggestions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/account/contacts": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Your collaborator roster",
+        "responses": {
+          "200": {
+            "description": "Saved collaborators.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Contacts"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/account/email": {
+      "post": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Change your own email",
+        "description": "Answers JSON when asked for JSON; a browser form gets a redirect. Rate limited.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/EmailWrite"
+        },
+        "responses": {
+          "200": {
+            "description": "Updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountEmail"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "session",
+        "description": "Signed session cookie from `POST /login` on either service. Akasha and Chronos share one SECRET_KEY, so a single login covers both."
+      }
+    },
+    "parameters": {
+      "Database": {
+        "name": "database",
+        "in": "path",
+        "description": "Database (world) name. Names beginning with `_` are reserved and rejected with 400.",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "Collection": {
+        "name": "collection",
+        "in": "path",
+        "description": "Collection (category) name.",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "DocId": {
+        "name": "doc_id",
+        "in": "path",
+        "description": "The article's slug — its permanent address, and what every `[[link]]` and Chronos reference points at.",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "Rev": {
+        "name": "rev",
+        "in": "path",
+        "description": "A revision number.",
+        "required": true,
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "Username": {
+        "name": "username",
+        "in": "path",
+        "description": "The collaborator's username.",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "IfMatch": {
+        "name": "If-Match",
+        "in": "header",
+        "description": "The revision you based this write on, as an ETag (`\"3\"`), or `*` for unconditional. Optional, but enforced when present.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "Purge": {
+        "name": "purge",
+        "in": "query",
+        "description": "Also discard the version history of articles deleted from this collection. Without it, a collection holding tombstones refuses to go.",
+        "schema": {
+          "type": "boolean"
+        }
+      },
+      "Filter": {
+        "name": "filter",
+        "in": "query",
+        "description": "Every word must appear somewhere in the article — slug, title or any field value.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "Page": {
+        "name": "page",
+        "in": "query",
+        "description": "1-indexed; clamped into range rather than erroring.",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "PerPage": {
+        "name": "per_page",
+        "in": "query",
+        "description": "Page size (default 25, capped at 100).",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "description": "How many to return (default 8, capped at 50).",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "Query": {
+        "name": "q",
+        "in": "query",
+        "description": "What the writer has typed so far.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "ScopeDb": {
+        "name": "db",
+        "in": "query",
+        "description": "The database being read, so nearer matches rank first.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "ScopeCol": {
+        "name": "col",
+        "in": "query",
+        "description": "The collection being read, so nearer matches rank first.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "SearchKey": {
+        "name": "key",
+        "in": "query",
+        "description": "Only documents carrying this top-level field.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "SearchText": {
+        "name": "text",
+        "in": "query",
+        "description": "Case-insensitive substring over the whole document.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "DiffFrom": {
+        "name": "from",
+        "in": "query",
+        "description": "The older revision.",
+        "required": true,
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "DiffTo": {
+        "name": "to",
+        "in": "query",
+        "description": "The newer revision.",
+        "required": true,
+        "schema": {
+          "type": "integer"
+        }
+      }
+    },
+    "requestBodies": {
+      "DocumentWrite": {
+        "description": "A flat JSON object. The id comes from the URL; any `_`-prefixed key is dropped.",
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Document"
+            }
+          }
+        }
+      },
+      "Credentials": {
+        "description": "Username and password (email required on register).",
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Credentials"
+            }
+          }
+        }
+      },
+      "RoleWrite": {
+        "description": "The role to grant. Defaults to `editor`.",
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/RoleWrite"
+            }
+          }
+        }
+      },
+      "EmailWrite": {
+        "description": "The new email address.",
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/EmailWrite"
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Malformed input: a non-flat document, a reserved name, a bad `If-Match`, or a search with nothing to go on.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "No valid session.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Authenticated, but your grants do not cover this.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "No such database, collection, document or retained version.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Already exists, or the `If-Match` revision is stale, or the namespace is not empty.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "headers": {
+      "ETag": {
+        "description": "The document's current revision, to send back in `If-Match`.",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "description": "Every failure answers with this. Akasha's errors carry a human-readable message and an HTTP status; there is no separate machine code.",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "error": "Document 'nope' not found in 'earth/lotr'."
+        }
+      },
+      "Document": {
+        "type": "object",
+        "description": "An article body: a **flat** JSON object. Every value is a scalar or an array of scalars — no nested objects, no arrays of arrays. Enforced on create and update (`validation.py`); a violation is a 400. Two field names are conventional rather than special: `title` becomes the heading and `body` the wikitext prose; everything else renders as an infobox fact.",
+        "properties": {},
+        "additionalProperties": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "example": {
+          "title": "Aragorn",
+          "body": "Heir of [[isildur]].",
+          "race": "Man",
+          "titles": [
+            "Strider",
+            "Elessar"
+          ]
+        }
+      },
+      "DocumentResult": {
+        "type": "object",
+        "description": "A document and the revision it is now at. `rev` is also returned as an `ETag`, and is what a later write sends back in `If-Match`.",
+        "required": [
+          "id",
+          "document",
+          "rev"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "document": {
+            "$ref": "#/components/schemas/Document"
+          },
+          "rev": {
+            "type": "integer"
+          }
+        },
+        "example": {
+          "id": "aragorn",
+          "document": {
+            "title": "Aragorn",
+            "race": "Man"
+          },
+          "rev": 2
+        }
+      },
+      "Health": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "status": "ok"
+        }
+      },
+      "Identity": {
+        "type": "object",
+        "description": "Who the session belongs to. `must_change_password` is set after an admin reset and until the user changes it.",
+        "required": [
+          "username",
+          "role"
+        ],
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "user"
+            ]
+          },
+          "must_change_password": {
+            "type": "boolean"
+          }
+        },
+        "example": {
+          "username": "mara",
+          "role": "admin",
+          "must_change_password": false
+        }
+      },
+      "Credentials": {
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "username": "mara",
+          "password": "correct-horse-battery",
+          "email": "mara@example.com"
+        }
+      },
+      "Registered": {
+        "type": "object",
+        "description": "The first account ever registered becomes the admin; everyone after is a user.",
+        "required": [
+          "username",
+          "role"
+        ],
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "role": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "username": "mara",
+          "email": "mara@example.com",
+          "role": "admin"
+        }
+      },
+      "DatabaseSummary": {
+        "type": "object",
+        "description": "`name` is the address; `title` is it rendered readably (`ember-pact` → \"Ember Pact\", derived, never stored). Counts are of what *this caller* may read.",
+        "required": [
+          "name",
+          "title",
+          "collections",
+          "articles"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "collections": {
+            "type": "integer"
+          },
+          "articles": {
+            "type": "integer"
+          }
+        },
+        "example": {
+          "name": "middle-earth",
+          "title": "Middle Earth",
+          "collections": 3,
+          "articles": 61
+        }
+      },
+      "DatabaseList": {
+        "type": "object",
+        "required": [
+          "databases"
+        ],
+        "properties": {
+          "databases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DatabaseSummary"
+            }
+          }
+        },
+        "example": {
+          "databases": [
+            {
+              "name": "middle-earth",
+              "title": "Middle Earth",
+              "collections": 3,
+              "articles": 61
+            }
+          ]
+        }
+      },
+      "CollectionSummary": {
+        "type": "object",
+        "description": "`can_write` is permission to create a *new* article here — a grant naming one specific document does not qualify. `can_delete` is ownership.",
+        "required": [
+          "name",
+          "title",
+          "articles",
+          "can_write",
+          "can_delete"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "articles": {
+            "type": "integer"
+          },
+          "can_write": {
+            "type": "boolean"
+          },
+          "can_delete": {
+            "type": "boolean"
+          }
+        },
+        "example": {
+          "name": "characters",
+          "title": "Characters",
+          "articles": 42,
+          "can_write": true,
+          "can_delete": true
+        }
+      },
+      "CollectionList": {
+        "type": "object",
+        "description": "`empty` says the database really holds nothing, as distinct from holding nothing *you* may read — the difference between offering to delete it and telling you to ask for access.",
+        "required": [
+          "database",
+          "title",
+          "collections",
+          "empty"
+        ],
+        "properties": {
+          "database": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "collections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CollectionSummary"
+            }
+          },
+          "empty": {
+            "type": "boolean"
+          }
+        },
+        "example": {
+          "database": "middle-earth",
+          "title": "Middle Earth",
+          "empty": false,
+          "collections": [
+            {
+              "name": "characters",
+              "title": "Characters",
+              "articles": 42,
+              "can_write": true,
+              "can_delete": true
+            }
+          ]
+        }
+      },
+      "ArticlePreview": {
+        "type": "object",
+        "description": "One row of a browse listing. `updated` and `author` are read off the newest version snapshot, so they cannot drift from the history; both are null for a document written before versioning existed.",
+        "required": [
+          "id",
+          "title",
+          "database",
+          "collection",
+          "rev"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "database": {
+            "type": "string"
+          },
+          "collection": {
+            "type": "string"
+          },
+          "database_title": {
+            "type": "string"
+          },
+          "collection_title": {
+            "type": "string"
+          },
+          "rev": {
+            "type": "integer"
+          },
+          "updated": {
+            "type": "string",
+            "nullable": true
+          },
+          "author": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "example": {
+          "id": "aragorn",
+          "title": "Aragorn",
+          "database": "middle-earth",
+          "collection": "characters",
+          "database_title": "Middle Earth",
+          "collection_title": "Characters",
+          "rev": 2,
+          "updated": "2026-08-07T20:49:23+00:00",
+          "author": "mara"
+        }
+      },
+      "ArticlePage": {
+        "type": "object",
+        "description": "One page of a collection, ordered by title. An out-of-range `page` is clamped to the last one rather than erroring. `deleted` counts the tombstones — what a purge would discard, and what could be restored; it is 0 for a caller who could do neither.",
+        "required": [
+          "database",
+          "collection",
+          "documents",
+          "page",
+          "per_page",
+          "total",
+          "pages",
+          "can_write",
+          "can_delete",
+          "deleted"
+        ],
+        "properties": {
+          "database": {
+            "type": "string"
+          },
+          "collection": {
+            "type": "string"
+          },
+          "database_title": {
+            "type": "string"
+          },
+          "collection_title": {
+            "type": "string"
+          },
+          "documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArticlePreview"
+            }
+          },
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "pages": {
+            "type": "integer"
+          },
+          "can_write": {
+            "type": "boolean"
+          },
+          "can_delete": {
+            "type": "boolean"
+          },
+          "deleted": {
+            "type": "integer"
+          }
+        },
+        "example": {
+          "database": "middle-earth",
+          "collection": "characters",
+          "database_title": "Middle Earth",
+          "collection_title": "Characters",
+          "documents": [
+            {
+              "id": "aragorn",
+              "title": "Aragorn",
+              "database": "middle-earth",
+              "collection": "characters",
+              "database_title": "Middle Earth",
+              "collection_title": "Characters",
+              "rev": 2,
+              "updated": "2026-08-07T20:49:23+00:00",
+              "author": "mara"
+            }
+          ],
+          "page": 1,
+          "per_page": 25,
+          "total": 1,
+          "pages": 1,
+          "can_write": true,
+          "can_delete": true,
+          "deleted": 0
+        }
+      },
+      "RecentList": {
+        "type": "object",
+        "description": "The most recently written articles across every readable namespace, newest first.",
+        "required": [
+          "documents"
+        ],
+        "properties": {
+          "documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArticlePreview"
+            }
+          }
+        },
+        "example": {
+          "documents": [
+            {
+              "id": "aragorn",
+              "title": "Aragorn",
+              "database": "middle-earth",
+              "collection": "characters",
+              "database_title": "Middle Earth",
+              "collection_title": "Characters",
+              "rev": 2,
+              "updated": "2026-08-07T20:49:23+00:00",
+              "author": "mara"
+            }
+          ]
+        }
+      },
+      "DeletedArticle": {
+        "type": "object",
+        "description": "A tombstone. The body is gone, so `title` comes from the newest snapshot that still had one — what the article was called when it went. `restore_rev` is the revision a restore would re-apply, and is null once pruning has aged out every body: then there is nothing left to bring back.",
+        "required": [
+          "id",
+          "title",
+          "database",
+          "collection",
+          "rev",
+          "restore_rev",
+          "can_restore"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "database": {
+            "type": "string"
+          },
+          "collection": {
+            "type": "string"
+          },
+          "rev": {
+            "type": "integer"
+          },
+          "deleted_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "deleted_by": {
+            "type": "string",
+            "nullable": true
+          },
+          "restore_rev": {
+            "type": "integer",
+            "nullable": true
+          },
+          "can_restore": {
+            "type": "boolean"
+          }
+        },
+        "example": {
+          "id": "boromir",
+          "title": "Boromir",
+          "database": "middle-earth",
+          "collection": "characters",
+          "rev": 4,
+          "deleted_at": "2026-08-07T20:49:23+00:00",
+          "deleted_by": "mara",
+          "restore_rev": 3,
+          "can_restore": true
+        }
+      },
+      "DeletedList": {
+        "type": "object",
+        "required": [
+          "database",
+          "collection",
+          "documents"
+        ],
+        "properties": {
+          "database": {
+            "type": "string"
+          },
+          "collection": {
+            "type": "string"
+          },
+          "documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeletedArticle"
+            }
+          }
+        },
+        "example": {
+          "database": "middle-earth",
+          "collection": "characters",
+          "documents": []
+        }
+      },
+      "Suggestion": {
+        "type": "object",
+        "required": [
+          "slug",
+          "title",
+          "database",
+          "collection"
+        ],
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "database": {
+            "type": "string"
+          },
+          "collection": {
+            "type": "string"
+          },
+          "database_title": {
+            "type": "string"
+          },
+          "collection_title": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "slug": "aragorn",
+          "title": "Aragorn",
+          "database": "middle-earth",
+          "collection": "characters",
+          "database_title": "Middle Earth",
+          "collection_title": "Characters"
+        }
+      },
+      "SuggestionList": {
+        "type": "object",
+        "description": "Ranked nearest-scope-first (same collection, then same database, then the rest) and capped, because this answers a keystroke.",
+        "required": [
+          "suggestions"
+        ],
+        "properties": {
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Suggestion"
+            }
+          }
+        },
+        "example": {
+          "suggestions": []
+        }
+      },
+      "SearchResults": {
+        "type": "object",
+        "required": [
+          "results",
+          "count"
+        ],
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentResult"
+            }
+          },
+          "count": {
+            "type": "integer"
+          }
+        },
+        "example": {
+          "results": [],
+          "count": 0
+        }
+      },
+      "NamespaceResult": {
+        "type": "object",
+        "required": [
+          "database",
+          "collection"
+        ],
+        "properties": {
+          "database": {
+            "type": "string"
+          },
+          "collection": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "database": "middle-earth",
+          "collection": "characters"
+        }
+      },
+      "NamespaceDeleted": {
+        "type": "object",
+        "description": "`purged` is how many tombstones went with it. `database_removed` is true when this was the last collection: MongoDB drops a database with its last collection, so that is also how a database goes.",
+        "required": [
+          "database",
+          "collection",
+          "purged",
+          "database_removed"
+        ],
+        "properties": {
+          "database": {
+            "type": "string"
+          },
+          "collection": {
+            "type": "string"
+          },
+          "purged": {
+            "type": "integer"
+          },
+          "database_removed": {
+            "type": "boolean"
+          }
+        },
+        "example": {
+          "database": "middle-earth",
+          "collection": "spare",
+          "purged": 0,
+          "database_removed": false
+        }
+      },
+      "VersionMeta": {
+        "type": "object",
+        "required": [
+          "rev",
+          "op"
+        ],
+        "properties": {
+          "rev": {
+            "type": "integer"
+          },
+          "op": {
+            "type": "string",
+            "enum": [
+              "create",
+              "update",
+              "delete"
+            ]
+          },
+          "author": {
+            "type": "string",
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "example": {
+          "rev": 2,
+          "op": "update",
+          "author": "mara",
+          "timestamp": "2026-08-07T20:49:23+00:00"
+        }
+      },
+      "VersionList": {
+        "type": "object",
+        "description": "Retained snapshots, newest first. Capped by `VERSIONS_KEEP`; older ones are pruned. A deleted document still answers here — which is what makes it recoverable.",
+        "required": [
+          "id",
+          "versions"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VersionMeta"
+            }
+          }
+        },
+        "example": {
+          "id": "aragorn",
+          "versions": [
+            {
+              "rev": 2,
+              "op": "update",
+              "author": "mara",
+              "timestamp": "2026-08-07T20:49:23+00:00"
+            }
+          ]
+        }
+      },
+      "Snapshot": {
+        "type": "object",
+        "description": "One retained version, body included. `document` is null for a deletion.",
+        "required": [
+          "rev",
+          "op",
+          "document"
+        ],
+        "properties": {
+          "rev": {
+            "type": "integer"
+          },
+          "op": {
+            "type": "string",
+            "enum": [
+              "create",
+              "update",
+              "delete"
+            ]
+          },
+          "author": {
+            "type": "string",
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "string",
+            "nullable": true
+          },
+          "document": {
+            "$ref": "#/components/schemas/Document",
+            "nullable": true
+          }
+        },
+        "example": {
+          "rev": 1,
+          "op": "create",
+          "author": "mara",
+          "timestamp": "2026-08-07T20:49:23+00:00",
+          "document": {
+            "title": "Aragorn"
+          }
+        }
+      },
+      "FieldDiff": {
+        "type": "object",
+        "description": "One field's fate between two versions. `old`/`new` are absent when the field did not exist on that side.",
+        "required": [
+          "key",
+          "status"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "added",
+              "removed",
+              "changed",
+              "unchanged"
+            ]
+          },
+          "old": {},
+          "new": {}
+        },
+        "example": {
+          "key": "race",
+          "status": "changed",
+          "old": "Man",
+          "new": "Dúnedain"
+        }
+      },
+      "Diff": {
+        "type": "object",
+        "required": [
+          "id",
+          "from",
+          "to",
+          "diff"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "from": {
+            "$ref": "#/components/schemas/VersionMeta"
+          },
+          "to": {
+            "$ref": "#/components/schemas/VersionMeta"
+          },
+          "diff": {
+            "type": "object",
+            "required": [
+              "fields"
+            ],
+            "properties": {
+              "fields": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FieldDiff"
+                }
+              }
+            }
+          }
+        },
+        "example": {
+          "id": "aragorn",
+          "from": {
+            "rev": 1,
+            "op": "create"
+          },
+          "to": {
+            "rev": 2,
+            "op": "update"
+          },
+          "diff": {
+            "fields": [
+              {
+                "key": "race",
+                "status": "unchanged",
+                "old": "Man",
+                "new": "Man"
+              }
+            ]
+          }
+        }
+      },
+      "Collaborator": {
+        "type": "object",
+        "required": [
+          "username",
+          "role"
+        ],
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "reader",
+              "editor",
+              "owner",
+              "custom"
+            ]
+          }
+        },
+        "example": {
+          "username": "bob",
+          "role": "editor"
+        }
+      },
+      "CollaboratorList": {
+        "type": "object",
+        "description": "Everyone granted access at exactly this scope, including the owner. `custom` describes a grant whose permissions match no named role.",
+        "required": [
+          "collaborators"
+        ],
+        "properties": {
+          "collaborators": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Collaborator"
+            }
+          }
+        },
+        "example": {
+          "collaborators": [
+            {
+              "username": "mara",
+              "role": "owner"
+            }
+          ]
+        }
+      },
+      "RoleWrite": {
+        "type": "object",
+        "description": "Defaults to `editor` when omitted.",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "reader",
+              "editor",
+              "owner"
+            ]
+          }
+        },
+        "example": {
+          "role": "editor"
+        }
+      },
+      "CollaboratorResult": {
+        "type": "object",
+        "description": "`doc_id` is null when the grant is on the whole collection.",
+        "required": [
+          "database",
+          "collection",
+          "doc_id",
+          "user",
+          "role"
+        ],
+        "properties": {
+          "database": {
+            "type": "string"
+          },
+          "collection": {
+            "type": "string"
+          },
+          "doc_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "user": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "database": "middle-earth",
+          "collection": "characters",
+          "doc_id": null,
+          "user": "bob",
+          "role": "editor"
+        }
+      },
+      "Contacts": {
+        "type": "object",
+        "description": "The caller's saved collaborator roster, which drives the sharing pickers.",
+        "required": [
+          "contacts"
+        ],
+        "properties": {
+          "contacts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "example": {
+          "contacts": [
+            "bob"
+          ]
+        }
+      },
+      "EmailWrite": {
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "email": "mara@example.com"
+        }
+      },
+      "AccountEmail": {
+        "type": "object",
+        "required": [
+          "username",
+          "email"
+        ],
+        "properties": {
+          "username": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "username": "mara",
+          "email": "mara@example.com"
+        }
+      }
+    }
+  }
+}

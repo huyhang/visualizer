@@ -17,9 +17,6 @@ from .plotline_health import Finding, conflict_count, findings_for_path
 from .reports import BookReport
 from .scheduling import Window
 
-_SCHEMA = "/openapi.json#/components/schemas"
-
-
 # -- links -------------------------------------------------------------------
 
 
@@ -344,7 +341,6 @@ def present_plotline(
             "graph": _book_url(public["book"]) + "/graph",
             "events": [_event_url(public["book"], eid) for eid in path],
         },
-        "_schema": f"{_SCHEMA}/Plotline",
     }
 
 
@@ -357,13 +353,12 @@ def as_preview(plotline: dict, book_id: str) -> dict:
     name nothing at all. So the revision goes, ``self`` goes (it would 404), and
     ``kind`` says plainly what this is.
     """
-    out = {k: v for k, v in plotline.items() if k not in ("rev", "_links", "_schema")}
+    out = {k: v for k, v in plotline.items() if k not in ("rev", "_links")}
     out["kind"] = "plotline-preview"
     out["_links"] = {
         "book": _book_url(book_id),
         "validate": _book_url(book_id) + "/validate",
     }
-    out["_schema"] = f"{_SCHEMA}/PlotlinePreviewResult"
     return out
 
 

@@ -624,8 +624,7 @@ GET /books/ember-pact/plotlines/knights-road          // 200, ETag: "3"
     "validate": "/books/ember-pact/validate",
     "graph":    "/books/ember-pact/graph",
     "events":   ["/books/ember-pact/events/aldric-departs", "…"]
-  },
-  "_schema": "/openapi.json#/components/schemas/Plotline"
+  }
 }
 ```
 
@@ -643,7 +642,6 @@ GET /books/ember-pact/plotlines/knights-road          // 200, ETag: "3"
 | `status.ends_at_terminus` | verdict             | computed  | last event == book terminus? (§5.3)                           |
 | `status.span`             | object              | computed  | tick range + labels (§4.1)                                    |
 | `_links`                  | object              | computed  | next actions (self, book, expand, validate, graph, events)   |
-| `_schema`                 | string              | computed  | JSON-Schema pointer for this shape                           |
 
 Computed fields are **`readOnly`**: they are never accepted on `PUT`/`POST`.
 
@@ -761,7 +759,7 @@ Responses are built to explain themselves, so an API consumer rarely needs to
 guess:
 
 - **Stored vs computed is unmistakable.** Editable fields sit at the top level;
-  derived fields live under `status` / `_links` / `_schema` and are `readOnly`.
+  derived fields live under `status` / `_links` and are `readOnly`.
   A client can round-trip a `GET` into a `PUT` by sending back only the stored
   fields.
 - **`_links` make the next call discoverable.** Bare ids (like `events`) are
@@ -773,12 +771,16 @@ guess:
   Learn it once; it reads the same across every endpoint. The `doc` pointer
   deep-links the concept back to this design.
 - **A published, tested contract.** A hand-authored **OpenAPI 3 / JSON Schema**
-  is served at **`/openapi.json`** with a single-file **Redoc** UI at
-  **`/docs`** (no build toolchain — consistent with the vanilla-JS, LAN-only
-  ethos). Every response's `_schema` points into it. A **contract test**
-  validates real `create_app` responses against the published schema so the two
-  can never drift. The scaffold lives at `docs/openapi.json` (Plotline schema
-  first); see §11.
+  document per service — `docs/chronos/openapi.json` and
+  `docs/akasha/openapi.json` — each held to its app by a **contract test** that
+  checks coverage both ways and validates real `create_app` responses against
+  the schemas they claim, so the two can never drift. See §11.
+
+  It is a *published* document, not a *served* one: nothing routes
+  `/openapi.json`, and responses no longer carry a `_schema` pointer claiming
+  otherwise. Serving it (with a single-file Redoc UI, no build toolchain) stays
+  a reasonable addition; it was never built, and a link into a 404 was worse
+  than no link.
 - **One source of shape.** A pure `presenters.py` (the `_to_public` analogue)
   is the single place each response dict is built, so the code, the schema, and
   the examples all trace to one definition and stay in lockstep.
@@ -1020,7 +1022,7 @@ The layering exists to make this cheap:
   enforcement, `ETag`/`If-Match`, and the shape of the `/validate` and `/graph`
   reports.
 - **Contract.** A test validates real route responses against the published
-  JSON Schema in `docs/openapi.json` (e.g. the Plotline example and a live
+  JSON Schema in `docs/chronos/openapi.json` (e.g. the Plotline example and a live
   `GET …/plotlines/<id>` both conform), so the contract and the code cannot
   drift (§7.6).
 - **Cross-service grant isolation.** Because both services share one `_auth`

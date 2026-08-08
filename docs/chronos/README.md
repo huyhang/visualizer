@@ -13,7 +13,7 @@ Chronos references them and refuses to invent them.
   plain language, no code.
 - **Want the rationale?** Read [design.md](design.md) — the
   full design and the decisions behind it.
-- **Want the contract?** See [openapi.json](../openapi.json).
+- **Want the contract?** See [openapi.json](openapi.json).
 - **Wondering what the UI can't do yet?** See
   [ui-api-gaps.md](ui-api-gaps.md) — the audited list of API capabilities the
   browser has no way to reach.
@@ -294,12 +294,11 @@ labels, and convergence markers into `effective_events`.
     "continuation":     {"state": "ok"},
     "span": {"start_tick": 0, "end_tick": 210, "start_label": "…", "end_label": "…"}
   },
-  "_links": { "self": "…", "expanded": "…", "validate": "…", "graph": "…" },
-  "_schema": "/openapi.json#/components/schemas/Plotline"
+  "_links": { "self": "…", "expanded": "…", "validate": "…", "graph": "…" }
 }
 ```
 
-Top-level fields are stored and editable; `status`, `_links`, `_schema` and
+Top-level fields are stored and editable; `status`, `_links` and
 `rev` are server-computed — send only the stored fields back on a `PUT`.
 
 ### Where threads meet

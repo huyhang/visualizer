@@ -29,7 +29,9 @@ from jsonschema.validators import RefResolver
 from tests.chronos.conftest import ref
 
 BOOK = "ember-pact"
-_OPENAPI_PATH = Path(__file__).resolve().parents[2] / "docs" / "openapi.json"
+_OPENAPI_PATH = (
+    Path(__file__).resolve().parents[2] / "docs" / "chronos" / "openapi.json"
+)
 
 # Auth/static routes come from akasha and are out of this contract's scope.
 _NOT_OUR_API = {

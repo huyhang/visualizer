@@ -416,9 +416,16 @@ print(s.get(doc).status_code)        # 404 (history is kept; the id can be recre
 
 ## API reference
 
+The published contract is **[`openapi.json`](openapi.json)** — OpenAPI 3, with a
+schema and an example for every response. A [contract
+test](../../tests/akasha/test_contract.py) holds it to the code: every route the
+app registers must be documented, every documented route must exist, and real
+responses are validated against the schemas they claim. The table below is the
+short version.
+
 Every document call names a database and collection; single-document calls also
 name a document id. Bodies must be flat JSON objects. All endpoints require an
-authenticated session.
+authenticated session (except `/health`).
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -444,6 +451,15 @@ authenticated session.
 | POST   | `…/documents/<id>/restore/<n>` | restore version `n` as a new revision |
 | GET    | `/databases/<db>/collections/<col>/search?key=&text=` | search |
 | GET    | `/suggest?q=&db=&col=` | link type-ahead over readable articles |
+| GET    | `…/collections/<col>/collaborators` | who can access this collection (owner only) |
+| PUT    | `…/collections/<col>/collaborators/<user>` | share it as `reader`/`editor`/`owner` |
+| DELETE | `…/collections/<col>/collaborators/<user>` | stop sharing it |
+| GET    | `…/documents/<id>/collaborators` | the same three, scoped to one article |
+| PUT    | `…/documents/<id>/collaborators/<user>` | |
+| DELETE | `…/documents/<id>/collaborators/<user>` | |
+| GET    | `/account/contacts` | your saved collaborator roster |
+| POST   | `/account/email` | change your own email |
+| GET    | `/health` | liveness; the only route needing no session |
 
 Writes accept an optional `If-Match: "<rev>"` header (or `?_rev=<rev>`) for
 optimistic concurrency; a stale value returns `409`.
