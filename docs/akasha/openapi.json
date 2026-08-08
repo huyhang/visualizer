@@ -351,10 +351,13 @@
           "browse"
         ],
         "summary": "One page of a collection's articles",
-        "description": "`filter` matches every whitespace-separated word against the whole article — slug, title and field values — so it is a full-text search of the collection, not just its names. Ordered by title. An out-of-range `page` is clamped to the last one.",
+        "description": "`filter` matches every whitespace-separated word against the whole article — slug, title and field values — so it is a full-text search of the collection, not just its names. Ordered by title. An out-of-range `page` is clamped to the last one. When there is a `filter`, results are ordered by how well each article answers it — exact name, then prefix, then a word start, then anywhere — so a truncated result holds the ones you probably meant.",
         "parameters": [
           {
             "$ref": "#/components/parameters/Filter"
+          },
+          {
+            "$ref": "#/components/parameters/Match"
           },
           {
             "$ref": "#/components/parameters/Page"
@@ -1235,6 +1238,18 @@
         "description": "Every word must appear somewhere in the article — slug, title or any field value.",
         "schema": {
           "type": "string"
+        }
+      },
+      "Match": {
+        "name": "match",
+        "in": "query",
+        "description": "`name` narrows `filter` to the title and slug. The sidebar tree asks for it: a narrow column has nowhere to show *why* a body match matched, so those read as mystery hits. Omit it for the full-text default.",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": [
+            "name"
+          ]
         }
       },
       "Page": {

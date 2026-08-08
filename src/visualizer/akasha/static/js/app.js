@@ -25,9 +25,10 @@ import { renderEditor } from "./editor.js";
 import { renderHistory } from "./history.js";
 import { invalidate } from "./links.js";
 import { mountCollections, mountDatabases } from "./namespaces.js";
-import { mountArticles } from "./articles.js";
+import { mountArticles, rememberFilter } from "./articles.js";
 import { mountSearch } from "./search.js";
-import { timeAgo } from "./views.js";
+import { forgetTitles, titlesFor } from "./scope.js";
+import { crumbs, timeAgo } from "./views.js";
 import { T } from "./terms.js";
 import {
   confirmDeleteDatabase, createLinkTarget, ensureCollection, newArticleDialog,
@@ -49,7 +50,12 @@ const enc = encodeURIComponent;
 const go = (hash) => { location.hash = hash; };
 const toHome = () => go("#/");
 const toDatabase = (db) => go(`#/${enc(db)}`);
-const toCollection = (db, col) => go(`#/${enc(db)}/${enc(col)}`);
+const toCollection = (db, col, query) => {
+  // A query from the tree survives the jump: the list page reads it back out of
+  // its own remembered state on mount.
+  if (query) rememberFilter(db, col, query);
+  go(`#/${enc(db)}/${enc(col)}`);
+};
 const toArticle = (t) => go(`#/${enc(t.db)}/${enc(t.col)}/${enc(t.id)}`);
 const toSearch = () => go(`#/${SEARCH_ROUTE}`);
 
@@ -120,7 +126,9 @@ async function openArticle(target) {
   let doc;
   try { doc = await api.getDoc(target.db, target.col, target.id); }
   catch (e) { return renderError(e, target); }
-  await renderArticle(pane, { ...target, doc: doc.document, rev: doc.rev }, {
+  const titles = await titlesFor(target.db, target.col);
+  await renderArticle(pane, { ...target, doc: doc.document, rev: doc.rev, titles }, {
+    ...upward(target),
     onNavigate: (t) => toArticle(t),
     onEdit: () => openEditor({ ...target, doc: doc.document, rev: doc.rev, isNew: false }),
     onHistory: () => openHistory(target),
@@ -129,15 +137,33 @@ async function openArticle(target) {
   });
 }
 
-function renderError(e, target) {
+/** Where the breadcrumb's ancestors go, from anywhere that knows a target. */
+function upward(target) {
+  return {
+    onHome: toHome,
+    onDatabase: () => toDatabase(target.db),
+    onCollection: () => toCollection(target.db, target.col),
+  };
+}
+
+async function renderError(e, target) {
   clear(pane);
   const msg = e instanceof ApiError && e.isForbidden ? `You do not have access to this ${T.document.one}.`
     : e instanceof ApiError && e.isNotFound ? `This ${T.document.one} does not exist.`
     : `Could not load this ${T.document.one}.`;
   const note = el("p", { class: "muted", text: msg });
   const actions = el("div", { class: "row-gap" });
+  // You often arrive here from a stale link, so the way *up* matters more than
+  // usual — this is the one page whose own subject does not exist.
+  const titles = await titlesFor(target.db, target.col);
+  const up = upward(target);
   pane.appendChild(el("div", { class: "pane-toolbar" }, [
-    el("span", { class: "crumbs", text: `${target.db} › ${target.col} › ${target.id}` }),
+    crumbs([
+      { label: "Home", onClick: up.onHome },
+      { label: titles.database, onClick: up.onDatabase },
+      { label: titles.collection, onClick: up.onCollection },
+      { label: target.id },
+    ]),
   ]));
   pane.append(note, actions);
   if (!(e instanceof ApiError && e.isNotFound)) return;
@@ -249,13 +275,13 @@ function confirmDelete(target, rev) {
 
 function newDatabase() {
   newDatabaseDialog({
-    onCreated: (db, col) => { browser.load(); toCollection(db, col); },
+    onCreated: (db, col) => { forgetTitles(); browser.load(); toCollection(db, col); },
   });
 }
 
 function newCollection(db) {
   newCollectionDialog(db, {
-    onCreated: (col) => { browser.refresh(db); toCollection(db, col); },
+    onCreated: (col) => { forgetTitles(); browser.refresh(db); toCollection(db, col); },
   });
 }
 
@@ -376,13 +402,19 @@ async function openShare(target) {
 let searchTimer = null;
 let searchSeq = 0;
 
+// Results appear *above* the tree rather than replacing it. Looking something
+// up should not cost you the place you had unfolded to.
 function initSearch() {
   const box = $("#search-box");
-  const tree = $("#tree");
+  const tree = $("#search-results");
+  const showTree = (searching) => {
+    tree.hidden = !searching;
+    $("#tree").classList.toggle("dimmed", searching);
+  };
   box.addEventListener("input", () => {
     clearTimeout(searchTimer);
     const q = box.value.trim();
-    if (!q) { browser.load(); return; }
+    if (!q) { clear(tree); showTree(false); return; }
     searchTimer = setTimeout(async () => {
       // Out-of-order guard: a slow early query must not overwrite a fast later
       // one and leave the wrong results on screen.
@@ -391,6 +423,7 @@ function initSearch() {
       try { res = await api.suggest(q, scope.db, scope.col); } catch (e) { return; }
       if (mine !== searchSeq) return;
       clear(tree);
+      showTree(true);
       for (const s of res.suggestions) {
         tree.appendChild(el("div", { class: "tree-node" }, [
           el("button", {
@@ -414,6 +447,40 @@ function initSearch() {
   });
 }
 
+// Drag the edge to widen the browser. Long titles ellipsise fast in a narrow
+// column, and how much room the tree deserves is a matter of what you are
+// writing — so it is yours to set, and remembered like the theme is.
+const SIDEBAR_MIN = 200, SIDEBAR_MAX = 640;
+
+function initSidebarResize() {
+  const handle = $("#sidebar-resize");
+  const apply = (px) => {
+    const width = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, px));
+    document.documentElement.style.setProperty("--sidebar-w", `${width}px`);
+    try { localStorage.setItem("akasha-sidebar", String(width)); } catch (e) { /* private mode */ }
+  };
+  handle.addEventListener("pointerdown", (down) => {
+    down.preventDefault();
+    handle.setPointerCapture(down.pointerId);
+    const move = (e) => apply(e.clientX - sidebar.getBoundingClientRect().left);
+    const stop = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", stop);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", stop);
+  });
+  // Reachable without a pointer, and a double-click puts it back.
+  handle.addEventListener("keydown", (e) => {
+    const step = { ArrowLeft: -16, ArrowRight: 16 }[e.key];
+    if (!step) return;
+    e.preventDefault();
+    apply(sidebar.getBoundingClientRect().width + step);
+  });
+  handle.tabIndex = 0;
+  handle.addEventListener("dblclick", () => apply(300));
+}
+
 // -- boot --------------------------------------------------------------------
 
 function initChrome() {
@@ -424,6 +491,7 @@ function initChrome() {
     $("#scrim").hidden = !open;
   });
   $("#scrim").addEventListener("click", closeDrawer);
+  initSidebarResize();
   $("#home-link").addEventListener("click", (e) => { e.preventDefault(); toHome(); });
   $("#new-article-btn").addEventListener("click", () => newArticle());
   initSearch();

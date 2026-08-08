@@ -7,6 +7,7 @@ from visualizer.akasha.browsing import (
     can_delete_collection,
     can_write_in_collection,
     clamp_per_page,
+    match_rank,
     matches_all_words,
     most_recent,
     rank_suggestions,
@@ -150,6 +151,53 @@ def test_per_page_is_bounded():
     assert clamp_per_page(0) == DEFAULT_PER_PAGE
     assert clamp_per_page(-5) == DEFAULT_PER_PAGE
     assert clamp_per_page(10_000) == MAX_PER_PAGE
+
+
+# -- name-only matching (what the sidebar asks for) ---------------------------
+
+
+def test_names_only_ignores_the_body():
+    """A narrow column cannot show *why* a body match matched, and one common
+    word would otherwise return half the world."""
+    row = {"id": "emberport", "title": "Emberport", "fields": ["Home of Corwin"]}
+    assert matches_all_words(row, "corwin") is True
+    assert matches_all_words(row, "corwin", names_only=True) is False
+    assert matches_all_words(row, "ember", names_only=True) is True
+
+
+def test_the_collection_page_keeps_the_whole_article_by_default():
+    assert matches_all_words(ROWS[1], "isildur") is True
+
+
+# -- ranking a truncated result ----------------------------------------------
+
+
+def test_rank_prefers_an_exact_name_then_a_prefix_then_the_middle():
+    exact = {"id": "cor", "title": "Cor"}
+    prefix = {"id": "corwin", "title": "Corwin"}
+    word_start = {"id": "magister-corwin", "title": "Magister Corwin"}
+    inside = {"id": "scorpion", "title": "Scorpion"}
+    body_only = {"id": "keep", "title": "The Keep", "fields": ["Corwin lives here"]}
+    ranks = [match_rank(r, "cor") for r in (exact, prefix, word_start, inside, body_only)]
+    assert ranks == sorted(ranks), ranks
+    assert len(set(ranks)) == 5, "each tier is distinct"
+
+
+def test_ranking_orders_the_page_when_there_is_a_query():
+    """Cutting 300 matches alphabetically gives twenty A-names; cutting them by
+    how well they answer the query gives the one you meant."""
+    rows = [
+        {"id": "alpha-cor", "title": "Alpha Cor", "fields": []},
+        {"id": "corwin", "title": "Corwin", "fields": []},
+    ]
+    page = browse_articles(rows, query="cor", per_page=1)
+    assert [d["id"] for d in page["documents"]] == ["corwin"]
+
+
+def test_without_a_query_it_is_still_plain_alphabetical():
+    assert [d["id"] for d in browse_articles(ROWS)["documents"]] == [
+        "aragorn", "frodo", "nameless",
+    ]
 
 
 # -- recently edited ---------------------------------------------------------

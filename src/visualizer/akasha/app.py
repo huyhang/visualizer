@@ -397,6 +397,10 @@ def _register_browse_routes(app: Flask, store: DocumentStore, auth_store: AuthSt
             request.args.get("filter", ""),
             _int_arg("page", 1),
             _int_arg("per_page", DEFAULT_PER_PAGE),
+            # `match=name` narrows the filter to what an article is *called*.
+            # The sidebar asks for it: it has no room to show why a body match
+            # matched, and "king" hitting half the world is not a shortlist.
+            names_only=request.args.get("match") == "name",
         )
         can_delete = can_delete_collection(grants, database, collection)
         can_write = can_write_in_collection(grants, database, collection)

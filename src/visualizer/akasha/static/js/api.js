@@ -48,12 +48,15 @@ export const api = {
     request("DELETE", colPath(db, col) + (purge ? "?purge=1" : "")),
   deleteDatabase: (db) => request("DELETE", `/databases/${enc(db)}`),
 
-  // One page of a collection, filtered server-side across the whole article.
-  listDocuments: (db, col, { filter, page, perPage } = {}) => {
+  // One page of a collection. `filter` searches the whole article by default;
+  // `match: "name"` narrows it to the title and slug, which is what the sidebar
+  // wants — it cannot show why a body match matched.
+  listDocuments: (db, col, { filter, page, perPage, match } = {}) => {
     const p = new URLSearchParams();
     if (filter) p.set("filter", filter);
     if (page) p.set("page", page);
     if (perPage) p.set("per_page", perPage);
+    if (match) p.set("match", match);
     const q = p.toString();
     return request("GET", `${colPath(db, col)}/documents${q ? "?" + q : ""}`);
   },

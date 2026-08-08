@@ -322,11 +322,36 @@ caller rather than the editor — which knows about articles, not namespaces —
 backing out leaves nothing behind. Cancelling then returns to the database page,
 since the collection's own page does not exist yet.
 
-The tree keeps its shape: it remembers what was expanded, refreshes one branch
+### The tree navigates; the category page enumerates
+
+Keeping those apart is what makes the sidebar work at any size. The tree holds
+itself to one invariant — **it never renders more than 20 articles under a
+category, whatever is typed** — and hands off to the category page the moment
+that stops being enough, so the length of the sidebar is a property of the
+design rather than of the world.
+
+Above ~30 articles a category grows a filter box, and it matches **names only**
+(`?match=name`), unlike the full-text filter on the page itself. A narrow column
+has nowhere to show *why* a body match matched, so those read as mystery hits,
+and one common word would return half the world. When more match than fit, the
+server has already ordered them best-first — exact name, prefix, word start,
+anywhere (`browsing.match_rank`) — so the twenty shown are the twenty most
+likely meant, rather than twenty A-names. The overflow row **carries the query
+across**, opening the page already filtered and widened to the whole article.
+
+It is also a real tree for the keyboard: `role="tree"`/`treeitem`,
+`aria-expanded`, a roving tabindex, and arrows to move, expand and collapse.
+
+The rest of its manners: it remembers what was expanded, refreshes one branch
 rather than rebuilding from the root, unfolds to reveal an article opened from a
-link, and says how many articles it is *not* showing instead of truncating in
-silence. Its counts are corrected from the listing that just loaded, so they do
-not drift from what is beneath them.
+link, and never truncates silently. Counts are corrected from the listing that
+just loaded, and always count *articles* — the badge meaning collections at one
+level and articles at the next was a small lie the eye had to decode. One glyph
+per level (filled square, outline square, dot) so the three depths read as three
+kinds of thing rather than three amounts of indentation. Search results appear
+*above* the tree instead of replacing it, because looking something up should
+not cost you the place you had unfolded to, and the sidebar itself is
+drag-resizable, remembered like the theme.
 
 New view modules: `views.js` (breadcrumbs, heading, cards, pager, `timeAgo`),
 `namespaces.js`, `articles.js`, `create.js`, `search.js`.

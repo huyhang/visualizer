@@ -19,6 +19,13 @@ import { crumbs, pager, timeAgo, viewHead } from "./views.js";
 const PER_PAGE = 25;
 const lastState = {}; // "db/col" -> { query, page }
 
+// Arrive here already filtered. The tree hands off when more names match than
+// it will show, and losing what you had typed on the way would be the whole
+// point of the handoff wasted.
+export function rememberFilter(database, collection, query) {
+  lastState[`${database}/${collection}`] = { query: query || "", page: 1 };
+}
+
 function articleTable(rows, onOpen) {
   if (!rows.length) return el("p", { class: "empty", text: `No ${T.document.many} match.` });
   const body = rows.map((doc) => el("tr", { class: "list-row", onclick: () => onOpen(doc.id) }, [

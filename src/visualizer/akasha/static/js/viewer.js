@@ -5,14 +5,15 @@ import { el, clear } from "./dom.js";
 import { splitArticle, factValueToInput } from "./article.js";
 import { renderInto } from "./wikitext.js";
 import { parseTarget, resolveTarget } from "./links.js";
+import { crumbs } from "./views.js";
 
-export async function renderArticle(container, { db, col, id, doc, rev }, handlers) {
+export async function renderArticle(container, { db, col, id, doc, rev, titles }, handlers) {
   clear(container);
   container.hidden = false;
   const article = splitArticle(doc, id);
   const scope = { db, col };
 
-  container.appendChild(_toolbar({ db, col, id, rev }, handlers));
+  container.appendChild(_toolbar({ titles, title: article.title, rev }, handlers));
   container.appendChild(el("h1", { class: "article-title", text: article.title }));
   container.appendChild(el("div", { class: "article-meta", text: `${db} / ${col} / ${id} · revision ${rev}` }));
 
@@ -30,12 +31,16 @@ export async function renderArticle(container, { db, col, id, doc, rev }, handle
   }
 }
 
-function _toolbar({ db, col, id, rev }, handlers) {
+// The trail is for *going* somewhere — readable names, and every ancestor a
+// link. The literal address stays in the meta line below the heading, which is
+// where you look when you need the slug to write a [[link]] with.
+function _toolbar({ titles, title, rev }, handlers) {
   return el("div", { class: "pane-toolbar" }, [
-    el("span", { class: "crumbs" }, [
-      el("span", { text: db }), el("span", { class: "sep", text: "›" }),
-      el("span", { text: col }), el("span", { class: "sep", text: "›" }),
-      el("span", { text: id }),
+    crumbs([
+      { label: "Home", onClick: handlers.onHome },
+      { label: titles.database, onClick: handlers.onDatabase },
+      { label: titles.collection, onClick: handlers.onCollection },
+      { label: title },
     ]),
     el("span", { class: "spacer" }),
     el("button", { class: "btn sm", text: "Edit", onclick: () => handlers.onEdit() }),

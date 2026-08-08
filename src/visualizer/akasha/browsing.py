@@ -15,6 +15,7 @@ with no Flask or Mongo in it either, so it lives here beside the grant filtering
 and is unit tested the same way (the shape mirrors ``chronos.browsing``).
 """
 
+import re
 from collections.abc import Iterable, Mapping
 
 from visualizer.auth.authz import DELETE, READ, WRITE, is_allowed
@@ -96,14 +97,22 @@ def can_delete_collection(
 # from their body, not just by their name -- and is dropped before presenting.
 
 
-def searchable_text(row: Mapping) -> str:
-    """The lowercased text a filter word is matched against for one row."""
+def searchable_text(row: Mapping, names_only: bool = False) -> str:
+    """The lowercased text a filter word is matched against for one row.
+
+    ``names_only`` narrows it to what the article is *called*. The browse page
+    wants the whole article -- finding a character by a word from their body is
+    the point of it. A narrow sidebar wants the opposite: it has no room to show
+    *why* something matched, so a body hit reads as a mystery, and "king"
+    matching half the world is not a shortlist.
+    """
     parts = [row.get("id") or "", row.get("title") or ""]
-    parts.extend(row.get("fields", []))
+    if not names_only:
+        parts.extend(row.get("fields", []))
     return " ".join(str(p) for p in parts).lower()
 
 
-def matches_all_words(row: Mapping, query: str) -> bool:
+def matches_all_words(row: Mapping, query: str, names_only: bool = False) -> bool:
     """Whether every whitespace-separated word in ``query`` appears in the row.
 
     An empty/blank query matches everything. Matching is case-insensitive and
@@ -112,8 +121,40 @@ def matches_all_words(row: Mapping, query: str) -> bool:
     words = query.lower().split()
     if not words:
         return True
-    text = searchable_text(row)
+    text = searchable_text(row, names_only)
     return all(word in text for word in words)
+
+
+_WORD_BREAK = re.compile(r"[\s\-_/]+")
+
+# How well a row answers the query, lowest first. Truncating matches
+# alphabetically is the worst available cut -- twenty A-names out of three
+# hundred -- so when there is a query the order is by how likely the reader
+# meant it, and only then by title.
+_EXACT, _PREFIX, _WORD_START, _CONTAINS, _ELSEWHERE = range(5)
+
+
+def match_rank(row: Mapping, query: str) -> int:
+    """Rank one row against ``query``: exact name, then prefix, then inside it.
+
+    ``_ELSEWHERE`` means the row matched on something other than its name -- a
+    field value -- which is a real match and a poor guess at what was wanted.
+    """
+    needle = query.lower().strip()
+    if not needle:
+        return _ELSEWHERE
+    slug = (row.get("id") or "").lower()
+    title = (row.get("title") or "").lower()
+    names = [n for n in (title, slug) if n]
+    if needle in names:
+        return _EXACT
+    if any(n.startswith(needle) for n in names):
+        return _PREFIX
+    if any(word.startswith(needle) for n in names for word in _WORD_BREAK.split(n)):
+        return _WORD_START
+    if any(needle in n for n in names):
+        return _CONTAINS
+    return _ELSEWHERE
 
 
 def clamp_per_page(per_page: int | None) -> int:
@@ -128,6 +169,14 @@ def _title_key(row: Mapping):
     return ((row.get("title") or row.get("id") or "").lower(), row.get("id") or "")
 
 
+def _ranked_key(query: str):
+    """Best match first when there is a query; plain alphabetical when there is
+    not. Title always breaks the tie, so the order is total either way."""
+    if not query.strip():
+        return _title_key
+    return lambda row: (match_rank(row, query), *_title_key(row))
+
+
 def present_article(row: Mapping) -> dict:
     """Trim a matched row to the fields the list renders (drop filter-only text)."""
     return {k: v for k, v in row.items() if k != "fields"}
@@ -138,16 +187,19 @@ def browse_articles(
     query: str = "",
     page: int = 1,
     per_page: int = DEFAULT_PER_PAGE,
+    names_only: bool = False,
 ) -> dict:
-    """Filter, order by title, and return one page of articles.
+    """Filter, order, and return one page of articles.
 
-    ``page`` is 1-indexed and clamped into range, so an out-of-bounds request
-    yields the last page rather than an error -- which is what happens when the
-    filter narrows the list under someone who was on page 4.
+    Ordered by title, or by how well each row answers ``query`` when there is
+    one -- which is what makes a truncated result useful rather than merely
+    short. ``page`` is 1-indexed and clamped into range, so an out-of-bounds
+    request yields the last page rather than an error, which is what happens
+    when the filter narrows the list under someone who was on page 4.
     """
     per_page = clamp_per_page(per_page)
-    matched = [dict(r) for r in rows if matches_all_words(r, query)]
-    matched.sort(key=_title_key)
+    matched = [dict(r) for r in rows if matches_all_words(r, query, names_only)]
+    matched.sort(key=_ranked_key(query))
 
     total = len(matched)
     pages = max(1, -(-total // per_page))  # ceil division

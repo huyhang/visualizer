@@ -20,6 +20,10 @@
                           || localStorage.getItem("kb-fontscale"), 10);
         if (fs) document.documentElement.style.fontSize = fs + "px";
       } catch (e) { /* ignore */ }
+      try {
+        var w = parseInt(localStorage.getItem("akasha-sidebar"), 10);
+        if (w) document.documentElement.style.setProperty("--sidebar-w", w + "px");
+      } catch (e) { /* ignore */ }
     })();
   </script>
 </head>
@@ -52,7 +56,11 @@
         <input type="search" id="search-box" placeholder="Search titles…" autocomplete="off">
         <button class="btn sm" id="new-article-btn" title="New article">＋ New</button>
       </div>
+      <div class="search-results" id="search-results" hidden
+           aria-label="Matches"></div>
       <nav class="tree" id="tree" aria-label="{{ terms.database.Many }}"></nav>
+      <div class="sidebar-resize" id="sidebar-resize" role="separator"
+           aria-orientation="vertical" aria-label="Resize the browser"></div>
     </aside>
 
     <main class="content" id="content">
