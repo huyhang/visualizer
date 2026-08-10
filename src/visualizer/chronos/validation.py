@@ -120,6 +120,63 @@ def validate_plotline_payload(plotline_id: str, payload: Any) -> Plotline:
     )
 
 
+_CALENDAR_KINDS = ("identity", "mixed_radix")
+
+
+def _check_cycle(raw: Any, position: int) -> None:
+    where = f"Calendar cycle {position}"
+    if not isinstance(raw, dict):
+        raise InvalidBook(f"{where} must be an object with a 'name' and a 'size'.")
+    name = raw.get("name")
+    if not (isinstance(name, str) and name.strip()):
+        raise InvalidBook(f"{where} needs a non-empty 'name'.")
+    size = raw.get("size")
+    # bool is an int subclass but is not a cycle length.
+    if isinstance(size, bool) or not isinstance(size, int):
+        raise InvalidBook(f"Cycle '{name}' needs an integer 'size'.")
+    if size < 1:
+        raise InvalidBook(
+            f"Cycle '{name}' must have a 'size' of at least 1.",
+            evidence={"cycle": name, "size": size},
+        )
+
+
+def _check_calendar(raw: Any) -> None:
+    """Structure-check a book's calendar descriptor against the published schema.
+
+    ``codec_for`` builds a codec from this on *every* read, so a descriptor it
+    cannot build has to be refused here, at the write. Otherwise the book is
+    stored and each later read fails with an ``INVALID_TIMEFRAME`` complaint out
+    of the codec -- which is both the wrong code and the wrong moment: nothing is
+    wrong with the timeframe, and the mistake was made pages ago.
+
+    Checks only; the descriptor is stored exactly as sent (design §4.1 leaves the
+    vocabulary of cycle names open, so there is nothing to normalise).
+    """
+    if not isinstance(raw, dict):
+        raise InvalidBook("'calendar' must be an object.")
+    kind = raw.get("kind", "mixed_radix")
+    if kind not in _CALENDAR_KINDS:
+        raise InvalidBook(
+            f"Unknown calendar kind {kind!r}.", evidence={"known": list(_CALENDAR_KINDS)}
+        )
+    if kind == "identity":
+        return  # ticks display as themselves; nothing else is read
+    base_unit = raw.get("base_unit", "tick")
+    if not (isinstance(base_unit, str) and base_unit.strip()):
+        raise InvalidBook("'base_unit' must be a non-empty string.")
+    epoch_label = raw.get("epoch_label", "")
+    if not isinstance(epoch_label, str):
+        raise InvalidBook("'epoch_label' must be a string.")
+    cycles = raw.get("cycles")
+    if not isinstance(cycles, list) or not cycles:
+        raise InvalidBook(
+            "A calendar needs a non-empty 'cycles' list, ordered smallest first."
+        )
+    for position, cycle in enumerate(cycles, start=1):
+        _check_cycle(cycle, position)
+
+
 def validate_book_payload(book_id: str, payload: Any) -> Book:
     body = _require_mapping(payload, InvalidBook)
     title = body.get("title")
@@ -129,6 +186,6 @@ def validate_book_payload(book_id: str, payload: Any) -> Book:
     if terminus is not None and not (isinstance(terminus, str) and terminus):
         raise InvalidBook("'terminus' must be an event id string.")
     calendar = body.get("calendar")
-    if calendar is not None and not isinstance(calendar, dict):
-        raise InvalidBook("'calendar' must be an object.")
+    if calendar is not None:
+        _check_calendar(calendar)
     return Book(id=book_id, title=title, terminus=terminus, calendar=calendar)

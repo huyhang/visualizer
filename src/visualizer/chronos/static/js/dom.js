@@ -24,6 +24,9 @@ export function el(tag, attrs = {}, children = []) {
 
 export function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
 
+// `slugify` used to live here. It now lives in ./shared/slug.js, because akasha
+// derives article ids the same way and the two copies drifted.
+
 // SVG sibling of el(): builds elements in the SVG namespace (createElement makes
 // inert HTML nodes for <svg>/<path>/<circle>…). Same attr/child conventions,
 // minus HTML-only shortcuts (no class=/text= special-casing beyond text).

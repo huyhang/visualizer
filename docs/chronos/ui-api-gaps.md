@@ -1,6 +1,6 @@
 # What the Chronos UI cannot do yet
 
-*Audited 2026-08-06 against the routes the app actually registers and the calls
+*Audited 2026-08-10 against the routes the app actually registers and the calls
 `static/js/api.js` actually makes. Not a wish list — every gap below is a
 capability the JSON API already has, tested, that the browser has no way to
 reach.*
@@ -11,37 +11,21 @@ time](design.md#2-principles-consistent-with-the-existing-codebase), so the
 interesting question is not "what is missing from the product" but **"where does
 a writer with no terminal hit a wall?"**
 
-Of the **26 content routes** the app registers, **16 are reachable from the UI**
-and **10 are not**.
+Of the **26 content routes** the app registers, **19 are reachable from the UI**
+and **7 are not**.
+
+**There is no longer a blocking gap.** A writer can now create a book, write its
+scenes, thread them into a plotline and mark the book's ending without leaving
+the browser — see [the flow, end to end](#the-flow-end-to-end). What remains is
+housekeeping and sharing.
 
 ---
-
-## Blocking: the flow cannot start
-
-| Missing from the UI | The API it would call |
-| --- | --- |
-| **Create a book** | `POST /books/{book}` |
-
-This is the only true dead end. A new writer logs in, lands on *Your books*,
-reads *"You have no readable books yet"* — and there is no button. Everything
-downstream is reachable once a book exists, so this single gap is what stops a
-[getting-started guide](#why-this-matters-now) from being written.
-
-There is a fiddly part hiding inside it. A book carries a **calendar**
-(`base_unit`, `cycles`, `epoch_label`, see [design §4.1](design.md)), and that
-descriptor decides what a tick *means*: what the timeline rail groups by, and
-what the scene form's live label reads back as you type. A "+ New book" control
-needs at least a plain-numbers-versus-calendar choice — a bare title field would
-quietly commit every book to `IdentityCodec` forever, since there is also no way
-to change a calendar afterwards.
 
 ## Significant: the book exists but stays incomplete
 
 | Missing from the UI | The API it would call | What it costs |
 | --- | --- | --- |
-| **Set the terminus** | `POST /books/{book}/terminus/{event}` | One of the three story rules becomes undemonstrable. `verdictNotes` deliberately stays silent when no terminus is set (otherwise every thread in the book carries the same complaint), so a UI-only writer never learns the concept exists. |
 | **Delete a scene** | `DELETE /books/{book}/events/{event}` | The scene form writes immediately, so abandoning a plotline edit afterwards leaves an orphan scene. It stays *findable* — the Add-scene picker lists every scene in the book — but there is no way to remove it. |
-| **Rename a book, change its calendar** | `PUT /books/{book}` | A calendar chosen at creation is permanent from the browser. |
 | **Delete a book** | `DELETE /books/{book}` | No way to clean up an experiment. |
 
 ## Present in the API, absent from the UI
@@ -57,11 +41,32 @@ to change a calendar afterwards.
 
 ## What the UI *does* cover
 
-For completeness, the 16 reachable routes: listing and reading books; the story
-graph; listing, reading, creating and updating scenes; the full plotline
-lifecycle (create, read, update, delete); and the five visualiser helpers
-(`/ui/plotlines`, `/ui/ticks`, `/ui/entities`, `/ui/entity/...`,
-`/ui/plotline-preview`).
+For completeness, the 19 reachable routes: listing, reading, **creating** and
+**updating** books; **designating the terminus**; the story graph; listing, reading, creating
+and updating scenes; the full plotline lifecycle (create, read, update, delete);
+and the five visualiser helpers (`/ui/plotlines`, `/ui/ticks`, `/ui/entities`,
+`/ui/entity/...`, `/ui/plotline-preview`).
+
+### The flow, end to end
+
+What a writer with no terminal can now do from a standing start:
+
+1. **Register**, and land on *Your books* — which offers **+ New book** rather
+   than an apology.
+2. **Create a book**, choosing there and then whether ticks are plain numbers or
+   a calendar of named cycles. The choice is shown back in plain language
+   (*"Ticks are hours: 24 hours to a day, 30 days to a month"*) rather than left
+   to be inferred from the form — and it is no longer a one-time choice: **✎**
+   beside the book's title reopens the same form to rename it or swap the
+   calendar.
+3. **Write the cast** in Akasha (never blocked — see below).
+4. **+ New plotline**, and inside it **Add scene → Write a new scene**, choosing
+   characters, items and places from the real canon.
+5. **✦ Mark a scene as the ending**, which is what turns the third story rule
+   from invisible into reported.
+6. Watch the findings appear as scenes are dragged, and save.
+
+Steps 2 and 5 are what this document previously called blocking.
 
 ## Not a gap: Akasha
 
@@ -80,18 +85,34 @@ So the cast and the places can be written entirely in the browser today.
 
 ---
 
-## Why this matters now
+## What this unblocks
 
 A `getting-started.md` — "build the Ember Pact yourself, and watch the three
-continuity problems appear" — is planned and **deferred until these gaps close**.
-The deliberate choice was to fix the UI rather than publish a guide with a
-`curl` line in it: the audience for that guide is precisely the audience that
-bounces off a terminal.
+continuity problems appear" — was **deferred until the blocking gap closed**, so
+that the guide would not have to open with a `curl` line: the audience for it is
+precisely the audience that bounces off a terminal. That guide is now writable,
+and is the natural next piece of work.
 
-The natural first slice is **"+ New book"** plus **"Mark as the ending"**.
-Together they turn that guide from impossible into writable, and both are pure
-front-end work — the endpoints exist, are covered by tests, and book creation
-already grants the creator ownership.
+The remaining eight gaps are all *housekeeping* (rename, delete, tidy up an
+orphan scene) or *sharing* (collaborators). None of them stops a story being
+written, which is why none is marked blocking.
+
+### Planned: a calendar library
+
+The one gap with a design behind it rather than just an absence. A book's
+calendar is chosen once, inline, at creation. The intended next step is a
+library of **named, reusable calendars** that can be attached to many books and
+swapped afterwards — shared by **copying the descriptor into the book** and
+recording where it came from, not by pointing at a shared record. Copying keeps
+`codec_for` pure and I/O-free, keeps `GET /books` from becoming N+1, and stops
+one writer's edit from silently re-labelling another writer's book; provenance is
+what still allows an explicit, previewable *"the library version changed —
+update?"*.
+
+The browser side is already shaped for it: `static/js/calendars.js` holds the
+descriptor vocabulary with no DOM in it, and `calendarfield.js` reduces the whole
+question to `value() -> descriptor | null`, with its sources held as a list. A
+library picker joins that list; nothing that consumes a calendar has to know.
 
 ## Re-checking this list
 

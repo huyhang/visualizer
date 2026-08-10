@@ -8,10 +8,12 @@
 // real canon (proxied same-origin) rather than typed free-hand.
 
 import { api } from "./api.js";
+import { calendarHint, plural } from "./calendars.js";
 import { eventTimeframe } from "./cards.js";
 import { clear, el, toast } from "./dom.js";
 import { entityTitle } from "./entities.js";
 import { suggestBox } from "./picker.js";
+import { slugify } from "./shared/slug.js";
 
 // The conventional collection each field draws from. A book may name its
 // collections anything, so a field can also search the *unconventional* ones it
@@ -21,13 +23,9 @@ const ROLE_COLLECTION = { location: "locations", characters: "characters", items
 const MAX_ID_ATTEMPTS = 20;
 const TICK_DEBOUNCE_MS = 250;
 
-export function slugify(text) {
-  const slug = String(text || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return slug || "scene";
-}
+// A scene is created *at* its id, so unlike a book or a plotline it cannot fall
+// back on refusing an empty one -- there is always a name to write it under.
+const FALLBACK_SCENE_ID = "scene";
 
 // Turn a saved event response into the lightweight row the editor lists.
 export function eventRow(event) {
@@ -143,28 +141,6 @@ function collectionOptions(scope, role) {
     .map(([, c]) => c);
   const observed = (scope.collections || []).filter((c) => !others.includes(c));
   return Array.from(new Set([mine, ...observed]));
-}
-
-// A plain-language description of what a tick *is* in this book, read straight
-// off the calendar descriptor: "Ticks are hours: 24 to a day, 30 days to a
-// month, 12 months to a year." No arithmetic here — just naming the cycles, so
-// there is nothing to fall out of step with the codec.
-export function calendarHint(calendar) {
-  if (!calendar || calendar.kind === "identity" || !(calendar.cycles || []).length) {
-    return "Ticks are plain whole numbers — pick a scale and stay consistent.";
-  }
-  const base = calendar.base_unit || "tick";
-  const steps = [];
-  let below = base;
-  for (const cycle of calendar.cycles) {
-    steps.push(`${cycle.size} ${plural(below)} to a ${cycle.name}`);
-    below = cycle.name;
-  }
-  return `Ticks are ${plural(base)}: ${steps.join(", ")}.`;
-}
-
-function plural(word) {
-  return /s$/.test(word) ? word : `${word}s`;
 }
 
 // Whether asking the server for a label would tell the writer anything: with no
@@ -298,7 +274,9 @@ export function sceneForm(book, { scope, calendar = null, event = null, onSaved,
     try {
       const saved = editing
         ? await api.updateEvent(book, event.id, body, event.rev)
-        : await createWithFreeId(book, idBox.value.trim() || slugify(title.value), body);
+        : await createWithFreeId(
+          book, idBox.value.trim() || slugify(title.value) || FALLBACK_SCENE_ID, body,
+        );
       onSaved(eventRow(saved), saved);
     } catch (err) {
       fail(err.message || "Could not save the scene.");

@@ -31,6 +31,23 @@ _EXPORT = re.compile(r"""export\s+(?:async\s+)?(?:function|class|const|let|var)\
 #   editor.js    -- shows the live preview, which is wikitext.js's output
 _HTML_ALLOWED = {"dom.js", "wikitext.js", "diffview.js", "editor.js"}
 
+# Modules both services load. They live once, at the package root, and are
+# served by each app beneath its own static path (``visualizer/shared_assets``),
+# so `./shared/x.js` resolves from either tree and at either mount. On disk they
+# are nowhere near the importer, hence the redirect in ``_target``.
+_SHARED_JS = Path(__file__).resolve().parents[2] / "src" / "visualizer" / "static" / "js"
+_SHARED_PREFIX = "./shared/"
+
+
+def _shared_modules():
+    return sorted(_SHARED_JS.glob("*.js"))
+
+
+def _target(importer: Path, specifier: str) -> Path:
+    if specifier.startswith(_SHARED_PREFIX):
+        return (_SHARED_JS / specifier[len(_SHARED_PREFIX):]).resolve()
+    return (importer.parent / specifier).resolve()
+
 
 def _modules():
     return sorted(_JS_DIR.glob("*.js"))
@@ -48,12 +65,12 @@ def _imports(path: Path):
             continue  # no bare/bundler specifiers in this project
         names = match.group("names") or ""
         yield (
-            (path.parent / target).resolve(),
+            _target(path, target),
             [n.split(" as ")[0].strip() for n in names.strip("{}").split(",") if n.strip()],
         )
 
 
-@pytest.mark.parametrize("module", _modules(), ids=lambda p: p.name)
+@pytest.mark.parametrize("module", _modules() + _shared_modules(), ids=lambda p: p.name)
 def test_every_import_resolves_to_a_module_that_exports_it(module):
     for target, names in _imports(module):
         assert target.exists(), f"{module.name} imports missing module {target.name}"
@@ -70,13 +87,25 @@ def test_the_entrypoint_reaches_every_module():
             continue
         reached.add(current)
         queue.extend(target for target, _ in _imports(current))
-    assert {p.name for p in _modules()} == {p.name for p in reached}
+    local = {p for p in reached if p.parent == _JS_DIR}
+    assert {p.name for p in _modules()} == {p.name for p in local}
 
 
 def test_the_editor_modules_are_served(client):
     # A module that 404s takes the whole SPA down, since app.js imports it.
     for module in _modules():
         assert client.get(f"/static/js/{module.name}").status_code == 200, module.name
+
+
+def test_the_shared_modules_are_served_under_this_apps_static_path(client):
+    """The mirror of chronos's check: the shared tree is only shared because
+    *both* apps serve it, out of the package root rather than this service's
+    ``static/``, via a route that has to beat ``/static/<path:filename>``."""
+    assert _shared_modules(), "no shared modules found — wrong path?"
+    for module in _shared_modules():
+        resp = client.get(f"/static/js/shared/{module.name}")
+        assert resp.status_code == 200, module.name
+        assert "slugify" in resp.get_data(as_text=True)
 
 
 def test_no_view_builds_dom_from_untrusted_html():

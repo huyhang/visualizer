@@ -123,6 +123,11 @@ input:focus {
 }
 
 /* books grid */
+.books-head { display: flex; align-items: baseline; gap: .8rem; }
+.books-head .view-title { flex: 1; }
+/* the first screen of an empty account: the button *is* the content */
+.empty-cta { display: flex; flex-direction: column; align-items: center; gap: .2rem; }
+.empty-cta .empty { padding: 2rem 0 .4rem; }
 .book-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 1rem; }
 .book-card {
   text-align: left; border: 1px solid var(--border); background: var(--surface);
@@ -136,6 +141,8 @@ input:focus {
 .book-meta { color: var(--muted); font-size: .82rem; }
 
 /* plotline table */
+/* the book's title and the control that edits it, on one line */
+.book-head { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
 .filter-bar { margin: 0 0 1rem; }
 .filter-box { max-width: 420px; }
 .table-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
@@ -404,8 +411,24 @@ body:not(.focus-mode) .tl-dot.has-hint { background: var(--warn); box-shadow: 0 
 
 /* forms */
 .field { margin: 0 0 .9rem; }
-.field-label { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; margin-bottom: .25rem; }
+/* Full-strength text, not muted: a label has to out-rank the control under it,
+   and at .72rem uppercase it was reading as just another quiet line — level with
+   the "Ends on its own." it was supposed to be introducing. */
+.field-label {
+  display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text); font-weight: 700; margin-bottom: .3rem;
+}
 .field-hint { margin: .25rem 0 0; font-size: .78rem; }
+/* A faint rule between field groups, so a label starts a new section rather than
+   trailing the end of the last one. Between groups only — never above the first,
+   and never before the errors or the buttons, which are not sections. */
+.editor-fields > .field + .field,
+.book-form > .field + .field,
+.scene-form > .field + .field,
+.scene-form > .field + .timing,
+.scene-form > .timing + .field {
+  border-top: 1px solid var(--border); padding-top: .9rem;
+}
 .field-row { display: flex; gap: .8rem; flex-wrap: wrap; }
 .field-row .field { flex: 1 1 10rem; }
 textarea {
@@ -422,6 +445,23 @@ select {
 .form-error { color: var(--danger); font-size: .85rem; margin: .5rem 0 0; }
 .form-error.list { padding-left: 1.1rem; }
 .inline-controls { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+/* Standing-in-for-a-value text ("Ends on its own.") is secondary to the label
+   above it, so it should not be set at the same weight as body copy. */
+.inline-controls > .muted { font-size: .85rem; }
+
+/* the calendar field: a mode switch over a body that only the "a calendar"
+   mode fills in. Cycle rows read smallest-first, top to bottom. */
+.calendar-field {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface-2); padding: .8rem .9rem;
+}
+.calendar-body > .field:last-of-type { margin-bottom: 0; }
+.calendar-reading { margin-top: .8rem; font-weight: 600; color: var(--accent-strong); }
+.cycle-rows { display: flex; flex-direction: column; gap: .4rem; margin: .5rem 0 .6rem; }
+.cycle-row { display: flex; align-items: center; gap: .5rem; }
+.cycle-row input { flex: 1 1 6rem; min-width: 0; }
+.cycle-index { font-size: .8rem; min-width: 1.2rem; }
+.cycle-of { font-size: .8rem; white-space: nowrap; }
 
 /* editor layout */
 .editor-fields { max-width: 620px; margin-bottom: 1.4rem; }

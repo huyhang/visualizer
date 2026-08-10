@@ -20,6 +20,7 @@ from visualizer.auth import (
 )
 from visualizer.auth.authz import ALL_PERMS, is_allowed, perm_for_method
 from visualizer.auth.errors import AuthError
+from visualizer.shared_assets import register_shared_assets
 
 from .entity_gate import EntityGate
 from .errors import ChronosError, Forbidden, InvalidRevision, InvalidTimeframe
@@ -68,6 +69,7 @@ def create_app(
     # The read-only visualiser (below) is the HTML home a browser login lands on.
     register_auth_routes(app, auth_store, csrf, limiter, home_endpoint="index")
     register_service_links(app, akasha_url, chronos_url, current="chronos")
+    register_shared_assets(app)
 
     books = BookService(story_store, entity_gate)
     plotlines = PlotlineService(story_store, entity_gate)

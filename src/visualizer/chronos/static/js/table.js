@@ -8,6 +8,7 @@
 // filtered, paginated view the writer left.
 
 import { api } from "./api.js";
+import { openBookForm } from "./bookform.js";
 import { clear, el, toast } from "./dom.js";
 import { openPlotlineEditor } from "./plotedit.js";
 
@@ -78,12 +79,29 @@ export async function mountPlotlineTable(container, book, { onOpen, onBooks }) {
   });
   const results = el("div", { class: "pl-results" }, el("p", { class: "muted", text: "Loading…" }));
 
+  const canWrite = Boolean((bookMeta.permissions || {}).write);
+
   container.appendChild(el("div", { class: "view table-view" }, [
     breadcrumb(bookMeta.title || book, onBooks),
-    el("h1", { class: "view-title", text: bookMeta.title || book }),
+    el("div", { class: "book-head" }, [
+      el("h1", { class: "view-title", text: bookMeta.title || book }),
+      // The book's own details live here rather than on the books grid: this is
+      // the only screen that is *about* one book, and the calendar it edits is
+      // what every timestamp below is written in.
+      canWrite ? el("button", {
+        class: "icon-btn sm", type: "button", text: "✎",
+        title: "Rename this book or change its calendar",
+        onclick: () => openBookForm({
+          book: bookMeta,
+          // Remount rather than patch the heading: the calendar may have
+          // changed, and every tick label on the page is written in it.
+          onDone: () => mountPlotlineTable(container, book, { onOpen, onBooks }),
+        }),
+      }) : null,
+    ].filter(Boolean)),
     el("div", { class: "filter-bar" }, [
       filterBox,
-      (bookMeta.permissions || {}).write
+      canWrite
         ? el("button", {
             class: "btn sm", type: "button", text: "+ New plotline",
             // A modal, so the filter and page you were on survive the detour.

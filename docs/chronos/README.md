@@ -31,9 +31,12 @@ Chronos references them and refuses to invent them.
 > event), laid out by time and colour-coded per thread. A full whole-book **story
 > map** over the same `/graph` data is still planned (design §12).
 >
-> **Plotlines can now be written from the UI** — see
-> [Editing plotlines](#editing-plotlines-in-the-ui). Books, terminus and
-> collaborators are still API-only.
+> **A whole story can now be written from the UI** — create a book (calendar and
+> all), write its scenes, thread them into plotlines, and mark the scene every
+> thread must reach. See [Starting a book](#starting-a-book-in-the-ui) and
+> [Editing plotlines](#editing-plotlines-in-the-ui). A book can be renamed and
+> its calendar swapped afterwards; collaborators and deletion are still
+> API-only.
 
 ---
 
@@ -308,6 +311,49 @@ into / diverge out of *this* event", with titles, times and a prose summary.
 **Convergence** means in-degree > 1 (more than one distinct *predecessor*);
 **divergence** means out-degree > 1. Two plotlines arriving from the same prior
 event are not a convergence — the merge already happened upstream.
+
+### Starting a book in the UI
+
+*Your books* offers **+ New book** to any logged-in writer — a book is the one
+thing needing no prior grant, since creating it is what makes you its owner.
+
+The form asks for a title, an id (derived from the title until you take it over,
+and permanent thereafter) and — the part worth pausing on — **how this book
+counts time**. Either:
+
+- **Plain numbers.** Ticks are bare integers; a scene at tick `240` reads back as
+  `240`. Pick a scale and stay consistent.
+- **A calendar.** A base unit plus the cycles that nest over it, smallest first,
+  and an optional era. As you type, the form reads the descriptor back in plain
+  language — *"Ticks are hours: 24 hours to a day, 30 days to a month, 12 months
+  to a year."* — so the thing you are committing to is legible before you commit
+  to it. Presets cover the common shapes.
+
+That matters because the calendar decides what a tick *means* everywhere
+downstream — what the timeline rail groups by, what the scene form reads back as
+you type.
+
+**Changing it later.** The **✎** beside a book's title on its plotline table
+reopens the same form to rename the book or swap its calendar. This is safe by
+construction rather than by care: ticks are canonical integers and a calendar
+formats output only, so a swap re-labels the book without moving a single scene,
+and no conflict, ordering or convergence verdict can change as a result.
+
+One thing the form has to do that the route does not advertise: `PUT
+/books/<book>` **replaces** the stored book rather than patching it, so a body
+carrying only the changed field silently erases the others. The form always
+resends title, calendar *and* terminus together, and
+[a test pins that](../../tests/chronos/test_api.py) from both directions.
+
+A malformed calendar is refused at the write (`400 INVALID_BOOK`) rather than
+stored and left to break every later read.
+
+**Marking the ending.** The terminus — the one scene every plotline in the book
+must reach — is set from the plotline editor: **✦** on any scene you own. It is a
+book-level write, so it lands immediately rather than waiting on the editor's
+Save, and replacing an existing terminus asks first, because it silently
+re-judges every other thread in the book. Until a terminus is set, the
+convergence rule stays deliberately quiet.
 
 ### Editing plotlines in the UI
 

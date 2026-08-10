@@ -50,6 +50,7 @@ from visualizer.auth import (
     validate_email,
     validate_password_strength,
 )
+from visualizer.shared_assets import register_shared_assets
 
 from .browsing import (
     DEFAULT_PER_PAGE,
@@ -113,6 +114,7 @@ def create_app(
     init_login(app, auth_store)
     register_auth_routes(app, auth_store, csrf, limiter)
     register_service_links(app, akasha_url, chronos_url, current="akasha")
+    register_shared_assets(app)
 
     # Every template can say "world"/"category" without hard-coding it; see
     # ``terms.py`` for why the API keeps the MongoDB names regardless. The same

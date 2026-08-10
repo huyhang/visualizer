@@ -59,6 +59,129 @@ def test_create_and_get_book(seeded, client):
     assert got.status_code == 200 and got.get_json()["title"] == "The Ember Pact"
 
 
+def test_creating_a_book_is_all_a_new_writer_needs(seeded, client):
+    """The whole "+ New book" flow in one assertion: an authenticated writer with
+    no grants creates a book and immediately holds write on it -- so the UI can
+    offer "+ New plotline" on the very next screen."""
+    assert _make_book(client).status_code == 201
+    assert client.get(f"/books/{BOOK}").get_json()["permissions"]["write"] is True
+
+
+def test_creating_a_book_that_exists_is_409_already_exists(seeded, client):
+    """The code the new-book form branches on to say "choose another id"."""
+    _make_book(client)
+    resp = _make_book(client)
+    assert resp.status_code == 409 and resp.get_json()["code"] == "ALREADY_EXISTS"
+
+
+def test_book_created_with_a_calendar_reads_it_back_unchanged(seeded, client):
+    calendar = {
+        "cycles": [{"name": "day", "size": 24}], "base_unit": "hour", "epoch_label": "AF",
+    }
+    assert _make_book(client, calendar=calendar).status_code == 201
+    assert client.get(f"/books/{BOOK}").get_json()["calendar"] == calendar
+
+
+@pytest.mark.parametrize("calendar", [
+    pytest.param({"cycles": []}, id="no-cycles"),
+    pytest.param({"cycles": [{"name": "day", "size": 0}]}, id="cycle-of-no-length"),
+    pytest.param({"cycles": [{"name": "day"}]}, id="cycle-without-a-size"),
+])
+def test_a_calendar_no_codec_could_be_built_from_is_refused_at_the_write(
+    seeded, client, calendar,
+):
+    """Refused up front, not on the next read. Without this the book stores fine
+    and every subsequent GET fails with INVALID_TIMEFRAME -- the wrong code, and
+    long after the mistake."""
+    resp = client.post(f"/books/{BOOK}", json={"title": "x", "calendar": calendar})
+    assert resp.status_code == 400 and resp.get_json()["code"] == "INVALID_BOOK"
+    # And nothing was written -- the refusal happens before the store is touched.
+    assert client.get("/books").get_json()["books"] == []
+
+
+def test_updating_a_book_replaces_it_whole_rather_than_patching_it(seeded, client):
+    """The trap the Edit-book form has to work around.
+
+    ``PUT /books/<book>`` swaps the stored document, so a body carrying only the
+    field the writer changed silently erases the two it left out. Nothing about
+    the route says so, and the loss is quiet: an un-designated terminus does not
+    error, it just stops every convergence verdict from having anything to
+    check. Pinned here so the day someone "simplifies" the form's payload, a
+    test fails instead of a book."""
+    calendar = {"cycles": [{"name": "day", "size": 24}], "base_unit": "hour"}
+    _make_book(client, calendar=calendar)
+    client.post(f"/books/{BOOK}/events/finale", json=_event())
+    client.post(f"/books/{BOOK}/terminus/finale")
+
+    rev = client.get(f"/books/{BOOK}").get_json()["rev"]
+    client.put(f"/books/{BOOK}", json={"title": "Renamed"}, headers={"If-Match": str(rev)})
+
+    after = client.get(f"/books/{BOOK}").get_json()
+    assert after["title"] == "Renamed"
+    assert after["terminus"] is None, "a partial PUT drops the terminus"
+    assert after["calendar"] is None, "a partial PUT drops the calendar"
+
+
+def test_a_rename_that_resends_everything_keeps_the_terminus_and_calendar(seeded, client):
+    """...and the shape the form actually sends, which must not lose either."""
+    calendar = {"cycles": [{"name": "day", "size": 24}], "base_unit": "hour"}
+    _make_book(client, calendar=calendar)
+    client.post(f"/books/{BOOK}/events/finale", json=_event())
+    client.post(f"/books/{BOOK}/terminus/finale")
+
+    rev = client.get(f"/books/{BOOK}").get_json()["rev"]
+    resp = client.put(
+        f"/books/{BOOK}",
+        json={"title": "Renamed", "calendar": calendar, "terminus": "finale"},
+        headers={"If-Match": str(rev)},
+    )
+    assert resp.status_code == 200
+
+    after = client.get(f"/books/{BOOK}").get_json()
+    assert after["title"] == "Renamed"
+    assert after["terminus"] == "finale"
+    assert after["calendar"] == calendar
+
+
+def test_swapping_a_books_calendar_relabels_without_moving_a_scene(seeded, client):
+    """Why replacing a calendar is safe to offer at all: ticks are canonical and
+    the calendar formats output only, so a swap changes labels and nothing else
+    -- not the timing, and not the book's verdict."""
+    _make_book(client, calendar={"cycles": [{"name": "day", "size": 24}], "base_unit": "hour"})
+    client.post(f"/books/{BOOK}/events/meet", json=_event("emberport", 200, 210))
+    before = client.get(f"/books/{BOOK}/events/meet").get_json()
+    assert before["start_label"] == "Day 9, 08:00"
+
+    rev = client.get(f"/books/{BOOK}").get_json()["rev"]
+    client.put(f"/books/{BOOK}", json={
+        "title": "The Ember Pact",
+        "calendar": {"cycles": [{"name": "watch", "size": 8}], "base_unit": "hour",
+                     "epoch_label": "AF"},
+    }, headers={"If-Match": str(rev)})
+
+    after = client.get(f"/books/{BOOK}/events/meet").get_json()
+    assert after["start_tick"] == before["start_tick"] == 200  # unmoved
+    assert after["start_label"] == "Watch 26, 00:00 AF"        # re-read
+    assert client.get(f"/books/{BOOK}").get_json()["status"] == "consistent"
+
+
+def test_updating_a_book_from_a_stale_revision_is_refused(seeded, client):
+    """The Edit-book form sends the rev it loaded; a second writer must not win
+    silently."""
+    _make_book(client)
+    stale = client.get(f"/books/{BOOK}").get_json()["rev"]
+    client.put(f"/books/{BOOK}", json={"title": "First"}, headers={"If-Match": str(stale)})
+
+    resp = client.put(f"/books/{BOOK}", json={"title": "Second"}, headers={"If-Match": str(stale)})
+    assert resp.status_code == 409 and resp.get_json()["code"] == "REVISION_CONFLICT"
+
+
+def test_a_bad_calendar_is_refused_on_update_too(seeded, client):
+    _make_book(client)
+    resp = client.put(f"/books/{BOOK}", json={"title": "x", "calendar": {"cycles": []}})
+    assert resp.status_code == 400 and resp.get_json()["code"] == "INVALID_BOOK"
+
+
 def test_calendar_labels_on_event(seeded, client):
     _make_book(client, calendar={
         "cycles": [{"name": "day", "size": 24}, {"name": "month", "size": 30},

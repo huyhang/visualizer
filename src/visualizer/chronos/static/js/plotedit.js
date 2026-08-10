@@ -25,6 +25,7 @@ import { findingList, markerClass, problemBanner, verdictNotes } from "./finding
 import { focusToggle } from "./focus.js";
 import { showScene } from "./peek.js";
 import { confirmModal, modal, suggestBox } from "./picker.js";
+import { slugify } from "./shared/slug.js";
 import { loadScope, sceneForm } from "./sceneform.js";
 
 const PREVIEW_DEBOUNCE_MS = 250;
@@ -72,6 +73,10 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
     preview: null,      // the last server verdict...
     previewKey: null,   // ...and the candidate it belongs to
     checking: false,
+    // The book's terminus. Not this plotline's to own — it is book-wide — but
+    // shown and settable here because this is where the writer is looking when
+    // they decide which scene ends the story.
+    terminus: bookMeta.terminus || null,
   };
   const rows = new Map(); // event id -> picker row, for scenes not yet previewed
   // Whether the writer has taken the id over from the auto-slug. Lives out here
@@ -225,7 +230,7 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
     const name = el("input", { type: "text", value: state.title, placeholder: state.id || "The Knight's Road" });
     name.addEventListener("input", () => {
       state.title = name.value;
-      if (creating && !idTouched) { idBox.value = slugId(name.value); state.id = idBox.value; }
+      if (creating && !idTouched) { idBox.value = slugify(name.value); state.id = idBox.value; }
     });
 
     const idBox = el("input", { type: "text", value: state.id, placeholder: "knights-road", disabled: creating ? null : "" });
@@ -252,6 +257,11 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
     const commit = (keepFocus) => {
       const goal = input.value.trim();
       if (!goal) return;
+      // Emptied before the re-render, not after: `render` discards this very
+      // input, and dropping a focused element blurs it -- so the blur handler
+      // below fires on a node that still holds the text it was just given, and
+      // the goal lands twice. Clearing first makes that second commit a no-op.
+      input.value = "";
       state.goals.push(goal);
       focusGoal = keepFocus; // keep typing: goals usually come in twos and threes
       render();
@@ -337,6 +347,11 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
         el("div", { class: "scene-head" }, [
           el("span", { class: "scene-when", text: row.when }),
           el("span", { class: "scene-title", text: row.title }),
+          // Book-wide, so it is shown on inherited scenes too -- the shared
+          // ending a trunk holds is exactly where a terminus usually lives. Named
+          // as the rest of the UI names it (cards.js); the ✦ tool below is where
+          // the plain-language explanation lives.
+          row.id === state.terminus ? el("span", { class: "badge terminus", text: "terminus" }) : null,
           owned ? null : el("span", { class: "badge inherited-badge", text: `from ${state.continuesInto}` }),
         ]),
         findingList(book, row, { onJump: jumpTo }),
@@ -345,6 +360,14 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
         toolButton("↑", "Move up", () => moveTo(index, index - 1), index === 0),
         toolButton("↓", "Move down", () => moveTo(index, index + 1), index === state.events.length - 1),
         toolButton("✎", "Edit this scene", () => editScene(row.id)),
+        toolButton(
+          "✦",
+          row.id === state.terminus
+            ? "Already the book's ending"
+            : "Make this the book's ending — the scene every plotline must reach",
+          () => markAsEnding(row),
+          row.id === state.terminus,
+        ),
         toolButton("✕", "Remove from this plotline", () => removeAt(index)),
       ]) : null,
     ]);
@@ -375,6 +398,36 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
       event.preventDefault();
       removeAt(index);
     }
+  }
+
+  // -- the book's ending -------------------------------------------------------
+
+  // Unlike everything else in this editor, this writes immediately: the terminus
+  // belongs to the book, not to the draft thread on screen, so there is no Save
+  // here to attach it to (the scene form works the same way, for the same
+  // reason). Replacing an existing one is confirmed, because it silently
+  // re-judges every other thread in the book.
+  function markAsEnding(row) {
+    const apply = async () => {
+      try {
+        await api.setTerminus(book, row.id);
+        state.terminus = row.id;
+        toast(`“${row.title}” is now the book's ending.`);
+        changed(); // every thread's ends_at_terminus verdict just moved
+      } catch (e) {
+        toast(e.message || "Could not set the book's ending.", true);
+      }
+    };
+    if (!state.terminus) return apply();
+    const previous = (rows.get(state.terminus) || {}).title || state.terminus;
+    confirmModal(
+      "Change the book's ending?",
+      el("div", {}, [
+        el("p", { text: `“${previous}” is the scene every plotline in this book is currently expected to reach.` }),
+        el("p", { text: `Make “${row.title}” the ending instead? Every thread is re-checked against it.` }),
+      ]),
+      { yes: "Make it the ending", onYes: apply },
+    );
   }
 
   function jumpTo(eventId) {
@@ -552,10 +605,6 @@ function summaryRow(summary) {
     owned: summary.owned !== false,
     findings: summary.findings || [],
   };
-}
-
-function slugId(text) {
-  return String(text || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
 function labelled(label, control, hint) {

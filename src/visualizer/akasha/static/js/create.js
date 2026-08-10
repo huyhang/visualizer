@@ -10,11 +10,14 @@
 
 import { api, ApiError } from "./api.js";
 import { clear, el, modal, toast } from "./dom.js";
+import { slugify } from "./shared/slug.js";
 import { T, count } from "./terms.js";
 
-export function slugify(text) {
-  return text.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "untitled";
-}
+// An article is created *at* its id, so unlike a book or a plotline there is no
+// option to refuse an empty one -- the shared `slugify` returns "" for nothing
+// usable and leaves the choice of fallback to whoever cannot do without.
+const FALLBACK_ARTICLE_ID = "untitled";
+const articleId = (text) => slugify(text) || FALLBACK_ARTICLE_ID;
 
 // Characters MongoDB will not take in a name, plus the leading underscore the
 // internal stores reserve. Checked here so a typo is answered in the dialog
@@ -135,7 +138,7 @@ export async function ensureCollection(db, col) {
 // it is theirs and we stop touching it.
 function linkTitleToSlug(titleIn, slugIn) {
   let touched = false;
-  titleIn.addEventListener("input", () => { if (!touched) slugIn.value = slugify(titleIn.value); });
+  titleIn.addEventListener("input", () => { if (!touched) slugIn.value = articleId(titleIn.value); });
   slugIn.addEventListener("input", () => { touched = true; });
 }
 
@@ -255,7 +258,7 @@ export async function newArticleDialog(scope, { onOpen }) {
           // The category is only made once the article is saved, so backing out
           // of the editor leaves no empty namespace behind.
           const pendingCollection = dbPicker.isNew() || !known.some((c) => c.name === col);
-          let id = slugify(slugIn.value);
+          let id = articleId(slugIn.value);
           if (!pendingCollection) {
             const free = await freeId(db, col, id);
             if (free !== id) {
@@ -280,7 +283,7 @@ export function createLinkTarget(query, scope) {
   return new Promise((resolve) => {
     let settled = false;
     const done = (value) => { if (!settled) { settled = true; resolve(value); } };
-    const slugIn = el("input", { type: "text", value: slugify(query) });
+    const slugIn = el("input", { type: "text", value: articleId(query) });
     const colIn = el("input", { type: "text", value: scope.col });
     const error = el("p", { class: "form-error" });
 
@@ -302,7 +305,7 @@ export function createLinkTarget(query, scope) {
             if (bad) { error.textContent = bad; return; }
             try {
               await ensureCollection(scope.db, col);
-              const id = await createWithFreeId(scope.db, col, slugify(slugIn.value), { title: query });
+              const id = await createWithFreeId(scope.db, col, articleId(slugIn.value), { title: query });
               toast(`Created “${query}”.`);
               done({ db: scope.db, col, id, title: query });
               close();

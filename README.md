@@ -130,10 +130,21 @@ without `--fix` it breaks the story again.
 src/visualizer/
   akasha/   articles, auth, grants, versioning, web UI
   chronos/           books, plotlines, events, story graph
+  static/js/         the few ES modules *both* services load
 tests/               one suite per service (in-memory MongoDB)
 docker/              Dockerfiles, the compose stack, demo seed + backup scripts
 docs/                per-service READMEs, design documents, NAS deployment
 ```
+
+**The shared frontend module.** Each service is its own Flask app with its own
+`static/` folder, and there is no bundler, so anything both browsers need used to
+be copied — and the copies drifted (an article and the scene referencing it
+stopped deriving the same id from the same title). `visualizer/static/js` holds
+one copy, and [`shared_assets.py`](src/visualizer/shared_assets.py) has each app
+serve it *beneath its own static path*, so one relative specifier —
+`./shared/slug.js` — resolves from either tree and at any mount: akasha at `/`,
+chronos at `/timeline`, or either standalone on its own port. Keep the directory
+small and dependency-free; a module there cannot import from either service.
 
 Both services follow the same conventions: **inversion of control** (every
 database or network boundary is a seam injected into an app factory) and **pure,

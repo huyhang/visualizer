@@ -61,6 +61,16 @@ export const api = {
 
   listBooks: () => request("GET", "/books"),
   getBook: (book) => request("GET", bookPath(book)),
+  // Whoever creates a book owns it outright — the server grants that, so there
+  // is nothing to set up afterwards.
+  createBook: (book, body) => request("POST", bookPath(book), { body }),
+  // A *full replace*, not a patch: whatever the body omits is erased. Callers
+  // must resend title, calendar and terminus together (see bookform.js).
+  updateBook: (book, body, rev) => request("PUT", bookPath(book), { body, ifMatch: rev }),
+
+  // Designate the one event every plotline in the book must end at. A book-level
+  // write, so it lands immediately rather than waiting on a plotline's Save.
+  setTerminus: (book, event) => request("POST", `${bookPath(book)}/terminus/${enc(event)}`),
 
   // Read helper: the paginated, filtered, name-ordered plotline table.
   listPlotlines: (book, opts) => request("GET", `${bookPath(book)}/ui/plotlines${pageQuery(opts)}`),

@@ -69,3 +69,18 @@ def test_spa_injects_mount_prefix_as_base(gc):
 def test_chronos_static_served_under_prefix(gc):
     resp = gc.get("/timeline/static/visualizer.css")
     assert resp.status_code == 200
+
+
+def test_shared_modules_are_served_by_both_apps_at_their_own_mounts(gc):
+    """Why the shared tree is imported with a *relative* specifier.
+
+    It lives once (``visualizer/static/js``) and each app serves it beneath its
+    own static path, so `./shared/slug.js` resolves to a different URL per app
+    and per mount -- and to a real file at every one of them. An absolute
+    ``/shared/...`` would work here only because akasha happens to own ``/``,
+    and would 404 the moment chronos ran standalone on its own port.
+    """
+    for url in ("/static/js/shared/slug.js", "/timeline/static/js/shared/slug.js"):
+        resp = gc.get(url)
+        assert resp.status_code == 200, url
+        assert "export function slugify" in resp.get_data(as_text=True), url

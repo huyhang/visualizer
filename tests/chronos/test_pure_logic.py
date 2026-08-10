@@ -12,10 +12,11 @@ from visualizer.chronos.book_rules import (
 from visualizer.chronos.calendar import IdentityCodec, MixedRadixCodec, codec_for
 from visualizer.chronos.conflicts import find_temporal_conflicts
 from visualizer.chronos.continuation import effective_paths
-from visualizer.chronos.errors import InvalidTimeframe
+from visualizer.chronos.errors import InvalidBook, InvalidTimeframe
 from visualizer.chronos.models import Book, EntityRef, Event, Plotline
 from visualizer.chronos.ordering import validate_order
 from visualizer.chronos.timeline import overlaps
+from visualizer.chronos.validation import validate_book_payload
 
 
 def ref(id_, collection="characters"):
@@ -239,3 +240,67 @@ def test_codec_for_defaults_to_identity():
 def test_codec_for_builds_mixed_radix():
     book = Book("b", calendar={"cycles": [{"name": "day", "size": 10}], "base_unit": "h"})
     assert isinstance(codec_for(book), MixedRadixCodec)
+
+
+# -- book payload validation -------------------------------------------------
+#
+# The calendar descriptor is checked at the write because ``codec_for`` builds
+# from it on every *read*: an unbuildable one would store fine and then break
+# every later request, blaming a timeframe for a mistake made at creation.
+
+DEMO_CALENDAR = {
+    "base_unit": "hour",
+    "cycles": [{"name": "day", "size": 24}, {"name": "month", "size": 30}],
+    "epoch_label": "AF",
+}
+
+
+def test_book_payload_keeps_the_calendar_exactly_as_sent():
+    """Checked, never rewritten -- design §4.1 leaves cycle names open, so there
+    is no canonical form to normalise towards."""
+    book = validate_book_payload("b", {"title": "T", "calendar": DEMO_CALENDAR})
+    assert book.calendar == DEMO_CALENDAR
+    assert book.title == "T"
+
+
+def test_book_payload_allows_no_calendar():
+    assert validate_book_payload("b", {"title": "T"}).calendar is None
+    assert validate_book_payload("b", {"calendar": None}).calendar is None
+
+
+def test_book_payload_allows_the_identity_calendar_without_cycles():
+    """`kind: identity` says "ticks are their own labels", so cycles are moot."""
+    assert validate_book_payload("b", {"calendar": {"kind": "identity"}}).calendar
+
+
+@pytest.mark.parametrize("calendar", [
+    pytest.param("hours", id="not-an-object"),
+    pytest.param({"kind": "julian", "cycles": [{"name": "day", "size": 24}]}, id="unknown-kind"),
+    pytest.param({"cycles": []}, id="no-cycles"),
+    pytest.param({"cycles": "day"}, id="cycles-not-a-list"),
+    pytest.param({"cycles": ["day"]}, id="cycle-not-an-object"),
+    pytest.param({"cycles": [{"size": 24}]}, id="cycle-without-a-name"),
+    pytest.param({"cycles": [{"name": "  ", "size": 24}]}, id="cycle-with-a-blank-name"),
+    pytest.param({"cycles": [{"name": 12, "size": 24}]}, id="cycle-named-with-a-number"),
+    pytest.param({"cycles": [{"name": "day"}]}, id="cycle-without-a-size"),
+    pytest.param({"cycles": [{"name": "day", "size": 0}]}, id="cycle-of-no-length"),
+    pytest.param({"cycles": [{"name": "day", "size": -3}]}, id="cycle-of-negative-length"),
+    pytest.param({"cycles": [{"name": "day", "size": 2.5}]}, id="fractional-cycle"),
+    pytest.param({"cycles": [{"name": "day", "size": True}]}, id="boolean-cycle-size"),
+    pytest.param({"cycles": [{"name": "day", "size": 24}], "base_unit": ""}, id="blank-base-unit"),
+    pytest.param({"cycles": [{"name": "day", "size": 24}], "base_unit": 7}, id="numeric-base-unit"),
+    pytest.param({"cycles": [{"name": "day", "size": 24}], "epoch_label": 7}, id="numeric-epoch"),
+])
+def test_book_payload_refuses_a_calendar_no_codec_could_be_built_from(calendar):
+    with pytest.raises(InvalidBook):
+        validate_book_payload("b", {"calendar": calendar})
+
+
+def test_every_refused_calendar_would_indeed_have_broken_a_read():
+    """The validator's job is to be no stricter than the codec it guards.
+
+    A descriptor it accepts must build; one it rejects must be one that either
+    fails to build or reads back nonsense. This pins the accept side, which is
+    the direction that would silently block legal books."""
+    book = validate_book_payload("b", {"calendar": DEMO_CALENDAR})
+    assert codec_for(book).format(200) == "Month 1, Day 9, 08:00 AF"
