@@ -181,6 +181,39 @@ def test_grants_on_is_namespaced_by_resource_type(auth):
     assert len(auth.grants_on("x", None, None, resource_type="book")) == 1
 
 
+def test_delete_grants_on_clears_one_scope_for_every_user(auth):
+    """The write-side twin of ``grants_on``: same verbatim scope match, one
+    query. Used when a resource is destroyed and its id becomes free again."""
+    auth.create_user("alice", "h")
+    auth.create_user("bob", "h")
+    auth.add_grant("alice", "db", None, None, ["read"], granted_by="o")
+    auth.add_grant("bob", "db", None, None, ["read"], granted_by="o")
+    # Neither a deeper scope nor a different database may be swept in.
+    auth.add_grant("bob", "db", "col", None, ["read"], granted_by="o")
+    auth.add_grant("bob", "other", None, None, ["read"], granted_by="o")
+
+    assert auth.delete_grants_on("db", None, None) == 2
+    assert auth.grants_on("db", None, None) == []
+    assert len(auth.grants_on("db", "col", None)) == 1
+    assert len(auth.grants_on("other", None, None)) == 1
+
+
+def test_delete_grants_on_is_namespaced_by_resource_type(auth):
+    """The whole point of the namespace: deleting a chronos book must not strip
+    a user's access to an akasha database that happens to share its name."""
+    auth.create_user("alice", "h")
+    auth.add_grant("alice", "x", None, None, ["read"], granted_by="o")  # akasha
+    auth.add_grant("alice", "x", None, None, ["read"], granted_by="o", resource_type="book")
+
+    assert auth.delete_grants_on("x", None, None, resource_type="book") == 1
+    assert len(auth.grants_on("x", None, None)) == 1  # the akasha grant survives
+    assert auth.grants_on("x", None, None, resource_type="book") == []
+
+
+def test_delete_grants_on_an_unheld_scope_is_a_no_op(auth):
+    assert auth.delete_grants_on("nobody-has-this", None, None) == 0
+
+
 # -- collaborator roster (contacts) ------------------------------------------
 
 

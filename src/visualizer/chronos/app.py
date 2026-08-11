@@ -195,6 +195,9 @@ def _register_routes(app, csrf, auth_store, books, plotlines, events, visualizer
     def delete_book(book):
         _authorize(auth_store, "DELETE", book)
         books.delete(book, _expected_rev(), current_user.username)
+        # Only once the book is really gone: a refused delete must leave the
+        # owner able to try again.
+        _revoke_book_grants(auth_store, book)
         return "", 204
 
     @app.post(_BOOK + "/terminus/<event>")
@@ -358,6 +361,19 @@ def _register_routes(app, csrf, auth_store, books, plotlines, events, visualizer
 def _require_owner(auth_store, book: str) -> None:
     if not _is_owner(auth_store, book):
         raise Forbidden(f"Only an owner may manage collaborators on '{book}'.")
+
+
+def _revoke_book_grants(auth_store, book: str) -> None:
+    """Drop every grant on a book, for every user, once the book itself is gone.
+
+    Not mere tidiness. Deletes are hard and ids may be recreated (see
+    ``store``), so a grant left behind is a grant on a *name* -- and the next
+    writer to create a book under that name would silently inherit the previous
+    owner and all their collaborators, with no invite and nothing on screen to
+    say so. Scoped to ``BOOK_RESOURCE``, so akasha grants that happen to share
+    the name are untouched.
+    """
+    auth_store.delete_grants_on(book, None, None, resource_type=BOOK_RESOURCE)
 
 
 def _replace_book_grants(auth_store, username: str, book: str) -> None:

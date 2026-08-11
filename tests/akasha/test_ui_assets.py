@@ -108,6 +108,28 @@ def test_the_shared_modules_are_served_under_this_apps_static_path(client):
         assert "slugify" in resp.get_data(as_text=True)
 
 
+# Elements whose displayed value is *not* set by a `value` attribute -- the
+# mirror of the same check in ``tests/chronos/test_ui_assets.py``. A textarea's
+# value is its child text; a select's is whichever option carries `selected`.
+# ``el`` routes unknown keys to setAttribute, so `value:` on either is accepted,
+# ignored, and invisible: the control renders empty while the state behind it is
+# correct. This service already gets it right in both idioms -- `.value` after
+# construction (``create.js``) and `text:` on a textarea (``editor.js``).
+_VALUELESS_TAGS = ("textarea", "select")
+
+
+@pytest.mark.parametrize("tag", _VALUELESS_TAGS)
+def test_no_module_sets_value_as_an_attribute_on(tag):
+    """`el("option", { value: … })` is fine and is not caught here -- option is
+    one of the elements that really does have the attribute."""
+    pattern = re.compile(rf"""el\(\s*["']{tag}["']\s*,\s*\{{[^}}]*\bvalue\s*:""")
+    for module in _modules():
+        assert not pattern.search(module.read_text()), (
+            f'{module.name}: el("{tag}", {{ value: … }}) is silently ignored — '
+            f"assign the .value property after constructing it"
+        )
+
+
 def test_no_view_builds_dom_from_untrusted_html():
     """View modules take `text`, never `innerHTML`, for anything user-supplied.
 

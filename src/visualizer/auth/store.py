@@ -234,6 +234,31 @@ class AuthStore:
         }
         return [self._public_grant(g) for g in self._grants.find(query)]
 
+    def delete_grants_on(
+        self,
+        database: str | None,
+        collection: str | None,
+        doc_id: str | None,
+        resource_type: str = DATABASE_RESOURCE,
+    ) -> int:
+        """Delete every grant scoped to *exactly* this resource; return how many.
+
+        The write-side twin of ``grants_on``, matching the scope fields the same
+        verbatim way, in one query rather than a read followed by a delete per
+        grant. Used when a resource is destroyed: ids may be reused, so a grant
+        left behind is a grant on a *name*, and would attach itself to whatever
+        is created under that name next.
+        """
+        result = self._grants.delete_many(
+            {
+                "resource_type": _type_query(resource_type),
+                "database": database,
+                "collection": collection,
+                "doc_id": doc_id,
+            }
+        )
+        return result.deleted_count
+
     def add_grant(
         self,
         username: str,

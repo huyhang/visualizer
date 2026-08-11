@@ -28,9 +28,12 @@ def searchable_text(row: Mapping) -> str:
     """The lowercased text a filter word is matched against for one row.
 
     Combines the row's name with whatever else should surface it: a plotline's
-    goals and its events' titles, or a scene's place and cast (``keywords``).
+    goals, overview and its events' titles, or a scene's place and cast
+    (``keywords``). A row without a given field simply contributes nothing --
+    scenes have no overview, and are unaffected.
     """
     parts = [row.get("name") or row.get("id") or ""]
+    parts.append(row.get("overview") or "")
     parts.extend(row.get("goals", []))
     parts.extend(row.get("event_titles", []))
     parts.extend(row.get("keywords", []))
@@ -103,6 +106,10 @@ def _present_row(row: Mapping) -> dict:
         "id": row.get("id"),
         "book": row.get("book"),
         "name": row.get("name") or row.get("id"),
+        # Presented, not just filtered on: the table shows it under the name, so
+        # a writer can tell two similarly-titled threads apart without opening
+        # either. Unlike ``event_titles``, this one earns its place in the row.
+        "overview": row.get("overview") or "",
         "goals": list(row.get("goals", [])),
         # How many problems this thread has, so the table can flag it without
         # the writer opening every thread to find out.
@@ -146,6 +153,10 @@ def _present_event_row(row: Mapping) -> dict:
         "start_tick": row.get("start_tick"),
         "end_tick": row.get("end_tick"),
         "location": row.get("location"),
+        # The full reference, so a client can resolve the place's article title
+        # rather than printing its slug. ``location`` stays as the id: it is what
+        # the compact picker line shows, and what the filter matches.
+        "location_ref": row.get("location_ref"),
         "plotlines": list(row.get("plotlines", [])),
     }
 

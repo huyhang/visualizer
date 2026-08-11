@@ -147,6 +147,16 @@ class StoryStore:
     def delete_book(self, book_id, expected_rev=None, author=None) -> None:
         self._remove(_BOOKS, book_id, book_id, expected_rev, author, BookNotFound)
 
+    def check_book_rev(self, book_id, expected_rev=None) -> None:
+        """Raise unless the book is still at ``expected_rev``; a no-op when None.
+
+        Lets a caller test the precondition *before* starting work it could not
+        undo -- the cascading delete, which has no transaction behind it. Revisions
+        are this seam's business, so the comparison lives here rather than being
+        re-derived (and worded differently) by every caller that needs it.
+        """
+        self._check_rev(self._find(_BOOKS, book_id, book_id, BookNotFound), expected_rev)
+
     def list_books(self) -> list[dict]:
         return [self._public(s) for s in self._coll(_BOOKS).find().sort("id", 1)]
 

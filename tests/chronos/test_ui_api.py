@@ -125,8 +125,12 @@ def test_lists_plotlines_ordered_by_name(book_with_plotlines):
     body = resp.get_json()
     assert [p["name"] for p in body["plotlines"]] == ["The Knight's Road", "The Spy's Shadow"]
     assert body["total"] == 2 and body["page"] == 1 and body["pages"] == 1
-    # Filter-only fields are not leaked into the table rows.
-    assert set(body["plotlines"][0]) == {"id", "book", "name", "goals", "conflicts"}
+    # Filter-only fields are not leaked into the table rows. `overview` is not
+    # one of them: it is filtered on *and* rendered, under the thread's name.
+    assert set(body["plotlines"][0]) == {
+        "id", "book", "name", "overview", "goals", "conflicts",
+    }
+    assert "event_titles" not in body["plotlines"][0]
 
 
 def test_filter_matches_event_title_on_effective_path(book_with_plotlines):

@@ -18,17 +18,20 @@
 import { api } from "./api.js";
 import { calendarField } from "./calendarfield.js";
 import { clear, el, toast } from "./dom.js";
-import { modal } from "./picker.js";
+import { confirmModal, modal } from "./picker.js";
 import { slugify } from "./shared/slug.js";
 
 // `book` is a GET /books/{id} response to edit, or null to create a new one.
-// onDone(savedBook) fires after a successful write.
-export async function openBookForm({ book = null, onDone } = {}) {
+// onDone(savedBook) fires after a successful write; onDeleted(id) after the book
+// is gone, so the caller — which is the thing that knows where the writer was —
+// decides where they land.
+export async function openBookForm({ book = null, onDone, onDeleted } = {}) {
   const editing = book !== null;
   const state = {
     title: editing ? (book.title || "") : "",
     id: editing ? book.id : "",
     world: editing ? (book.world || "") : "",
+    overview: editing ? (book.overview || "") : "",
   };
   // Asked for before the modal opens, so the chooser is never briefly empty and
   // the writer is never offered a world they cannot read.
@@ -78,11 +81,22 @@ export async function openBookForm({ book = null, onDone } = {}) {
     onChange: () => refresh(),
   });
 
+  // The form is never rebuilt (only the problem list is), so this can keep its
+  // own value and just report it to `state` as it is typed.
+  const overviewBox = el("textarea", {
+    rows: "3", placeholder: "What this book is about (optional)",
+  });
+  overviewBox.value = state.overview;
+  overviewBox.addEventListener("input", () => { state.overview = overviewBox.value; });
+
   const view = el("form", { class: "book-form", onsubmit: save }, [
     field("Title", titleBox, "What you will call it. You can rename it later."),
     field("Id", idBox, editing
       ? "A book's id is permanent — it is what every link and grant points at."
       : "Used in links and in the API. Derived from the title until you change it."),
+    field("Overview", overviewBox,
+      "What the book is about, in your own words. No rule reads it; it is here so "
+      + "a shelf of books says more than a row of titles."),
     worldField(),
     el("div", { class: "field" }, [
       el("label", { class: "field-label", text: "Time" }),
@@ -98,6 +112,11 @@ export async function openBookForm({ book = null, onDone } = {}) {
     el("div", { class: "form-actions" }, [
       submit,
       el("button", { class: "btn secondary", type: "button", text: "Cancel", onclick: () => dialog.close() }),
+      // Owners only, and never while creating — there is nothing to delete yet.
+      editing && (book.permissions || {}).delete ? el("button", {
+        class: "btn danger ghost", type: "button", text: "Delete book",
+        onclick: confirmDelete,
+      }) : null,
     ]),
     el("p", { class: "muted save-note", text: editing
       ? "Saving replaces the book's details; its plotlines and scenes are untouched."
@@ -151,12 +170,14 @@ export async function openBookForm({ book = null, onDone } = {}) {
   }
 
   // PUT replaces the whole book document, so an edit has to resend every stored
-  // field — not just the two on screen. Omitting `terminus` here silently
+  // field — not just the ones on screen. Omitting `terminus` here silently
   // un-designates the book's ending, which is the kind of loss a writer would
-  // only notice much later, via a verdict that quietly stopped complaining.
+  // only notice much later, via a verdict that quietly stopped complaining; and
+  // omitting `overview` would delete prose with nothing to hint that it went.
   function body() {
     const out = {
       title: state.title.trim(),
+      overview: state.overview,
       calendar: calendar.value(),
       world: state.world || null,
     };
@@ -183,6 +204,75 @@ export async function openBookForm({ book = null, onDone } = {}) {
     }
   }
 
+  // -- deleting --------------------------------------------------------------
+
+  // Deleting a book takes its plotlines and its scenes with it, hard, with no
+  // history to restore from. So the confirmation is built from what is actually
+  // in there rather than from a generic warning: a writer who is about to lose
+  // seventeen scenes should be told the number seventeen.
+  async function confirmDelete() {
+    const { plotlines, scenes } = await contents();
+    if (!plotlines && !scenes) {
+      // Nothing to lose. A typing gate here would be theatre, and the codebase
+      // already declines to scold an empty form for being empty.
+      confirmModal(`Delete “${label()}”?`, "It has no plotlines or scenes yet.",
+        { yes: "Delete", danger: true, onYes: doDelete });
+      return;
+    }
+    askToType(plotlines, scenes);
+  }
+
+  // The plotline ids come with the book; the scene count is one cheap page of
+  // one. A count we could not fetch is reported as unknown rather than as zero.
+  async function contents() {
+    const plotlines = (book.plotlines || []).length;
+    try {
+      return { plotlines, scenes: (await api.listEvents(state.id, { perPage: 1 })).total };
+    } catch (e) {
+      return { plotlines, scenes: null };
+    }
+  }
+
+  function askToType(plotlines, scenes) {
+    const typed = el("input", {
+      type: "text", placeholder: state.id, autocomplete: "off", "aria-label": "Book id",
+    });
+    const go = el("button", { class: "btn danger", type: "button", text: "Delete this book" });
+    go.disabled = true;
+    typed.addEventListener("input", () => { go.disabled = typed.value.trim() !== state.id; });
+    go.addEventListener("click", () => { dialog.close(); doDelete(); });
+
+    const dialog = modal(`Delete “${label()}”?`, el("div", {}, [
+      el("p", { text: `This deletes ${countPhrase(plotlines, scenes)} along with the book. It cannot be undone.` }),
+      el("p", { class: "muted", text:
+        "The characters, items and places its scenes reference are articles, and "
+        + "are not touched." }),
+      el("p", { text: `Type ${state.id} to confirm.` }),
+      typed,
+      el("div", { class: "form-actions" }, [
+        go,
+        el("button", { class: "btn secondary", type: "button", text: "Cancel",
+          onclick: () => dialog.close() }),
+      ]),
+    ]));
+  }
+
+  async function doDelete() {
+    try {
+      await api.deleteBook(state.id, book.rev);
+    } catch (e) {
+      // Reported on the form, which is still open behind the confirmation.
+      error.textContent = failure(e);
+      error.hidden = false;
+      return;
+    }
+    dialog.close();
+    toast(`Deleted “${label()}”.`);
+    if (onDeleted) onDeleted(state.id);
+  }
+
+  const label = () => state.title.trim() || state.id;
+
   function failure(e) {
     if (e.code === "ALREADY_EXISTS") {
       return `A book with the id “${state.id}” already exists. Choose another.`;
@@ -195,6 +285,16 @@ export async function openBookForm({ book = null, onDone } = {}) {
 
   refresh();
   return dialog;
+}
+
+// "3 plotlines and 17 scenes", minus whatever is zero, and honest about a count
+// that could not be read.
+function countPhrase(plotlines, scenes) {
+  const parts = [];
+  if (plotlines) parts.push(`${plotlines} plotline${plotlines === 1 ? "" : "s"}`);
+  if (scenes === null) parts.push("every scene in it");
+  else if (scenes) parts.push(`${scenes} scene${scenes === 1 ? "" : "s"}`);
+  return parts.join(" and ");
 }
 
 function field(label, control, hint) {

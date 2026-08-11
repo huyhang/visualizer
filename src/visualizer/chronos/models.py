@@ -92,6 +92,8 @@ class Plotline:
     goals: list[str]
     title: str | None = None
     continues_into: str | None = None
+    # The writer's own prose about this thread. See ``Book.overview``.
+    overview: str = ""
 
     @property
     def display_title(self) -> str:
@@ -103,6 +105,7 @@ class Plotline:
             "events": list(self.events),
             "goals": list(self.goals),
             "continues_into": self.continues_into,
+            "overview": self.overview,
         }
 
     @classmethod
@@ -113,6 +116,7 @@ class Plotline:
             goals=list(doc.get("goals", [])),
             title=doc.get("title"),
             continues_into=doc.get("continues_into"),
+            overview=doc.get("overview", ""),
         )
 
 
@@ -130,6 +134,12 @@ class Book:
     # Without this a new book has nothing to search -- the scope could only be
     # inferred from scenes that do not exist yet (see ``dominant_database``).
     world: str | None = None
+    # What this book is about, in the writer's own words. Free prose that no rule
+    # reads -- it exists so a shelf of books, or a list of threads, says something
+    # more than its title. Empty rather than null: "never written" and "written,
+    # then cleared" are the same state, and one empty value is one fewer case for
+    # every reader (and every form) to handle.
+    overview: str = ""
 
     def to_storage(self) -> dict:
         return {
@@ -137,6 +147,7 @@ class Book:
             "terminus": self.terminus,
             "calendar": self.calendar,
             "world": self.world,
+            "overview": self.overview,
         }
 
     @classmethod
@@ -147,4 +158,6 @@ class Book:
             terminus=doc.get("terminus"),
             calendar=doc.get("calendar"),
             world=doc.get("world"),
+            # Books written before the field existed simply have none.
+            overview=doc.get("overview", ""),
         )

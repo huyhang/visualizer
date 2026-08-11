@@ -5,8 +5,10 @@ the key responses.
 """
 
 import pytest
+from werkzeug.security import generate_password_hash
 
 from tests.chronos.conftest import ref
+from visualizer.chronos.app import BOOK_RESOURCE
 
 BOOK = "ember-pact"
 
@@ -182,6 +184,78 @@ def test_a_bad_calendar_is_refused_on_update_too(seeded, client):
     assert resp.status_code == 400 and resp.get_json()["code"] == "INVALID_BOOK"
 
 
+# -- the overview ------------------------------------------------------------
+
+
+def test_a_books_overview_is_stored_and_read_back(seeded, client):
+    prose = "Four threads converge on a coronation nobody wants."
+    assert client.post(f"/books/{BOOK}", json={"title": "T", "overview": prose}).status_code == 201
+    assert client.get(f"/books/{BOOK}").get_json()["overview"] == prose
+
+
+def test_a_plotlines_overview_is_stored_and_read_back(seeded, client):
+    prose = "Aldric carries the seal north, and learns what it is for."
+    _make_book(client)
+    client.post(f"/books/{BOOK}/events/a", json=_event())
+    resp = client.post(
+        f"/books/{BOOK}/plotlines/knights",
+        json={"events": ["a"], "goals": ["g"], "overview": prose},
+    )
+    assert resp.status_code == 201
+    assert client.get(f"/books/{BOOK}/plotlines/knights").get_json()["overview"] == prose
+
+
+def test_a_record_with_no_overview_reads_back_an_empty_one(seeded, client):
+    """Never null, so a client can render it without a guard."""
+    _make_book(client)
+    assert client.get(f"/books/{BOOK}").get_json()["overview"] == ""
+
+
+@pytest.mark.parametrize("kind", ["book", "plotline"])
+def test_a_partial_put_erases_the_overview(seeded, client, kind):
+    """The same trap as the terminus and the calendar, now with prose in it.
+
+    PUT swaps the whole document, so a form that forgets to resend the overview
+    deletes writing the writer never asked to delete -- and unlike a dropped
+    terminus, there is no verdict that quietly stops complaining to hint at it.
+    Pinned so the two ``body()`` builders in the browser cannot regress.
+    """
+    _make_book(client)
+    client.post(f"/books/{BOOK}/events/a", json=_event())
+    if kind == "book":
+        url, keep = f"/books/{BOOK}", {"title": "T"}
+    else:
+        url, keep = f"/books/{BOOK}/plotlines/p", {"events": ["a"], "goals": ["g"]}
+        client.post(url, json=keep)
+    client.put(url, json={**keep, "overview": "Worth keeping."})
+
+    assert client.get(url).get_json()["overview"] == "Worth keeping."
+    client.put(url, json=keep)  # ...the same write, minus the overview
+    assert client.get(url).get_json()["overview"] == ""
+
+
+def test_an_overview_that_is_not_a_string_is_refused(seeded, client):
+    resp = client.post(f"/books/{BOOK}", json={"title": "T", "overview": 7})
+    assert resp.status_code == 400 and resp.get_json()["code"] == "INVALID_BOOK"
+
+
+def test_an_overview_past_the_length_limit_is_refused(seeded, client):
+    resp = client.post(f"/books/{BOOK}", json={"title": "T", "overview": "x" * 10_001})
+    assert resp.status_code == 400 and resp.get_json()["code"] == "INVALID_BOOK"
+    assert client.get("/books").get_json()["books"] == [], "nothing was written"
+
+
+def test_a_scene_row_carries_the_whole_location_reference(seeded, client):
+    """So the scene library can show what Akasha calls the place, not its slug.
+    Chronos holds only the reference; resolving it is the browser's job, and it
+    cannot ask without the database and collection."""
+    _make_book(client)
+    client.post(f"/books/{BOOK}/events/a", json=_event("highkeep"))
+    row = client.get(f"/books/{BOOK}/events").get_json()["events"][0]
+    assert row["location"] == "highkeep"
+    assert row["location_ref"] == ref("highkeep", "locations").to_dict()
+
+
 def test_calendar_labels_on_event(seeded, client):
     _make_book(client, calendar={
         "cycles": [{"name": "day", "size": 24}, {"name": "month", "size": 30},
@@ -350,6 +424,72 @@ def test_delete_terminus_409(seeded, client):
     _build_converging_story(client)
     resp = client.delete(f"/books/{BOOK}/events/t?detach=true")
     assert resp.status_code == 409 and resp.get_json()["code"] == "TERMINUS_IN_USE"
+
+
+def test_deleting_a_book_takes_its_plotlines_and_scenes_with_it(seeded, client):
+    _build_converging_story(client)
+    assert client.delete(f"/books/{BOOK}").status_code == 204
+    assert client.get("/books").get_json()["books"] == []
+    # 403, not 404: the owner's grant is swept with the book, and every route
+    # authorizes before it looks anything up. Deliberate -- a deleted book
+    # answers the same way a stranger's book does, rather than confirming it
+    # once existed. The cascade itself is asserted against the store in
+    # test_services.py, which can still see past the grant.
+    assert client.get(f"/books/{BOOK}").status_code == 403
+    assert client.get(f"/books/{BOOK}/plotlines/knights").status_code == 403
+
+
+def test_a_stale_book_delete_is_refused_before_the_cascade_starts(seeded, client):
+    """The delete is not atomic -- it walks the plotlines and scenes one at a
+    time -- so the precondition is checked up front. Checked only at the end, a
+    refused delete would still have emptied the book it then declined to
+    remove."""
+    _build_converging_story(client)
+    stale = client.get(f"/books/{BOOK}").get_json()["rev"]
+    client.put(f"/books/{BOOK}", json={"title": "Renamed"})  # someone else edits it
+
+    resp = client.delete(f"/books/{BOOK}", headers={"If-Match": str(stale)})
+    assert resp.status_code == 409 and resp.get_json()["code"] == "REVISION_CONFLICT"
+    assert client.get(f"/books/{BOOK}").status_code == 200
+    assert client.get(f"/books/{BOOK}/plotlines/knights").status_code == 200
+    assert client.get(f"/books/{BOOK}/events/a").status_code == 200
+
+
+def test_deleting_a_book_revokes_every_grant_on_it(seeded, client, auth_store):
+    auth_store.create_user("finn", generate_password_hash("pw"))
+    _make_book(client)
+    assert client.put(
+        f"/books/{BOOK}/collaborators/finn", json={"role": "editor"}
+    ).status_code == 200
+    assert auth_store.grants_on(BOOK, None, None, resource_type=BOOK_RESOURCE)
+
+    assert client.delete(f"/books/{BOOK}").status_code == 204
+    assert auth_store.grants_on(BOOK, None, None, resource_type=BOOK_RESOURCE) == [], (
+        "the owner's and the collaborator's grants outlived the book"
+    )
+
+
+def test_a_refused_delete_leaves_the_owners_grant_in_place(seeded, client):
+    """Sweeping grants before the delete succeeded would lock the owner out of
+    their own book on the strength of a failed request."""
+    _make_book(client)
+    stale = client.get(f"/books/{BOOK}").get_json()["rev"]
+    client.put(f"/books/{BOOK}", json={"title": "Renamed"})
+    assert client.delete(f"/books/{BOOK}", headers={"If-Match": str(stale)}).status_code == 409
+    assert client.get(f"/books/{BOOK}").status_code == 200
+
+
+def test_a_recreated_book_does_not_inherit_the_deleted_ones_access(
+    seeded, client, admin_client,
+):
+    """The reason the sweep exists. Deletes are hard and ids may be reused, so a
+    grant left behind is a grant on a *name*: the next writer to take that name
+    would hand their book to the previous owner, silently."""
+    _make_book(client)  # mara creates and owns it
+    assert client.delete(f"/books/{BOOK}").status_code == 204
+
+    assert admin_client.post(f"/books/{BOOK}", json={"title": "A different book"}).status_code == 201
+    assert client.get(f"/books/{BOOK}").status_code == 403
 
 
 def test_non_collaborator_cannot_read(seeded, client, admin_client):

@@ -9,6 +9,8 @@ are enforced hard here.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from .book_rules import graph_view, neighborhood
 from .browsing import (
     DEFAULT_PER_PAGE,
@@ -128,11 +130,19 @@ class BookService(_Service):
 
     def delete(self, book_id, expected_rev=None, author=None) -> None:
         self._require_book(book_id)
+        # Check the caller's precondition *first*. The cascade below is a run of
+        # single-document deletes with no transaction behind it, so a stale
+        # If-Match discovered at the last step would leave the book stripped of
+        # its story but still present -- a state nobody asked for, and one no
+        # error message can undo.
+        self.store.check_book_rev(book_id, expected_rev)
         # Cascade: remove the book's plotlines and events, then the book itself.
         for pl in self.store.list_plotlines(book_id):
             self.store.delete_plotline(book_id, pl["id"], author=author)
         for ev in self.store.list_events(book_id):
             self.store.delete_event(book_id, ev["id"], author=author)
+        # Re-checked here, not merely trusted from above: nothing stops another
+        # writer touching the book while the cascade runs.
         self.store.delete_book(book_id, expected_rev, author)
 
     def list(self) -> list[dict]:
@@ -219,15 +229,17 @@ class EventService(_Service):
                 evidence={"plotlines": [p["id"] for p in referencing]},
             )
         for p in referencing:  # detach=True
-            # Rebuild the whole stored body -- dropping a field here (e.g.
-            # continues_into) would silently sever the thread's continuation.
-            body = {
-                "title": p.get("title"),
-                "events": [e for e in p["events"] if e != event_id],
-                "goals": p["goals"],
-                "continues_into": p.get("continues_into"),
-            }
-            self.store.update_plotline(book_id, p["id"], body, p["rev"], author)
+            # Round-trip the *model* rather than re-listing the stored fields.
+            # An enumerated body is how a field added later gets dropped in
+            # silence: nothing recomputes it and no verdict mentions it, so the
+            # loss surfaces months later as prose the writer swears they wrote.
+            # ``replace`` copies every field this one does not name, so the only
+            # way to lose one is to delete it from the model itself.
+            thread = Plotline.from_storage(p)
+            detached = replace(thread, events=[e for e in thread.events if e != event_id])
+            self.store.update_plotline(
+                book_id, p["id"], detached.to_storage(), p["rev"], author
+            )
         self.store.delete_event(book_id, event_id, expected_rev, author)
 
     def neighborhood(self, book_id, event_id, relation=None) -> dict:
@@ -335,10 +347,11 @@ class PlotlineService(_Service):
                 "not exist.",
                 evidence={"missing": resolution.missing},
             )
-        inlined = Plotline(
-            id=plotline_id, events=resolution.events, goals=plotline.goals,
-            title=plotline.title, continues_into=None,
-        )
+        # Same rule as the detach rewrite above: change the two fields this
+        # operation is *about* and carry the rest across untouched. Inlining is
+        # defined as a change of representation, not of content -- a thread must
+        # come out of it saying exactly what it said going in.
+        inlined = replace(plotline, events=resolution.events, continues_into=None)
         updated = self.store.update_plotline(
             book_id, plotline_id, inlined.to_storage(), expected_rev, author
         )
@@ -407,6 +420,7 @@ class VisualizerService(_Service):
             "id": pl.id,
             "book": book_id,
             "name": pl.display_title,
+            "overview": pl.overview,
             "goals": list(pl.goals),
             "event_titles": titles,
             "conflicts": counts.get(pl.id, 0),
@@ -438,6 +452,12 @@ class VisualizerService(_Service):
             "start_tick": event.start_tick,
             "end_tick": event.end_tick,
             "location": event.location.id,
+            # The whole reference as well as the id. Chronos does not know what
+            # Akasha calls this place -- only the browser can ask, and it does
+            # so lazily and memoised (``entities.js``), the same way the event
+            # cards do. Without the database and collection it cannot ask at
+            # all, and a table of slugs is the result.
+            "location_ref": event.location.to_dict(),
             # Findable by where it happens and who is in it, not just its title.
             "keywords": [ref.id for ref in event.entity_refs()],
             "plotlines": sorted(pid for pid, path in paths.items() if event.id in path),

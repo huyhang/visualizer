@@ -158,6 +158,30 @@ input:focus {
 .pager { display: flex; align-items: center; gap: .8rem; justify-content: center; margin-top: 1rem; }
 .pager-info { color: var(--muted); font-size: .84rem; }
 
+/* The scene library. The timeframe column is deliberately narrow and allowed to
+   wrap: with a calendar, a span reads "Year 1, Month 1, Day 9, 08:00 AF → Year 1,
+   Month 1, Day 11, 18:00 AF", and holding that on one line made this column set
+   the width of the whole table and squeezed the scene titles. It breaks at the
+   arrow instead. The tools column keeps its nowrap -- it is three small buttons
+   and has no reason to grow. */
+.scene-table td.when { width: 8rem; }
+.scene-table td.tools { width: 1%; white-space: nowrap; }
+.scene-table td.when .scene-when { display: block; line-height: 1.35; }
+.scene-table .unused { font-style: italic; }
+/* a scene still waiting for a place on the timeline — a to-do, not a fault */
+.chip.unscheduled { background: var(--surface-2); color: var(--muted); margin-left: .4rem; }
+.scene-table .badge.terminus { margin-left: .4rem; }
+
+/* An overview wherever one is shown: the writer's prose, set quieter than the
+   title it sits under and never competing with it. */
+.overview { color: var(--muted); margin: .15rem 0 .6rem; max-width: 62ch; white-space: pre-wrap; }
+.row-overview { color: var(--muted); font-size: .84rem; margin: .2rem 0 0; max-width: 60ch; }
+/* On a card, clamped to two lines so a shelf of books keeps one rhythm. */
+.book-overview {
+  color: var(--muted); font-size: .84rem; margin: .35rem 0 0;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+
 /* plotline view header */
 .pl-header { margin-bottom: 1.2rem; }
 .pl-header .goals { margin: .2rem 0 .5rem; }

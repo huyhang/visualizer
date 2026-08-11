@@ -10,6 +10,7 @@
 import { api } from "./api.js";
 import { openBookForm } from "./bookform.js";
 import { clear, el, toast } from "./dom.js";
+import { pager } from "./paging.js";
 import { openPlotlineEditor } from "./plotedit.js";
 
 const PER_PAGE = 20;
@@ -39,21 +40,15 @@ function healthCell(count) {
   });
 }
 
-function pager(data, onPage) {
-  const { page, pages, total } = data;
-  return el("div", { class: "pager" }, [
-    el("button", { class: "btn secondary sm", text: "‹ Prev", disabled: page <= 1 ? "" : null,
-      onclick: () => onPage(page - 1) }),
-    el("span", { class: "pager-info", text: `Page ${page} of ${pages} · ${total} plotline${total === 1 ? "" : "s"}` }),
-    el("button", { class: "btn secondary sm", text: "Next ›", disabled: page >= pages ? "" : null,
-      onclick: () => onPage(page + 1) }),
-  ]);
-}
-
 function table(rows, onOpen) {
   if (!rows.length) return el("p", { class: "empty", text: "No plotlines match your filter." });
   const body = rows.map((pl) => el("tr", { class: "pl-row", onclick: () => onOpen(pl.id) }, [
-    el("td", {}, el("span", { class: "pl-name", text: pl.name })),
+    el("td", {}, [
+      el("span", { class: "pl-name", text: pl.name }),
+      // Under the name rather than in a column of its own: it is prose, and a
+      // column of prose would squeeze the two that are scannable.
+      pl.overview ? el("p", { class: "row-overview", text: pl.overview }) : null,
+    ]),
     el("td", {}, goalCells(pl.goals)),
     el("td", {}, healthCell(pl.conflicts)),
   ]));
@@ -65,7 +60,7 @@ function table(rows, onOpen) {
   ]));
 }
 
-export async function mountPlotlineTable(container, book, { onOpen, onBooks }) {
+export async function mountPlotlineTable(container, book, { onOpen, onBooks, onScenes }) {
   clear(container);
   const state = lastState[book] || { query: "", page: 1 };
   lastState[book] = state;
@@ -95,10 +90,24 @@ export async function mountPlotlineTable(container, book, { onOpen, onBooks }) {
           book: bookMeta,
           // Remount rather than patch the heading: the calendar may have
           // changed, and every tick label on the page is written in it.
-          onDone: () => mountPlotlineTable(container, book, { onOpen, onBooks }),
+          onDone: () => mountPlotlineTable(container, book, { onOpen, onBooks, onScenes }),
+          // This view is *about* the book that just stopped existing, so there
+          // is nothing here to return to.
+          onDeleted: onBooks,
         }),
       }) : null,
+      // The book's scenes, as a list of their own. Offered to readers too:
+      // browsing what happens in a book is not an editing act, and the library
+      // hides its own write controls without the grant for them.
+      el("button", {
+        class: "btn secondary sm", type: "button", text: "Scenes",
+        title: "Every scene in this book — write, edit or remove them",
+        onclick: onScenes,
+      }),
     ].filter(Boolean)),
+    // What the book is about, under its title — the one screen that is about
+    // this book and nothing else is where its summary belongs.
+    bookMeta.overview ? el("p", { class: "view-lead overview", text: bookMeta.overview }) : null,
     el("div", { class: "filter-bar" }, [
       filterBox,
       canWrite
@@ -120,7 +129,7 @@ export async function mountPlotlineTable(container, book, { onOpen, onBooks }) {
       state.page = data.page; // server clamps out-of-range pages
       clear(results);
       results.appendChild(table(data.plotlines, onOpen));
-      results.appendChild(pager(data, (p) => { state.page = p; render(); }));
+      results.appendChild(pager(data, (p) => { state.page = p; render(); }, { noun: "plotline" }));
     } catch (e) {
       clear(results);
       results.appendChild(el("p", { class: "empty", text: "Could not load plotlines." }));

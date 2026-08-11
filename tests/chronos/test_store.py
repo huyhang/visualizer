@@ -64,6 +64,25 @@ def test_stale_rev_conflicts(story_store):
         story_store.update_book(BOOK, {"title": "z"}, expected_rev=1)
 
 
+def test_check_book_rev_accepts_the_current_revision(story_store):
+    story_store.create_book(BOOK, {"title": "x"})
+    story_store.check_book_rev(BOOK, 1)  # does not raise
+    story_store.check_book_rev(BOOK, None)  # "no precondition"
+
+
+def test_check_book_rev_refuses_a_stale_revision(story_store):
+    story_store.create_book(BOOK, {"title": "x"})
+    story_store.update_book(BOOK, {"title": "y"}, expected_rev=1)
+    with pytest.raises(RevisionConflict) as ei:
+        story_store.check_book_rev(BOOK, 1)
+    assert ei.value.evidence == {"expected": 1, "actual": 2}
+
+
+def test_check_book_rev_on_a_missing_book_is_not_found(story_store):
+    with pytest.raises(BookNotFound):
+        story_store.check_book_rev("nope", 1)
+
+
 def test_delete_then_recreate(story_store):
     story_store.create_event(BOOK, "e1", _event_body())
     story_store.delete_event(BOOK, "e1")

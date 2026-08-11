@@ -1,6 +1,6 @@
 # What the Chronos UI cannot do yet
 
-*Audited 2026-08-10 against the routes the app actually registers and the calls
+*Audited 2026-08-11 against the routes the app actually registers and the calls
 `static/js/api.js` actually makes. Not a wish list — every gap below is a
 capability the JSON API already has, tested, that the browser has no way to
 reach.*
@@ -11,22 +11,16 @@ time](design.md#2-principles-consistent-with-the-existing-codebase), so the
 interesting question is not "what is missing from the product" but **"where does
 a writer with no terminal hit a wall?"**
 
-Of the **27 content routes** the app registers, **20 are reachable from the UI**
-and **7 are not**.
+Of the **27 content routes** the app registers, **22 are reachable from the UI**
+and **5 are not**.
 
-**There is no longer a blocking gap.** A writer can now create a book, write its
-scenes, thread them into a plotline and mark the book's ending without leaving
-the browser — see [the flow, end to end](#the-flow-end-to-end). What remains is
-housekeeping and sharing.
+**There is no longer a blocking gap, and no housekeeping one either.** A writer
+can create a book, write its scenes, thread them into a plotline, mark the
+book's ending, and now also *tidy up*: delete a scene, delete a thread, delete
+the whole book — see [the flow, end to end](#the-flow-end-to-end). What remains
+is **sharing** and one **report**.
 
 ---
-
-## Significant: the book exists but stays incomplete
-
-| Missing from the UI | The API it would call | What it costs |
-| --- | --- | --- |
-| **Delete a scene** | `DELETE /books/{book}/events/{event}` | The scene form writes immediately, so abandoning a plotline edit afterwards leaves an orphan scene. It stays *findable* — the Add-scene picker lists every scene in the book — but there is no way to remove it. |
-| **Delete a book** | `DELETE /books/{book}` | No way to clean up an experiment. |
 
 ## Present in the API, absent from the UI
 
@@ -41,14 +35,15 @@ housekeeping and sharing.
 
 ## What the UI *does* cover
 
-For completeness, the 20 reachable routes: listing, reading, **creating** and
-**updating** books — including the Akasha **world** their cast is drawn from;
-**designating the terminus**; the story graph; listing, reading, creating and
-updating scenes; the full plotline lifecycle (create, read, update, delete); the
-five book-scoped visualiser helpers (`/ui/plotlines`, `/ui/ticks`,
-`/ui/entities`, `/ui/entity/...`, `/ui/plotline-preview`); and the one that is
-**not** book-scoped, `/ui/worlds`, because it answers a question asked while a
-book is being created.
+For completeness, the 22 reachable routes: listing, reading, **creating**,
+**updating** and **deleting** books — including the Akasha **world** their cast
+is drawn from and their **overview**; **designating the terminus**; the story
+graph; listing, reading, creating, updating and **deleting** scenes; the full
+plotline lifecycle (create, read, update, delete); the five book-scoped
+visualiser helpers (`/ui/plotlines`, `/ui/ticks`, `/ui/entities`,
+`/ui/entity/...`, `/ui/plotline-preview`); and the one that is **not**
+book-scoped, `/ui/worlds`, because it answers a question asked while a book is
+being created.
 
 ### The flow, end to end
 
@@ -67,12 +62,23 @@ What a writer with no terminal can now do from a standing start:
    calendar.
 3. **Write the cast** in Akasha (never blocked — see below).
 4. **+ New plotline**, and inside it **Add scene → Write a new scene**, choosing
-   characters, items and places from the real canon.
+   characters, items and places from the real canon. A scene that turns out to
+   be missing from the *middle* goes in with **⤵** on the row above it, or
+   **Insert at the start**, rather than being appended and dragged up.
 5. **✦ Mark a scene as the ending**, which is what turns the third story rule
    from invisible into reported.
 6. Watch the findings appear as scenes are dragged, and save.
+7. **Keep house.** **Scenes** in the book header opens the scene library — every
+   scene in the book, filtered and paged, written, edited or removed there. A
+   scene a thread still uses names the threads before it goes; the book's ending
+   refuses until another is designated; and a scene that is some thread's *only*
+   scene is refused outright, because dropping it would leave a plotline with an
+   empty path that no later save would accept.
+8. **Delete the experiment**, from the same **✎** that renames the book — with
+   the real counts of what goes with it, and the book's id to type.
 
-Steps 2 and 5 are what this document previously called blocking.
+Steps 2 and 5 are what this document previously called blocking; steps 7 and 8
+are what it called housekeeping.
 
 ## Not a gap: Akasha
 
@@ -97,11 +103,12 @@ A `getting-started.md` — "build the Ember Pact yourself, and watch the three
 continuity problems appear" — was **deferred until the blocking gap closed**, so
 that the guide would not have to open with a `curl` line: the audience for it is
 precisely the audience that bounces off a terminal. That guide is now writable,
-and is the natural next piece of work.
+and is the natural next piece of work — and it can now end where a guide should,
+with the reader deleting the book they built.
 
-The remaining seven gaps are all *housekeeping* (delete a book, tidy up an
-orphan scene) or *sharing* (collaborators). None of them stops a story being
-written, which is why none is marked blocking.
+The remaining five gaps are *sharing* (collaborators) and *reporting* (the
+whole-book verdict). None of them stops a story being written or tidied up,
+which is why none is marked blocking.
 
 ### Planned: a calendar library
 

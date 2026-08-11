@@ -12,11 +12,15 @@ from visualizer.chronos.book_rules import (
 from visualizer.chronos.calendar import IdentityCodec, MixedRadixCodec, codec_for
 from visualizer.chronos.conflicts import find_temporal_conflicts
 from visualizer.chronos.continuation import effective_paths
-from visualizer.chronos.errors import InvalidBook, InvalidTimeframe
+from visualizer.chronos.errors import InvalidBook, InvalidPlotline, InvalidTimeframe
 from visualizer.chronos.models import Book, EntityRef, Event, Plotline
 from visualizer.chronos.ordering import validate_order
 from visualizer.chronos.timeline import overlaps
-from visualizer.chronos.validation import validate_book_payload
+from visualizer.chronos.validation import (
+    MAX_OVERVIEW,
+    validate_book_payload,
+    validate_plotline_payload,
+)
 
 
 def ref(id_, collection="characters"):
@@ -304,3 +308,82 @@ def test_every_refused_calendar_would_indeed_have_broken_a_read():
     the direction that would silently block legal books."""
     book = validate_book_payload("b", {"calendar": DEMO_CALENDAR})
     assert codec_for(book).format(200) == "Month 1, Day 9, 08:00 AF"
+
+
+# -- the overview (books and plotlines) --------------------------------------
+#
+# Free prose that no rule reads, so there is little to check -- but the little
+# there is matters: it must survive untouched, and "never written" and "written,
+# then emptied" must stay the same state rather than becoming null and "".
+
+
+def _book(**body):
+    return validate_book_payload("b", body)
+
+
+def _plotline(**body):
+    return validate_plotline_payload("p", {"events": ["a"], "goals": ["g"], **body})
+
+
+@pytest.mark.parametrize("parse", [_book, _plotline], ids=["book", "plotline"])
+def test_overview_defaults_to_empty_when_absent(parse):
+    assert parse().overview == ""
+
+
+@pytest.mark.parametrize("parse", [_book, _plotline], ids=["book", "plotline"])
+def test_overview_is_kept_exactly_as_written(parse):
+    """Prose, not a slug: nothing is trimmed, collapsed or normalised. The
+    writer's paragraph breaks are theirs."""
+    prose = "  Two sisters,\n\nand the winter between them.  "
+    assert parse(overview=prose).overview == prose
+
+
+@pytest.mark.parametrize(
+    "parse,err", [(_book, InvalidBook), (_plotline, InvalidPlotline)],
+    ids=["book", "plotline"],
+)
+@pytest.mark.parametrize("value", [
+    pytest.param(7, id="a-number"),
+    pytest.param(["prose"], id="a-list"),
+    pytest.param({"text": "prose"}, id="an-object"),
+    # Null is refused rather than coerced: there is one empty overview, and it
+    # is "". A client clearing the field sends the empty string it was given.
+    pytest.param(None, id="null"),
+])
+def test_overview_must_be_a_string(parse, err, value):
+    with pytest.raises(err):
+        parse(overview=value)
+
+
+@pytest.mark.parametrize(
+    "parse,err", [(_book, InvalidBook), (_plotline, InvalidPlotline)],
+    ids=["book", "plotline"],
+)
+def test_an_overview_at_the_limit_is_accepted_and_one_past_it_is_not(parse, err):
+    """A sanity bound, not a style rule: the field is stored whole and returned
+    in every listing, so an unbounded paste would bloat responses nothing
+    paginates by size. The boundary itself is legal."""
+    assert len(parse(overview="x" * MAX_OVERVIEW).overview) == MAX_OVERVIEW
+    with pytest.raises(err) as ei:
+        parse(overview="x" * (MAX_OVERVIEW + 1))
+    assert ei.value.evidence == {"length": MAX_OVERVIEW + 1, "max": MAX_OVERVIEW}
+
+
+def test_book_overview_round_trips_through_storage():
+    stored = Book(id="b", overview="What it is about.").to_storage()
+    assert Book.from_storage({"id": "b", **stored}).overview == "What it is about."
+
+
+def test_plotline_overview_round_trips_through_storage():
+    stored = Plotline(id="p", events=["a"], goals=["g"], overview="Her thread.").to_storage()
+    assert Plotline.from_storage({"id": "p", **stored}).overview == "Her thread."
+
+
+@pytest.mark.parametrize("model,doc", [
+    (Book, {"id": "b"}),
+    (Plotline, {"id": "p", "events": ["a"], "goals": ["g"]}),
+], ids=["book", "plotline"])
+def test_a_record_written_before_the_field_existed_reads_as_empty(model, doc):
+    """No migration is needed: the key is simply absent on everything stored so
+    far, and absent already means empty."""
+    assert model.from_storage(doc).overview == ""

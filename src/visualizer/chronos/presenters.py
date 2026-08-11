@@ -320,6 +320,7 @@ def present_plotline(
         "kind": "plotline",
         "id": this.id,
         "title": this.title,
+        "overview": this.overview,
         "book": public["book"],
         "goals": this.goals,
         "events": list(this.events),
@@ -441,6 +442,7 @@ def present_book(public: dict, report: BookReport, plotline_ids: list[str]) -> d
         "kind": "book",
         "id": public["id"],
         "title": public.get("title"),
+        "overview": public.get("overview", ""),
         "terminus": public.get("terminus"),
         "calendar": public.get("calendar"),
         # Stored, so it is presented: a client is told to send the stored fields

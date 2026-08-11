@@ -82,6 +82,32 @@ def test_collaborator_invite_leaves_document_grants_alone(app, docs_app, auth_st
     assert len(book_grants) == 1, "invite should be idempotent"
 
 
+def test_deleting_a_book_leaves_the_like_named_document_grants_alone(
+    app, docs_app, auth_store,
+):
+    """Deleting a book sweeps its grants; the sweep must stop at the namespace.
+
+    ``mara`` holds an akasha grant on a database with the same name as the book
+    she is deleting -- the exact collision this module exists for. Losing it
+    would revoke her access to a world she never touched.
+    """
+    auth_store.add_grant(
+        WRITER, SHARED_NAME, None, None, ["read"], granted_by="admin"
+    )  # an akasha grant
+    chronos = app.test_client()
+    assert _login(chronos).status_code == 200
+    assert chronos.post(f"/books/{SHARED_NAME}", json={"title": "x"}).status_code == 201
+    assert chronos.delete(f"/books/{SHARED_NAME}").status_code == 204
+
+    remaining = auth_store.grants_for(WRITER)
+    assert [g["resource_type"] for g in remaining] == ["database"]
+    docs = docs_app.test_client()
+    assert _login(docs).status_code == 200
+    assert docs.get(
+        f"/databases/{SHARED_NAME}/collections/characters/documents/aldric"
+    ).status_code == 200
+
+
 # -- pure authz unit tests ---------------------------------------------------
 
 

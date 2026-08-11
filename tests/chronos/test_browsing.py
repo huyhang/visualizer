@@ -12,11 +12,12 @@ from visualizer.chronos.browsing import (
 )
 
 
-def row(id_, name=None, goals=(), event_titles=(), book="ember-pact"):
+def row(id_, name=None, goals=(), event_titles=(), book="ember-pact", overview=""):
     return {
         "id": id_,
         "book": book,
         "name": name,
+        "overview": overview,
         "goals": list(goals),
         "event_titles": list(event_titles),
     }
@@ -120,15 +121,37 @@ def test_presented_rows_drop_filter_only_fields():
         "id": "kr",
         "book": "ember-pact",
         "name": "Knight's Road",
+        "overview": "",
         "goals": ["Deliver Seal"],
         "conflicts": 0,
     }
 
 
+def test_the_overview_is_presented_not_merely_filtered_on():
+    """Unlike ``event_titles``, it is shown -- the table prints it under the name."""
+    rows = [row("kr", name="Knight's Road", overview="Aldric carries the seal north.")]
+    assert browse_plotlines(rows)["plotlines"][0]["overview"] == "Aldric carries the seal north."
+
+
+def test_a_thread_is_findable_by_a_word_from_its_overview():
+    """It is on screen, so a writer will expect the filter box to see it too."""
+    rows = [row("kr", name="Knight's Road", overview="Aldric carries the seal north.")]
+    assert browse_plotlines(rows, query="seal")["total"] == 1
+    assert browse_plotlines(rows, query="dragon")["total"] == 0
+
+
+def test_a_row_without_an_overview_is_unaffected():
+    """Scenes go through the same matcher and have no overview at all."""
+    bare = {"id": "kr", "book": "ember-pact", "name": "Knight's Road"}
+    assert matches_all_words(bare, "knight") is True
+    assert "none" not in searchable_text(bare)
+
+
 # -- scenes (the editor's picker) --------------------------------------------
 
 
-def scene(id_, name=None, start=None, location="highkeep", keywords=(), book="ember-pact"):
+def scene(id_, name=None, start=None, location="highkeep", keywords=(), book="ember-pact",
+          location_ref=None):
     return {
         "id": id_,
         "book": book,
@@ -138,6 +161,9 @@ def scene(id_, name=None, start=None, location="highkeep", keywords=(), book="em
         "start_tick": start,
         "end_tick": None if start is None else start + 10,
         "location": location,
+        "location_ref": location_ref or {
+            "database": book, "collection": "locations", "id": location,
+        },
         "keywords": list(keywords),
         "plotlines": [],
     }
@@ -164,9 +190,21 @@ def test_scene_rows_are_trimmed_to_what_the_picker_shows():
     out = browse_events([scene("a", name="Departure", start=0, keywords=["aldric"])])
     assert set(out["events"][0]) == {
         "id", "book", "title", "when", "scheduled", "start_tick", "end_tick",
-        "location", "plotlines",
+        "location", "location_ref", "plotlines",
     }
     assert out["events"][0]["title"] == "Departure"
+    # `keywords` is filter-only and must not reach the row.
+    assert "keywords" not in out["events"][0]
+
+
+def test_scene_rows_carry_the_whole_location_reference():
+    """The id alone cannot be resolved to a title: only the reference names the
+    database and collection the article lives in, and a scene may point into
+    another world deliberately. Without this the library prints slugs."""
+    ref = {"database": "ember-pact", "collection": "locations", "id": "highkeep"}
+    row = browse_events([scene("a", location_ref=ref)])["events"][0]
+    assert row["location_ref"] == ref
+    assert row["location"] == "highkeep", "the compact id stays, for the picker line"
 
 
 def test_scene_pagination_reports_the_same_facts_as_plotlines():

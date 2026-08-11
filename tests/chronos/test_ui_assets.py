@@ -103,6 +103,62 @@ def test_the_shared_modules_are_served_under_this_apps_static_path(client):
         assert "slugify" in resp.get_data(as_text=True)
 
 
+def _body_builder(source: str) -> str:
+    """The text of a module's ``body()`` payload builder.
+
+    Both editors declare it at one level of indentation inside their entry
+    function, so it ends at the first line that is exactly two spaces and a
+    brace -- the same convention the rest of the file is written in.
+    """
+    start = source.index("function body()")
+    return source[start : source.index("\n  }", start)]
+
+
+@pytest.mark.parametrize("module,fields", [
+    ("bookform.js", ("title", "overview", "calendar", "world", "terminus")),
+    ("plotedit.js", ("title", "overview", "events", "goals", "continues_into")),
+], ids=lambda v: v if isinstance(v, str) else "")
+def test_the_editors_resend_every_stored_field(module, fields):
+    """A PUT replaces the whole document, so a payload that omits a field erases it.
+
+    Both editors build that payload by hand, and the fields easiest to forget are
+    the ones nothing recomputes and no verdict mentions -- an overview, a
+    terminus, a continuation. The API test pins what the server does with a
+    partial body; this pins the browser's half, which is where the mistake would
+    actually be made. Python cannot drive the form, but it can read it, and this
+    is a failure mode worth catching statically: it deletes a writer's prose and
+    raises nothing at all.
+    """
+    body = _body_builder((_JS_DIR / module).read_text())
+    missing = [f for f in fields if f not in body]
+    assert not missing, f"{module}'s body() never sends {missing}"
+
+
+# Elements whose displayed value is *not* set by a `value` attribute. A
+# textarea's value is its child text; a select's is whichever option carries
+# `selected`. ``el`` routes unknown keys to setAttribute, so `value:` on either
+# is accepted, ignored, and invisible -- the control renders empty while the
+# state behind it is correct, which is the worst way to be wrong: the writer
+# edits a field that will not show them what is already in it.
+#
+# The fix both services already use everywhere: assign the `.value` property
+# after constructing it (``sceneform.js``), or for a textarea pass `text:`,
+# which ``el`` maps to textContent (akasha's ``editor.js``).
+_VALUELESS_TAGS = ("textarea", "select")
+
+
+@pytest.mark.parametrize("tag", _VALUELESS_TAGS)
+def test_no_module_sets_value_as_an_attribute_on(tag):
+    """`el("option", { value: … })` is fine and is not caught here -- option is
+    one of the elements that really does have the attribute."""
+    pattern = re.compile(rf"""el\(\s*["']{tag}["']\s*,\s*\{{[^}}]*\bvalue\s*:""")
+    for module in _modules():
+        assert not pattern.search(module.read_text()), (
+            f'{module.name}: el("{tag}", {{ value: … }}) is silently ignored — '
+            f"assign the .value property after constructing it"
+        )
+
+
 def test_no_module_builds_dom_from_untrusted_html():
     """The DOM helpers take `text`, never `innerHTML`, for anything user-supplied.
 

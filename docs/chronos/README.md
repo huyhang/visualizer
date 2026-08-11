@@ -103,6 +103,7 @@ Akasha API deliberately refuses to expose.
 | **Event** | Characters + items, at one location, over a timeframe, with a description. The atom of the model. |
 | **Plotline** | An **ordered** list of events plus a non-empty set of goals. Order is the contract. May `continues_into` another plotline so a shared ending is stored once. |
 | **Book** | A collection of plotlines with one designated **Terminus**. |
+| **Overview** | Free prose on a book or a plotline, saying what it is about. Optional, read by no rule, empty rather than null when unwritten, and capped at 10 000 characters — it is returned whole in every listing. |
 | **Terminus** | The single event every plotline in the book must end at. |
 | **Trunk** | Not a distinct type — the conventional name for the plotline that holds a **shared ending** other threads `continues_into` (see [Shared endings](#shared-endings)). |
 | **EntityRef** | A pointer to a Akasha article — `{database, collection, id}`. Must already exist. |
@@ -208,7 +209,7 @@ GET    /health                                       liveness (no auth)
 GET    /books                                        books you can read
 POST   /books/<book>                                 create (you become owner)
 GET    /books/<book>                                 read (incl. computed status)
-PUT    /books/<book>                                 update title/terminus/calendar
+PUT    /books/<book>                                 update title/overview/terminus/calendar
 DELETE /books/<book>                                 delete book + its contents
 POST   /books/<book>/terminus/<event>                designate the terminus
 GET    /books/<book>/validate                        full invariant report
@@ -285,6 +286,7 @@ labels, and convergence markers into `effective_events`.
   "kind": "plotline",
   "id": "knights-road",
   "title": "The Knight's Road",
+  "overview": "Aldric carries the seal north, and learns what it is for.",
   "book": "ember-pact",
   "goals": ["Deliver the Ember Seal", "Reach the coronation alive"],
   "events": ["aldric-departs"],                // stored: this thread's own segment
@@ -318,8 +320,14 @@ event are not a convergence — the merge already happened upstream.
 thing needing no prior grant, since creating it is what makes you its owner.
 
 The form asks for a title, an id (derived from the title until you take it over,
-and permanent thereafter), the **world** its cast comes from, and — the part
-worth pausing on — **how this book counts time**.
+and permanent thereafter), an optional **overview**, the **world** its cast comes
+from, and — the part worth pausing on — **how this book counts time**.
+
+**Overview.** What the book is about, in the writer's own words. No rule reads
+it; it exists so that a shelf of books says more than a row of titles. Plotlines
+have one too, shown under the thread's name in the table and matched by the
+filter box, so two similarly-titled threads can be told apart without opening
+either.
 
 **World.** Which Akasha database holds this book's characters, items and places.
 The chooser offers only worlds you can read, and picks for you when there is
@@ -349,16 +357,29 @@ downstream — what the timeline rail groups by, what the scene form reads back 
 you type.
 
 **Changing it later.** The **✎** beside a book's title on its plotline table
-reopens the same form to rename the book or swap its calendar. This is safe by
-construction rather than by care: ticks are canonical integers and a calendar
-formats output only, so a swap re-labels the book without moving a single scene,
-and no conflict, ordering or convergence verdict can change as a result.
+reopens the same form to rename the book, edit its overview or swap its calendar.
+This is safe by construction rather than by care: ticks are canonical integers
+and a calendar formats output only, so a swap re-labels the book without moving a
+single scene, and no conflict, ordering or convergence verdict can change as a
+result.
 
 One thing the form has to do that the route does not advertise: `PUT
 /books/<book>` **replaces** the stored book rather than patching it, so a body
 carrying only the changed field silently erases the others. The form always
-resends title, calendar *and* terminus together, and
-[a test pins that](../../tests/chronos/test_api.py) from both directions.
+resends title, overview, calendar *and* terminus together.
+[One test pins that](../../tests/chronos/test_api.py) from both directions at the
+API, and [another reads the two editors](../../tests/chronos/test_ui_assets.py)
+to check their payloads still name every stored field — because the fields
+easiest to drop are the ones nothing recomputes and no verdict mentions, so
+losing one raises nothing at all.
+
+**Deleting a book.** The same form carries **Delete book**, for owners only. It
+takes the book's plotlines and scenes with it, hard, with no history to restore
+from — so the confirmation names the real counts ("3 plotlines and 17 scenes")
+and asks you to type the book's id. The articles its scenes reference belong to
+Akasha and are untouched. The grants naming the book are swept along with it:
+ids may be reused, and a grant left behind would silently hand the next book of
+that name to the previous owner.
 
 A malformed calendar is refused at the write (`400 INVALID_BOOK`) rather than
 stored and left to break every later read.

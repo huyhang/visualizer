@@ -17,6 +17,9 @@ function bookCard(book, onOpen) {
       el("span", { class: `status-pill ${book.status}`, text: book.status }),
     ]),
     el("div", { class: "book-sub", text: book.id }),
+    // What the book is about, clamped to a couple of lines so the cards keep a
+    // common height — the shelf reads as a shelf, not a wall of prose.
+    book.overview ? el("p", { class: "book-overview", text: book.overview }) : null,
     el("div", { class: "book-meta", text: `${count} plotline${count === 1 ? "" : "s"}` }),
   ]);
 }

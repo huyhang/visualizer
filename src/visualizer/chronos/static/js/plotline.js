@@ -180,6 +180,9 @@ export async function mountPlotline(container, book, plotlineId,
   const canEdit = (bookMeta.permissions || {}).write;
   const header = el("div", { class: "pl-header" }, [
     el("h1", { class: "view-title", text: pl.title || pl.id }),
+    // The writer's own summary of the thread, above the goals: it says what this
+    // is, where the goals say what it is for.
+    pl.overview ? el("p", { class: "overview", text: pl.overview }) : null,
     el("div", { class: "chip-row goals" }, (pl.goals || []).map((g) => el("span", { class: "chip goal", text: g }))),
     el("div", { class: "pl-actions" }, [
       canEdit ? el("button", {

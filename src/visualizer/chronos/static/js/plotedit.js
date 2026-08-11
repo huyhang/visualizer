@@ -66,6 +66,7 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
   const state = {
     id: plotlineId || "",
     title: "",
+    overview: "",
     goals: [],
     events: [],
     continuesInto: null,
@@ -89,7 +90,8 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
     try {
       const pl = await api.getPlotline(book, plotlineId, { expand: true });
       Object.assign(state, {
-        title: pl.title || "", goals: pl.goals.slice(), events: pl.events.slice(),
+        title: pl.title || "", overview: pl.overview || "",
+        goals: pl.goals.slice(), events: pl.events.slice(),
         continuesInto: pl.continues_into, rev: pl.rev, preview: pl,
         previewKey: candidateKey(pl.events, pl.continues_into),
       });
@@ -236,11 +238,20 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
     const idBox = el("input", { type: "text", value: state.id, placeholder: "knights-road", disabled: creating ? null : "" });
     idBox.addEventListener("input", () => { idTouched = true; state.id = idBox.value.trim(); });
 
+    // Like the name and the id, this writes straight to state without asking for
+    // a re-render: `render` rebuilds this field, and rebuilding a textarea the
+    // writer is typing into would drop the caret on every keystroke.
+    const overview = el("textarea", { rows: "3", placeholder: "What this thread is about (optional)" });
+    overview.value = state.overview;
+    overview.addEventListener("input", () => { state.overview = overview.value; });
+
     return el("div", { class: "editor-fields" }, [
       labelled("Name", name),
       labelled("Id", idBox, creating
         ? "Used in links and in the API. Derived from the name until you change it."
         : "A plotline's id is permanent."),
+      labelled("Overview", overview,
+        "A note to yourself about this thread. No rule reads it, so it changes no verdict."),
       labelled("Goals", goalEditor(), "What this thread is trying to achieve. At least one is required."),
       labelled("Continues into", continuationField(), "Carry on into another thread instead of repeating its scenes."),
     ]);
@@ -325,7 +336,9 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
       ]),
       list,
       el("div", { class: "editor-scene-actions" }, [
-        el("button", { class: "btn secondary sm", type: "button", text: "+ Add scene", onclick: openScenePicker }),
+        // Appends. Every other position is reachable from the ↥ / ↧ on the rows.
+        el("button", { class: "btn secondary sm", type: "button", text: "+ Add scene",
+          onclick: () => openScenePicker() }),
         state.events.length > 1 ? el("button", {
           class: "btn secondary sm", type: "button", text: "Sort by time",
           title: "Put the dated scenes in chronological order",
@@ -359,6 +372,13 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
       owned ? el("div", { class: "scene-tools" }, [
         toolButton("↑", "Move up", () => moveTo(index, index - 1), index === 0),
         toolButton("↓", "Move down", () => moveTo(index, index + 1), index === state.events.length - 1),
+        // A thread is written in the order it is read, so the scene that turns
+        // out to be missing is usually missing from the *middle*. Without these
+        // the only way to put one there was to append it and drag it up. Both
+        // directions on every row, rather than "after" plus a separate control
+        // for the top: one rule to learn, and position 0 is where it belongs.
+        toolButton("↥", "Insert a scene before this one", () => openScenePicker(index)),
+        toolButton("↧", "Insert a scene after this one", () => openScenePicker(index + 1)),
         toolButton("✎", "Edit this scene", () => editScene(row.id)),
         toolButton(
           "✦",
@@ -445,9 +465,14 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
 
   // -- scene picker / scene form ---------------------------------------------
 
-  function openScenePicker() {
+  // `at` is the position the chosen scene lands in — the end by default, which
+  // is what "+ Add scene" means. Anywhere else and this is an insertion, so the
+  // dialog says so: the writer has told us where it goes, and the confirmation
+  // that it understood is worth a word.
+  function openScenePicker(at = state.events.length) {
+    const inserting = at < state.events.length;
     const body = el("div", { class: "picker-tabs" });
-    const dialog = modal("Add a scene", body);
+    const dialog = modal(inserting ? "Insert a scene" : "Add a scene", body);
     const chosen = new Set(state.events);
 
     const existing = suggestBox({
@@ -459,7 +484,7 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
         chosen.has(e.id) ? el("span", { class: "chip", text: "already here" }) : null,
       ],
       empty: "No scene matches — write a new one.",
-      onPick: (row) => { dialog.close(); addScene(row); },
+      onPick: (row) => { dialog.close(); addScene(row, at); },
     });
 
     const tabs = el("div", { class: "tabs" });
@@ -470,7 +495,7 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
       panel.appendChild(which === "existing" ? existing.el : sceneForm(book, {
         scope, calendar: bookMeta.calendar,
         onCancel: dialog.close,
-        onSaved: (row) => { dialog.close(); addScene(row); toast(`Added “${row.title}”.`); },
+        onSaved: (row) => { dialog.close(); addScene(row, at); toast(`Added “${row.title}”.`); },
       }));
     };
     for (const [key, label] of [["existing", "An existing scene"], ["new", "Write a new scene"]]) {
@@ -530,9 +555,13 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
     ]);
   }
 
+  // A *full replace*: whatever this omits is erased. The overview is the field
+  // most easily forgotten here — nothing recomputes it, no verdict stops
+  // mentioning it, so dropping it would lose the writer's prose in silence.
   function body() {
     return {
       title: state.title || null,
+      overview: state.overview,
       events: state.events,
       goals: state.goals,
       continues_into: state.continuesInto,

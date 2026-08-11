@@ -1339,6 +1339,12 @@
             "type": "string",
             "nullable": true
           },
+          "overview": {
+            "type": "string",
+            "example": "A smuggler's oath, and the winter it costs her.",
+            "description": "What this book is about, in the writer's own words. Free prose that no rule reads. Empty string when never written \u2014 never null.",
+            "maxLength": 10000
+          },
           "terminus": {
             "type": "string",
             "nullable": true,
@@ -1385,6 +1391,7 @@
           "kind": "book",
           "id": "ember-pact",
           "title": "The Ember Pact",
+          "overview": "Four threads converge on a coronation nobody wants.",
           "terminus": "the-coronation",
           "calendar": {
             "base_unit": "hour",
@@ -1429,6 +1436,11 @@
         "properties": {
           "title": {
             "type": "string"
+          },
+          "overview": {
+            "type": "string",
+            "description": "Free-prose summary. Optional; omitting it stores an empty one. PUT replaces the whole document, so an update that means to keep the existing overview must send it back. At most 10 000 characters.",
+            "maxLength": 10000
           },
           "terminus": {
             "type": "string",
@@ -1710,6 +1722,12 @@
             "nullable": true,
             "description": "Optional short display name; defaults to id."
           },
+          "overview": {
+            "type": "string",
+            "example": "Mara's thread: the debt she takes on, and who pays it.",
+            "description": "What this thread is about, in the writer's own words. Free prose that no rule reads. Empty string when never written \u2014 never null.",
+            "maxLength": 10000
+          },
           "book": {
             "type": "string",
             "description": "Owning book id."
@@ -1766,6 +1784,7 @@
           "kind": "plotline",
           "id": "knights-road",
           "title": "The Knight's Road",
+          "overview": "Aldric carries the seal north, and learns what it is for.",
           "book": "ember-pact",
           "goals": [
             "Deliver the Ember Seal",
@@ -1821,6 +1840,11 @@
         "properties": {
           "title": {
             "type": "string"
+          },
+          "overview": {
+            "type": "string",
+            "description": "Free-prose summary. Optional; omitting it stores an empty one. PUT replaces the whole document, so an update that means to keep the existing overview must send it back. At most 10 000 characters.",
+            "maxLength": 10000
           },
           "events": {
             "type": "array",
@@ -3001,6 +3025,10 @@
             "type": "string",
             "description": "Display name (title, or id when untitled)."
           },
+          "overview": {
+            "type": "string",
+            "description": "The thread's free-prose summary, shown under its name. Also matched by the `filter` parameter."
+          },
           "goals": {
             "type": "array",
             "items": {
@@ -3188,7 +3216,10 @@
           },
           "location": {
             "type": "string",
-            "description": "Id of the location article."
+            "description": "Id of the location article. Compact, and what the `filter` parameter matches; use `location_ref` to resolve its title."
+          },
+          "location_ref": {
+            "$ref": "#/components/schemas/EntityRef"
           },
           "plotlines": {
             "type": "array",
@@ -3402,6 +3433,10 @@
             "type": "string",
             "nullable": true,
             "description": "Optional short display name; defaults to id."
+          },
+          "overview": {
+            "type": "string",
+            "description": "The candidate's free-prose summary, echoed back unchanged."
           },
           "book": {
             "type": "string"

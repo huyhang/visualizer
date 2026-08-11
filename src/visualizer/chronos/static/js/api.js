@@ -65,8 +65,15 @@ export const api = {
   // is nothing to set up afterwards.
   createBook: (book, body) => request("POST", bookPath(book), { body }),
   // A *full replace*, not a patch: whatever the body omits is erased. Callers
-  // must resend title, calendar and terminus together (see bookform.js).
+  // must resend title, overview, calendar and terminus together (see bookform.js).
   updateBook: (book, body, rev) => request("PUT", bookPath(book), { body, ifMatch: rev }),
+
+  // Deletes the book *and everything in it* — every plotline, every scene — and
+  // sweeps the grants that named it, so the id is free again. Hard, with no
+  // history behind it: there is nothing to undo it with, which is why the caller
+  // confirms with the real counts first. Send the rev you loaded: the server
+  // checks it before the cascade starts, so a refusal costs nothing.
+  deleteBook: (book, rev) => request("DELETE", bookPath(book), { ifMatch: rev }),
 
   // Designate the one event every plotline in the book must end at. A book-level
   // write, so it lands immediately rather than waiting on a plotline's Save.
@@ -96,6 +103,12 @@ export const api = {
   getEvent: (book, id) => request("GET", evPath(book, id)),
   createEvent: (book, id, body) => request("POST", evPath(book, id), { body }),
   updateEvent: (book, id, body, rev) => request("PUT", evPath(book, id), { body, ifMatch: rev }),
+  // `detach` first removes the scene from every plotline that lists it; without
+  // it the API refuses with EVENT_IN_USE and names them, which is what the
+  // caller shows before asking again. The book's terminus is refused either way
+  // (TERMINUS_IN_USE) — designate a new ending first.
+  deleteEvent: (book, id, rev, { detach } = {}) =>
+    request("DELETE", evPath(book, id) + (detach ? "?detach=true" : ""), { ifMatch: rev }),
 
   // The whole book's story graph: nodes (with timing + role flags), plotline
   // lanes, and precedence edges tagged by plotline. Drives the connected-plots

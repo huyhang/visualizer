@@ -18,6 +18,32 @@ def _require_mapping(payload: Any, err) -> dict:
     return payload
 
 
+# An overview is prose, not an essay: this is a sanity bound, not a style rule.
+# Unbounded free text goes straight into the stored document and back out in
+# every listing, so a runaway paste (or a script) would bloat responses that
+# nothing paginates by size.
+MAX_OVERVIEW = 10_000
+
+
+def _parse_overview(body: dict, err) -> str:
+    """The writer's free-prose summary of a book or a thread.
+
+    Optional, and absent means empty rather than null -- the model keeps one
+    empty value, so nothing downstream has to tell "never written" apart from
+    "cleared". The error class is passed in because books and plotlines each
+    report their own (§8.1).
+    """
+    overview = body.get("overview", "")
+    if not isinstance(overview, str):
+        raise err("'overview' must be a string.")
+    if len(overview) > MAX_OVERVIEW:
+        raise err(
+            f"'overview' must be at most {MAX_OVERVIEW} characters.",
+            evidence={"length": len(overview), "max": MAX_OVERVIEW},
+        )
+    return overview
+
+
 def parse_entity_ref(obj: Any, what: str = "entity") -> EntityRef:
     if not isinstance(obj, dict):
         raise InvalidEvent(f"Each {what} must be an object with database/collection/id.")
@@ -117,6 +143,7 @@ def validate_plotline_payload(plotline_id: str, payload: Any) -> Plotline:
     return Plotline(
         id=plotline_id, events=list(events), goals=list(goals),
         title=title, continues_into=continues_into,
+        overview=_parse_overview(body, InvalidPlotline),
     )
 
 
@@ -198,4 +225,5 @@ def validate_book_payload(book_id: str, payload: Any) -> Book:
     return Book(
         id=book_id, title=title, terminus=terminus, calendar=calendar,
         world=world.strip() if world else None,
+        overview=_parse_overview(body, InvalidBook),
     )
