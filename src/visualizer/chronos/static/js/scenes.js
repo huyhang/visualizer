@@ -28,6 +28,7 @@ import { api } from "./api.js";
 import { clear, el, toast } from "./dom.js";
 import { entityTitle } from "./entities.js";
 import { pager } from "./paging.js";
+import { clearPeek, showScene } from "./peek.js";
 import { confirmModal, modal } from "./picker.js";
 import { loadScope, sceneForm } from "./sceneform.js";
 
@@ -53,6 +54,9 @@ export async function mountScenes(container, book, { onBooks, onBook }) {
   // name. Read once at mount — the membership itself is re-read on every
   // render, so only the naming is cached, and an unknown id shows as itself.
   const threadNames = await loadThreadNames(book);
+  // Which scene the peek slot is currently showing, so an edit or a delete can
+  // dismiss a card that has stopped being true (see `dropStalePeek`).
+  let peeked = null;
 
   const filterBox = el("input", {
     type: "search", class: "filter-box", placeholder: "Filter scenes…",
@@ -105,8 +109,9 @@ export async function mountScenes(container, book, { onBooks, onBook }) {
         el("th", { text: "Scene" }),
         el("th", { text: "Place" }),
         el("th", { text: "Used by" }),
-        canWrite ? el("th", { class: "tools" }) : null,
-      ].filter(Boolean))),
+        // Always present: the column carries Expand, which is a reading act.
+        el("th", { class: "tools" }),
+      ])),
       el("tbody", {}, rows.map(row)),
     ]));
   }
@@ -131,18 +136,22 @@ export async function mountScenes(container, book, { onBooks, onBook }) {
       ]),
       el("td", {}, place(scene)),
       el("td", {}, usedBy(scene.plotlines)),
-      canWrite ? el("td", { class: "tools" }, el("div", { class: "scene-tools" }, [
-        tool("✎", "Edit this scene", () => editScene(scene)),
-        // Shown to editors as well as owners, but disabled: an absent control
-        // reads as "this cannot be done", where the truth is "not by you".
-        canDelete
+      el("td", { class: "tools" }, el("div", { class: "scene-tools" }, [
+        // Reading, not editing, so it is offered to everyone who can open the
+        // book at all — unlike the two beside it.
+        tool("⤢", "Expand — the whole scene, with its cast and places", () => expandScene(scene)),
+        canWrite ? tool("✎", "Edit this scene", () => editScene(scene)) : null,
+        // An editor who is not the owner sees this disabled rather than absent:
+        // a missing control reads as "this cannot be done", where the truth is
+        // "not by you". A reader, who cannot edit either, is shown neither.
+        canWrite ? (canDelete
           ? tool("✕", "Delete this scene", () => deleteScene(scene))
           : el("button", {
               class: "icon-btn sm", type: "button", text: "✕", disabled: "",
               title: "Only the book's owner may delete a scene",
-            }),
-      ])) : null,
-    ].filter(Boolean));
+            })) : null,
+      ])),
+    ]);
   }
 
   // Where the scene happens, by the name the writer gave the article rather than
@@ -168,6 +177,35 @@ export async function mountScenes(container, book, { onBooks, onBook }) {
       plotlines.map((p) => el("span", { class: "chip", text: threadNames.get(p) || p })));
   }
 
+  // -- reading one scene in full ---------------------------------------------
+
+  // The whole scene beside the table: its timeframe, whatever role it plays in
+  // the weave, its description, and its place, cast and items as chips that open
+  // the article behind them. None of that is rendered here — `peek.js` owns the
+  // slot and `cards.js` builds the card, which is the same pair the plotline
+  // view's expanded card and the story graph already go through. So a reference
+  // clicked here opens exactly the article card it opens there, and there is one
+  // scene-rendering path in the app rather than three.
+  //
+  // Only the id and title are handed over. The row knows the scene's timing too,
+  // but in the shape the *table* uses; the card fills that in from the scene
+  // itself rather than being told it twice in two vocabularies.
+  function expandScene(scene) {
+    peeked = scene.id;
+    showScene(book, { id: scene.id, title: scene.title });
+  }
+
+  // A card left open over a scene that has since been rewritten or deleted is
+  // worse than no card: it is a confident, wrong answer. Cleared only when it is
+  // *that* scene, so editing one scene does not dismiss the card you were
+  // reading about another.
+  function dropStalePeek(eventId) {
+    if (peeked === eventId) {
+      peeked = null;
+      clearPeek();
+    }
+  }
+
   // -- writing and editing ---------------------------------------------------
 
   function writeScene() {
@@ -188,6 +226,7 @@ export async function mountScenes(container, book, { onBooks, onBook }) {
       onSaved: (saved) => {
         dialog.close();
         toast(`${verb} “${saved.title}”.`);
+        dropStalePeek(saved.id);
         render();
       },
     }));
@@ -226,6 +265,7 @@ export async function mountScenes(container, book, { onBooks, onBook }) {
     try {
       await api.deleteEvent(book, event.id, event.rev, { detach });
       toast(`Deleted “${event.title || event.id}”.`);
+      dropStalePeek(event.id);
       render();
     } catch (e) {
       if (e.code === "EVENT_IN_USE") return offerDetach(event, e.evidence.plotlines || []);
