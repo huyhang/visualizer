@@ -188,4 +188,14 @@ def validate_book_payload(book_id: str, payload: Any) -> Book:
     calendar = body.get("calendar")
     if calendar is not None:
         _check_calendar(calendar)
-    return Book(id=book_id, title=title, terminus=terminus, calendar=calendar)
+    world = body.get("world")
+    if world is not None and not (isinstance(world, str) and world.strip()):
+        raise InvalidBook("'world' must be an Akasha database name.")
+    # Existence is *not* checked here. Whether the world is readable is the web
+    # layer's business (it needs the request's identity), and a world that has
+    # been renamed or revoked should leave the book readable with an empty
+    # picker rather than un-loadable -- the same posture as a dangling EntityRef.
+    return Book(
+        id=book_id, title=title, terminus=terminus, calendar=calendar,
+        world=world.strip() if world else None,
+    )

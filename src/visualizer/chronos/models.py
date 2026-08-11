@@ -124,9 +124,20 @@ class Book:
     title: str | None = None
     terminus: str | None = None
     calendar: dict | None = None
+    # The Akasha database this book's cast and places live in. A *default* for
+    # the article pickers, not a rule: an ``EntityRef`` still names its own
+    # database, so a scene may reach into another world if the writer means it.
+    # Without this a new book has nothing to search -- the scope could only be
+    # inferred from scenes that do not exist yet (see ``dominant_database``).
+    world: str | None = None
 
     def to_storage(self) -> dict:
-        return {"title": self.title, "terminus": self.terminus, "calendar": self.calendar}
+        return {
+            "title": self.title,
+            "terminus": self.terminus,
+            "calendar": self.calendar,
+            "world": self.world,
+        }
 
     @classmethod
     def from_storage(cls, doc: dict) -> "Book":
@@ -135,4 +146,5 @@ class Book:
             title=doc.get("title"),
             terminus=doc.get("terminus"),
             calendar=doc.get("calendar"),
+            world=doc.get("world"),
         )

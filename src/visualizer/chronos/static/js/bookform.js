@@ -23,12 +23,20 @@ import { slugify } from "./shared/slug.js";
 
 // `book` is a GET /books/{id} response to edit, or null to create a new one.
 // onDone(savedBook) fires after a successful write.
-export function openBookForm({ book = null, onDone } = {}) {
+export async function openBookForm({ book = null, onDone } = {}) {
   const editing = book !== null;
   const state = {
     title: editing ? (book.title || "") : "",
     id: editing ? book.id : "",
+    world: editing ? (book.world || "") : "",
   };
+  // Asked for before the modal opens, so the chooser is never briefly empty and
+  // the writer is never offered a world they cannot read.
+  let worlds = [];
+  try { worlds = (await api.listWorlds()).worlds || []; } catch (e) { /* offer none */ }
+  // A single world is the common case (one story, one canon) — take it as the
+  // default rather than making the writer confirm the only option.
+  if (!editing && worlds.length === 1) state.world = worlds[0].database;
   // Nothing to auto-derive when the id is already fixed.
   let idTouched = editing;
 
@@ -75,6 +83,7 @@ export function openBookForm({ book = null, onDone } = {}) {
     field("Id", idBox, editing
       ? "A book's id is permanent — it is what every link and grant points at."
       : "Used in links and in the API. Derived from the title until you change it."),
+    worldField(),
     el("div", { class: "field" }, [
       el("label", { class: "field-label", text: "Time" }),
       el("p", { class: "field-hint muted", text: editing
@@ -98,10 +107,34 @@ export function openBookForm({ book = null, onDone } = {}) {
   const dialog = modal(editing ? `Edit ${state.title || state.id}` : "New book",
     view, { wide: true }); // focuses the title box
 
+  // Which Akasha world this book's cast, items and places come from. Without
+  // one, a book with no scenes has nothing to point its pickers at — the scope
+  // could only be inferred from scenes that do not exist yet, so the very first
+  // scene form comes up empty.
+  function worldField() {
+    if (!worlds.length) {
+      return field("World", el("p", { class: "muted", text:
+        "You cannot read any worlds yet." }),
+      "Create one in Articles first — a book's characters and places are articles there.");
+    }
+    const choose = el("select", {}, [
+      el("option", { value: "", text: "— none yet —" }),
+      ...worlds.map((w) => el("option", { value: w.database, text: w.database })),
+    ]);
+    choose.value = state.world;
+    choose.addEventListener("change", () => { state.world = choose.value; refresh(); });
+    return field("World", choose, worlds.length === 1
+      ? "Where this book's characters, items and places live in Articles."
+      : "Where this book's characters, items and places live. Scenes can still "
+        + "reference another world; this is what the pickers search first.");
+  }
+
   function problems() {
     const out = [];
     if (!state.title.trim()) out.push("Give the book a title.");
     if (!state.id) out.push("Give the book an id.");
+    // Not required: a writer may plot before there is any canon to point at.
+    // The scene form says so plainly when the time comes.
     return out.concat(calendar.problems());
   }
 
@@ -122,7 +155,11 @@ export function openBookForm({ book = null, onDone } = {}) {
   // un-designates the book's ending, which is the kind of loss a writer would
   // only notice much later, via a verdict that quietly stopped complaining.
   function body() {
-    const out = { title: state.title.trim(), calendar: calendar.value() };
+    const out = {
+      title: state.title.trim(),
+      calendar: calendar.value(),
+      world: state.world || null,
+    };
     if (editing) out.terminus = book.terminus || null;
     return out;
   }

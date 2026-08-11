@@ -28,6 +28,10 @@ class EntityGate(Protocol):
 
     def search(self, database: str, collection: str, text: str) -> list[dict]: ...
 
+    def worlds(self) -> list[str]: ...
+
+    def collections(self, database: str) -> list[str]: ...
+
 
 class _MissingMixin:
     def missing(self, refs: Iterable[EntityRef]) -> list[EntityRef]:
@@ -69,6 +73,24 @@ class InProcessEntityGate(_MissingMixin):
             # event was written (reads never re-check existence). Surface it as
             # a Chronos not-found so the web layer answers 404, not 500.
             raise EntityNotFound(str(exc), evidence={"ref": ref.to_dict()}) from exc
+
+    def worlds(self) -> list[str]:
+        """Every Akasha database, unfiltered.
+
+        Deliberately unfiltered: this seam has no request identity, and
+        authorization needs one. The web layer narrows the list to what the
+        caller may read -- the same split as the article search, which comes
+        back whole and is filtered per result in the route.
+        """
+        return self._store.list_databases()
+
+    def collections(self, database: str) -> list[str]:
+        try:
+            return self._store.list_collections(database)
+        except AkashaError:
+            # A world that has been renamed or removed offers nothing; a picker
+            # asking about it is not an error.
+            return []
 
     def search(self, database: str, collection: str, text: str) -> list[dict]:
         try:
@@ -138,3 +160,9 @@ class FakeEntityGate(_MissingMixin):
             and ref.collection == collection
             and (needle in ref.id.lower() or needle in str(doc.get("title", "")).lower())
         ]
+
+    def worlds(self) -> list[str]:
+        return sorted({ref.database for ref in self._docs})
+
+    def collections(self, database: str) -> list[str]:
+        return sorted({r.collection for r in self._docs if r.database == database})

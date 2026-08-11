@@ -103,7 +103,15 @@ function refField(book, { role, scope, multiple, initial = [], label, hint }) {
       el("span", { class: "suggest-title", text: item.title }),
       el("span", { class: "suggest-sub muted", text: `${item.collection} / ${item.id}` }),
     ],
-    empty: "No article matches — create it in Articles first.",
+    // An empty picker means two different things. Usually: nothing matched, go
+    // write the article. But a book with no declared world *and* nothing to
+    // infer one from has nowhere to search at all, and the fix is one screen
+    // away rather than in Articles. (A book from before the field existed still
+    // infers a scope from its scenes, so it gets the ordinary message.)
+    empty: scope.world || scope.collections.length
+      ? "No article matches — create it in Articles first."
+      : "This book has no world set, so there is nothing to search. Choose one "
+        + "with ✎ beside the book's title.",
     onPick: (item) => {
       const ref = { database: item.database, collection: item.collection, id: item.id, title: item.title };
       if (multiple) {
@@ -324,11 +332,16 @@ async function createWithFreeId(book, baseId, body) {
 
 // The Akasha scope this book's scenes live in (which database, which
 // collections). Fetched once per editor session; falls back to the conventions.
-export async function loadScope(book) {
+export async function loadScope(book, bookMeta = {}) {
+  // `world` is what the book *declared*; `database` is what the server actually
+  // searches, which for a book written before the field existed is still the
+  // old guess from its scenes. Keeping both lets the picker tell "nothing
+  // matches" apart from "there is nowhere to look".
+  const world = bookMeta.world || null;
   try {
     const probe = await api.searchEntities(book, { q: "", collection: ROLE_COLLECTION.characters });
-    return { database: probe.database, collections: probe.collections };
+    return { database: probe.database, collections: probe.collections, world };
   } catch (e) {
-    return { database: book, collections: Object.values(ROLE_COLLECTION) };
+    return { database: world || book, collections: Object.values(ROLE_COLLECTION), world };
   }
 }

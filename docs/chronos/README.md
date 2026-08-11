@@ -318,8 +318,23 @@ event are not a convergence — the merge already happened upstream.
 thing needing no prior grant, since creating it is what makes you its owner.
 
 The form asks for a title, an id (derived from the title until you take it over,
-and permanent thereafter) and — the part worth pausing on — **how this book
-counts time**. Either:
+and permanent thereafter), the **world** its cast comes from, and — the part
+worth pausing on — **how this book counts time**.
+
+**World.** Which Akasha database holds this book's characters, items and places.
+The chooser offers only worlds you can read, and picks for you when there is
+only one. It is a *default, not a fence*: an `EntityRef` still names its own
+database, so a scene may reach into another world deliberately — this is simply
+what the article pickers search first.
+
+It exists because the scope used to be **inferred** from the scenes a book
+already had, which is no help to a book that has none: a new book's picker
+searched a database named after the book, found nothing, and advised the writer
+to go and create articles that were sitting right there. Books written before
+the field existed still infer their scope from their scenes, so nothing needed
+migrating.
+
+Now, the calendar. Either:
 
 - **Plain numbers.** Ticks are bare integers; a scene at tick `240` reads back as
   `240`. Pick a scale and stay consistent.

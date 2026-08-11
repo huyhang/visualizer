@@ -11,7 +11,7 @@ time](design.md#2-principles-consistent-with-the-existing-codebase), so the
 interesting question is not "what is missing from the product" but **"where does
 a writer with no terminal hit a wall?"**
 
-Of the **26 content routes** the app registers, **19 are reachable from the UI**
+Of the **27 content routes** the app registers, **20 are reachable from the UI**
 and **7 are not**.
 
 **There is no longer a blocking gap.** A writer can now create a book, write its
@@ -41,11 +41,14 @@ housekeeping and sharing.
 
 ## What the UI *does* cover
 
-For completeness, the 19 reachable routes: listing, reading, **creating** and
-**updating** books; **designating the terminus**; the story graph; listing, reading, creating
-and updating scenes; the full plotline lifecycle (create, read, update, delete);
-and the five visualiser helpers (`/ui/plotlines`, `/ui/ticks`, `/ui/entities`,
-`/ui/entity/...`, `/ui/plotline-preview`).
+For completeness, the 20 reachable routes: listing, reading, **creating** and
+**updating** books — including the Akasha **world** their cast is drawn from;
+**designating the terminus**; the story graph; listing, reading, creating and
+updating scenes; the full plotline lifecycle (create, read, update, delete); the
+five book-scoped visualiser helpers (`/ui/plotlines`, `/ui/ticks`,
+`/ui/entities`, `/ui/entity/...`, `/ui/plotline-preview`); and the one that is
+**not** book-scoped, `/ui/worlds`, because it answers a question asked while a
+book is being created.
 
 ### The flow, end to end
 
@@ -53,8 +56,11 @@ What a writer with no terminal can now do from a standing start:
 
 1. **Register**, and land on *Your books* — which offers **+ New book** rather
    than an apology.
-2. **Create a book**, choosing there and then whether ticks are plain numbers or
-   a calendar of named cycles. The choice is shown back in plain language
+2. **Create a book**, choosing the **world** its cast comes from (offered from
+   the Akasha databases you can read, and chosen for you when there is only
+   one — without it a book with no scenes has nothing to point its pickers at)
+   and whether ticks are plain numbers or
+   a calendar of named cycles. The calendar choice is shown back in plain language
    (*"Ticks are hours: 24 hours to a day, 30 days to a month"*) rather than left
    to be inferred from the form — and it is no longer a one-time choice: **✎**
    beside the book's title reopens the same form to rename it or swap the
@@ -93,7 +99,7 @@ that the guide would not have to open with a `curl` line: the audience for it is
 precisely the audience that bounces off a terminal. That guide is now writable,
 and is the natural next piece of work.
 
-The remaining eight gaps are all *housekeeping* (rename, delete, tidy up an
+The remaining seven gaps are all *housekeeping* (delete a book, tidy up an
 orphan scene) or *sharing* (collaborators). None of them stops a story being
 written, which is why none is marked blocking.
 
@@ -133,7 +139,8 @@ cl = mongomock.MongoClient()
 auth = AuthStore(cl); auth.create_user("m", generate_password_hash("p"))
 app = create_app(StoryStore(cl), FakeEntityGate(), auth, secret_key="s")
 
-SKIP = {"/static/<path:filename>", "/login", "/logout", "/register",
+SKIP = {"/static/<path:filename>", "/static/js/shared/<path:filename>",
+        "/login", "/logout", "/register",
         "/auth/me", "/change-password", "/health", "/"}
 for rule in sorted(app.url_map.iter_rules(), key=str):
     if str(rule) in SKIP:

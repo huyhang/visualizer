@@ -100,7 +100,7 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
     }
   }
 
-  const scope = await loadScope(book);
+  const scope = await loadScope(book, bookMeta);
   const view = el("div", { class: "editor-view" });
   const dialog = modal(
     creating ? "New plotline" : `Edit ${state.title || state.id}`,

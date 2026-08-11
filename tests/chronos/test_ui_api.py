@@ -598,3 +598,110 @@ def test_the_table_and_the_plotline_view_agree_about_a_thread(book_with_plotline
     for row in rows:
         thread = book_with_plotlines.get(f"/books/{BOOK}/plotlines/{row['id']}").get_json()
         assert row["conflicts"] == thread["status"]["conflicts"], row["id"]
+
+
+# -- the world a book draws its cast from ------------------------------------
+#
+# Before this existed the scope could only be *inferred* from scenes that were
+# already written, so a brand-new book's article picker searched a database
+# named after the book -- which is nothing -- and told the writer to go create
+# articles that were sitting right there. Declaring a world breaks that
+# chicken-and-egg. It stays a default, not a rule: an EntityRef still names its
+# own database, so a scene may reach into another world deliberately.
+
+
+def _grant_world(auth_store, user, database, perms=("read",)):
+    auth_store.grant_owner(user, database, None, None, list(perms))
+
+
+def test_a_declared_world_gives_a_scene_picker_something_to_search(seeded, client, auth_store):
+    _grant_world(auth_store, WRITER, "ember-pact")
+    client.post(f"/books/{BOOK}", json={"title": "T", "world": "ember-pact"})
+    scope = client.get(f"/books/{BOOK}/ui/entities?collection=characters&q=").get_json()
+    assert scope["database"] == "ember-pact"
+    assert [r["id"] for r in scope["results"]] == ["aldric", "lyra"]
+
+
+def test_without_one_a_brand_new_book_has_nowhere_to_look(seeded, client):
+    """The gap this closes, pinned so it cannot quietly come back."""
+    client.post(f"/books/{BOOK}", json={"title": "T"})
+    scope = client.get(f"/books/{BOOK}/ui/entities?collection=characters&q=").get_json()
+    assert scope["database"] == BOOK      # the book's own id, standing in for a world
+    assert scope["collections"] == []
+    assert scope["results"] == []
+
+
+def test_a_book_written_before_the_field_existed_still_infers_its_scope(seeded, client, auth_store):
+    """No migration: an old book has no 'world', and its scenes answer for it."""
+    _grant_world(auth_store, WRITER, "ember-pact")
+    client.post(f"/books/{BOOK}", json={"title": "T"})
+    _event(client, "meet")
+    assert client.get(f"/books/{BOOK}").get_json()["world"] is None
+    scope = client.get(f"/books/{BOOK}/ui/entities?collection=characters&q=").get_json()
+    assert scope["database"] == "ember-pact"
+    assert scope["results"]
+
+
+def test_the_declared_world_wins_over_what_the_scenes_suggest(seeded, client):
+    """Declared beats inferred -- otherwise moving a book to a new world would
+    be overruled by every scene already written against the old one."""
+    # The scenes below reference ember-pact; the book is then moved elsewhere.
+    client.post(f"/books/{BOOK}", json={"title": "T", "world": "ember-pact"})
+    _event(client, "meet")
+    rev = client.get(f"/books/{BOOK}").get_json()["rev"]
+    client.put(f"/books/{BOOK}", json={"title": "T", "world": "second-age"},
+               headers={"If-Match": str(rev)})
+    scope = client.get(f"/books/{BOOK}/ui/entities?collection=characters&q=").get_json()
+    assert scope["database"] == "second-age"
+
+
+def test_a_world_is_a_default_not_a_fence(seeded, client):
+    """A scene may still reference another world on purpose; declaring one
+    points the picker, it does not police the write."""
+    client.post(f"/books/{BOOK}", json={"title": "T", "world": "somewhere-else"})
+    assert _event(client, "meet").status_code == 201   # refs point at ember-pact
+
+
+def test_renaming_a_book_does_not_drop_its_world(seeded, client):
+    """`world` is stored, so it is presented, so a client can send it back --
+    the round trip the whole-document PUT depends on."""
+    client.post(f"/books/{BOOK}", json={"title": "T", "world": "ember-pact"})
+    before = client.get(f"/books/{BOOK}").get_json()
+    assert before["world"] == "ember-pact"
+
+    writable = {k: before[k] for k in ("title", "terminus", "calendar", "world")}
+    writable["title"] = "Renamed"
+    client.put(f"/books/{BOOK}", json=writable, headers={"If-Match": str(before["rev"])})
+
+    after = client.get(f"/books/{BOOK}").get_json()
+    assert after["title"] == "Renamed" and after["world"] == "ember-pact"
+
+
+@pytest.mark.parametrize("world", ["", "   ", 7, []])
+def test_a_world_that_is_not_a_name_is_refused(seeded, client, world):
+    resp = client.post(f"/books/{BOOK}", json={"title": "T", "world": world})
+    assert resp.status_code == 400 and resp.get_json()["code"] == "INVALID_BOOK"
+
+
+# -- the world chooser --------------------------------------------------------
+
+
+def test_worlds_lists_only_what_this_writer_can_read(seeded, client, auth_store, app):
+    """Not book-scoped -- the writer picks a world while creating a book, when
+    there is no book to authorize against -- so the Akasha grant is the only
+    gate, and it has to actually hold."""
+    other = app.test_client()
+    other.post("/login", json={"username": "admin", "password": "admin-pass"})
+
+    _grant_world(auth_store, WRITER, "ember-pact")
+    mine = client.get("/ui/worlds").get_json()["worlds"]
+    assert [w["database"] for w in mine] == ["ember-pact"]
+    assert mine[0]["collections"] == ["characters", "locations"]
+
+    # An admin holds no content grants unless given them: content access is not
+    # an admin power (see conftest).
+    assert other.get("/ui/worlds").get_json()["worlds"] == []
+
+
+def test_worlds_needs_a_session(app):
+    assert app.test_client().get("/ui/worlds").status_code in (302, 401)

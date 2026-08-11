@@ -12,6 +12,7 @@ from flask import Flask, jsonify, render_template, request
 from flask_login import current_user, login_required
 from flask_wtf.csrf import CSRFProtect
 
+from visualizer.akasha.browsing import can_read_in_database, visible_collections
 from visualizer.auth import (
     build_limiter,
     init_login,
@@ -438,6 +439,30 @@ def _register_ui_routes(app, csrf, auth_store, visualizer):
         a fantasy calendar cannot be parsed back (see calendar.py)."""
         _authorize(auth_store, "GET", book)
         return jsonify(visualizer.format_ticks(book, _ticks_arg()))
+
+    @app.get("/ui/worlds")
+    @csrf.exempt
+    @login_required
+    def ui_list_worlds():
+        """The Akasha worlds this writer may draw a book's cast from.
+
+        Not book-scoped, unlike every other ``/ui`` helper: the writer picks a
+        world while *creating* a book, when there is no book to authorize
+        against. So the only gate is the Akasha one -- each world, and each
+        category within it, appears exactly when the caller could read
+        something in it, which is the same rule Akasha's own browse applies.
+        """
+        grants = auth_store.grants_for(current_user.username)
+        offered = []
+        for world in visualizer.list_worlds():
+            database = world["database"]
+            if not can_read_in_database(grants, database):
+                continue
+            offered.append({
+                "database": database,
+                "collections": visible_collections(grants, database, world["collections"]),
+            })
+        return jsonify({"worlds": offered})
 
     @app.get(_BOOK + "/ui/entities")
     @csrf.exempt

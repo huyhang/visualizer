@@ -507,14 +507,46 @@ class VisualizerService(_Service):
         }
 
     def entity_scope(self, book_id) -> dict:
-        """The Akasha database and collections this book's scenes already use."""
+        """Which Akasha database and collections this book's pickers search.
+
+        The book's declared ``world`` wins when it has one: it is the only
+        answer available to a book with no scenes yet, which is exactly when a
+        writer needs the picker most. Books written before the field existed
+        fall back to the old guess -- wherever their scenes already point (see
+        ``dominant_database``) -- so nothing has to be migrated.
+
+        Collections come from the world itself rather than from the scenes, so a
+        new book offers the categories that are actually there instead of an
+        empty list. Filtering them to what the caller may read is the web
+        layer's job; this seam has no request identity.
+        """
+        book = self._book(book_id)
         refs = [
             ref
             for event in self._events_by_id(book_id).values()
             for ref in event.entity_refs()
         ]
+        if book.world:
+            return {
+                "database": book.world,
+                "collections": self.entities.collections(book.world),
+                "declared": True,
+            }
         database = dominant_database((r.database for r in refs), book_id)
         return {
             "database": database,
             "collections": sorted({r.collection for r in refs if r.database == database}),
+            "declared": False,
         }
+
+    def list_worlds(self) -> list[dict]:
+        """Every Akasha world, each with its collections, for the book form's
+        picker. Unfiltered -- the route narrows it to what the caller can read.
+
+        Not book-scoped, because the writer chooses a world while *creating* a
+        book, when there is no book to scope to.
+        """
+        return [
+            {"database": name, "collections": self.entities.collections(name)}
+            for name in self.entities.worlds()
+        ]

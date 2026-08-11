@@ -114,6 +114,11 @@ export const api = {
     return request("GET", `${bookPath(book)}/ui/ticks?${p.toString()}`);
   },
 
+  // The Akasha worlds this writer may draw a cast from, each with its
+  // categories. Not book-scoped — the world is chosen while the book is being
+  // created, so there is no book to scope to yet.
+  listWorlds: () => request("GET", "/ui/worlds"),
+
   // Type-ahead over the articles a scene could reference, same-origin and
   // already filtered to what this user may read.
   searchEntities: (book, { q, collection, database } = {}) => {

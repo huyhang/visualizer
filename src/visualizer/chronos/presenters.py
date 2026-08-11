@@ -443,6 +443,9 @@ def present_book(public: dict, report: BookReport, plotline_ids: list[str]) -> d
         "title": public.get("title"),
         "terminus": public.get("terminus"),
         "calendar": public.get("calendar"),
+        # Stored, so it is presented: a client is told to send the stored fields
+        # back on a PUT, which it can only do for fields it was given.
+        "world": public.get("world"),
         "plotlines": sorted(plotline_ids),
         "status": status_of(report),
         "rev": public["rev"],

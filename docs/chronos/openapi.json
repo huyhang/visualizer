@@ -150,7 +150,7 @@
           "books"
         ],
         "summary": "Read a book",
-        "description": "Includes the computed `status` — the one-glance answer to whether the story currently holds together.",
+        "description": "Includes the computed `status` \u2014 the one-glance answer to whether the story currently holds together.",
         "responses": {
           "200": {
             "$ref": "#/components/responses/BookResponse"
@@ -450,7 +450,7 @@
             "$ref": "#/components/responses/Conflict"
           }
         },
-        "description": "Blocked with `409 PLOTLINE_IN_USE` while other plotlines still continue into this one, unless `inline=true` — which absorbs this plotline into each dependent first, so their stories survive the deletion."
+        "description": "Blocked with `409 PLOTLINE_IN_USE` while other plotlines still continue into this one, unless `inline=true` \u2014 which absorbs this plotline into each dependent first, so their stories survive the deletion."
       }
     },
     "/books/{book}/events/{event}": {
@@ -467,7 +467,7 @@
           "events"
         ],
         "summary": "Create an event",
-        "description": "Every EntityRef must already exist in Akasha, or the write is rejected with 422. A temporal conflict does NOT reject the write — it is reported.",
+        "description": "Every EntityRef must already exist in Akasha, or the write is rejected with 422. A temporal conflict does NOT reject the write \u2014 it is reported.",
         "requestBody": {
           "$ref": "#/components/requestBodies/EventWrite"
         },
@@ -754,6 +754,27 @@
               "text/html": {
                 "schema": {
                   "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ui/worlds": {
+      "get": {
+        "tags": [
+          "visualizer"
+        ],
+        "summary": "Akasha worlds this writer can draw a book's cast from",
+        "description": "Fills the world chooser in the new-book form. Alone among the `/ui` helpers this is **not** book-scoped: the writer picks a world while creating a book, when there is no book to authorize against. The only gate is therefore the Akasha one -- a world, and a category within it, is offered exactly when the caller could read something in it.",
+        "responses": {
+          "200": {
+            "description": "Readable worlds, possibly empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Worlds"
                 }
               }
             }
@@ -1140,7 +1161,7 @@
         "schema": {
           "type": "string"
         },
-        "description": "Optimistic-concurrency precondition — the `rev` you last read, e.g. \"3\". Omit (or send `*`) for an unconditional write. A stale value returns 409.",
+        "description": "Optimistic-concurrency precondition \u2014 the `rev` you last read, e.g. \"3\". Omit (or send `*`) for an unconditional write. A stale value returns 409.",
         "example": "\"3\""
       }
     },
@@ -1223,7 +1244,7 @@
         }
       },
       "BadRequest": {
-        "description": "Malformed payload — e.g. `INVALID_TIMEFRAME`, `INVALID_PLOTLINE`, `INVALID_EVENT`, `INVALID_BOOK`.",
+        "description": "Malformed payload \u2014 e.g. `INVALID_TIMEFRAME`, `INVALID_PLOTLINE`, `INVALID_EVENT`, `INVALID_BOOK`.",
         "content": {
           "application/json": {
             "schema": {
@@ -1325,6 +1346,12 @@
           },
           "calendar": {
             "$ref": "#/components/schemas/Calendar"
+          },
+          "world": {
+            "type": "string",
+            "nullable": true,
+            "example": "middle-earth",
+            "description": "The Akasha database this book's characters, items and locations live in. A default for the article pickers, not a constraint \u2014 an EntityRef still names its own database."
           },
           "plotlines": {
             "type": "array",
@@ -1428,7 +1455,7 @@
       "Calendar": {
         "type": "object",
         "nullable": true,
-        "description": "Optional descriptor that formats integer ticks into readable labels (output only — writes must send integer ticks). Cycles are ordered smallest first and nest over the base unit.",
+        "description": "Optional descriptor that formats integer ticks into readable labels (output only \u2014 writes must send integer ticks). Cycles are ordered smallest first and nest over the base unit.",
         "properties": {
           "base_unit": {
             "type": "string",
@@ -1597,7 +1624,7 @@
       },
       "EventWrite": {
         "type": "object",
-        "description": "Writable fields of an event. The id comes from the URL. Every EntityRef must already exist in Akasha. Give both ticks or neither — omitting them records an unscheduled scene, which a drafting writer can time later.",
+        "description": "Writable fields of an event. The id comes from the URL. Every EntityRef must already exist in Akasha. Give both ticks or neither \u2014 omitting them records an unscheduled scene, which a drafting writer can time later.",
         "required": [
           "location"
         ],
@@ -2060,7 +2087,7 @@
           },
           "unscheduled": {
             "type": "array",
-            "description": "Scenes still waiting for timing — a to-do list, not a fault: these alone do not make a book conflicted. Each carries the window its neighbours imply; an `impossible` window IS a contradiction.",
+            "description": "Scenes still waiting for timing \u2014 a to-do list, not a fault: these alone do not make a book conflicted. Each carries the window its neighbours imply; an `impossible` window IS a contradiction.",
             "items": {
               "type": "object",
               "properties": {
@@ -2484,7 +2511,7 @@
       },
       "EventNeighborhood": {
         "type": "object",
-        "description": "Which plotlines pass through, converge into, and diverge out of a single event. Built for reading: ids carry titles, times are codec-formatted, and `role`/`summary` state what is happening. All fields are computed by the presenter — nothing here is stored.",
+        "description": "Which plotlines pass through, converge into, and diverge out of a single event. Built for reading: ids carry titles, times are codec-formatted, and `role`/`summary` state what is happening. All fields are computed by the presenter \u2014 nothing here is stored.",
         "required": [
           "event",
           "role",
@@ -2580,7 +2607,7 @@
           "event": {
             "id": "meet-at-emberport",
             "title": "The Harbor Exchange",
-            "when": "Year 1, Month 1, Day 3 → Day 4 AF",
+            "when": "Year 1, Month 1, Day 3 \u2192 Day 4 AF",
             "location": "Emberport"
           },
           "role": "convergence",
@@ -2616,7 +2643,7 @@
                 "from": {
                   "id": "lyra-infiltrates",
                   "title": "Lyra Infiltrates",
-                  "when": "Day 1–3"
+                  "when": "Day 1\u20133"
                 },
                 "plotlines": [
                   {
@@ -2822,7 +2849,7 @@
       },
       "Finding": {
         "type": "object",
-        "description": "Error envelope — the same vocabulary as a Verdict, so one shape covers errors, status verdicts and /validate entries.",
+        "description": "Error envelope \u2014 the same vocabulary as a Verdict, so one shape covers errors, status verdicts and /validate entries.",
         "required": [
           "error"
         ],
@@ -2880,7 +2907,7 @@
         "type": "object",
         "nullable": true,
         "readOnly": true,
-        "description": "Where an unscheduled scene could go, inferred from its plotline neighbours. Null on a side means unconstrained. `impossible` means the surrounding scenes leave no room at all — a real contradiction.",
+        "description": "Where an unscheduled scene could go, inferred from its plotline neighbours. Null on a side means unconstrained. `impossible` means the surrounding scenes leave no room at all \u2014 a real contradiction.",
         "properties": {
           "earliest": {
             "type": "integer",
@@ -3474,7 +3501,7 @@
       },
       "MissingEntityFinding": {
         "type": "object",
-        "description": "A scene naming an Akasha article that no longer exists. Referential integrity is enforced on write, so this can only be an article deleted *after* the scene was written — Akasha holds no back-reference to Chronos and cannot warn anyone at the time.",
+        "description": "A scene naming an Akasha article that no longer exists. Referential integrity is enforced on write, so this can only be an article deleted *after* the scene was written \u2014 Akasha holds no back-reference to Chronos and cannot warn anyone at the time.",
         "required": [
           "event",
           "role",
@@ -3497,6 +3524,51 @@
           "ref": {
             "$ref": "#/components/schemas/EntityRef"
           }
+        }
+      },
+      "Worlds": {
+        "type": "object",
+        "description": "The Akasha worlds the caller may draw a book's cast from, each with the categories they may read inside it.",
+        "properties": {
+          "worlds": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "database",
+                "collections"
+              ],
+              "properties": {
+                "database": {
+                  "type": "string",
+                  "example": "middle-earth"
+                },
+                "collections": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "example": [
+                    "characters",
+                    "items",
+                    "locations"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "example": {
+          "worlds": [
+            {
+              "database": "middle-earth",
+              "collections": [
+                "characters",
+                "items",
+                "locations"
+              ]
+            }
+          ]
         }
       }
     }
