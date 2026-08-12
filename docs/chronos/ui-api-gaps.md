@@ -99,12 +99,12 @@ So the cast and the places can be written entirely in the browser today.
 
 ## What this unblocks
 
-A `getting-started.md` — "build the Ember Pact yourself, and watch the three
-continuity problems appear" — was **deferred until the blocking gap closed**, so
-that the guide would not have to open with a `curl` line: the audience for it is
-precisely the audience that bounces off a terminal. That guide is now writable,
-and is the natural next piece of work — and it can now end where a guide should,
-with the reader deleting the book they built.
+[**getting-started.md**](getting-started.md) — "build the Ember Pact yourself,
+and watch the three continuity problems appear" — was **deferred until the
+blocking gap closed**, so that the guide would not have to open with a `curl`
+line: the audience for it is precisely the audience that bounces off a terminal.
+It is now written, opens with *Register*, and ends where a guide should, with the
+reader deleting the book they built.
 
 The remaining five gaps are *sharing* (collaborators) and *reporting* (the
 whole-book verdict). None of them stops a story being written or tidied up,

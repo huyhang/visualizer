@@ -9,6 +9,10 @@ Chronos ships alongside [`akasha`](../Akasha/README.md) and
 shares its MongoDB and its login. Characters, items and locations live there as articles;
 Chronos references them and refuses to invent them.
 
+- **Want to build something?** Follow
+  [getting-started.md](getting-started.md) — construct the demo story by hand in
+  the browser, break it on purpose, and watch all three continuity checks fire.
+  No terminal after the first `docker compose up`.
 - **New to the concepts?** Read [OVERVIEW.md](OVERVIEW.md) — the same ideas in
   plain language, no code.
 - **Want the rationale?** Read [design.md](design.md) — the
