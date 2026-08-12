@@ -122,12 +122,13 @@ def test_the_thread_count_agrees_with_the_findings():
 
 
 @pytest.fixture
-def linked_app(story_store, doc_store, auth_store):
+def linked_app(story_store, doc_store, auth_store, calendar_store):
     """A Chronos app whose entity checks hit a real Akasha store, as in production."""
     from visualizer.chronos.app import create_app
 
     application = create_app(
-        story_store, InProcessEntityGate(doc_store), auth_store, secret_key="test-secret"
+        story_store, InProcessEntityGate(doc_store), auth_store,
+        calendar_store=calendar_store, secret_key="test-secret",
     )
     application.config.update(TESTING=True, WTF_CSRF_ENABLED=False, RATELIMIT_ENABLED=False)
     return application

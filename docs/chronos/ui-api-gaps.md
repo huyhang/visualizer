@@ -11,8 +11,9 @@ time](design.md#2-principles-consistent-with-the-existing-codebase), so the
 interesting question is not "what is missing from the product" but **"where does
 a writer with no terminal hit a wall?"**
 
-Of the **27 content routes** the app registers, **22 are reachable from the UI**
-and **5 are not**.
+Of the **34 content routes** the app registers, **29 are reachable from the UI**
+and **5 are not**. (The count grew by the seven calendar-library routes, all of
+which the UI reaches.)
 
 **There is no longer a blocking gap, and no housekeeping one either.** A writer
 can create a book, write its scenes, thread them into a plotline, mark the
@@ -106,26 +107,46 @@ line: the audience for it is precisely the audience that bounces off a terminal.
 It is now written, opens with *Register*, and ends where a guide should, with the
 reader deleting the book they built.
 
-The remaining five gaps are *sharing* (collaborators) and *reporting* (the
+The remaining five gaps are *sharing a book* (collaborators) and *reporting* (the
 whole-book verdict). None of them stops a story being written or tidied up,
-which is why none is marked blocking.
+which is why none is marked blocking. Note that sharing a **calendar** is now in
+the UI even though sharing a *book* is not — the library needed it, since a
+library nobody can share is only half a library.
 
-### Planned: a calendar library
+### Built: the calendar library
 
-The one gap with a design behind it rather than just an absence. A book's
-calendar is chosen once, inline, at creation. The intended next step is a
-library of **named, reusable calendars** that can be attached to many books and
-swapped afterwards — shared by **copying the descriptor into the book** and
-recording where it came from, not by pointing at a shared record. Copying keeps
-`codec_for` pure and I/O-free, keeps `GET /books` from becoming N+1, and stops
-one writer's edit from silently re-labelling another writer's book; provenance is
-what still allows an explicit, previewable *"the library version changed —
-update?"*.
+*This section previously described a plan. It is now implemented — see
+[the calendar library](README.md#the-calendar-library).*
 
-The browser side is already shaped for it: `static/js/calendars.js` holds the
-descriptor vocabulary with no DOM in it, and `calendarfield.js` reduces the whole
-question to `value() -> descriptor | null`, with its sources held as a list. A
-library picker joins that list; nothing that consumes a calendar has to know.
+A book's calendar used to be chosen once, inline, at creation. There is now a
+library of **named, reusable calendars** (`#/~calendars`) that attach to many
+books, and a book may keep **several at once** — parallel cultures reckoning one
+canonical tick line — with a switcher to read its scenes through any of them.
+
+It landed on the design that was written here: attaching **copies the descriptor
+into the book** and records where it came from, rather than pointing at a shared
+record. Copying keeps `codec_for` pure and I/O-free, keeps `GET /books` from
+becoming N+1, stops one writer's edit from silently re-labelling another
+writer's book, and — the consequence that only became obvious once sharing was
+real — means anyone who can read a book can read its *dates*, with no grant on
+the library entry at all. Provenance (`source`, owner-qualified) is what still
+allows an explicit, previewable *"the library version changed — update?"*.
+
+Two things the plan did not anticipate:
+
+- **Identity is `(owner, id)`, not `id`.** Calendar names are generic, so a
+  global namespace would have made the first writer to register "imperial" its
+  owner for everybody — and would have leaked the existence of calendars a
+  writer cannot read.
+- **Calendars begin and end.** `from_tick`/`until_tick` on an attachment, applied
+  by a small `EraCodec` decorator, so a destroyed culture's reckoning stops
+  dating the scenes that outlived it instead of inventing years for them.
+
+The browser side was already shaped for it, as predicted: `calendars.js` held the
+descriptor vocabulary with no DOM in it, and `calendarfield.js` reduced the whole
+question to `value() -> descriptor | null` with its sources held as a list. The
+library picker joined that list as one more `MODES` entry, and nothing that
+consumes a calendar had to change.
 
 ## Re-checking this list
 
@@ -138,13 +159,14 @@ python - <<'EOF'
 import re, pathlib, mongomock
 from werkzeug.security import generate_password_hash
 from visualizer.auth import AuthStore
-from visualizer.chronos.store import StoryStore
+from visualizer.chronos.store import CalendarStore, StoryStore
 from visualizer.chronos.entity_gate import FakeEntityGate
 from visualizer.chronos.app import create_app
 
 cl = mongomock.MongoClient()
 auth = AuthStore(cl); auth.create_user("m", generate_password_hash("p"))
-app = create_app(StoryStore(cl), FakeEntityGate(), auth, secret_key="s")
+app = create_app(StoryStore(cl), FakeEntityGate(), auth, secret_key="s",
+                 calendar_store=CalendarStore(cl))
 
 SKIP = {"/static/<path:filename>", "/static/js/shared/<path:filename>",
         "/login", "/logout", "/register",

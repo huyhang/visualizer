@@ -144,20 +144,45 @@ Every event has an integer `start_tick` and `end_tick` on a per-book timeline,
 `start_tick <= end_tick`. Ticks are **signed**, so flashbacks are negative.
 Intervals are **half-open `[start, end)`** — touching is not overlapping.
 
-A book may carry a `calendar` that formats ticks into readable labels:
+A book carries one or more **calendars** that format ticks into readable labels:
 
 ```jsonc
-"calendar": {
-  "base_unit": "hour",
-  "cycles": [{"name":"day","size":24},{"name":"month","size":30},{"name":"year","size":12}],
-  "epoch_label": "AF"
-}
+"calendars": [
+  {"id": "imperial",
+   "label": "Imperial Reckoning",
+   "descriptor": {
+     "base_unit": "hour",
+     "cycles": [{"name":"day","size":24},{"name":"month","size":30},{"name":"year","size":12}],
+     "epoch_label": "AF"}}
+]
 ```
 
 Tick `200` then reads `Year 1, Month 1, Day 9, 08:00 AF` in responses.
 
+**Several at once.** A world may count time more than one way, so a book may
+attach more than one reckoning and read the same scenes through any of them:
+`?calendar=<id>` on every read that formats a tick. This changes **labels and
+nothing else** — no tick moves, no ordering changes, no verdict differs, because
+every rule in Chronos runs on integers and cannot see the choice. Naming a
+calendar the book has not attached is a `404 CALENDAR_NOT_FOUND` rather than a
+silent fallback: a stale bookmark should say so, not mislabel a whole page.
+
+**Calendars that begin and end.** An attachment may carry `from_tick` /
+`until_tick` — the span its culture actually kept it. Ticks are offset by
+`from_tick`, so a reckoning founded mid-story reads Year 1 at its own beginning;
+a tick outside the span formats as `before …` / `after …` rather than being
+given a date in a calendar nobody was keeping. The bound is half-open, like
+every other interval here.
+
+Reusable calendars live in a **library** (`/calendars`) and are *copied* into a
+book when attached — see [the calendar library](#the-calendar-library).
+
 > **Note:** the calendar currently formats **output only**. Writes must send
 > integer ticks; posting a label string is not yet supported.
+>
+> The older single `"calendar": {…}` field is still accepted on writes and still
+> returned on reads (as the primary attachment's descriptor). A body may send
+> one spelling or the other, never both.
 
 ---
 
@@ -213,7 +238,7 @@ GET    /health                                       liveness (no auth)
 GET    /books                                        books you can read
 POST   /books/<book>                                 create (you become owner)
 GET    /books/<book>                                 read (incl. computed status)
-PUT    /books/<book>                                 update title/overview/terminus/calendar
+PUT    /books/<book>                                 update title/overview/terminus/calendars
 DELETE /books/<book>                                 delete book + its contents
 POST   /books/<book>/terminus/<event>                designate the terminus
 GET    /books/<book>/validate                        full invariant report
@@ -234,7 +259,18 @@ GET    /books/<book>/events/<event>/plotlines[?relation=converging|diverging|thr
 
 PUT    /books/<book>/collaborators/<user>            invite / set role (owners only)
 DELETE /books/<book>/collaborators/<user>            remove (owners only)
+
+GET    /calendars                                    your library + anything shared with you
+POST   /calendars/<owner>/<cal>                      create (owner must be you)
+GET    /calendars/<owner>/<cal>
+PUT    /calendars/<owner>/<cal>                      replace
+DELETE /calendars/<owner>/<cal>                      books that copied it are untouched
+PUT    /calendars/<owner>/<cal>/collaborators/<user> share (owners only)
+DELETE /calendars/<owner>/<cal>/collaborators/<user> stop sharing (owners only)
 ```
+
+Every read that formats a tick also takes `?calendar=<id>` — which of the book's
+attached reckonings to write its dates in.
 
 The visualiser adds a few book-scoped helpers of its own. They compute nothing
 the rules above do not — they exist so the browser can stay same-origin and ask
@@ -346,15 +382,27 @@ to go and create articles that were sitting right there. Books written before
 the field existed still infer their scope from their scenes, so nothing needed
 migrating.
 
-Now, the calendar. Either:
+Now, the calendar. Any of:
 
-- **Plain numbers.** Ticks are bare integers; a scene at tick `240` reads back as
+- **No calendar.** Ticks are bare integers; a scene at tick `240` reads back as
   `240`. Pick a scale and stay consistent.
-- **A calendar.** A base unit plus the cycles that nest over it, smallest first,
-  and an optional era. As you type, the form reads the descriptor back in plain
+- **From your library.** One of the calendars you keep under **Calendars** on
+  the shelf. If the library is empty, **＋ New calendar** builds one without
+  leaving the form — into the library, because that is where every calendar
+  lives. A book *names* a calendar; it cannot describe one of its own, and the
+  API refuses a book body that carries a descriptor (`400 INVALID_BOOK`).
+
+  A calendar itself is a base unit plus the cycles that nest over it, smallest
+  first, and an optional era. As you build it the form reads it back in plain
   language — *"Ticks are hours: 24 hours to a day, 30 days to a month, 12 months
   to a year."* — so the thing you are committing to is legible before you commit
   to it. Presets cover the common shapes.
+
+**+ Add another calendar** attaches a second reckoning over the same scenes, and
+a switcher appears above the book to read through either. Each extra one gets a
+name, an id, and optionally the span of ticks its culture kept it for — so an
+elvish count that ends when the elves do stops dating the scenes after it, rather
+than inventing years nobody counted.
 
 That matters because the calendar decides what a tick *means* everywhere
 downstream — what the timeline rail groups by, what the scene form reads back as
@@ -394,6 +442,39 @@ book-level write, so it lands immediately rather than waiting on the editor's
 Save, and replacing an existing terminus asks first, because it silently
 re-judges every other thread in the book. Until a terminus is set, the
 convergence rule stays deliberately quiet.
+
+### The calendar library
+
+**Calendars** on the shelf opens a library of named reckonings — build one once
+and attach it to any book. A calendar's identity is `(owner, id)`, not the slug
+alone, and that is deliberate: names like *imperial*, *lunar* and *elvish* are
+generic enough that two writers will independently reach for the same one. A
+single global namespace would let whoever registered the word first own it for
+everybody, and would tell the second writer that a calendar they cannot read
+exists. So two libraries may each hold an `imperial`; shared calendars are shown
+owner-qualified (`mara/imperial`) beside your own.
+
+**Attaching copies.** A book takes its own copy of the descriptor rather than
+pointing at the library record. Four things follow, and they are the reason for
+the choice:
+
+- Formatting a tick stays pure and I/O-free, so `GET /books` never becomes one
+  query per book.
+- Anyone who can read a book can read its **dates** — the labels are the book's
+  own bytes. No grant on the library entry is needed, or offered.
+- Editing a library calendar never silently re-dates somebody's finished story.
+- Deleting one leaves every book that used it working; only the provenance
+  pointer goes dangling, the same posture Chronos takes toward a deleted Akasha
+  article.
+
+What copying gives up is automatic propagation, and `source` — an
+owner-qualified `{owner, calendar, rev}` — is what buys it back: a book can be
+offered an explicit *"the library version changed — update?"*, previewable, and
+never applied behind the writer's back.
+
+**Sharing** a calendar (**⇥** on its card) grants another writer read, or edit.
+It then appears in their library next to any calendar of their own that happens
+to share its name — two distinct records, told apart by owner.
 
 ### Editing plotlines in the UI
 
@@ -536,7 +617,9 @@ touch a database.
 | Module | Role |
 | --- | --- |
 | `timeline`, `conflicts`, `ordering`, `book_rules`, `reports`, `plotline_health`, `browsing`, `calendar`, `validation`, `models` | **pure logic** — no I/O, no Flask; where correctness lives |
-| `store.StoryStore` | persistence seam (Mongo, OCC, injected clock) |
+| `documents.ScopedDocuments` | the composite key, `_rev` concurrency and author stamp both stores share |
+| `store.StoryStore` | persistence seam for books/plotlines/events, scoped to a book |
+| `store.CalendarStore` | persistence seam for the calendar library, scoped to an owner |
 | `entity_gate.EntityGate` | the boundary to Akasha (`InProcessEntityGate`, `FakeEntityGate`) |
 | `services` | orchestration: load → validate purely → persist → present |
 | `presenters` | the single source of every response shape |

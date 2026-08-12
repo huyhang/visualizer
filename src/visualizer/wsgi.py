@@ -23,7 +23,7 @@ from visualizer.akasha.store import DocumentStore
 from visualizer.auth import AuthStore
 from visualizer.chronos.app import create_app as create_chronos_app
 from visualizer.chronos.entity_gate import InProcessEntityGate
-from visualizer.chronos.store import StoryStore
+from visualizer.chronos.store import CalendarStore, StoryStore
 
 from .gateway import DEFAULT_CHRONOS_PREFIX, combine
 
@@ -52,6 +52,7 @@ _chronos_app = create_chronos_app(
     StoryStore(_client),
     InProcessEntityGate(_doc_store),
     _auth_store,
+    calendar_store=CalendarStore(_client),
     secret_key=_secret,
     secure_cookies=_secure,
     rate_limit_storage_uri=_ratelimit,

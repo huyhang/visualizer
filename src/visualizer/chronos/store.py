@@ -1,44 +1,38 @@
-"""Persistence seam for Chronos (design §6.1, §9).
+"""Persistence seams for Chronos (design §6.1, §9).
 
-``StoryStore`` is the single boundary between the app and MongoDB -- the
-``DocumentStore`` analogue. It receives its Mongo client and clock by injection
-(inversion of control) so tests use an in-memory ``mongomock`` client and a
-fixed clock. It is plain CRUD plus two targeted queries the invariants need; it
-holds **no** domain rules (those are the pure modules the services call).
+Two boundaries between the app and MongoDB, both built on ``ScopedDocuments``
+(which owns the composite key, the ``_rev`` optimistic concurrency and the
+author stamp -- see ``documents``):
 
-Everything lives in a reserved ``_chronos`` database. Books, plotlines and
-events are book-scoped: the Mongo ``_id`` is a composite ``"<book>::<id>"`` and
-the local ``id``/``book`` are stored as fields. Writes are optimistically
-concurrent via ``_rev`` (reused from akasha's pattern) and stamp the
-``author``. Deletes are hard (id may be recreated); embedded history/activity is
-a noted future addition.
+- ``StoryStore`` -- books, plotlines and events, scoped to a **book**.
+- ``CalendarStore`` -- the library of named, reusable calendars, scoped to their
+  **owner**.
+
+Both receive their Mongo client and clock by injection (inversion of control) so
+tests use an in-memory ``mongomock`` client and a fixed clock. Both are plain
+CRUD plus the few targeted queries their callers need; neither holds any domain
+rules (those are the pure modules the services call).
+
+Everything lives in a reserved ``_chronos`` database. Deletes are hard (an id
+may be recreated); embedded history/activity is a noted future addition.
 """
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import datetime
 
-from pymongo import ReturnDocument
-from pymongo.errors import DuplicateKeyError
-
+from .documents import ScopedDocuments
 from .errors import (
-    AlreadyExists,
     BookNotFound,
+    CalendarNotFound,
     EventNotFound,
     PlotlineNotFound,
-    RevisionConflict,
 )
 
 CHRONOS_DB = "_chronos"
 _BOOKS = "books"
 _PLOTLINES = "plotlines"
 _EVENTS = "events"
-
-# Fields the store owns; never part of a caller's body.
-_INTERNAL = {"_id", "_rev", "_deleted", "book", "id", "created_by", "updated_by", "updated_at"}
-
-
-def _default_clock() -> datetime:
-    return datetime.now(UTC)
+_CALENDARS = "calendars"
 
 
 class StoryStore:
@@ -47,154 +41,78 @@ class StoryStore:
         :param clock: returns the current time; injected for deterministic tests.
         """
         self._client = client
-        self._clock = clock or _default_clock
 
-    # -- low-level helpers ---------------------------------------------------
+        def docs(name):
+            return ScopedDocuments(client[CHRONOS_DB][name], "book", clock)
 
-    def _coll(self, name: str):
-        return self._client[CHRONOS_DB][name]
-
-    @staticmethod
-    def _key(book_id: str, local_id: str) -> str:
-        return f"{book_id}::{local_id}"
-
-    def _public(self, stored: dict) -> dict:
-        body = {k: v for k, v in stored.items() if k not in _INTERNAL}
-        return {
-            "id": stored["id"],
-            "book": stored["book"],
-            "rev": stored["_rev"],
-            "created_by": stored.get("created_by"),
-            "updated_by": stored.get("updated_by"),
-            **body,
-        }
-
-    def _insert(self, name, book_id, local_id, body, author, not_found_err) -> dict:
-        stored = {
-            **body,
-            "_id": self._key(book_id, local_id),
-            "book": book_id,
-            "id": local_id,
-            "_rev": 1,
-            "created_by": author,
-            "updated_by": author,
-            "updated_at": self._clock().isoformat(),
-        }
-        try:
-            self._coll(name).insert_one(stored)
-        except DuplicateKeyError:
-            raise AlreadyExists(f"'{local_id}' already exists in book '{book_id}'.")
-        return self._public(stored)
-
-    def _find(self, name, book_id, local_id, not_found_err):
-        stored = self._coll(name).find_one({"_id": self._key(book_id, local_id)})
-        if stored is None:
-            raise not_found_err(f"'{local_id}' not found in book '{book_id}'.")
-        return stored
-
-    @staticmethod
-    def _check_rev(current: dict, expected_rev: int | None) -> None:
-        if expected_rev is not None and current["_rev"] != expected_rev:
-            raise RevisionConflict(
-                f"Modified since revision {expected_rev}; reload and retry.",
-                evidence={"expected": expected_rev, "actual": current["_rev"]},
-            )
-
-    def _replace(self, name, book_id, local_id, body, expected_rev, author, not_found_err) -> dict:
-        current = self._find(name, book_id, local_id, not_found_err)
-        self._check_rev(current, expected_rev)
-        replacement = {
-            **body,
-            "_id": current["_id"],
-            "book": book_id,
-            "id": local_id,
-            "_rev": current["_rev"] + 1,
-            "created_by": current.get("created_by"),
-            "updated_by": author,
-            "updated_at": self._clock().isoformat(),
-        }
-        updated = self._coll(name).find_one_and_replace(
-            {"_id": current["_id"], "_rev": current["_rev"]},
-            replacement,
-            return_document=ReturnDocument.AFTER,
-        )
-        if updated is None:  # changed between our read and this write
-            raise RevisionConflict("Modified concurrently; reload and retry.")
-        return self._public(updated)
-
-    def _remove(self, name, book_id, local_id, expected_rev, author, not_found_err) -> None:
-        current = self._find(name, book_id, local_id, not_found_err)
-        self._check_rev(current, expected_rev)
-        result = self._coll(name).delete_one({"_id": current["_id"], "_rev": current["_rev"]})
-        if result.deleted_count == 0:
-            raise RevisionConflict("Modified concurrently; reload and retry.")
-
-    def _list(self, name, book_id) -> list[dict]:
-        cursor = self._coll(name).find({"book": book_id}).sort("id", 1)
-        return [self._public(s) for s in cursor]
+        self._books = docs(_BOOKS)
+        self._plotlines = docs(_PLOTLINES)
+        self._events = docs(_EVENTS)
 
     # -- books ---------------------------------------------------------------
+    #
+    # A book is its own scope: the document keyed ``"<book>::<book>"``.
 
     def create_book(self, book_id, body, author=None) -> dict:
-        return self._insert(_BOOKS, book_id, book_id, body, author, BookNotFound)
+        return self._books.insert(book_id, book_id, body, author)
 
     def get_book(self, book_id) -> dict:
-        return self._public(self._find(_BOOKS, book_id, book_id, BookNotFound))
+        return self._books.get(book_id, book_id, BookNotFound)
 
     def update_book(self, book_id, body, expected_rev=None, author=None) -> dict:
-        return self._replace(_BOOKS, book_id, book_id, body, expected_rev, author, BookNotFound)
+        return self._books.replace(book_id, book_id, body, expected_rev, author, BookNotFound)
 
     def delete_book(self, book_id, expected_rev=None, author=None) -> None:
-        self._remove(_BOOKS, book_id, book_id, expected_rev, author, BookNotFound)
+        self._books.remove(book_id, book_id, expected_rev, author, BookNotFound)
 
     def check_book_rev(self, book_id, expected_rev=None) -> None:
         """Raise unless the book is still at ``expected_rev``; a no-op when None.
 
         Lets a caller test the precondition *before* starting work it could not
-        undo -- the cascading delete, which has no transaction behind it. Revisions
-        are this seam's business, so the comparison lives here rather than being
-        re-derived (and worded differently) by every caller that needs it.
+        undo -- the cascading delete, which has no transaction behind it.
         """
-        self._check_rev(self._find(_BOOKS, book_id, book_id, BookNotFound), expected_rev)
+        self._books.check_rev(book_id, book_id, expected_rev, BookNotFound)
 
     def list_books(self) -> list[dict]:
-        return [self._public(s) for s in self._coll(_BOOKS).find().sort("id", 1)]
+        return self._books.list_all()
 
     # -- plotlines -----------------------------------------------------------
 
     def create_plotline(self, book_id, plotline_id, body, author=None) -> dict:
-        return self._insert(_PLOTLINES, book_id, plotline_id, body, author, PlotlineNotFound)
+        return self._plotlines.insert(book_id, plotline_id, body, author)
 
     def get_plotline(self, book_id, plotline_id) -> dict:
-        return self._public(self._find(_PLOTLINES, book_id, plotline_id, PlotlineNotFound))
+        return self._plotlines.get(book_id, plotline_id, PlotlineNotFound)
 
     def update_plotline(self, book_id, plotline_id, body, expected_rev=None, author=None) -> dict:
-        return self._replace(
-            _PLOTLINES, book_id, plotline_id, body, expected_rev, author, PlotlineNotFound
+        return self._plotlines.replace(
+            book_id, plotline_id, body, expected_rev, author, PlotlineNotFound
         )
 
     def delete_plotline(self, book_id, plotline_id, expected_rev=None, author=None) -> None:
-        self._remove(_PLOTLINES, book_id, plotline_id, expected_rev, author, PlotlineNotFound)
+        self._plotlines.remove(book_id, plotline_id, expected_rev, author, PlotlineNotFound)
 
     def list_plotlines(self, book_id) -> list[dict]:
-        return self._list(_PLOTLINES, book_id)
+        return self._plotlines.list_in_scope(book_id)
 
     # -- events --------------------------------------------------------------
 
     def create_event(self, book_id, event_id, body, author=None) -> dict:
-        return self._insert(_EVENTS, book_id, event_id, body, author, EventNotFound)
+        return self._events.insert(book_id, event_id, body, author)
 
     def get_event(self, book_id, event_id) -> dict:
-        return self._public(self._find(_EVENTS, book_id, event_id, EventNotFound))
+        return self._events.get(book_id, event_id, EventNotFound)
 
     def update_event(self, book_id, event_id, body, expected_rev=None, author=None) -> dict:
-        return self._replace(_EVENTS, book_id, event_id, body, expected_rev, author, EventNotFound)
+        return self._events.replace(
+            book_id, event_id, body, expected_rev, author, EventNotFound
+        )
 
     def delete_event(self, book_id, event_id, expected_rev=None, author=None) -> None:
-        self._remove(_EVENTS, book_id, event_id, expected_rev, author, EventNotFound)
+        self._events.remove(book_id, event_id, expected_rev, author, EventNotFound)
 
     def list_events(self, book_id) -> list[dict]:
-        return self._list(_EVENTS, book_id)
+        return self._events.list_in_scope(book_id)
 
     # -- targeted queries the invariants need (design §6.1) ------------------
 
@@ -218,3 +136,46 @@ class StoryStore:
         """Fetch events by id, returned in the requested order (missing skipped)."""
         by_id = {e["id"]: e for e in self.list_events(book_id)}
         return [by_id[eid] for eid in event_ids if eid in by_id]
+
+
+class CalendarStore:
+    """The library of named, reusable calendars, scoped to their owner.
+
+    Identity is ``(owner, id)``, which is why this is a separate seam rather
+    than another collection on ``StoryStore``: calendar names are generic, so a
+    book-style global namespace would let the first writer to register
+    "imperial" own that word for everybody, and would tell the next writer that
+    a calendar they cannot read exists.
+
+    Nothing here is on the read path of a book's dates. A book attaching a
+    calendar **copies** the descriptor, so this store is consulted when browsing
+    and attaching, never when formatting.
+    """
+
+    def __init__(self, client, clock: Callable[[], datetime] | None = None):
+        self._docs = ScopedDocuments(client[CHRONOS_DB][_CALENDARS], "owner", clock)
+
+    def create(self, owner, calendar_id, body, author=None) -> dict:
+        return self._docs.insert(owner, calendar_id, body, author or owner)
+
+    def get(self, owner, calendar_id) -> dict:
+        return self._docs.get(owner, calendar_id, CalendarNotFound)
+
+    def update(self, owner, calendar_id, body, expected_rev=None, author=None) -> dict:
+        return self._docs.replace(
+            owner, calendar_id, body, expected_rev, author, CalendarNotFound
+        )
+
+    def delete(self, owner, calendar_id, expected_rev=None, author=None) -> None:
+        self._docs.remove(owner, calendar_id, expected_rev, author, CalendarNotFound)
+
+    def list_owned_by(self, owner) -> list[dict]:
+        return self._docs.list_in_scope(owner)
+
+    def list_all(self) -> list[dict]:
+        """Every calendar in the library, unfiltered.
+
+        The route narrows this to what the caller may read -- the same posture as
+        ``list_worlds``. This seam has no request identity.
+        """
+        return self._docs.list_all()

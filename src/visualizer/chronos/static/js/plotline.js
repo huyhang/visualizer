@@ -4,6 +4,7 @@
 // time), and the breadcrumb returns to the book's plotline table.
 
 import { api } from "./api.js";
+import { calendarSwitcher, currentFor } from "./calendarview.js";
 import { eventCard } from "./cards.js";
 import { clear, el } from "./dom.js";
 import { findingList, markerClass, problemBanner, verdictNotes } from "./findings.js";
@@ -147,9 +148,15 @@ export async function mountPlotline(container, book, plotlineId,
   const loading = el("div", { class: "view" }, el("p", { class: "muted", text: "Loading plotline…" }));
   container.appendChild(loading);
 
+  // The book comes first now: which calendar the timeline is written in is a
+  // property of the book, and the plotline has to be read *through* it.
+  let bookMeta = { title: book };
+  try { bookMeta = await api.getBook(book); } catch (e) { /* fall back to id */ }
+  const calendar = currentFor(book, bookMeta.calendars);
+
   let pl;
   try {
-    pl = await api.getPlotline(book, plotlineId, { expand: true });
+    pl = await api.getPlotline(book, plotlineId, { expand: true, calendar });
   } catch (e) {
     clear(container);
     container.appendChild(el("div", { class: "view" }, [
@@ -157,9 +164,6 @@ export async function mountPlotline(container, book, plotlineId,
     ]));
     return;
   }
-
-  let bookMeta = { title: book };
-  try { bookMeta = await api.getBook(book); } catch (e) { /* fall back to id */ }
 
   const events = pl.effective_events || [];
   const deps = {
@@ -202,6 +206,12 @@ export async function mountPlotline(container, book, plotlineId,
       // Offered only when there is something to hide.
       events.some((e) => (e.findings || []).length)
         ? focusToggle((pl.status || {}).conflicts) : null,
+      // Which reckoning the rail is labelled in. Re-mounts rather than
+      // re-labels: every date on the page comes from the server's codec.
+      calendarSwitcher(book, bookMeta.calendars, () => mountPlotline(
+        container, book, plotlineId,
+        { showEntity, onBooks, onBook, onConnected, onConnectedAt, onGone, onRenamed, onSaved },
+      )),
     ].filter(Boolean)),
     el("p", { class: "muted axis-note", text: allScheduled(events)
       ? "Scenes top to bottom in story order — all are scheduled."

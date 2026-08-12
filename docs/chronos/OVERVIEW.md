@@ -141,6 +141,16 @@ Invented calendars are fine — thirteen months, ten-day weeks, whatever your
 world uses. And events *before* your starting point are just negative numbers,
 so flashbacks and ancient history need no special handling.
 
+**More than one calendar.** Worlds rarely agree on how to count. A book can keep
+several reckonings side by side — the Imperial one, the elves' — and you read
+the same scenes through whichever you like; the story never changes, only the
+dates on it. A calendar can also have a *beginning and an end*, which is what a
+destroyed culture's calendar needs: past the year its keepers died out, it stops
+dating things and says so, rather than inventing years no one was counting.
+
+Calendars you want again live in a **library**, so you build one once and attach
+it to any book — and can share it with the people you write with.
+
 > **One practical note today:** Chronos *shows* you calendar dates, but when
 > you record a scene you still give it the plain number. Typing "Day 9" and
 > having it understood isn't built yet.

@@ -114,10 +114,10 @@ def test_shared_tail_is_a_convergence_point():
 
 
 @pytest.fixture
-def svc(story_store, fake_gate):
+def svc(story_store, fake_gate, calendar_store):
     fake_gate.add(ref("aldric"))
     fake_gate.add(ref("highkeep", "locations"))
-    books = BookService(story_store, fake_gate)
+    books = BookService(story_store, fake_gate, calendar_store)
     books.create(BOOK, {"title": "The Ember Pact"})
     events = EventService(story_store, fake_gate)
     for eid, s, e in [("a", 0, 10), ("b", 0, 10), ("m", 20, 30), ("t", 40, 50)]:

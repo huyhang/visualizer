@@ -63,6 +63,13 @@ class InvalidBook(ChronosError):
     code = "INVALID_BOOK"
 
 
+class InvalidCalendar(ChronosError):
+    """Raised when a library calendar payload is malformed."""
+
+    status_code = 400
+    code = "INVALID_CALENDAR"
+
+
 class PlotlineCycle(ChronosError):
     """Raised when ``continues_into`` would make a plotline chain loop.
 
@@ -97,6 +104,14 @@ class PlotlineNotFound(ChronosError):
 class EventNotFound(ChronosError):
     status_code = 404
     code = "EVENT_NOT_FOUND"
+
+
+class CalendarNotFound(ChronosError):
+    """Raised for a library calendar that does not exist, and for a read asking
+    to be shown through a calendar the book has not attached."""
+
+    status_code = 404
+    code = "CALENDAR_NOT_FOUND"
 
 
 # -- conflicts (409) ---------------------------------------------------------

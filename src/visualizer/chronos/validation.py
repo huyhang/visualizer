@@ -8,8 +8,22 @@ from the URL, so it is passed in rather than read from the body.
 
 from typing import Any
 
-from .errors import InvalidBook, InvalidEvent, InvalidPlotline, InvalidTimeframe
-from .models import Book, EntityRef, Event, Plotline
+from .errors import (
+    InvalidBook,
+    InvalidCalendar,
+    InvalidEvent,
+    InvalidPlotline,
+    InvalidTimeframe,
+)
+from .models import (
+    DEFAULT_CALENDAR_ID,
+    Book,
+    CalendarAttachment,
+    EntityRef,
+    Event,
+    LibraryCalendar,
+    Plotline,
+)
 
 
 def _require_mapping(payload: Any, err) -> dict:
@@ -204,6 +218,132 @@ def _check_calendar(raw: Any) -> None:
         _check_cycle(cycle, position)
 
 
+# A book keeps a handful of parallel reckonings, not an archive of them. Every
+# attachment is copied into the document and returned in every book response, so
+# the list is bounded for the same reason ``overview`` is.
+MAX_CALENDARS = 8
+
+
+def _check_era(raw: dict, where: str) -> tuple[int | None, int | None]:
+    """The span of ticks a reckoning was kept in -- both ends optional."""
+    bounds = []
+    for field in ("from_tick", "until_tick"):
+        value = raw.get(field)
+        # bool is an int subclass but is not a tick.
+        if value is not None and (isinstance(value, bool) or not isinstance(value, int)):
+            raise InvalidBook(f"{where}: '{field}' must be an integer tick or null.")
+        bounds.append(value)
+    start, end = bounds
+    if start is not None and end is not None and start >= end:
+        raise InvalidBook(
+            f"{where}: the calendar would end before it began.",
+            evidence={"from_tick": start, "until_tick": end},
+        )
+    return start, end
+
+
+def _check_source(raw: Any, where: str) -> dict:
+    """Which library calendar this attachment takes its descriptor from.
+
+    Required, and the whole of what a client may say about a calendar's
+    *content*: the library is where calendars are authored, and a book chooses
+    from it rather than inventing one inline. The descriptor itself is resolved
+    server-side (see ``BookService._resolve_attachments``), so a book can never
+    hold a calendar that is not in somebody's library, and never one that
+    disagrees with the entry it claims to come from.
+
+    Owner-qualified, because library ids are unique per writer: an unqualified
+    pointer would let one writer's ``imperial`` be mistaken for another's.
+
+    ``rev`` says which of two things the caller wants, and is never taken as
+    fact: omit it to take the calendar as it stands, or send the revision this
+    book already holds to keep that copy (see ``_resolve_attachments``). Either
+    way the service stamps the revision it actually read.
+    """
+    if not isinstance(raw, dict):
+        raise InvalidBook(
+            f"{where}: needs a 'source' naming a calendar in the library. "
+            "Books choose a calendar rather than describing one."
+        )
+    owner, calendar = raw.get("owner"), raw.get("calendar")
+    if not (isinstance(owner, str) and owner and isinstance(calendar, str) and calendar):
+        raise InvalidBook(f"{where}: 'source' needs an 'owner' and a 'calendar'.")
+    rev = raw.get("rev")
+    if rev is not None and (isinstance(rev, bool) or not isinstance(rev, int)):
+        raise InvalidBook(f"{where}: 'source.rev' must be an integer or null.")
+    return {"owner": owner, "calendar": calendar, "rev": rev}
+
+
+def _parse_attachment(raw: Any, position: int, seen: set[str]) -> CalendarAttachment:
+    where = f"Calendar {position}"
+    if not isinstance(raw, dict):
+        raise InvalidBook(f"{where} must be an object.")
+    attachment_id = raw.get("id")
+    if not (isinstance(attachment_id, str) and attachment_id.strip()):
+        raise InvalidBook(f"{where} needs a non-empty 'id'.")
+    attachment_id = attachment_id.strip()
+    # Unique within the book: the id is what a read names to pick a reckoning,
+    # so a duplicate would make that choice ambiguous rather than merely untidy.
+    if attachment_id in seen:
+        raise InvalidBook(
+            f"Two calendars share the id '{attachment_id}'.",
+            evidence={"calendar": attachment_id},
+        )
+    seen.add(attachment_id)
+    label = raw.get("label", "")
+    if not isinstance(label, str):
+        raise InvalidBook(f"{where}: 'label' must be a string.")
+    # A client names a library calendar; it does not describe one. Refused
+    # rather than ignored: a body carrying a descriptor was written by someone
+    # who expected it to be used, and silently substituting a different one is
+    # worse than saying no. "Plain numbers" is not a calendar to describe --
+    # it is a book with no attachments at all.
+    if "descriptor" in raw:
+        raise InvalidBook(
+            f"{where}: a book cannot define a calendar inline. Name one from the "
+            "library with 'source', or attach none at all for plain ticks.",
+            evidence={"calendar": attachment_id},
+        )
+    from_tick, until_tick = _check_era(raw, where)
+    return CalendarAttachment(
+        id=attachment_id,
+        # Filled in by the service from the library entry ``source`` names.
+        descriptor=None,
+        label=label,
+        source=_check_source(raw.get("source"), where),
+        from_tick=from_tick,
+        until_tick=until_tick,
+    )
+
+
+def _parse_calendars(body: dict) -> list[CalendarAttachment]:
+    """A book's attached reckonings, accepting the pre-library single field.
+
+    Both spellings are read, but never together: a body carrying each is
+    ambiguous about which the writer meant, and picking one silently is how a
+    calendar goes missing without anything on screen to say so.
+    """
+    calendars, legacy = body.get("calendars"), body.get("calendar")
+    if calendars is not None and legacy is not None:
+        raise InvalidBook(
+            "Send either 'calendars' or the older single 'calendar', not both."
+        )
+    if calendars is None:
+        if legacy is None:
+            return []
+        _check_calendar(legacy)
+        return [CalendarAttachment(id=DEFAULT_CALENDAR_ID, descriptor=legacy)]
+    if not isinstance(calendars, list):
+        raise InvalidBook("'calendars' must be a list.")
+    if len(calendars) > MAX_CALENDARS:
+        raise InvalidBook(
+            f"A book may keep at most {MAX_CALENDARS} calendars.",
+            evidence={"count": len(calendars), "max": MAX_CALENDARS},
+        )
+    seen: set[str] = set()
+    return [_parse_attachment(raw, i, seen) for i, raw in enumerate(calendars, start=1)]
+
+
 def validate_book_payload(book_id: str, payload: Any) -> Book:
     body = _require_mapping(payload, InvalidBook)
     title = body.get("title")
@@ -212,9 +352,7 @@ def validate_book_payload(book_id: str, payload: Any) -> Book:
     terminus = body.get("terminus")
     if terminus is not None and not (isinstance(terminus, str) and terminus):
         raise InvalidBook("'terminus' must be an event id string.")
-    calendar = body.get("calendar")
-    if calendar is not None:
-        _check_calendar(calendar)
+    calendars = _parse_calendars(body)
     world = body.get("world")
     if world is not None and not (isinstance(world, str) and world.strip()):
         raise InvalidBook("'world' must be an Akasha database name.")
@@ -223,7 +361,47 @@ def validate_book_payload(book_id: str, payload: Any) -> Book:
     # been renamed or revoked should leave the book readable with an empty
     # picker rather than un-loadable -- the same posture as a dangling EntityRef.
     return Book(
-        id=book_id, title=title, terminus=terminus, calendar=calendar,
+        id=book_id, title=title, terminus=terminus, calendars=calendars,
         world=world.strip() if world else None,
         overview=_parse_overview(body, InvalidBook),
+    )
+
+
+# -- the calendar library ----------------------------------------------------
+
+MAX_CALENDAR_NAME = 200
+MAX_CALENDAR_NOTES = 2_000
+
+
+def validate_calendar_payload(calendar_id: str, payload: Any) -> LibraryCalendar:
+    """A named, reusable calendar. The id comes from the URL; the owner from the
+    session, so neither is read out of the body.
+
+    The descriptor is checked by exactly the rule a book's own calendar faces
+    (``_check_calendar``): a library that could store a descriptor no book could
+    accept would hand the writer a calendar that fails when they try to use it.
+    """
+    body = _require_mapping(payload, InvalidCalendar)
+    name = body.get("name")
+    if not (isinstance(name, str) and name.strip()):
+        raise InvalidCalendar("A calendar needs a non-empty 'name'.")
+    if len(name) > MAX_CALENDAR_NAME:
+        raise InvalidCalendar(f"'name' must be at most {MAX_CALENDAR_NAME} characters.")
+    notes = body.get("notes", "")
+    if not isinstance(notes, str):
+        raise InvalidCalendar("'notes' must be a string.")
+    if len(notes) > MAX_CALENDAR_NOTES:
+        raise InvalidCalendar(f"'notes' must be at most {MAX_CALENDAR_NOTES} characters.")
+    descriptor = body.get("descriptor")
+    if descriptor is None:
+        raise InvalidCalendar(
+            "A library calendar needs a 'descriptor'. A book that wants plain "
+            "numbers simply attaches no calendar."
+        )
+    try:
+        _check_calendar(descriptor)
+    except InvalidBook as bad:  # same rule, this resource's error code
+        raise InvalidCalendar(bad.message, evidence=bad.evidence)
+    return LibraryCalendar(
+        id=calendar_id, name=name.strip(), descriptor=descriptor, notes=notes
     )

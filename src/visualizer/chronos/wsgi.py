@@ -18,13 +18,14 @@ from visualizer.auth import AuthStore
 
 from .app import create_app
 from .entity_gate import InProcessEntityGate
-from .store import StoryStore
+from .store import CalendarStore, StoryStore
 
 _client = get_mongo_client()
 app = create_app(
     story_store=StoryStore(_client),
     entity_gate=InProcessEntityGate(DocumentStore(_client)),
     auth_store=AuthStore(_client),
+    calendar_store=CalendarStore(_client),
     secret_key=get_secret_key(),
     secure_cookies=get_secure_cookies(),
     rate_limit_storage_uri=get_rate_limit_storage_uri(),

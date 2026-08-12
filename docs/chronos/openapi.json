@@ -42,6 +42,10 @@
     {
       "name": "visualizer",
       "description": "The read-only plotline visualiser (web UI and its read helpers)"
+    },
+    {
+      "name": "calendars",
+      "description": "The library of named, reusable calendars. Identity is (owner, id); books attach a *copy*."
     }
   ],
   "security": [
@@ -277,7 +281,12 @@
           "404": {
             "$ref": "#/components/responses/NotFound"
           }
-        }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CalendarView"
+          }
+        ]
       }
     },
     "/books/{book}/graph": {
@@ -309,7 +318,12 @@
           "404": {
             "$ref": "#/components/responses/NotFound"
           }
-        }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CalendarView"
+          }
+        ]
       }
     },
     "/books/{book}/plotlines/{plotline}": {
@@ -368,6 +382,9 @@
                 "events"
               ]
             }
+          },
+          {
+            "$ref": "#/components/parameters/CalendarView"
           }
         ],
         "responses": {
@@ -507,7 +524,12 @@
           "404": {
             "$ref": "#/components/responses/NotFound"
           }
-        }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CalendarView"
+          }
+        ]
       },
       "put": {
         "tags": [
@@ -610,6 +632,9 @@
                 "through"
               ]
             }
+          },
+          {
+            "$ref": "#/components/parameters/CalendarView"
           }
         ],
         "responses": {
@@ -821,6 +846,9 @@
               "minimum": 1
             },
             "description": "Page size (defaults to 20, capped at 100)."
+          },
+          {
+            "$ref": "#/components/parameters/CalendarView"
           }
         ],
         "responses": {
@@ -912,6 +940,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/BookId"
+          },
+          {
+            "$ref": "#/components/parameters/CalendarView"
           }
         ],
         "requestBody": {
@@ -1045,6 +1076,9 @@
               "minimum": 1
             },
             "description": "Page size (defaults to 20, capped at 100)."
+          },
+          {
+            "$ref": "#/components/parameters/CalendarView"
           }
         ],
         "responses": {
@@ -1091,6 +1125,9 @@
             "style": "form",
             "explode": true,
             "description": "Repeat once per tick, e.g. `?tick=240&tick=264`."
+          },
+          {
+            "$ref": "#/components/parameters/CalendarView"
           }
         ],
         "responses": {
@@ -1112,6 +1149,240 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/calendars": {
+      "get": {
+        "tags": [
+          "calendars"
+        ],
+        "summary": "The calendar library visible to you",
+        "description": "Your own calendars plus any shared with you. Not book-scoped: a calendar outlives any one book, and is chosen while a book is being created \u2014 when there is no book to scope to.",
+        "responses": {
+          "200": {
+            "description": "The library.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarLibrary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/calendars/{owner}/{calendar}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/CalendarOwner"
+        },
+        {
+          "$ref": "#/components/parameters/CalendarSlug"
+        }
+      ],
+      "post": {
+        "tags": [
+          "calendars"
+        ],
+        "summary": "Create a calendar in your library",
+        "description": "`owner` must be you \u2014 a writer may only create under their own name. The creator owns it outright. Two writers may each hold a calendar with the same slug, and neither creation tells the other anything.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryCalendarWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryCalendar"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "calendars"
+        ],
+        "summary": "Read one calendar",
+        "responses": {
+          "200": {
+            "description": "The calendar.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryCalendar"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "calendars"
+        ],
+        "summary": "Replace a calendar",
+        "description": "A full replace, like every other PUT here. Books that already attached this calendar are **not** re-dated: each holds its own copy, and is offered the change explicitly instead.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryCalendarWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryCalendar"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "calendars"
+        ],
+        "summary": "Delete a calendar",
+        "description": "Not a cascade. Books that copied it keep working \u2014 the copy *is* their calendar \u2014 and only their provenance pointer goes dangling, the same posture Chronos takes toward a deleted Akasha article. Grants naming this calendar are swept, so the slug is free again.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/calendars/{owner}/{calendar}/collaborators/{username}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/CalendarOwner"
+        },
+        {
+          "$ref": "#/components/parameters/CalendarSlug"
+        },
+        {
+          "name": "username",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "The account to share with."
+        }
+      ],
+      "put": {
+        "tags": [
+          "calendars"
+        ],
+        "summary": "Share a calendar",
+        "description": "Owners only. Idempotent. The calendar appears in their library beside any calendar of their own that happens to share its name \u2014 they are distinct records, told apart by owner.",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollaboratorWrite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Their role on this calendar.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalendarCollaborator"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "calendars"
+        ],
+        "summary": "Stop sharing a calendar",
+        "description": "Owners only. Books they already attached it to are untouched: they hold their own copy.",
+        "responses": {
+          "204": {
+            "description": "Removed."
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           }
         }
       }
@@ -1163,6 +1434,33 @@
         },
         "description": "Optimistic-concurrency precondition \u2014 the `rev` you last read, e.g. \"3\". Omit (or send `*`) for an unconditional write. A stale value returns 409.",
         "example": "\"3\""
+      },
+      "CalendarOwner": {
+        "name": "owner",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "The account that keeps this calendar. Half of its identity: two writers may each keep a calendar with the same slug."
+      },
+      "CalendarSlug": {
+        "name": "calendar",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Calendar id (slug), unique within its owner's library."
+      },
+      "CalendarView": {
+        "name": "calendar",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Which of the book's attached calendars to write dates in. Omit for its primary (first) one. A calendar the book has not attached is a 404, never a silent fallback \u2014 a stale choice must say so rather than mislabel every date in the response. Ticks are unaffected: this changes labels only."
       }
     },
     "requestBodies": {
@@ -1351,7 +1649,13 @@
             "description": "Id of the event every plotline must end at."
           },
           "calendar": {
-            "$ref": "#/components/schemas/Calendar"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Calendar"
+              }
+            ],
+            "description": "The primary attachment's descriptor. Kept for clients written before a book could hold several calendars; derived from `calendars`, never stored separately.",
+            "readOnly": true
           },
           "world": {
             "type": "string",
@@ -1385,6 +1689,13 @@
           },
           "permissions": {
             "$ref": "#/components/schemas/Permissions"
+          },
+          "calendars": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CalendarAttachment"
+            },
+            "description": "Every reckoning this book keeps, in the writer's order. The first is the primary. Several at once are the point: parallel cultures counting one canonical tick line. Choosing between them changes labels only \u2014 no tick, no ordering and no verdict moves."
           }
         },
         "example": {
@@ -1447,21 +1758,43 @@
             "description": "Event id."
           },
           "calendar": {
-            "$ref": "#/components/schemas/Calendar"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Calendar"
+              }
+            ],
+            "description": "The pre-library single-calendar spelling, still accepted. Stored as a one-element `calendars` list under the id `default`."
+          },
+          "calendars": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "$ref": "#/components/schemas/CalendarAttachment"
+            },
+            "description": "Replaces the whole list. Ids must be unique within the book. Each entry names a library calendar via `source`; a `descriptor` is refused. Send this *or* the older single `calendar`, never both. A book with no calendars shows plain integer ticks \u2014 that is how \"no calendar\" is said, not by describing one inline."
           }
         },
         "example": {
           "title": "The Ember Pact",
-          "calendar": {
-            "base_unit": "hour",
-            "cycles": [
-              {
-                "name": "day",
-                "size": 24
+          "calendars": [
+            {
+              "id": "imperial",
+              "label": "Imperial Reckoning",
+              "source": {
+                "owner": "mara",
+                "calendar": "imperial"
               }
-            ],
-            "epoch_label": "AF"
-          }
+            },
+            {
+              "id": "elvish",
+              "label": "Elvish Count",
+              "until_tick": 48200,
+              "source": {
+                "owner": "mara",
+                "calendar": "elvish"
+              }
+            }
+          ]
         }
       },
       "Calendar": {
@@ -2886,23 +3219,25 @@
             "type": "string",
             "description": "Stable machine code.",
             "enum": [
-              "INVALID_EVENT",
-              "INVALID_TIMEFRAME",
-              "INVALID_PLOTLINE",
-              "PLOTLINE_CYCLE",
-              "INVALID_BOOK",
-              "INVALID_REVISION",
-              "ENTITY_NOT_FOUND",
-              "BOOK_NOT_FOUND",
-              "PLOTLINE_NOT_FOUND",
-              "EVENT_NOT_FOUND",
-              "REVISION_CONFLICT",
-              "EVENT_IN_USE",
-              "TERMINUS_IN_USE",
               "ALREADY_EXISTS",
-              "FORBIDDEN",
+              "BOOK_NOT_FOUND",
+              "CALENDAR_NOT_FOUND",
               "CHRONOS_ERROR",
-              "PLOTLINE_IN_USE"
+              "ENTITY_NOT_FOUND",
+              "EVENT_IN_USE",
+              "EVENT_NOT_FOUND",
+              "FORBIDDEN",
+              "INVALID_BOOK",
+              "INVALID_CALENDAR",
+              "INVALID_EVENT",
+              "INVALID_PLOTLINE",
+              "INVALID_REVISION",
+              "INVALID_TIMEFRAME",
+              "PLOTLINE_CYCLE",
+              "PLOTLINE_IN_USE",
+              "PLOTLINE_NOT_FOUND",
+              "REVISION_CONFLICT",
+              "TERMINUS_IN_USE"
             ]
           },
           "evidence": {
@@ -3514,6 +3849,30 @@
                     "type": "string"
                   },
                   "description": "The label split coarse-to-fine, as in EventSummary.start_parts."
+                },
+                "readings": {
+                  "type": "array",
+                  "description": "The same tick dated in *every* calendar the book keeps, including any that were not being kept then. `label`/`parts` above stay the chosen (or primary) reckoning, so a pre-library client is unaffected.",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "calendar",
+                      "name",
+                      "label"
+                    ],
+                    "properties": {
+                      "calendar": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string",
+                        "example": "before Elvish Count"
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -3529,6 +3888,18 @@
                 "Month 1",
                 "Day 11",
                 "00:00 AF"
+              ],
+              "readings": [
+                {
+                  "calendar": "imperial",
+                  "name": "Imperial Reckoning",
+                  "label": "Year 1, Month 1, Day 11, 00:00 AF"
+                },
+                {
+                  "calendar": "elvish",
+                  "name": "Elvish Count",
+                  "label": "before Elvish Count"
+                }
               ]
             }
           ]
@@ -3604,6 +3975,204 @@
               ]
             }
           ]
+        }
+      },
+      "CalendarAttachment": {
+        "type": "object",
+        "description": "One reckoning a book keeps its dates in. A book **names** a library calendar; it cannot describe one of its own. The server reads the descriptor out of the library and copies it in, which is why the copy can never disagree with the entry it claims to come from, why provenance cannot be forged, and why a book can only ever hold a calendar that really exists in somebody's library.\n\nCopying happens **on attach, not on every save** \u2014 otherwise editing a book's title would quietly adopt whatever the library had become since. `source.rev` is how a caller chooses: omit it to take the calendar as it stands, or send the revision this book already holds to keep that copy.",
+        "required": [
+          "id",
+          "source"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "imperial",
+            "description": "Unique within the book. What `?calendar=` names."
+          },
+          "label": {
+            "type": "string",
+            "example": "Imperial Reckoning",
+            "description": "What the view switcher shows. Falls back to the id."
+          },
+          "descriptor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Calendar"
+              }
+            ],
+            "readOnly": true,
+            "description": "Resolved from the library at attach time. Returned on reads; **rejected on writes** \u2014 a book that sends one gets a 400."
+          },
+          "from_tick": {
+            "type": "integer",
+            "nullable": true,
+            "example": 0,
+            "description": "When this reckoning began. Ticks are offset by it, so a calendar founded mid-story reads Year 1 at its own start. Null means it has always been kept."
+          },
+          "until_tick": {
+            "type": "integer",
+            "nullable": true,
+            "example": 48200,
+            "description": "The first tick *not* covered (half-open, as everywhere else). A scene outside the span formats as \u201cbefore/after <label>\u201d rather than being given a date in a calendar nobody was keeping \u2014 which is how a destroyed culture's calendar stops dating the epilogue."
+          },
+          "source": {
+            "type": "object",
+            "required": [
+              "owner",
+              "calendar"
+            ],
+            "description": "The library calendar this attachment takes its content from. Owner-qualified because library ids are unique per writer, not globally.",
+            "properties": {
+              "owner": {
+                "type": "string",
+                "example": "mara"
+              },
+              "calendar": {
+                "type": "string",
+                "example": "imperial"
+              },
+              "rev": {
+                "type": "integer",
+                "nullable": true,
+                "description": "Omit for \"take it as it stands\" (a fresh attach, or accepting an update). Send the revision this book already holds for \"keep mine\". The response always carries the revision actually read."
+              }
+            }
+          },
+          "primary": {
+            "type": "boolean",
+            "readOnly": true,
+            "description": "Whether a read with no `?calendar=` uses this one. True for the first attachment."
+          }
+        }
+      },
+      "LibraryCalendar": {
+        "type": "object",
+        "description": "A named, reusable calendar in a writer's library. Identity is `(owner, id)`: calendar names are generic enough that two writers will independently pick the same slug, so a global namespace would let whoever registered \u201cimperial\u201d first own that word for everybody \u2014 and would tell the next writer that a calendar they cannot read exists. Attaching one to a book copies it; nothing here is on the read path of a book's dates.",
+        "required": [
+          "kind",
+          "id",
+          "owner",
+          "qualified_id",
+          "name",
+          "descriptor",
+          "rev"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "calendar"
+            ],
+            "readOnly": true
+          },
+          "id": {
+            "type": "string",
+            "example": "imperial"
+          },
+          "owner": {
+            "type": "string",
+            "example": "mara"
+          },
+          "qualified_id": {
+            "type": "string",
+            "example": "mara/imperial",
+            "readOnly": true,
+            "description": "`owner/id`. What a picker shows when the same name appears twice."
+          },
+          "name": {
+            "type": "string",
+            "example": "Imperial Reckoning",
+            "maxLength": 200
+          },
+          "descriptor": {
+            "$ref": "#/components/schemas/Calendar"
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "Free prose. Empty when never written \u2014 never null."
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/Permissions"
+          },
+          "rev": {
+            "type": "integer",
+            "readOnly": true
+          },
+          "_links": {
+            "$ref": "#/components/schemas/Links"
+          }
+        }
+      },
+      "LibraryCalendarWrite": {
+        "type": "object",
+        "description": "Writable fields. The id comes from the URL and the owner from the session. A descriptor is required: \u201cplain numbers\u201d is a book attaching no calendar, not a library entry.",
+        "required": [
+          "name",
+          "descriptor"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "descriptor": {
+            "$ref": "#/components/schemas/Calendar"
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "example": {
+          "name": "Imperial Reckoning",
+          "descriptor": {
+            "base_unit": "hour",
+            "cycles": [
+              {
+                "name": "day",
+                "size": 24
+              }
+            ],
+            "epoch_label": "AF"
+          },
+          "notes": "Kept in the capital from the Founding onwards."
+        }
+      },
+      "CalendarLibrary": {
+        "type": "object",
+        "required": [
+          "calendars"
+        ],
+        "description": "Every calendar the caller may read: their own, plus any shared with them.",
+        "properties": {
+          "calendars": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LibraryCalendar"
+            }
+          }
+        }
+      },
+      "CalendarCollaborator": {
+        "type": "object",
+        "required": [
+          "calendar",
+          "user",
+          "role"
+        ],
+        "properties": {
+          "calendar": {
+            "type": "string",
+            "example": "mara/imperial"
+          },
+          "user": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          }
         }
       }
     }

@@ -1,13 +1,16 @@
 // Orchestrator + hash router for the plotline visualiser.
 //
 //   #/                        -> pick a book
+//   #/~calendars              -> the calendar library (not book-scoped)
 //   #/<book>                  -> that book's filtered, paginated plotline table
 //   #/<book>/~scenes          -> that book's scene library
 //   #/<book>/<plotline>       -> one plotline, its events as cards (+ time axis)
 //
-// The second segment is a plotline id, so the scene library takes a name no id
-// can collide with: `slugify` strips the leading `~`, so no id derived from a
-// title can ever be `~scenes`.
+// Segments are ids, so the two library views take names no id can collide with:
+// `slugify` strips a leading `~`, so nothing derived from a title can ever be
+// `~scenes` or `~calendars`. The calendar library sits at the top level rather
+// than under a book because that is the whole point of it — a calendar outlives
+// any one book, and is chosen while a book is being created.
 //
 // The plotline editor is a modal, not a route: editing is a detour from reading,
 // and closing it should put you back exactly where you were.
@@ -20,6 +23,7 @@ import { api, ApiError, BASE } from "./api.js";
 import { $ } from "./dom.js";
 import { clearPeek, showArticle, showScene } from "./peek.js";
 import { mountBooks } from "./books.js";
+import { mountCalendarLibrary } from "./calendarlibrary.js";
 import { mountPlotline } from "./plotline.js";
 import { mountScenes } from "./scenes.js";
 import { mountConnected } from "./storygraph.js";
@@ -34,12 +38,14 @@ const content = $("#content");
 
 // The scene library's route segment. Reserved: see the note at the top.
 const SCENES = "~scenes";
+const CALENDARS = "~calendars";
 
 const enc = encodeURIComponent;
 const go = (hash) => { window.location.hash = hash; };
 const toBooks = () => go("#/");
 const toBook = (book) => go(`#/${enc(book)}`);
 const toScenes = (book) => go(`#/${enc(book)}/${SCENES}`);
+const toCalendars = () => go(`#/${CALENDARS}`);
 const toPlotline = (book, pl) => go(`#/${enc(book)}/${enc(pl)}`);
 const toConnected = (book, pl) => go(`#/${enc(book)}/${enc(pl)}/connected`);
 const toConnectedAt = (book, pl, ev) => go(`#/${enc(book)}/${enc(pl)}/connected/${enc(ev)}`);
@@ -58,13 +64,19 @@ const showEventPeek = (node) => showScene(currentBook, node);
 // -- routing -----------------------------------------------------------------
 
 let currentBook = null;
+// Who is logged in, learned once at boot. The calendar library needs it: a
+// calendar's identity is (owner, id), so the view has to know which rows are
+// the writer's own and under whose name a new one is created.
+let me = null;
 
 function route() {
   clearPeek();
   const parts = parseHash();
-  currentBook = parts[0] || null;
+  currentBook = parts[0] === CALENDARS ? null : (parts[0] || null);
   if (parts.length === 0) {
-    mountBooks(content, { onOpen: toBook });
+    mountBooks(content, { onOpen: toBook, onCalendars: toCalendars });
+  } else if (parts[0] === CALENDARS) {
+    mountCalendarLibrary(content, { onBooks: toBooks, me });
   } else if (parts.length === 1) {
     mountPlotlineTable(content, parts[0], {
       onOpen: (pl) => toPlotline(parts[0], pl),
@@ -110,7 +122,7 @@ function initChrome() {
 async function boot() {
   initChrome();
   try {
-    await api.me(); // confirm the session before rendering
+    me = (await api.me()).username; // confirm the session before rendering
   } catch (e) {
     if (e instanceof ApiError && (e.status === 401 || e.isForbidden)) {
       window.location.href = BASE + "/login";

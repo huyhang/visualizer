@@ -22,13 +22,13 @@ BOOK = "ember-pact"
 
 
 @pytest.fixture
-def svc(story_store, fake_gate):
+def svc(story_store, fake_gate, calendar_store):
     # Seed the entities Chronos will reference.
     for c in ("aldric", "lyra"):
         fake_gate.add(ref(c))
     for loc in ("highkeep", "emberport", "throne-hall"):
         fake_gate.add(ref(loc, "locations"))
-    books = BookService(story_store, fake_gate)
+    books = BookService(story_store, fake_gate, calendar_store)
     books.create(BOOK, {"title": "The Ember Pact"})
     return {
         "books": books,

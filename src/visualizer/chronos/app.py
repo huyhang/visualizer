@@ -26,17 +26,30 @@ from visualizer.shared_assets import register_shared_assets
 from .entity_gate import EntityGate
 from .errors import ChronosError, Forbidden, InvalidRevision, InvalidTimeframe
 from .presenters import with_permissions
-from .services import BookService, EventService, PlotlineService, VisualizerService
-from .store import StoryStore
+from .services import (
+    BookService,
+    CalendarService,
+    EventService,
+    PlotlineService,
+    VisualizerService,
+)
+from .store import CalendarStore, StoryStore
 
 _BOOK = "/books/<book>"
 _PLOTLINE = "/books/<book>/plotlines/<plotline>"
 _EVENT = "/books/<book>/events/<event>"
+# Owner-qualified, because that pair *is* a library calendar's identity: two
+# writers may each keep an "imperial" and neither should block the other.
+_CALENDAR = "/calendars/<owner>/<calendar>"
 
 # Chronos grants are namespaced by this resource kind in the shared `_auth`
 # store, so a book named "x" never confers access to a akasha database
 # named "x" (and vice versa). See visualizer.auth.authz.
 BOOK_RESOURCE = "book"
+
+# Library calendars are a second, separate kind: a grant on the *book* called
+# "imperial" must not confer anything on the *calendar* called "imperial".
+CALENDAR_RESOURCE = "calendar"
 
 _ROLE_PERMS = {
     "reader": ["read"],
@@ -50,6 +63,11 @@ def create_app(
     entity_gate: EntityGate,
     auth_store,
     secret_key: str,
+    # Injected like every other boundary rather than defaulted: a route table
+    # that varies with how the app was constructed is a route table the contract
+    # test cannot hold, and "the library is missing today" is not a state any
+    # caller should be able to reach by accident.
+    calendar_store: CalendarStore,
     secure_cookies: bool = False,
     rate_limit_storage_uri: str = "memory://",
     akasha_url: str = "http://localhost:5002",
@@ -72,12 +90,14 @@ def create_app(
     register_service_links(app, akasha_url, chronos_url, current="chronos")
     register_shared_assets(app)
 
-    books = BookService(story_store, entity_gate)
+    books = BookService(story_store, entity_gate, calendar_store)
     plotlines = PlotlineService(story_store, entity_gate)
     events = EventService(story_store, entity_gate)
     visualizer = VisualizerService(story_store, entity_gate)
+    calendars = CalendarService(calendar_store)
 
     _register_routes(app, csrf, auth_store, books, plotlines, events, visualizer)
+    _register_calendar_routes(app, csrf, auth_store, calendars)
     _register_ui_routes(app, csrf, auth_store, visualizer)
     _register_error_handler(app)
     return app
@@ -139,6 +159,30 @@ def _truthy(value) -> bool:
 # -- routes ------------------------------------------------------------------
 
 
+def _authorize_calendar_sources(auth_store, payload) -> None:
+    """You may only attach a library calendar you can read.
+
+    The book form sends the calendars it wants by name; the service then copies
+    their descriptors in. Checked here rather than in the service because it
+    needs the request's identity -- the same split ``_authorize_entity_read``
+    uses for Akasha articles.
+
+    Note this is about hygiene rather than secrecy: the descriptor is resolved
+    from the library, so an unreadable name yields no content either way. What
+    it prevents is a book quietly depending on a calendar its writer has no
+    business pointing at.
+    """
+    for raw in (payload or {}).get("calendars") or []:
+        source = raw.get("source") if isinstance(raw, dict) else None
+        if not isinstance(source, dict):
+            continue  # malformed; validation will say so more precisely
+        owner, name = source.get("owner"), source.get("calendar")
+        if not (isinstance(owner, str) and isinstance(name, str)):
+            continue
+        if not _calendar_allowed(auth_store, "read", owner, name):
+            raise Forbidden(f"You lack 'read' permission on calendar '{owner}/{name}'.")
+
+
 def _register_routes(app, csrf, auth_store, books, plotlines, events, visualizer):
     @app.get("/health")
     @csrf.exempt
@@ -152,7 +196,9 @@ def _register_routes(app, csrf, auth_store, books, plotlines, events, visualizer
     @login_required
     def create_book(book):
         # Any authenticated user may create a book and owns it outright.
-        result = books.create(book, request.get_json(silent=True) or {}, author=current_user.username)
+        payload = request.get_json(silent=True) or {}
+        _authorize_calendar_sources(auth_store, payload)
+        result = books.create(book, payload, author=current_user.username)
         auth_store.grant_owner(
             current_user.username, book, None, None, list(ALL_PERMS),
             resource_type=BOOK_RESOURCE,
@@ -184,9 +230,9 @@ def _register_routes(app, csrf, auth_store, books, plotlines, events, visualizer
     @login_required
     def update_book(book):
         _authorize(auth_store, "PUT", book)
-        result = books.update(
-            book, request.get_json(silent=True) or {}, _expected_rev(), current_user.username
-        )
+        payload = request.get_json(silent=True) or {}
+        _authorize_calendar_sources(auth_store, payload)
+        result = books.update(book, payload, _expected_rev(), current_user.username)
         return _resp(result)
 
     @app.delete(_BOOK)
@@ -212,14 +258,14 @@ def _register_routes(app, csrf, auth_store, books, plotlines, events, visualizer
     @login_required
     def validate_book(book):
         _authorize(auth_store, "GET", book)
-        return jsonify(books.validate(book))
+        return jsonify(books.validate(book, _calendar_arg()))
 
     @app.get(_BOOK + "/graph")
     @csrf.exempt
     @login_required
     def book_graph(book):
         _authorize(auth_store, "GET", book)
-        return jsonify(books.graph(book))
+        return jsonify(books.graph(book, _calendar_arg()))
 
     # -- plotlines -----------------------------------------------------------
 
@@ -239,7 +285,7 @@ def _register_routes(app, csrf, auth_store, books, plotlines, events, visualizer
     def get_plotline(book, plotline):
         _authorize(auth_store, "GET", book)
         expand = request.args.get("expand") == "events"
-        return _resp(plotlines.get(book, plotline, expand=expand))
+        return _resp(plotlines.get(book, plotline, expand, _calendar_arg()))
 
     @app.put(_PLOTLINE)
     @csrf.exempt
@@ -283,7 +329,9 @@ def _register_routes(app, csrf, auth_store, books, plotlines, events, visualizer
         its first caller. Full records come from ``GET .../events/<event>``.
         """
         _authorize(auth_store, "GET", book)
-        return jsonify(visualizer.browse_events(book, **_browse_args()))
+        return jsonify(
+            visualizer.browse_events(book, calendar_id=_calendar_arg(), **_browse_args())
+        )
 
     @app.post(_EVENT)
     @csrf.exempt
@@ -300,7 +348,7 @@ def _register_routes(app, csrf, auth_store, books, plotlines, events, visualizer
     @login_required
     def get_event(book, event):
         _authorize(auth_store, "GET", book)
-        return _resp(events.get(book, event))
+        return _resp(events.get(book, event, _calendar_arg()))
 
     @app.put(_EVENT)
     @csrf.exempt
@@ -329,7 +377,10 @@ def _register_routes(app, csrf, auth_store, books, plotlines, events, visualizer
     @login_required
     def event_neighborhood(book, event):
         _authorize(auth_store, "GET", book)
-        return jsonify(events.neighborhood(book, event, relation=request.args.get("relation")))
+        return jsonify(events.neighborhood(
+            book, event, relation=request.args.get("relation"),
+            calendar_id=_calendar_arg(),
+        ))
 
     # -- collaborators (book owners only, §7.5/§8.2) -------------------------
 
@@ -356,6 +407,152 @@ def _register_routes(app, csrf, auth_store, books, plotlines, events, visualizer
         _require_owner(auth_store, book)
         _replace_book_grants(auth_store, username, book)
         return "", 204
+
+
+# -- the calendar library ----------------------------------------------------
+
+
+def _calendar_allowed(auth_store, perm: str, owner: str, calendar: str) -> bool:
+    """Whether the current user holds ``perm`` on this library calendar.
+
+    Scoped ``(owner, calendar)`` under its own resource kind, so an owner-wide
+    grant ("everything alice keeps") is one step less specific than a grant on
+    a single calendar -- the same most-specific-wins ladder Akasha uses for
+    database/collection/document.
+    """
+    grants = auth_store.grants_for(current_user.username)
+    return is_allowed(grants, perm, owner, None, calendar, resource_type=CALENDAR_RESOURCE)
+
+
+def _authorize_calendar(auth_store, method: str, owner: str, calendar: str) -> None:
+    perm = perm_for_method(method)
+    if not _calendar_allowed(auth_store, perm, owner, calendar):
+        raise Forbidden(f"You lack '{perm}' permission on calendar '{owner}/{calendar}'.")
+
+
+def _revoke_calendar_grants(auth_store, owner: str, calendar: str) -> None:
+    """Drop every grant on a calendar once it is gone.
+
+    Same reasoning as ``_revoke_book_grants``: deletes are hard and an id may be
+    recreated, so a grant left behind is a grant on a *name* -- and the next
+    calendar the writer creates under it would silently arrive pre-shared.
+    """
+    auth_store.delete_grants_on(owner, None, calendar, resource_type=CALENDAR_RESOURCE)
+
+
+def _register_calendar_routes(app, csrf, auth_store, calendars):
+    """The library: named calendars a writer keeps and attaches to books.
+
+    Not book-scoped, and deliberately so -- the whole point is a calendar that
+    outlives and spans books. Identity is ``(owner, id)``: two writers may each
+    keep an "imperial" without either blocking or discovering the other, which a
+    global namespace could not offer for names this generic.
+
+    Nothing here is on the read path of a book's dates. Attaching copies the
+    descriptor into the book (through the ordinary book PUT), so a reader needs
+    no grant here to see the dates of a book they can already read.
+    """
+
+    @app.get("/calendars")
+    @csrf.exempt
+    @login_required
+    def list_calendars():
+        """The library this writer can see: their own, plus anything shared."""
+        visible = [
+            c for c in calendars.library()
+            if _calendar_allowed(auth_store, "read", c["owner"], c["id"])
+        ]
+        return jsonify({"calendars": visible})
+
+    @app.post(_CALENDAR)
+    @csrf.exempt
+    @login_required
+    def create_calendar(owner, calendar):
+        # You may only create under your own name. The owner is still in the
+        # path rather than implied, so every route in this table reads the same
+        # and a client never has to learn a second shape.
+        if owner != current_user.username:
+            raise Forbidden("You may only create calendars in your own library.")
+        result = calendars.create(owner, calendar, request.get_json(silent=True) or {},
+                                  author=current_user.username)
+        auth_store.grant_owner(
+            current_user.username, owner, None, calendar, list(ALL_PERMS),
+            resource_type=CALENDAR_RESOURCE,
+        )
+        return _resp(result, 201)
+
+    @app.get(_CALENDAR)
+    @csrf.exempt
+    @login_required
+    def get_calendar(owner, calendar):
+        _authorize_calendar(auth_store, "GET", owner, calendar)
+        return _resp(with_permissions(
+            calendars.get(owner, calendar),
+            write=_calendar_allowed(auth_store, "write", owner, calendar),
+            delete=_calendar_allowed(auth_store, "delete", owner, calendar),
+        ))
+
+    @app.put(_CALENDAR)
+    @csrf.exempt
+    @login_required
+    def update_calendar(owner, calendar):
+        _authorize_calendar(auth_store, "PUT", owner, calendar)
+        return _resp(calendars.update(
+            owner, calendar, request.get_json(silent=True) or {},
+            _expected_rev(), current_user.username,
+        ))
+
+    @app.delete(_CALENDAR)
+    @csrf.exempt
+    @login_required
+    def delete_calendar(owner, calendar):
+        _authorize_calendar(auth_store, "DELETE", owner, calendar)
+        calendars.delete(owner, calendar, _expected_rev(), current_user.username)
+        # Only once it is really gone: a refused delete must leave the owner
+        # able to try again.
+        _revoke_calendar_grants(auth_store, owner, calendar)
+        return "", 204
+
+    @app.put(_CALENDAR + "/collaborators/<username>")
+    @csrf.exempt
+    @login_required
+    def share_calendar(owner, calendar, username):
+        _require_calendar_owner(auth_store, owner, calendar)
+        role = (request.get_json(silent=True) or {}).get("role", "reader")
+        perms = _ROLE_PERMS.get(role)
+        if perms is None:
+            raise Forbidden(f"Unknown role '{role}'.")
+        _replace_calendar_grants(auth_store, username, owner, calendar)
+        auth_store.add_grant(
+            username, owner, None, calendar, perms,
+            granted_by=current_user.username, resource_type=CALENDAR_RESOURCE,
+        )
+        return jsonify({"calendar": f"{owner}/{calendar}", "user": username, "role": role})
+
+    @app.delete(_CALENDAR + "/collaborators/<username>")
+    @csrf.exempt
+    @login_required
+    def unshare_calendar(owner, calendar, username):
+        _require_calendar_owner(auth_store, owner, calendar)
+        _replace_calendar_grants(auth_store, username, owner, calendar)
+        return "", 204
+
+
+def _require_calendar_owner(auth_store, owner: str, calendar: str) -> None:
+    if not _calendar_allowed(auth_store, "delete", owner, calendar):
+        raise Forbidden(f"Only an owner may share '{owner}/{calendar}'.")
+
+
+def _replace_calendar_grants(auth_store, username: str, owner: str, calendar: str) -> None:
+    """Drop this user's existing grants on *this calendar* (idempotent invite)."""
+    for grant in auth_store.grants_for(username):
+        if (
+            grant.get("resource_type") == CALENDAR_RESOURCE
+            and grant.get("database") == owner
+            and grant.get("collection") is None
+            and grant.get("doc_id") == calendar
+        ):
+            auth_store.delete_grant(grant["id"])
 
 
 def _require_owner(auth_store, book: str) -> None:
@@ -422,7 +619,9 @@ def _register_ui_routes(app, csrf, auth_store, visualizer):
     @login_required
     def ui_list_plotlines(book):
         _authorize(auth_store, "GET", book)
-        return jsonify(visualizer.browse_plotlines(book, **_browse_args()))
+        return jsonify(
+            visualizer.browse_plotlines(book, calendar_id=_calendar_arg(), **_browse_args())
+        )
 
     @app.post(_BOOK + "/ui/plotline-preview")
     @csrf.exempt
@@ -432,7 +631,9 @@ def _register_ui_routes(app, csrf, auth_store, visualizer):
         # permission the save will need, so the UI cannot preview happily and
         # then be refused.
         _authorize(auth_store, "POST", book)
-        return jsonify(visualizer.preview_plotline(book, request.get_json(silent=True) or {}))
+        return jsonify(visualizer.preview_plotline(
+            book, request.get_json(silent=True) or {}, _calendar_arg()
+        ))
 
     @app.get(_BOOK + "/ui/entity/<database>/<collection>/<entity_id>")
     @csrf.exempt
@@ -454,7 +655,7 @@ def _register_ui_routes(app, csrf, auth_store, visualizer):
         "240 means Day 11" hint. One way only: labels are formatted here because
         a fantasy calendar cannot be parsed back (see calendar.py)."""
         _authorize(auth_store, "GET", book)
-        return jsonify(visualizer.format_ticks(book, _ticks_arg()))
+        return jsonify(visualizer.format_ticks(book, _ticks_arg(), _calendar_arg()))
 
     @app.get("/ui/worlds")
     @csrf.exempt
@@ -514,6 +715,16 @@ def _ticks_arg() -> list[int]:
         return [int(value) for value in raw]
     except (TypeError, ValueError):
         raise InvalidTimeframe("Each 'tick' must be an integer.")
+
+
+def _calendar_arg() -> str | None:
+    """Which of the book's calendars to read ticks through.
+
+    Absent means the book's primary one. A name the book has not attached is
+    refused deeper in (``select_calendar``) rather than falling back: a stale
+    bookmark should say so, not quietly misreport every date on the page.
+    """
+    return request.args.get("calendar") or None
 
 
 def _browse_args() -> dict:

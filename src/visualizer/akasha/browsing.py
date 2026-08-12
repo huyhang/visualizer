@@ -18,7 +18,7 @@ and is unit tested the same way (the shape mirrors ``chronos.browsing``).
 import re
 from collections.abc import Iterable, Mapping
 
-from visualizer.auth.authz import DELETE, READ, WRITE, is_allowed
+from visualizer.auth.authz import DATABASE_RESOURCE, DELETE, READ, WRITE, is_allowed
 
 # Bounds on the page size, so a client cannot ask for an unbounded page.
 DEFAULT_PER_PAGE = 25
@@ -29,8 +29,26 @@ def _has_read(grant: Mapping) -> bool:
     return READ in grant.get("perms", ())
 
 
+def _is_article_grant(grant: Mapping) -> bool:
+    """Whether this grant is about *articles* at all.
+
+    Every service shares one grant store, and a grant's scope fields are reused
+    across them: a Chronos book grant puts the book id in ``database``, and a
+    calendar grant puts its owner's name there. Matching on that field alone --
+    which these helpers used to do -- means a book called ``ember-pact`` makes
+    an Akasha database called ``ember-pact`` appear in the browser, collections
+    and all, while every article inside it correctly 403s. Empty shelves the
+    caller was never meant to know about.
+
+    ``authz.is_allowed`` has always been strict about this, which is why the
+    *documents* stayed hidden; the listing helpers simply never asked. A grant
+    with no ``resource_type`` predates the field and is Akasha's own.
+    """
+    return (grant.get("resource_type") or DATABASE_RESOURCE) == DATABASE_RESOURCE
+
+
 def _touches_database(grant: Mapping, database: str) -> bool:
-    return grant.get("database") in (None, database)
+    return _is_article_grant(grant) and grant.get("database") in (None, database)
 
 
 def _touches_collection(grant: Mapping, database: str, collection: str) -> bool:

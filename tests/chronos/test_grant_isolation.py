@@ -45,6 +45,44 @@ def test_book_grant_does_not_grant_document_database(app, docs_app):
     assert resp.status_code == 403, "book grant leaked into Akasha"
 
 
+def test_book_grant_does_not_make_the_like_named_database_visible(app, docs_app):
+    """Refusing the *articles* is not enough; the shelf must not appear either.
+
+    The document check was always strict, so a leaked book grant produced a
+    database that listed every collection and no articles at all — empty
+    shelves, with names on them, belonging to someone else's world. Anyone a
+    book was shared with saw it, because sharing a book is what hands out the
+    grant that did it.
+    """
+    chronos = app.test_client()
+    assert _login(chronos).status_code == 200
+    assert chronos.post(f"/books/{SHARED_NAME}", json={"title": "x"}).status_code == 201
+
+    docs = docs_app.test_client()
+    assert _login(docs).status_code == 200
+    assert docs.get("/databases").get_json()["databases"] == []
+    listed = docs.get(f"/databases/{SHARED_NAME}/collections").get_json()
+    assert (listed or {}).get("collections", []) == []
+
+
+def test_a_calendar_grant_does_not_make_a_database_named_after_you_visible(
+    app, docs_app, auth_store
+):
+    """The same leak through the newer door.
+
+    A library calendar's grant puts its *owner's name* in the scope's database
+    field, so a writer named after an Akasha database would otherwise hand it
+    out with every calendar they shared.
+    """
+    auth_store.add_grant(
+        WRITER, SHARED_NAME, None, "imperial", ["read"],
+        granted_by="admin", resource_type="calendar",
+    )
+    docs = docs_app.test_client()
+    assert _login(docs).status_code == 200
+    assert docs.get("/databases").get_json()["databases"] == []
+
+
 def test_document_grant_does_not_grant_book(app, docs_app, auth_store):
     """The converse: a docs database grant must not unlock a like-named book."""
     # An admin-created book that 'mara' has no chronos grant on.

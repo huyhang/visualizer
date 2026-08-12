@@ -143,11 +143,11 @@ def test_unscheduled_windows_covers_only_undated_scenes():
 
 
 @pytest.fixture
-def svc(story_store, fake_gate):
+def svc(story_store, fake_gate, calendar_store):
     fake_gate.add(ref("aldric"))
     for loc in ("highkeep", "emberport"):
         fake_gate.add(ref(loc, "locations"))
-    books = BookService(story_store, fake_gate)
+    books = BookService(story_store, fake_gate, calendar_store)
     books.create(BOOK, {"title": "The Ember Pact"})
     return {"books": books, "events": EventService(story_store, fake_gate),
             "plotlines": PlotlineService(story_store, fake_gate)}

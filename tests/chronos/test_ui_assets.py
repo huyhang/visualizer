@@ -80,6 +80,94 @@ def test_the_entrypoint_reaches_every_module():
     assert {p.name for p in _modules()} == {p.name for p in local}
 
 
+# Factories a caller writes as `const thing = factory({onChange: () => refresh()})`,
+# where `refresh` reads `thing`. Each paints itself once while being constructed,
+# and must not report that first paint as a change: the caller's `const` is still
+# in its temporal dead zone, so an onChange that touches it throws a
+# ReferenceError before anything is on screen. Both guard it with a `notify`
+# flag defaulting to true, passed false for the first paint only.
+_FIRST_PAINT_MUST_BE_SILENT = [
+    ("calendarfield.js", "rebuild(null, false)"),
+    ("calendarlist.js", "rebuild(false)"),
+]
+
+
+@pytest.mark.parametrize("module,silent_call", _FIRST_PAINT_MUST_BE_SILENT,
+                         ids=lambda v: v if v.endswith(".js") else "")
+def test_a_factorys_first_paint_does_not_call_back_into_its_caller(module, silent_call):
+    """Nothing else in this suite can see this failure, and it is total.
+
+    It took out both the book form's *Edit* and *+ New book* once already: the
+    list rebuilt itself on construction, notified, and the caller's `refresh`
+    asked the half-assigned `const` for its problems. Python cannot run the
+    module, but it can check that the one call which happens during construction
+    is the silent form.
+    """
+    source = (_JS_DIR / module).read_text()
+    assert silent_call in source, (
+        f"{module}'s first paint must be the non-notifying call `{silent_call}` "
+        "-- see the note above this test"
+    )
+
+
+# Comments and string/template literals are not code: a hint that reads
+# "Era (optional)" or a template like `hsl(${h} 60% 50%)` would otherwise look
+# like a call to a function named `Era` or `hsl`.
+_NOT_CODE = re.compile(r"//[^\n]*|/\*.*?\*/|`(?:\\.|[^`\\])*`|'(?:\\.|[^'\\])*'"
+                       r'|"(?:\\.|[^"\\])*"', re.DOTALL)
+# A call to a bare name -- `foo(...)`, not `x.foo(...)`, and not the `foo(` that
+# *declares* one (`function foo(`, `get foo(`, a class method).
+_CALL = re.compile(r"(?<!function )(?<!class )(?<!get )(?<!set )(?<![.\w$])"
+                   r"([A-Za-z_$][\w$]*)\s*\(")
+_NOT_A_HELPER = {
+    "if", "for", "while", "switch", "catch", "return", "typeof", "await", "new",
+    "delete", "void", "in", "of", "do", "else", "function", "class", "async",
+    "constructor", "super", "this",
+    "Array", "Boolean", "Date", "Error", "JSON", "Map", "Math", "Number", "Object",
+    "Promise", "Set", "String", "URLSearchParams", "ResizeObserver", "AbortController",
+    "clearTimeout", "setTimeout", "clearInterval", "setInterval", "fetch",
+    "requestAnimationFrame", "queueMicrotask", "parseInt", "parseFloat", "isNaN",
+    "encodeURIComponent", "decodeURIComponent", "structuredClone",
+    "document", "window", "console",
+}
+# `$` is a legal identifier but not a word character, so `\b` will not do.
+_EDGE = r"(?![\w$])"
+
+
+@pytest.mark.parametrize("module", _modules() + _shared_modules(), ids=lambda p: p.name)
+def test_a_module_never_calls_a_name_it_has_nothing_to_do_with(module):
+    """Catches a refactor that deletes a helper and leaves its callers behind.
+
+    That has taken the book form out twice -- once via a temporal-dead-zone
+    callback, once when a splice removed `updateOffer` while its call site
+    survived. Both were total (the form threw before rendering anything) and
+    both were invisible to every other check here, which look *between* modules
+    and never inside one.
+
+    Deliberately narrow rather than a real scope analysis: a name is flagged
+    only when the file calls it and then never mentions it again anywhere --
+    not as a declaration, not as a parameter, not as an import. A function
+    deleted out from under its callers looks exactly like that, and very little
+    else does, so it stays quiet about locals, destructuring and callbacks
+    without having to understand any of them.
+    """
+    source = _NOT_CODE.sub(" ", module.read_text())
+    imported = {name for _, names in _imports(module) for name in names}
+    orphans = []
+    for name in sorted(set(_CALL.findall(source)) - _NOT_A_HELPER - imported):
+        quoted = re.escape(name)
+        # Everything except this name in call position. A declaration survives,
+        # because _CALL never matched it in the first place.
+        elsewhere = re.sub(rf"(?<!function )(?<!class )(?<!get )(?<!set )(?<![.\w$])"
+                           rf"{quoted}\s*\(", " ", source)
+        if not re.search(rf"(?<![.\w$]){quoted}{_EDGE}", elsewhere):
+            orphans.append(name)
+    assert not orphans, (
+        f"{module.name} calls {orphans}, which it never declares, imports or "
+        "mentions anywhere else -- a deleted helper with live call sites"
+    )
+
+
 def test_the_editor_modules_are_served(client, app, fake_gate):
     # A module that 404s takes the whole SPA down, since app.js imports it.
     for module in _modules():
@@ -115,7 +203,10 @@ def _body_builder(source: str) -> str:
 
 
 @pytest.mark.parametrize("module,fields", [
-    ("bookform.js", ("title", "overview", "calendar", "world", "terminus")),
+    # ``calendars``, plural and spelled out: a book keeps a list of parallel
+    # reckonings now, and "calendar" would go on passing against it by accident
+    # while pinning nothing.
+    ("bookform.js", ("title", "overview", "calendars", "world", "terminus")),
     ("plotedit.js", ("title", "overview", "events", "goals", "continues_into")),
 ], ids=lambda v: v if isinstance(v, str) else "")
 def test_the_editors_resend_every_stored_field(module, fields):
@@ -132,6 +223,31 @@ def test_the_editors_resend_every_stored_field(module, fields):
     body = _body_builder((_JS_DIR / module).read_text())
     missing = [f for f in fields if f not in body]
     assert not missing, f"{module}'s body() never sends {missing}"
+
+
+def test_the_attachment_list_names_a_calendar_and_does_not_carry_one():
+    """The book form's `body()` sends `calendars`, and the check above stops at
+    that word — but the *shape* of each entry is built a module away.
+
+    Two halves. Dropping `source` would sever every book's link to the library
+    on the next save: no update offer would ever appear again, and nothing would
+    raise. Dropping `until_tick` would quietly un-end a calendar that had ended.
+
+    And `descriptor` must stay *absent*. The library is where calendars are
+    authored; the server reads the descriptor from it. Sending one back would be
+    refused outright now (`INVALID_BOOK`), so this half of the pin is really
+    guarding against a well-meaning re-addition breaking every save.
+    """
+    source = (_JS_DIR / "calendarlist.js").read_text()
+    start = source.index("value: () =>")
+    block = source[start : source.index("problems:", start)]
+    missing = [f for f in ("id", "label", "source", "from_tick", "until_tick")
+               if f"{f}:" not in block]
+    assert not missing, f"calendarlist.js value() never sends {missing}"
+    assert "descriptor:" not in block, (
+        "calendarlist.js value() sends a descriptor — a book names a library "
+        "calendar, it does not describe one, and the API refuses the payload"
+    )
 
 
 # Elements whose displayed value is *not* set by a `value` attribute. A

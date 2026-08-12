@@ -47,13 +47,26 @@ const bookPath = (b) => `/books/${enc(b)}`;
 const plPath = (b, p) => `${bookPath(b)}/plotlines/${enc(p)}`;
 const evPath = (b, e) => `${bookPath(b)}/events/${enc(e)}`;
 
-function pageQuery({ filter, page, perPage } = {}) {
+const calPath = (o, c) => `/calendars/${enc(o)}/${enc(c)}`;
+
+function pageQuery({ filter, page, perPage, calendar } = {}) {
   const p = new URLSearchParams();
   if (filter) p.set("filter", filter);
   if (page) p.set("page", page);
   if (perPage) p.set("per_page", perPage);
+  if (calendar) p.set("calendar", calendar);
   const q = p.toString();
   return q ? "?" + q : "";
+}
+
+// Which of a book's calendars to read ticks through. Omitted means its primary
+// one. Every read that formats a tick takes it, and the server refuses a name
+// the book has not attached rather than falling back — so a stale choice
+// surfaces as an error instead of a page of quietly wrong dates.
+function viewQuery(calendar, extra = "") {
+  const q = calendar ? `calendar=${enc(calendar)}` : "";
+  const joined = [extra, q].filter(Boolean).join("&");
+  return joined ? "?" + joined : "";
 }
 
 export const api = {
@@ -85,8 +98,8 @@ export const api = {
   // The book's scenes in story order — what the editor picks from.
   listEvents: (book, opts) => request("GET", `${bookPath(book)}/events${pageQuery(opts)}`),
 
-  getPlotline: (book, id, { expand } = {}) =>
-    request("GET", `${plPath(book, id)}${expand ? "?expand=events" : ""}`),
+  getPlotline: (book, id, { expand, calendar } = {}) =>
+    request("GET", plPath(book, id) + viewQuery(calendar, expand ? "expand=events" : "")),
 
   createPlotline: (book, id, body) => request("POST", plPath(book, id), { body }),
   updatePlotline: (book, id, body, rev) => request("PUT", plPath(book, id), { body, ifMatch: rev }),
@@ -97,10 +110,12 @@ export const api = {
 
   // What this candidate ordering would look like if saved. Writes nothing, and
   // works before the plotline exists — the editor's live conflict feedback.
-  previewPlotline: (book, candidate) =>
-    request("POST", `${bookPath(book)}/ui/plotline-preview`, { body: candidate }),
+  previewPlotline: (book, candidate, { calendar } = {}) =>
+    request("POST", `${bookPath(book)}/ui/plotline-preview${viewQuery(calendar)}`,
+      { body: candidate }),
 
-  getEvent: (book, id) => request("GET", evPath(book, id)),
+  getEvent: (book, id, { calendar } = {}) =>
+    request("GET", evPath(book, id) + viewQuery(calendar)),
   createEvent: (book, id, body) => request("POST", evPath(book, id), { body }),
   updateEvent: (book, id, body, rev) => request("PUT", evPath(book, id), { body, ifMatch: rev }),
   // `detach` first removes the scene from every plotline that lists it; without
@@ -113,7 +128,8 @@ export const api = {
   // The whole book's story graph: nodes (with timing + role flags), plotline
   // lanes, and precedence edges tagged by plotline. Drives the connected-plots
   // view (and, later, the full story map).
-  getGraph: (book) => request("GET", `${bookPath(book)}/graph`),
+  getGraph: (book, { calendar } = {}) =>
+    request("GET", `${bookPath(book)}/graph${viewQuery(calendar)}`),
 
   // Read helper: a referenced Akasha article, proxied same-origin.
   getEntity: (book, database, collection, id) =>
@@ -121,11 +137,37 @@ export const api = {
 
   // What the book's calendar calls these ticks. One way only — a fantasy
   // calendar cannot be parsed back, so the browser never guesses a label.
-  formatTicks: (book, ticks) => {
+  // Every reading comes back, not just the chosen one: `readings` dates the
+  // tick in each calendar the book keeps, which is what the scene form shows.
+  formatTicks: (book, ticks, { calendar } = {}) => {
     const p = new URLSearchParams();
     for (const t of ticks) p.append("tick", t);
+    if (calendar) p.set("calendar", calendar);
     return request("GET", `${bookPath(book)}/ui/ticks?${p.toString()}`);
   },
+
+  // -- the calendar library --------------------------------------------------
+  //
+  // A calendar's identity is (owner, id): names like "imperial" are generic
+  // enough that two writers will pick the same one, so neither a global
+  // namespace nor a shared record would do. Attaching a calendar to a book
+  // *copies* its descriptor — these calls are for browsing and managing the
+  // library, never for reading a book's dates.
+
+  listCalendars: () => request("GET", "/calendars"),
+  getCalendar: (owner, id) => request("GET", calPath(owner, id)),
+  // You may only create in your own library; the server refuses otherwise.
+  createCalendar: (owner, id, body) => request("POST", calPath(owner, id), { body }),
+  updateCalendar: (owner, id, body, rev) =>
+    request("PUT", calPath(owner, id), { body, ifMatch: rev }),
+  // Books that copied this calendar keep working — the copy *is* their
+  // calendar. Only the provenance pointer goes dangling.
+  deleteCalendar: (owner, id, rev) => request("DELETE", calPath(owner, id), { ifMatch: rev }),
+
+  shareCalendar: (owner, id, username, role = "reader") =>
+    request("PUT", `${calPath(owner, id)}/collaborators/${enc(username)}`, { body: { role } }),
+  unshareCalendar: (owner, id, username) =>
+    request("DELETE", `${calPath(owner, id)}/collaborators/${enc(username)}`),
 
   // The Akasha worlds this writer may draw a cast from, each with its
   // categories. Not book-scoped — the world is chosen while the book is being

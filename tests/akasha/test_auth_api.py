@@ -358,3 +358,10 @@ def _hash(password):
     from werkzeug.security import generate_password_hash
 
     return generate_password_hash(password)
+
+
+def test_the_auth_pages_still_name_akasha_when_akasha_serves_them(app):
+    """The other side of the same coin: making the title service-aware must not
+    have made it anonymous."""
+    html = app.test_client().get("/login").get_data(as_text=True)
+    assert "— Akasha</title>" in html

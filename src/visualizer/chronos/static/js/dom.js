@@ -46,6 +46,44 @@ export function svgEl(tag, attrs = {}, children = []) {
   return node;
 }
 
+// Prose clamped to a couple of lines, with a toggle that reveals the rest.
+//
+// Cards are laid out in a grid, so unbounded prose in one of them drags a whole
+// row taller and the shelf stops reading as a shelf. Clamping fixes that and
+// introduces a worse problem: text that is silently cut off, with nothing on
+// screen to say there is more of it. Hence the toggle.
+//
+// It appears only when the text *actually* overflows, which cannot be known
+// from the string — it depends on the rendered width and the font scale. So the
+// measurement happens after layout, on the next frame, and a note that happens
+// to fit gains no control at all.
+export function expandableText(text, { class: className = "" } = {}) {
+  const body = el("p", { class: `expandable-text ${className}`.trim(), text });
+  const toggle = el("button", {
+    class: "expand-toggle", type: "button", text: "Show more", hidden: "",
+    onclick: () => {
+      const open = body.classList.toggle("expanded");
+      toggle.textContent = open ? "Show less" : "Show more";
+    },
+  });
+  // scrollHeight exceeds clientHeight exactly when the clamp is hiding a line.
+  // Never while expanded: nothing is being hidden then, and the answer would be
+  // "no overflow" — which would take away the control that got you here.
+  const measure = () => {
+    if (!body.classList.contains("expanded")) {
+      toggle.hidden = body.scrollHeight <= body.clientHeight;
+    }
+  };
+  requestAnimationFrame(measure);
+  // Re-measured, not measured once: the same words wrap to two lines in a wide
+  // card and four in a narrow one, and this app has a font-size toggle. A
+  // reflow changes the clamped element's own box either way — its width when
+  // the column resizes, its height when the line-height does — so watching it
+  // covers both.
+  if (typeof ResizeObserver === "function") new ResizeObserver(measure).observe(body);
+  return el("div", { class: "expandable" }, [body, toggle]);
+}
+
 let toastTimer = null;
 export function toast(message, isError = false) {
   const node = $("#toast");

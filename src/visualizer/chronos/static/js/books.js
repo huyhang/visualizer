@@ -33,7 +33,7 @@ function newBookButton(onOpen, { primary = false } = {}) {
   });
 }
 
-export async function mountBooks(container, { onOpen }) {
+export async function mountBooks(container, { onOpen, onCalendars }) {
   clear(container);
   const results = el("div", { class: "book-results" },
     el("p", { class: "muted", text: "Loading…" }));
@@ -41,6 +41,14 @@ export async function mountBooks(container, { onOpen }) {
   container.appendChild(el("div", { class: "view books-view" }, [
     el("div", { class: "books-head" }, [
       el("h1", { class: "view-title", text: "Your books" }),
+      // Reachable from the shelf rather than from inside a book, because a
+      // calendar belongs to no book in particular — and the writer wants one
+      // ready *before* creating the book that will use it.
+      el("button", {
+        class: "btn secondary sm", type: "button", text: "Calendars",
+        title: "Reckonings you can attach to any book",
+        onclick: onCalendars,
+      }),
       newBookButton(onOpen),
     ]),
     el("p", { class: "view-lead muted", text: "Choose a book to explore its plotlines." }),

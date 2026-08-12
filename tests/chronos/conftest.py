@@ -17,7 +17,7 @@ from visualizer.auth import AuthStore
 from visualizer.chronos.app import create_app
 from visualizer.chronos.entity_gate import FakeEntityGate, InProcessEntityGate
 from visualizer.chronos.models import EntityRef
-from visualizer.chronos.store import StoryStore
+from visualizer.chronos.store import CalendarStore, StoryStore
 
 FIXED_TIME = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -35,6 +35,12 @@ def mongo_client():
 @pytest.fixture
 def story_store(mongo_client):
     return StoryStore(mongo_client, clock=lambda: FIXED_TIME)
+
+
+@pytest.fixture
+def calendar_store(mongo_client):
+    """The calendar library, sharing the same Mongo and the same fixed clock."""
+    return CalendarStore(mongo_client, clock=lambda: FIXED_TIME)
 
 
 @pytest.fixture
@@ -62,8 +68,11 @@ def auth_store(mongo_client):
 
 
 @pytest.fixture
-def app(story_store, fake_gate, auth_store):
-    application = create_app(story_store, fake_gate, auth_store, secret_key="test-secret")
+def app(story_store, fake_gate, auth_store, calendar_store):
+    application = create_app(
+        story_store, fake_gate, auth_store,
+        secret_key="test-secret", calendar_store=calendar_store,
+    )
     application.config.update(
         TESTING=True, WTF_CSRF_ENABLED=False, RATELIMIT_ENABLED=False
     )

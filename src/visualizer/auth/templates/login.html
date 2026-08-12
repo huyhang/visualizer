@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Log in — Akasha{% endblock %}
+{% block title %}Log in{% if service_links and service_links.name %} — {{ service_links.name }}{% endif %}{% endblock %}
 {% block content %}
 <div class="card narrow">
   <h1>Log in</h1>

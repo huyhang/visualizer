@@ -10,6 +10,7 @@
 // text and role badges stay crisp and reuse the app's chip/badge styles.
 
 import { api } from "./api.js";
+import { calendarSwitcher, currentFor } from "./calendarview.js";
 import { clear, el, svgEl } from "./dom.js";
 import { geometry, layoutGraph, paletteColor } from "./layout.js";
 import { connectedTo } from "./subgraph.js";
@@ -167,18 +168,20 @@ export async function mountConnected(container, book, plotlineId, deps) {
   container.appendChild(el("div", { class: "view" },
     el("p", { class: "muted", text: "Loading connections…" })));
 
+  // The book first: the graph's node labels are written in one of its
+  // calendars, so the choice has to be known before the graph is asked for.
+  let bookMeta = { title: book };
+  try { bookMeta = await api.getBook(book); } catch (e) { /* fall back to id */ }
+
   let graph;
   try {
-    graph = await api.getGraph(book);
+    graph = await api.getGraph(book, { calendar: currentFor(book, bookMeta.calendars) });
   } catch (e) {
     clear(container);
     container.appendChild(el("div", { class: "view" },
       el("p", { class: "empty", text: "Could not load the story graph." })));
     return;
   }
-
-  let bookMeta = { title: book };
-  try { bookMeta = await api.getBook(book); } catch (e) { /* fall back to id */ }
 
   const focusLane = (graph.plotlines || []).find((p) => p.id === plotlineId);
   const focusTitle = focusLane ? focusLane.title : plotlineId;
@@ -198,6 +201,8 @@ export async function mountConnected(container, book, plotlineId, deps) {
 
   view.appendChild(el("div", { class: "pl-header" }, [
     el("h1", { class: "view-title", text: focusTitle }),
+    calendarSwitcher(book, bookMeta.calendars,
+      () => mountConnected(container, book, plotlineId, deps)),
     el("p", { class: "muted axis-note", text: others.length
       ? `Connected plots — meets ${others.length} other plotline${others.length === 1 ? "" : "s"}. `
         + `Threads run top to bottom in time; the highlighted spine is “${focusTitle}”.`

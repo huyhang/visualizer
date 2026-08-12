@@ -49,6 +49,9 @@ EMAIL = "mara@example.com"
 
 DB = "ember-pact"
 BOOK = "ember-pact"
+# The library entry the book attaches. Named for the reckoning, not the book:
+# it outlives any one story, which is the whole point of the library.
+CALENDAR_ID = "imperial"
 
 CALENDAR = {
     "base_unit": "hour",
@@ -373,11 +376,35 @@ def seed_entities(client):
             show(status, f"{collection}/{slug}", document.get("title", ""))
 
 
+def seed_calendar(client):
+    """Put the story's calendar in the library, where calendars live.
+
+    A book chooses a calendar rather than describing one, so this has to exist
+    before the book can point at it. It is also the reusable half: the same
+    entry is offered to every other book this writer starts.
+    """
+    step("chronos: the calendar, in the library")
+    status, body = client.upsert(f"{CHRONOS}/calendars/{USER}/{CALENDAR_ID}", {
+        "name": "Imperial Reckoning",
+        "descriptor": CALENDAR,
+        "notes": "Hours, days, months, years, counted from the Founding (AF).",
+    })
+    show(status, f"calendar '{USER}/{CALENDAR_ID}'",
+         body.get("name", "") if body else "")
+
+
 def seed_book_and_events(client):
     step("chronos: the book and its scenes")
-    status, body = client.upsert(
-        f"{CHRONOS}/books/{BOOK}", {"title": "The Ember Pact", "calendar": CALENDAR}
-    )
+    # The book *names* the calendar; the server copies the descriptor in. There
+    # is no inline spelling to choose here -- the API refuses one.
+    status, body = client.upsert(f"{CHRONOS}/books/{BOOK}", {
+        "title": "The Ember Pact",
+        "calendars": [{
+            "id": "imperial",
+            "label": "Imperial Reckoning",
+            "source": {"owner": USER, "calendar": CALENDAR_ID},
+        }],
+    })
     show(status, f"book '{BOOK}'")
     for spec in [*EVENTS, SIGHTING_BROKEN]:
         eid, payload = event_payload(spec)
@@ -524,6 +551,7 @@ def main():
     client = Client()
     login(client)
     seed_entities(client)
+    seed_calendar(client)
     seed_book_and_events(client)
     demo_hard_rule(client)
     seed_plotlines(client, WITNESS_BROKEN)

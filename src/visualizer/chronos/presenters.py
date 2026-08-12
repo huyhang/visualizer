@@ -11,7 +11,7 @@ from .book_rules import Neighborhood, build_graph
 from .calendar import TimeCodec
 from .conflicts import Conflict
 from .continuation import Resolution, effective_paths, resolve
-from .models import Book, Event, Plotline
+from .models import Book, CalendarAttachment, Event, LibraryCalendar, Plotline
 from .ordering import Violation
 from .plotline_health import Finding, conflict_count, findings_for_path
 from .reports import BookReport
@@ -26,6 +26,10 @@ def _book_url(b: str) -> str:
 
 def _plotline_url(b: str, p: str) -> str:
     return f"/books/{b}/plotlines/{p}"
+
+
+def _calendar_url(owner: str, c: str) -> str:
+    return f"/calendars/{owner}/{c}"
 
 
 def _event_url(b: str, e: str) -> str:
@@ -47,7 +51,13 @@ def _when(event: Event, codec: TimeCodec, span: bool = False) -> str:
         return UNSCHEDULED
     start = codec.format(event.start_tick)
     if span and event.end_tick != event.start_tick:
-        return f"{start} → {codec.format(event.end_tick)}"
+        end = codec.format(event.end_tick)
+        # Two different ticks can share a label -- a scene that begins and ends
+        # before a reckoning was being kept reads "before X" at both ends. The
+        # arrow between two identical strings says nothing except that something
+        # is wrong with the renderer, so it is dropped.
+        if end != start:
+            return f"{start} → {end}"
     return start
 
 
@@ -437,14 +447,43 @@ def status_of(report: BookReport) -> str:
     return "consistent" if report.ok else "conflicted"
 
 
+def present_attachment(attachment: CalendarAttachment, primary: bool) -> dict:
+    """One of a book's reckonings, as the view switcher needs it.
+
+    The descriptor rides along because it is the book's own copy: whoever can
+    read the book can read its dates, with no second request and no grant on the
+    library entry it was copied from.
+    """
+    return {
+        "id": attachment.id,
+        "label": attachment.display_label,
+        "descriptor": attachment.descriptor,
+        "from_tick": attachment.from_tick,
+        "until_tick": attachment.until_tick,
+        # Whether this is the one a read with no ``?calendar=`` uses.
+        "primary": primary,
+        # Where the copy came from, owner-qualified. Null once the writer edits
+        # it into something of their own.
+        "source": attachment.source,
+    }
+
+
 def present_book(public: dict, report: BookReport, plotline_ids: list[str]) -> dict:
+    book = Book.from_storage(public)
     return {
         "kind": "book",
         "id": public["id"],
         "title": public.get("title"),
         "overview": public.get("overview", ""),
         "terminus": public.get("terminus"),
-        "calendar": public.get("calendar"),
+        # The single descriptor a pre-library client still expects: the primary
+        # attachment's. Derived from the same list the new field presents, so the
+        # two cannot drift.
+        "calendar": book.calendar,
+        "calendars": [
+            present_attachment(c, primary=(index == 0))
+            for index, c in enumerate(book.calendars)
+        ],
         # Stored, so it is presented: a client is told to send the stored fields
         # back on a PUT, which it can only do for fields it was given.
         "world": public.get("world"),
@@ -459,18 +498,64 @@ def present_book(public: dict, report: BookReport, plotline_ids: list[str]) -> d
     }
 
 
-def present_ticks(ticks: list[int], codec: TimeCodec) -> dict:
-    """Translate raw ticks into what the book's calendar calls them.
+# -- the calendar library -----------------------------------------------------
+
+
+def present_calendar(public: dict) -> dict:
+    """One named, reusable calendar.
+
+    Owner-qualified throughout, because ``(owner, id)`` is this resource's whole
+    identity: two writers may each keep an ``imperial``, and a response that
+    named only the slug would be ambiguous the moment one is shared.
+    """
+    calendar = LibraryCalendar.from_storage(public)
+    owner = public["owner"]
+    return {
+        "kind": "calendar",
+        "id": calendar.id,
+        "owner": owner,
+        # What a picker shows when the same slug appears twice: "alice/imperial"
+        # for someone else's, the bare slug for your own. Computed here so every
+        # surface qualifies it the same way.
+        "qualified_id": f"{owner}/{calendar.id}",
+        "name": calendar.name,
+        "descriptor": calendar.descriptor,
+        "notes": calendar.notes,
+        "rev": public["rev"],
+        "_links": {"self": _calendar_url(owner, calendar.id)},
+    }
+
+
+def present_ticks(ticks: list[int], codec: TimeCodec, readings=()) -> dict:
+    """Translate raw ticks into what the book's calendars call them.
 
     A writer typing ``240`` into a timeframe field should not have to do
     mixed-radix arithmetic in their head to know that is Day 11. The codec is
     the only thing that knows -- and it only goes one way (``parse`` is
     deliberately unimplemented for fantasy calendars) -- so the browser asks
     rather than guessing.
+
+    ``readings`` adds the *other* attached calendars, each labelling the same
+    tick. That is the one place the feature demonstrates itself for free: at the
+    moment a writer is choosing when a scene happens, they see it dated in every
+    reckoning their book keeps, including the ones that were not being kept then.
+    ``label``/``parts`` stay exactly what a single-calendar client always got.
     """
     return {
         "ticks": [
-            {"tick": tick, "label": codec.format(tick), "parts": codec.parts(tick)}
+            {
+                "tick": tick,
+                "label": codec.format(tick),
+                "parts": codec.parts(tick),
+                "readings": [
+                    {
+                        "calendar": attachment.id,
+                        "name": attachment.display_label,
+                        "label": reading.format(tick),
+                    }
+                    for attachment, reading in readings
+                ],
+            }
             for tick in ticks
         ]
     }

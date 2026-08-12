@@ -100,11 +100,11 @@ def test_header_switcher_shows_admin_for_admins(seeded, app):
     assert "http://localhost:5002/admin" in html
 
 
-def test_switcher_urls_are_configurable(story_store, fake_gate, auth_store):
+def test_switcher_urls_are_configurable(story_store, fake_gate, auth_store, calendar_store):
     from visualizer.chronos.app import create_app
 
     app = create_app(
-        story_store, fake_gate, auth_store, secret_key="s",
+        story_store, fake_gate, auth_store, calendar_store=calendar_store, secret_key="s",
         akasha_url="https://world.example/akasha",
         chronos_url="https://world.example/chronos",
     )
@@ -709,3 +709,44 @@ def test_worlds_lists_only_what_this_writer_can_read(seeded, client, auth_store,
 
 def test_worlds_needs_a_session(app):
     assert app.test_client().get("/ui/worlds").status_code in (302, 401)
+
+# -- the auth pages Chronos serves --------------------------------------------
+#
+# The auth blueprint is mounted on *both* services, and its templates extend
+# "base.html" -- which only Akasha defined. So every auth page Chronos served
+# raised TemplateNotFound and 500'd. Logging out of Chronos redirects straight
+# to /login, which meant the last thing the app did before handing you back to
+# the login screen was fail.
+
+
+@pytest.mark.parametrize("path", ["/login", "/register"])
+def test_the_auth_pages_render_on_chronos_too(client, app, path):
+    """A blueprint that ships routes and templates must not depend on a template
+    only one of its hosts happens to define."""
+    anonymous = app.test_client()
+    resp = anonymous.get(path)
+    assert resp.status_code == 200, f"{path} did not render"
+    assert "<form" in resp.get_data(as_text=True)
+
+
+@pytest.mark.parametrize("path", ["/login", "/register"])
+def test_the_auth_pages_name_the_service_serving_them(client, app, path):
+    """One login, two hosts -- so a shared page cannot hard-code either name.
+    Reached under Chronos, it should not introduce itself as Akasha."""
+    html = app.test_client().get(path).get_data(as_text=True)
+    assert "— Chronos</title>" in html, "the Chronos login page names the wrong service"
+    assert "Akasha" not in html
+
+
+def test_logging_out_of_chronos_lands_somewhere_that_works(client, app):
+    """The whole round trip, which is how this was found."""
+    out = client.post("/logout", data={})
+    assert out.status_code in (204, 302)
+    if out.status_code == 302:
+        landing = client.get(out.headers["Location"])
+        assert landing.status_code == 200, "logout redirected to a broken page"
+
+
+def test_the_change_password_page_renders_on_chronos_too(client):
+    assert client.get("/change-password").status_code == 200
+

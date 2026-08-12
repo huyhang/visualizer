@@ -25,6 +25,7 @@
 // * **One case is refused outright** — see `refuseWouldEmpty`.
 
 import { api } from "./api.js";
+import { calendarSwitcher, currentFor } from "./calendarview.js";
 import { clear, el, toast } from "./dom.js";
 import { entityTitle } from "./entities.js";
 import { pager } from "./paging.js";
@@ -57,6 +58,10 @@ export async function mountScenes(container, book, { onBooks, onBook }) {
   // Which scene the peek slot is currently showing, so an edit or a delete can
   // dismiss a card that has stopped being true (see `dropStalePeek`).
   let peeked = null;
+  // Which of the book's calendars the When column is written in. Validated
+  // against what the book actually has, so a reckoning detached since the
+  // writer last visited quietly reverts to the primary instead of 404ing.
+  let calendar = currentFor(book, bookMeta.calendars);
 
   const filterBox = el("input", {
     type: "search", class: "filter-box", placeholder: "Filter scenes…",
@@ -70,7 +75,13 @@ export async function mountScenes(container, book, { onBooks, onBook }) {
     el("div", { class: "book-head" }, [
       el("h1", { class: "view-title", text: "Scenes" }),
       el("span", { class: "muted", text: bookMeta.title || book }),
-    ]),
+      // Only when the book keeps more than one reckoning. Switching re-reads
+      // the table: the labels come from the server's codec, never from here.
+      calendarSwitcher(book, bookMeta.calendars, (chosen) => {
+        calendar = chosen;
+        render();
+      }),
+    ].filter(Boolean)),
     el("p", { class: "view-lead muted", text:
       "Every scene in this book, earliest first. Undated ones come last — they "
       + "are waiting for a place on the timeline, not missing one." }),
@@ -88,7 +99,7 @@ export async function mountScenes(container, book, { onBooks, onBook }) {
   async function render() {
     try {
       const data = await api.listEvents(book, {
-        filter: state.query, page: state.page, perPage: PER_PAGE,
+        filter: state.query, page: state.page, perPage: PER_PAGE, calendar,
       });
       state.page = data.page; // the server clamps an out-of-range page
       clear(results);

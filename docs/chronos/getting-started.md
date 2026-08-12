@@ -18,7 +18,8 @@ come from, because you meet each one at the moment it fires.
 | | |
 | --- | --- |
 | A world | 3 characters, 1 item, 3 places, in Articles |
-| A book | "The Ember Pact", counted in hours, with a fictional calendar |
+| A calendar | "Imperial Reckoning" in the library — hours, days, months, years |
+| A book | "The Ember Pact", counting in that calendar |
 | Six scenes | five sound, one a disputed sighting |
 | Five threads | three sharing one ending, one contesting it, one broken |
 | Three findings | a temporal conflict, an ordering violation, a thread that never arrives |
@@ -74,20 +75,19 @@ are yours to enjoy.
 
 ---
 
-## 2. Create the book
+## 2. Build a calendar
 
-Switch to **Timeline**. *Your books* offers **+ New book**.
+Switch to **Timeline**, and before the book: **Calendars** on the shelf.
 
-| Field | Value |
-| --- | --- |
-| Title | `The Ember Pact` |
-| Id | `ember-pact` (derived from the title — leave it) |
-| Overview | *Four threads converge on a coronation nobody wants.* |
-| World | `ember-pact` |
+Calendars live in a library of their own, not inside a book. A book *chooses*
+one — that is the only way it can get a calendar, and the API refuses a book
+that tries to describe its own. It sounds like a detour and it pays for itself
+immediately: the next book you write picks this calendar in a click, and a
+calendar you share travels to the people you write with.
 
-Then **Time**, which is the part worth slowing down for. Choose **A calendar**
-and the preset **Hours, days, months, years** — that is a base unit of `hour`
-with cycles of 24, 30 and 12. Set the era label to `AF`.
+**+ New calendar**, then the preset **Hours, days, months, years** — a base unit
+of `hour` with cycles of 24, 30 and 12. Name it `Imperial Reckoning` and set the
+era label to `AF`.
 
 The form reads your choice back in plain language as you build it:
 
@@ -104,16 +104,50 @@ back:
 | `48` | Year 1, Month 1, Day 3, 00:00 AF |
 | `200` | Year 1, Month 1, Day 9, 08:00 AF |
 
+---
+
+## 3. Create the book, and attach the calendar
+
+*Your books* offers **+ New book**.
+
+| Field | Value |
+| --- | --- |
+| Title | `The Ember Pact` |
+| Id | `ember-pact` (derived from the title — leave it) |
+| Overview | *Four threads converge on a coronation nobody wants.* |
+| World | `ember-pact` |
+
+Then **Time**. Under **How it counts**, choose **From your library** and pick
+**Imperial Reckoning**. (If you skipped the last section, **＋ New calendar**
+here builds one without leaving the form — into the library, because that is
+where calendars live either way.) Leave it on **No calendar** and scenes read
+back as bare integers, which is a real choice and not a missing one.
+
 **Create book**, and you land on its (empty) plotline table.
 
-> Nothing here is a one-time choice. **✎** beside the title reopens this form to
-> rename the book, edit the overview or swap the calendar. Swapping is safe by
-> construction: ticks are the stored truth and a calendar only formats them, so a
-> new calendar re-labels every scene without moving one.
+> **The book takes a copy.** Editing *Imperial Reckoning* in the library later
+> will not re-date this story. The book notices and offers you the change —
+> *"mara/imperial has changed since this book copied it"* — with the new reading
+> shown before you accept. Nothing moves until you click. Note that accepting is
+> one-way: library calendars keep no history, so there is no going back to the
+> revision you had.
+
+> **Changing your mind.** **✎** beside the book's title reopens this form to
+> rename it, edit the overview, or point it at a different calendar. Swapping is
+> safe by construction: ticks are the stored truth and a calendar only formats
+> them, so a new calendar re-labels every scene without moving one.
+
+> **More than one at a time.** **+ Add another calendar** attaches a second
+> reckoning over the same scenes — a rival culture's count — and a switcher
+> appears above the book to read through either. Give the second one a span
+> (*kept from tick … until …*) and it will decline to date scenes outside it,
+> reading *before the Elvish Count* rather than inventing a year nobody counted.
+> That is how a calendar belonging to a destroyed culture behaves correctly
+> without any special case: it simply stops.
 
 ---
 
-## 3. Write the scenes
+## 4. Write the scenes
 
 Click **Scenes** in the book header. This is the scene library: every scene in
 the book, filtered and paged, and where you write, read and remove them.
@@ -144,7 +178,7 @@ timeline joined up: one set of facts, referenced from both sides.
 
 ---
 
-## 4. Thread the plotlines
+## 5. Thread the plotlines
 
 A **plotline** is an ordered list of scenes plus at least one goal. Order is the
 contract — it is what Chronos checks against the clock.
@@ -196,7 +230,7 @@ both threads get it.
 
 ---
 
-## 5. Break it on purpose
+## 6. Break it on purpose
 
 A witness claims to have seen Aldric at the harbour. They are mistaken, and the
 mistake is the kind that hides in a manuscript for months.
@@ -219,7 +253,7 @@ so the marks appear as you drag. Save anyway — findings never block a write.
 
 ---
 
-## 6. Read what it is telling you
+## 7. Read what it is telling you
 
 The book now reads `conflicted`, and the three checks are all firing. Open *The
 Witness's Tale* — a banner counts the problems and links to the scenes carrying
@@ -276,7 +310,7 @@ have said nothing at all.
 
 ---
 
-## 7. Fix all three
+## 8. Fix all three
 
 **The conflict.** In the library, **✎** on *Aldric Seen At Emberport* and change
 its timing to **30 → 40**. He is off the road by hour 24, so the sighting is now
@@ -300,7 +334,7 @@ The book's pill turns **`consistent`**.
 
 ---
 
-## 8. Tidy up
+## 9. Tidy up
 
 Housekeeping is part of writing, and all of it is here.
 
@@ -324,7 +358,12 @@ Housekeeping is part of writing, and all of it is here.
   with the merge and the split drawn.
 - **Leave a scene unscheduled** and see the window its neighbours imply: the
   earliest and latest it could possibly go.
-- **Swap the calendar** to plain numbers and back, and confirm no verdict moves.
+- **Swap the calendar** to *No calendar* and back, and confirm no verdict moves.
+- **Attach a second reckoning** with an end tick, and read the same scenes
+  through it — the scenes past its end decline to be dated rather than
+  inventing a year.
+- **Edit the calendar in the library** and come back to the book: it will
+  offer you the change rather than having taken it.
 
 ## Where to read further
 

@@ -343,9 +343,30 @@ and it never leaks into the invariant logic.
 rescaling stored ticks — so pick a *fine* base unit (e.g. minutes) up front;
 integer ticks are cheap. (2) Optional **anchors** (naming specific ticks, e.g.
 `tick 0 = "The Sundering"`) let a helper render relative phrasing ("14 days
-before The Sundering"); it's a separable layer over the same tick line, and
-several calendars can map that one canonical line for different in-world
-reckonings.
+before The Sundering"); it's a separable layer over the same tick line.
+
+**Update (as built): several calendars per book.** The last clause above —
+"several calendars can map that one canonical line for different in-world
+reckonings" — is now implemented. A book holds an ordered list of
+**attachments**, each a descriptor plus a label and an optional era; the first
+is its primary. `codec_for(book, calendar_id)` selects one, and every read that
+formats a tick takes `?calendar=`. Because ticks stay canonical, the choice is
+purely presentational: §5's invariants, §4.2's windows and the whole of
+`book_rules` see integers and cannot observe it.
+
+Eras are a decorator, not a fourth codec: **`EraCodec`** wraps any `TimeCodec`,
+offsets by `from_tick` (so a reckoning founded mid-story reads Year 1 at its own
+beginning) and refuses to label ticks outside `[from_tick, until_tick)`,
+formatting them as `before …`/`after …`. Half-open, matching `timeline.overlaps`,
+so the two cannot disagree at a boundary.
+
+Reusable calendars live in a **library** keyed `(owner, id)` behind a second
+persistence seam (`CalendarStore`), and a book **copies** the descriptor it
+attaches rather than referencing it. That is what keeps `codec_for` pure — a
+reference would put a database read under every formatted date — and it is also
+what makes a shared book readable: its labels are its own bytes, so no grant on
+the library entry is involved. `source` records provenance so an update can be
+offered explicitly.
 
 ---
 
@@ -530,7 +551,7 @@ the entity check is a function call or an HTTP round-trip.
 
 ### 6.4 Routes & the app factory
 
-`create_app(story_store, entity_gate, auth_store, secret_key, ...)` mirrors the
+`create_app(story_store, entity_gate, auth_store, secret_key, calendar_store, ...)` mirrors the
 Akasha factory: injected dependencies, focused
 `_register_*_routes(...)` helpers so `app.py` stays a thin orchestrator, and a
 single `@app.errorhandler(ChronosError)` translating domain errors to JSON +

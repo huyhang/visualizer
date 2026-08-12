@@ -18,7 +18,7 @@ from .browsing import (
     browse_plotlines,
     dominant_database,
 )
-from .calendar import codec_for
+from .calendar import codec_for, codec_for_attachment, select_calendar
 from .continuation import effective_paths, resolve, would_cycle
 from .entity_gate import EntityGate
 from .errors import (
@@ -35,6 +35,7 @@ from .presenters import (
     as_preview,
     event_when,
     present_book,
+    present_calendar,
     present_event,
     present_graph,
     present_neighborhood,
@@ -44,9 +45,10 @@ from .presenters import (
 )
 from .reports import build_report
 from .scheduling import window_for
-from .store import StoryStore
+from .store import CalendarStore, StoryStore
 from .validation import (
     validate_book_payload,
+    validate_calendar_payload,
     validate_event_payload,
     validate_plotline_payload,
 )
@@ -112,8 +114,65 @@ class _Service:
 
 
 class BookService(_Service):
+    """Books, and the calendars they take from the library.
+
+    The library is where calendars are authored; a book *chooses* one. So the
+    descriptor a book stores is never supplied by the caller -- it is read out
+    of the library here, at the write, and copied in. Three things follow that
+    would each need their own guard otherwise: a book can only ever hold a
+    calendar that really exists in somebody's library; the copy always agrees
+    with the entry it names at the revision it names; and provenance cannot be
+    forged, because it is the *only* thing the caller gets to state.
+    """
+
+    def __init__(self, store: StoryStore, entities: EntityGate, calendars: CalendarStore):
+        super().__init__(store, entities)
+        self.calendars = calendars
+
+    def _resolve_attachments(self, book: Book, held: Book | None = None) -> Book:
+        """Fill each attachment's descriptor from the library entry it names.
+
+        Copying happens **on attach, not on every save**. If it happened on
+        every save, editing a book's title would quietly adopt whatever the
+        library had become since -- re-dating a finished story through the one
+        door every writer uses, which is the whole thing copying exists to stop.
+
+        So ``source.rev`` is how a caller says which of the two it wants:
+
+        - **omitted** -- "give me this calendar as it stands". A fresh attach,
+          or the writer explicitly taking an update.
+        - **present** -- "I already hold revision N; keep it". Honoured when the
+          book really does hold that attachment at that revision; otherwise
+          there is nothing to keep and the current entry is read instead.
+
+        The pre-library single-``calendar`` spelling has no source and is left
+        alone: those books are migrated deliberately, not on their next save.
+        """
+        keepable = {
+            (a.id, a.source["owner"], a.source["calendar"]): a
+            for a in (held.calendars if held else [])
+            if a.source
+        }
+        for attachment in book.calendars:
+            if attachment.source is None:
+                continue
+            owner, name = attachment.source["owner"], attachment.source["calendar"]
+            wanted = attachment.source.get("rev")
+            already = keepable.get((attachment.id, owner, name))
+            if wanted is not None and already and already.source.get("rev") == wanted:
+                attachment.descriptor = already.descriptor
+                attachment.source = dict(already.source)
+                continue
+            entry = self.calendars.get(owner, name)  # raises CalendarNotFound
+            attachment.descriptor = entry["descriptor"]
+            # The revision actually read, never the one the caller claimed --
+            # which is what makes "the library has moved on" a fact rather than
+            # a guess, and why the copy needs no checksum stored beside it.
+            attachment.source = {"owner": owner, "calendar": name, "rev": entry["rev"]}
+        return book
+
     def create(self, book_id, payload, author=None) -> dict:
-        book = validate_book_payload(book_id, payload)
+        book = self._resolve_attachments(validate_book_payload(book_id, payload))
         public = self.store.create_book(book_id, book.to_storage(), author=author)
         return present_book(public, self._report(book), plotline_ids=[])
 
@@ -123,8 +182,8 @@ class BookService(_Service):
         return present_book(public, self._report(book), self._plotline_ids(book_id))
 
     def update(self, book_id, payload, expected_rev=None, author=None) -> dict:
-        self._require_book(book_id)
-        book = validate_book_payload(book_id, payload)
+        held = self._require_book(book_id)
+        book = self._resolve_attachments(validate_book_payload(book_id, payload), held)
         public = self.store.update_book(book_id, book.to_storage(), expected_rev, author)
         return present_book(public, self._report(book), self._plotline_ids(book_id))
 
@@ -160,17 +219,17 @@ class BookService(_Service):
         public = self.store.update_book(book_id, book.to_storage(), current["rev"], author)
         return present_book(public, self._report(book), self._plotline_ids(book_id))
 
-    def validate(self, book_id) -> dict:
+    def validate(self, book_id, calendar_id=None) -> dict:
         book = self._book(book_id)
-        return present_validate(self._report(book), codec_for(book))
+        return present_validate(self._report(book), codec_for(book, calendar_id))
 
-    def graph(self, book_id) -> dict:
+    def graph(self, book_id, calendar_id=None) -> dict:
         book = self._book(book_id)
         plotlines = self._plotlines(book_id)
         view = graph_view(effective_paths(plotlines), book.terminus)
         return present_graph(
             view, self._events_by_id(book_id),
-            {p.id: p for p in plotlines}, codec_for(book),
+            {p.id: p for p in plotlines}, codec_for(book, calendar_id),
         )
 
     def _plotline_ids(self, book_id) -> list[str]:
@@ -193,10 +252,12 @@ class EventService(_Service):
         public = self.store.create_event(book_id, event_id, event.to_storage(), author=author)
         return present_event(public, codec_for(self._book(book_id)))
 
-    def get(self, book_id, event_id) -> dict:
+    def get(self, book_id, event_id, calendar_id=None) -> dict:
         public = self.store.get_event(book_id, event_id)
         book = self._book(book_id)
-        return present_event(public, codec_for(book), self._window(book_id, event_id))
+        return present_event(
+            public, codec_for(book, calendar_id), self._window(book_id, event_id)
+        )
 
     def _window(self, book_id, event_id):
         """Where this scene could go, from its plotline neighbours (§4.2)."""
@@ -242,7 +303,7 @@ class EventService(_Service):
             )
         self.store.delete_event(book_id, event_id, expected_rev, author)
 
-    def neighborhood(self, book_id, event_id, relation=None) -> dict:
+    def neighborhood(self, book_id, event_id, relation=None, calendar_id=None) -> dict:
         book = self._require_book(book_id)
         events_by_id = self._events_by_id(book_id)
         if event_id not in events_by_id:
@@ -251,7 +312,7 @@ class EventService(_Service):
         n = neighborhood(effective_paths(plotlines), event_id, book.terminus)
         full = present_neighborhood(
             n, events_by_id[event_id], events_by_id,
-            {p.id: p for p in plotlines}, codec_for(book), book_id,
+            {p.id: p for p in plotlines}, codec_for(book, calendar_id), book_id,
         )
         if relation == "converging":
             return {"event": full["event"], "converging": full["converging"]}
@@ -285,11 +346,11 @@ class PlotlineService(_Service):
                 evidence={"cycle": cycle},
             )
 
-    def _present(self, book, public) -> dict:
+    def _present(self, book, public, calendar_id=None) -> dict:
         events_by_id = self._events_by_id(book.id)
         return present_plotline(
             public, book, self._plotlines(book.id), events_by_id,
-            codec_for(book),
+            codec_for(book, calendar_id),
             missing_refs=self._missing_refs(events_by_id.values()),
         )
 
@@ -301,13 +362,13 @@ class PlotlineService(_Service):
         public = self.store.create_plotline(book_id, plotline_id, plotline.to_storage(), author)
         return self._present(book, public)
 
-    def get(self, book_id, plotline_id, expand=False) -> dict:
+    def get(self, book_id, plotline_id, expand=False, calendar_id=None) -> dict:
         book = self._book(book_id)
         public = self.store.get_plotline(book_id, plotline_id)
         events_by_id = self._events_by_id(book_id)
         return present_plotline(
             public, book, self._plotlines(book_id), events_by_id,
-            codec_for(book), expand=expand,
+            codec_for(book, calendar_id), expand=expand,
             missing_refs=self._missing_refs(events_by_id.values()),
         )
 
@@ -381,6 +442,52 @@ class PlotlineService(_Service):
         self.store.delete_plotline(book_id, plotline_id, expected_rev, author)
 
 
+class CalendarService:
+    """The library of named, reusable calendars (design §4.1).
+
+    Deliberately not a ``_Service``: a library calendar hangs off its owner, not
+    off a book, and touches neither the story store nor Akasha. It is also
+    entirely off the read path of a book's dates -- attaching one *copies* the
+    descriptor into the book, so nothing here is consulted when formatting a
+    tick. That is what keeps ``codec_for`` pure and ``GET /books`` from becoming
+    one query per book.
+    """
+
+    def __init__(self, calendars: CalendarStore):
+        self.calendars = calendars
+
+    def create(self, owner, calendar_id, payload, author=None) -> dict:
+        calendar = validate_calendar_payload(calendar_id, payload)
+        public = self.calendars.create(owner, calendar_id, calendar.to_storage(), author)
+        return present_calendar(public)
+
+    def get(self, owner, calendar_id) -> dict:
+        return present_calendar(self.calendars.get(owner, calendar_id))
+
+    def update(self, owner, calendar_id, payload, expected_rev=None, author=None) -> dict:
+        self.calendars.get(owner, calendar_id)  # raises CalendarNotFound
+        calendar = validate_calendar_payload(calendar_id, payload)
+        public = self.calendars.update(
+            owner, calendar_id, calendar.to_storage(), expected_rev, author
+        )
+        return present_calendar(public)
+
+    def delete(self, owner, calendar_id, expected_rev=None, author=None) -> None:
+        """Remove a library entry. Books that copied it are untouched.
+
+        Deliberately not a cascade: the copies *are* those books' calendars, and
+        deleting a shared record out from under someone else's story is exactly
+        what copying was chosen to prevent. Their provenance goes dangling, which
+        a reader reports the way it reports a deleted Akasha article.
+        """
+        self.calendars.delete(owner, calendar_id, expected_rev, author)
+
+    def library(self) -> list[dict]:
+        """Every calendar there is, unfiltered -- the route narrows it to what
+        the caller may read, the same posture as ``list_worlds``."""
+        return [present_calendar(c) for c in self.calendars.list_all()]
+
+
 class VisualizerService(_Service):
     """Orchestration behind the plotline visualiser and its editor.
 
@@ -397,9 +504,13 @@ class VisualizerService(_Service):
     """
 
     def browse_plotlines(
-        self, book_id, query: str = "", page: int = 1, per_page: int = DEFAULT_PER_PAGE
+        self, book_id, query: str = "", page: int = 1, per_page: int = DEFAULT_PER_PAGE,
+        calendar_id=None,
     ) -> dict:
-        self._require_book(book_id)  # 404 for an unknown book
+        # Validates the choice even though this table shows no labels itself, so
+        # a stale ``?calendar=`` fails the same way on every book-scoped read
+        # rather than only on the ones that happen to format a tick.
+        select_calendar(self._require_book(book_id), calendar_id)  # 404 for either
         events_by_id = self._events_by_id(book_id)
         plotlines = self._plotlines(book_id)
         # Filter on the *resolved* path so a word from a shared/continued scene
@@ -429,11 +540,12 @@ class VisualizerService(_Service):
     # -- scenes ---------------------------------------------------------------
 
     def browse_events(
-        self, book_id, query: str = "", page: int = 1, per_page: int = DEFAULT_PER_PAGE
+        self, book_id, query: str = "", page: int = 1, per_page: int = DEFAULT_PER_PAGE,
+        calendar_id=None,
     ) -> dict:
         """The book's scenes in story order -- what the editor picks from."""
         book = self._require_book(book_id)
-        codec = codec_for(book)
+        codec = codec_for(book, calendar_id)
         paths = effective_paths(self._plotlines(book_id))
         rows = [
             self._event_row(event, codec, paths, book_id)
@@ -465,7 +577,7 @@ class VisualizerService(_Service):
 
     # -- preview --------------------------------------------------------------
 
-    def preview_plotline(self, book_id, payload) -> dict:
+    def preview_plotline(self, book_id, payload, calendar_id=None) -> dict:
         """Present a *candidate* thread exactly as saving it would present it.
 
         The editor calls this after every reorder, so the writer sees a fix (or a
@@ -492,17 +604,23 @@ class VisualizerService(_Service):
         events_by_id = self._events_by_id(book_id)
         presented = present_plotline(
             public, book, self._plotlines(book_id), events_by_id,
-            codec_for(book), expand=True,
+            codec_for(book, calendar_id), expand=True,
             missing_refs=self._missing_refs(events_by_id.values()),
         )
         return as_preview(presented, book_id)
 
     # -- the calendar ----------------------------------------------------------
 
-    def format_ticks(self, book_id, ticks: list[int]) -> dict:
-        """What this book's calendar calls these ticks (see ``present_ticks``)."""
+    def format_ticks(self, book_id, ticks: list[int], calendar_id=None) -> dict:
+        """What this book's calendars call these ticks (see ``present_ticks``).
+
+        Every attached reckoning answers, not just the one being viewed through:
+        a writer placing a scene wants to see it dated in each of them at once,
+        and the codecs are pure, so the extra readings cost no I/O.
+        """
         book = self._require_book(book_id)
-        return present_ticks(ticks, codec_for(book))
+        readings = [(c, codec_for_attachment(c)) for c in book.calendars]
+        return present_ticks(ticks, codec_for(book, calendar_id), readings)
 
     # -- akasha articles ------------------------------------------------------
 

@@ -16,7 +16,8 @@
 // re-labels the book without moving a single scene or changing any verdict.
 
 import { api } from "./api.js";
-import { calendarField } from "./calendarfield.js";
+import { calendarList } from "./calendarlist.js";
+import { openCalendarForm } from "./calendarlibrary.js";
 import { clear, el, toast } from "./dom.js";
 import { confirmModal, modal } from "./picker.js";
 import { slugify } from "./shared/slug.js";
@@ -37,6 +38,15 @@ export async function openBookForm({ book = null, onDone, onDeleted } = {}) {
   // the writer is never offered a world they cannot read.
   let worlds = [];
   try { worlds = (await api.listWorlds()).worlds || []; } catch (e) { /* offer none */ }
+  // The writer's saved calendars, so the picker can offer them. Asked for up
+  // front like the worlds are; a library we could not read simply offers none,
+  // and the writer types a calendar in as they always could.
+  let library = [];
+  try { library = (await api.listCalendars()).calendars || []; } catch (e) { /* offer none */ }
+  // Needed only to create a calendar under the right name if the writer builds
+  // one from inside this form.
+  let me = null;
+  try { me = (await api.me()).username; } catch (e) { /* no create affordance */ }
   // A single world is the common case (one story, one canon) — take it as the
   // default rather than making the writer confirm the only option.
   if (!editing && worlds.length === 1) state.world = worlds[0].database;
@@ -76,8 +86,26 @@ export async function openBookForm({ book = null, onDone, onDeleted } = {}) {
     class: "btn", type: "submit", text: editing ? "Save changes" : "Create book",
   });
 
-  const calendar = calendarField({
-    initial: editing ? book.calendar : null,
+  const calendars = calendarList({
+    initial: editing ? (book.calendars || []) : [],
+    library,
+    // A writer with an empty library should not have to leave a half-filled
+    // form to get one. This builds the calendar *in the library* — the book
+    // still only ever names it — and hands it straight back to the row that
+    // asked. The shared `library` array is refilled in place, so every other
+    // row's picker sees the new calendar too.
+    onCreateCalendar: me ? () => new Promise((resolve) => {
+      openCalendarForm({
+        me,
+        onDone: async (made) => {
+          try {
+            const fresh = (await api.listCalendars()).calendars || [];
+            library.splice(0, library.length, ...fresh);
+          } catch (e) { /* keep what we have */ }
+          resolve(library.find((c) => c.qualified_id === (made || {}).qualified_id) || null);
+        },
+      });
+    }) : null,
     onChange: () => refresh(),
   });
 
@@ -105,7 +133,11 @@ export async function openBookForm({ book = null, onDone, onDeleted } = {}) {
           + "already has, so no timing moves and no finding changes."
         : "How this book counts time. Scenes are always placed at whole-number "
           + "ticks; a calendar only decides how those numbers read back." }),
-      calendar.node,
+      el("p", { class: "field-hint muted", text:
+        "A world may count time more than one way. Add a second calendar and "
+        + "you can read the same scenes through either — the switcher above the "
+        + "book lets you choose." }),
+      calendars.node,
     ]),
     problemList,
     error,
@@ -154,7 +186,7 @@ export async function openBookForm({ book = null, onDone, onDeleted } = {}) {
     if (!state.id) out.push("Give the book an id.");
     // Not required: a writer may plot before there is any canon to point at.
     // The scene form says so plainly when the time comes.
-    return out.concat(calendar.problems());
+    return out.concat(calendars.problems());
   }
 
   // Say what is missing, but only once the writer has started — an empty form
@@ -178,7 +210,9 @@ export async function openBookForm({ book = null, onDone, onDeleted } = {}) {
     const out = {
       title: state.title.trim(),
       overview: state.overview,
-      calendar: calendar.value(),
+      // The list, never the older single `calendar` — the API refuses a body
+      // carrying both, because which one the writer meant would be a guess.
+      calendars: calendars.value(),
       world: state.world || null,
     };
     if (editing) out.terminus = book.terminus || null;

@@ -9,16 +9,38 @@ from visualizer.chronos.book_rules import (
     neighborhood,
     validate_convergence,
 )
-from visualizer.chronos.calendar import IdentityCodec, MixedRadixCodec, codec_for
+from visualizer.chronos.calendar import (
+    EraCodec,
+    IdentityCodec,
+    MixedRadixCodec,
+    codec_for,
+    codec_for_attachment,
+    codec_for_descriptor,
+)
 from visualizer.chronos.conflicts import find_temporal_conflicts
 from visualizer.chronos.continuation import effective_paths
-from visualizer.chronos.errors import InvalidBook, InvalidPlotline, InvalidTimeframe
-from visualizer.chronos.models import Book, EntityRef, Event, Plotline
+from visualizer.chronos.errors import (
+    CalendarNotFound,
+    InvalidBook,
+    InvalidCalendar,
+    InvalidPlotline,
+    InvalidTimeframe,
+)
+from visualizer.chronos.models import (
+    DEFAULT_CALENDAR_ID,
+    Book,
+    CalendarAttachment,
+    EntityRef,
+    Event,
+    Plotline,
+)
 from visualizer.chronos.ordering import validate_order
 from visualizer.chronos.timeline import overlaps
 from visualizer.chronos.validation import (
+    MAX_CALENDARS,
     MAX_OVERVIEW,
     validate_book_payload,
+    validate_calendar_payload,
     validate_plotline_payload,
 )
 
@@ -238,12 +260,146 @@ def test_identity_codec_parts_is_single_component():
 
 def test_codec_for_defaults_to_identity():
     assert isinstance(codec_for(Book("b")), IdentityCodec)
-    assert isinstance(codec_for({"calendar": None}), IdentityCodec)
+    assert isinstance(codec_for(Book.from_storage({"id": "b", "calendar": None})), IdentityCodec)
 
 
 def test_codec_for_builds_mixed_radix():
-    book = Book("b", calendar={"cycles": [{"name": "day", "size": 10}], "base_unit": "h"})
+    book = _book_with(_attachment("main", DAYS))
     assert isinstance(codec_for(book), MixedRadixCodec)
+
+
+# -- several calendars over one tick line -------------------------------------
+#
+# The feature's whole claim: parallel reckonings are parallel *labellings*, never
+# parallel timelines. Nothing below moves a tick.
+
+DAYS = {"cycles": [{"name": "day", "size": 10}], "base_unit": "hour"}
+MOONS = {"cycles": [{"name": "moon", "size": 8}], "base_unit": "bell", "epoch_label": "SR"}
+
+
+def _attachment(id_, descriptor=None, **kw):
+    return CalendarAttachment(id=id_, descriptor=descriptor, **kw)
+
+
+def _book_with(*attachments):
+    return Book("b", calendars=list(attachments))
+
+
+def test_the_first_attachment_is_what_an_unqualified_read_uses():
+    book = _book_with(_attachment("imperial", DAYS), _attachment("elvish", MOONS))
+    assert codec_for(book).format(20) == codec_for(book, "imperial").format(20)
+    assert codec_for(book, "elvish").format(20) != codec_for(book, "imperial").format(20)
+
+
+def test_two_calendars_disagree_only_about_the_label():
+    """The assertion this whole feature exists to make: same tick, two readings."""
+    book = _book_with(_attachment("imperial", DAYS), _attachment("elvish", MOONS))
+    assert codec_for(book, "imperial").format(20) == "Day 3, 00:00"
+    assert codec_for(book, "elvish").format(20) == "Moon 3, 04:00 SR"
+
+
+def test_an_unattached_calendar_is_refused_rather_than_guessed_at():
+    """A stale bookmark must say so. Falling back to the primary would misreport
+    every date on screen while looking entirely healthy."""
+    book = _book_with(_attachment("imperial", DAYS))
+    with pytest.raises(CalendarNotFound) as raised:
+        codec_for(book, "elvish")
+    assert raised.value.evidence["attached"] == ["imperial"]
+
+
+def test_a_book_with_no_calendars_still_reads_through_a_default():
+    assert codec_for(_book_with()).format(7) == "7"
+
+
+# -- eras: calendars that begin, and end --------------------------------------
+
+
+def test_an_era_counts_from_its_own_beginning():
+    """A reckoning founded at tick 100 reads Day 1 there, not Day 11."""
+    codec = EraCodec(codec_for_descriptor(DAYS), from_tick=100)
+    assert codec.format(100) == "Day 1, 00:00"
+    assert codec.format(120) == "Day 3, 00:00"
+
+
+def test_an_era_refuses_to_date_what_it_did_not_witness():
+    codec = EraCodec(
+        codec_for_descriptor(DAYS), from_tick=100, until_tick=200, label="Imperial Reckoning"
+    )
+    assert codec.format(50) == "before Imperial Reckoning"
+    assert codec.format(300) == "after Imperial Reckoning"
+    assert codec.format(150) == "Day 6, 00:00"
+
+
+@pytest.mark.parametrize("bounds,tick,expected", [
+    pytest.param({"from_tick": 100}, 50, "before the Count", id="only-a-start"),
+    # The case a book actually hits first: a reckoning that was always kept and
+    # simply stopped. With no ``from_tick`` there is only one way out of range,
+    # and asking which side we fell off must not compare a tick against None.
+    pytest.param({"until_tick": 100}, 150, "after the Count", id="only-an-end"),
+    pytest.param({"from_tick": 10, "until_tick": 100}, 5, "before the Count", id="both-before"),
+    pytest.param({"from_tick": 10, "until_tick": 100}, 500, "after the Count", id="both-after"),
+])
+def test_an_era_says_which_side_of_itself_a_tick_fell_off(bounds, tick, expected):
+    codec = EraCodec(codec_for_descriptor(DAYS), label="the Count", **bounds)
+    assert codec.format(tick) == expected
+    assert codec.parts(tick) == [expected]
+
+
+def test_an_era_ends_half_open_like_every_other_interval():
+    """``until_tick`` is the first tick *not* covered -- the same convention
+    ``timeline.overlaps`` uses, so the two can never disagree at a boundary."""
+    codec = EraCodec(codec_for_descriptor(DAYS), from_tick=0, until_tick=200)
+    assert codec.covers(199)
+    assert not codec.covers(200)
+
+
+def test_an_out_of_era_tick_is_one_component_so_a_ui_can_band_it():
+    codec = EraCodec(codec_for_descriptor(DAYS), from_tick=100, label="the Pact")
+    assert codec.parts(10) == ["before the Pact"]
+    # In era, the inner codec's structure survives the decoration untouched.
+    assert codec.parts(120) == codec_for_descriptor(DAYS).parts(20)
+
+
+def test_an_era_survives_the_round_trip_wherever_its_inner_codec_does():
+    codec = EraCodec(IdentityCodec(), from_tick=100)
+    assert codec.parse(codec.format(137)) == 137
+
+
+def test_a_calendar_without_an_era_is_not_decorated_at_all():
+    """Spanning the whole story is the common case; it should cost nothing."""
+    assert isinstance(codec_for_attachment(_attachment("x", DAYS)), MixedRadixCodec)
+    assert isinstance(
+        codec_for_attachment(_attachment("x", DAYS, from_tick=3)), EraCodec
+    )
+
+
+def test_an_era_over_no_descriptor_still_bounds_plain_numbers():
+    codec = codec_for_attachment(_attachment("x", None, from_tick=10, label="the Vigil"))
+    assert codec.format(5) == "before the Vigil"
+    assert codec.format(14) == "4"
+
+
+# -- reading a book stored before the library existed -------------------------
+
+
+def test_a_pre_library_book_is_promoted_to_one_attachment():
+    """No migration runs; the old field is simply read as a list of one."""
+    book = Book.from_storage({"id": "b", "calendar": DAYS})
+    assert [c.id for c in book.calendars] == [DEFAULT_CALENDAR_ID]
+    assert book.calendars[0].descriptor == DAYS
+    assert codec_for(book).format(20) == "Day 3, 00:00"
+
+
+def test_promotion_is_one_way_so_no_document_carries_both_spellings():
+    stored = Book.from_storage({"id": "b", "calendar": DAYS}).to_storage()
+    assert "calendar" not in stored
+    assert stored["calendars"][0]["descriptor"] == DAYS
+
+
+def test_the_legacy_calendar_field_is_derived_not_stored():
+    book = _book_with(_attachment("imperial", DAYS), _attachment("elvish", MOONS))
+    # A pre-library reader asking for "the" calendar gets the primary one.
+    assert book.calendar == DAYS
 
 
 # -- book payload validation -------------------------------------------------
@@ -308,6 +464,136 @@ def test_every_refused_calendar_would_indeed_have_broken_a_read():
     the direction that would silently block legal books."""
     book = validate_book_payload("b", {"calendar": DEMO_CALENDAR})
     assert codec_for(book).format(200) == "Month 1, Day 9, 08:00 AF"
+
+
+# -- attaching several calendars ----------------------------------------------
+
+
+def _payload(*calendars):
+    return {"title": "T", "calendars": list(calendars)}
+
+
+def _from(name, owner="mara"):
+    return {"owner": owner, "calendar": name}
+
+
+def test_book_payload_accepts_a_list_of_reckonings():
+    """A book *names* its calendars; the service fills the descriptors in from
+    the library, so nothing here carries content."""
+    book = validate_book_payload("b", _payload(
+        {"id": "imperial", "label": "Imperial Reckoning", "source": _from("imperial")},
+        {"id": "elvish", "source": _from("elvish"), "until_tick": 900},
+    ))
+    assert [c.id for c in book.calendars] == ["imperial", "elvish"]
+    assert book.calendars[0].display_label == "Imperial Reckoning"
+    # An unlabelled reckoning falls back to its id rather than showing blank.
+    assert book.calendars[1].display_label == "elvish"
+    # Descriptors are the library's to supply, so validation leaves them empty.
+    assert [c.descriptor for c in book.calendars] == [None, None]
+
+
+def test_book_payload_refuses_two_calendars_with_the_same_id():
+    """The id is what a read names to pick a reckoning, so a duplicate makes
+    that choice ambiguous rather than merely untidy."""
+    with pytest.raises(InvalidBook):
+        validate_book_payload("b", _payload(
+            {"id": "imperial", "descriptor": DEMO_CALENDAR},
+            {"id": "imperial", "descriptor": None},
+        ))
+
+
+def test_book_payload_refuses_a_calendar_that_ends_before_it_began():
+    with pytest.raises(InvalidBook):
+        validate_book_payload("b", _payload(
+            {"id": "x", "descriptor": None, "from_tick": 400, "until_tick": 100},
+        ))
+
+
+def test_book_payload_refuses_a_calendar_described_inline():
+    """The library is where calendars are authored. Refused rather than ignored:
+    whoever sent a descriptor meant it to be used, and quietly substituting the
+    library's would be worse than saying no. "Plain numbers" is not a calendar
+    described inline -- it is a book with no attachments at all."""
+    with pytest.raises(InvalidBook):
+        validate_book_payload("b", _payload(
+            {"id": "mine", "descriptor": DEMO_CALENDAR, "source": _from("imperial")}))
+    with pytest.raises(InvalidBook):
+        validate_book_payload("b", _payload({"id": "mine", "descriptor": None}))
+    # ...and a book with no calendars at all is exactly how plain ticks are said.
+    assert validate_book_payload("b", {"title": "T", "calendars": []}).calendars == []
+
+
+def test_an_attachment_must_name_a_library_calendar():
+    with pytest.raises(InvalidBook):
+        validate_book_payload("b", _payload({"id": "orphan"}))
+
+
+def test_book_payload_refuses_both_spellings_at_once():
+    """Ambiguous about which the writer meant. Picking one silently is how a
+    calendar goes missing with nothing on screen to say so."""
+    with pytest.raises(InvalidBook):
+        validate_book_payload("b", {
+            "calendar": DEMO_CALENDAR,
+            "calendars": [{"id": "x", "descriptor": DEMO_CALENDAR}],
+        })
+
+
+def test_book_payload_caps_the_number_of_calendars():
+    too_many = [{"id": f"c{i}", "descriptor": None} for i in range(MAX_CALENDARS + 1)]
+    with pytest.raises(InvalidBook):
+        validate_book_payload("b", _payload(*too_many))
+
+
+def test_provenance_must_name_the_owner_as_well_as_the_calendar():
+    """Library ids are unique per writer, so an unqualified pointer would let one
+    writer's "imperial" be mistaken for another's."""
+    with pytest.raises(InvalidBook):
+        validate_book_payload("b", _payload({"id": "x", "source": {"calendar": "imperial"}}))
+    book = validate_book_payload("b", _payload({"id": "x", "source": _from("imperial")}))
+    assert book.calendars[0].source == {
+        "owner": "mara", "calendar": "imperial", "rev": None,
+    }
+
+
+def test_a_revision_is_carried_as_an_intention_not_a_fact():
+    """``rev`` says *which* copy the caller wants -- omit it for "as it stands
+    today", send the one this book holds for "keep mine". The service decides
+    what that means and stamps the revision it actually read."""
+    asking = validate_book_payload("b", _payload(
+        {"id": "x", "source": {"owner": "mara", "calendar": "imperial", "rev": 3}}))
+    assert asking.calendars[0].source["rev"] == 3
+    latest = validate_book_payload("b", _payload({"id": "x", "source": _from("imperial")}))
+    assert latest.calendars[0].source["rev"] is None
+    with pytest.raises(InvalidBook):
+        validate_book_payload("b", _payload(
+            {"id": "x", "source": {"owner": "m", "calendar": "i", "rev": "soon"}}))
+
+
+# -- library calendars --------------------------------------------------------
+
+
+def test_library_calendar_payload_parses():
+    calendar = validate_calendar_payload("imperial", {
+        "name": "Imperial Reckoning", "descriptor": DEMO_CALENDAR, "notes": "Used after AF 0.",
+    })
+    assert (calendar.id, calendar.name) == ("imperial", "Imperial Reckoning")
+
+
+def test_library_calendar_needs_a_name_and_a_descriptor():
+    with pytest.raises(InvalidCalendar):
+        validate_calendar_payload("x", {"descriptor": DEMO_CALENDAR})
+    with pytest.raises(InvalidCalendar):
+        validate_calendar_payload("x", {"name": "X"})
+
+
+def test_library_calendar_faces_exactly_the_rule_a_book_would_apply():
+    """A library that stored a descriptor no book could accept would hand the
+    writer a calendar that fails the moment they try to use it."""
+    bad = {"cycles": [{"name": "day", "size": 0}]}
+    with pytest.raises(InvalidCalendar):
+        validate_calendar_payload("x", {"name": "X", "descriptor": bad})
+    with pytest.raises(InvalidBook):
+        validate_book_payload("b", _payload({"id": "x", "descriptor": bad}))
 
 
 # -- the overview (books and plotlines) --------------------------------------

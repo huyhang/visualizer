@@ -94,6 +94,10 @@ def build_limiter(app, storage_uri: str = "memory://") -> Limiter:
     )
 
 
+# Display names for the two services, keyed by the slug ``current`` uses.
+SERVICE_NAMES = {"akasha": "Akasha", "chronos": "Chronos"}
+
+
 def register_service_links(app, akasha_url: str, chronos_url: str, current: str) -> None:
     """Expose cross-service nav links to every template (the header switcher).
 
@@ -111,6 +115,13 @@ def register_service_links(app, akasha_url: str, chronos_url: str, current: str)
         "account": akasha_url.rstrip("/") + "/account",
         "admin": akasha_url.rstrip("/") + "/admin",
         "current": current,
+        # The same service, spelled for a human. The shared auth pages are served
+        # by *both* apps, so their titles cannot name one of them: a page reached
+        # at /timeline/login used to call itself "Akasha". The nav says
+        # "Articles"/"Timeline" because those describe what you would go and do;
+        # a page title says which service you are signing in to, which is the
+        # name the docs and the URLs use.
+        "name": SERVICE_NAMES.get(current, current.title()),
     }
 
     @app.context_processor

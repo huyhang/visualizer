@@ -1,0 +1,97 @@
+{# Fallback shell for the auth pages, so the blueprint stands on its own.
+
+   The three auth templates all `{% extends "base.html" %}`. Akasha provides a
+   rich one at app level and Flask searches the app's template folder before any
+   blueprint's, so Akasha keeps exactly the page it always had — this file is
+   never reached there.
+
+   Chronos has no base.html, which meant every auth page it served raised
+   TemplateNotFound: logging out of Chronos redirected to /timeline/login and
+   got a 500, and /timeline/register and /timeline/change-password were dead the
+   same way. A blueprint that ships routes and templates but depends on a
+   template only one of its two hosts happens to define is not self-contained;
+   this is the missing piece rather than a second copy of Akasha's.
+
+   Deliberately plain, and deliberately not branded: it is whichever service you
+   are logged out of. No header (there is nothing to navigate to yet) and no
+   favicon, because the two apps name theirs differently and a broken icon link
+   is worse than none. Only the blocks and classes the auth templates actually
+   use — `title`, `content`, and `card narrow` / `error` / `notice` / `muted` /
+   `btn-full` — plus the theme variables they inherit elsewhere, so the page does
+   not flash white on a dark install.
+#}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Sign in{% endblock %}</title>
+  <script>
+    // Before first paint, from the same key both services already use.
+    (function () {
+      try {
+        var saved = localStorage.getItem("akasha-theme") || localStorage.getItem("kb-theme");
+        var dark = saved ? saved === "dark"
+          : window.matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+      } catch (e) { document.documentElement.setAttribute("data-theme", "light"); }
+    })();
+  </script>
+  <style>
+    :root, [data-theme="light"] {
+      --bg: #f5f6fb; --surface: #ffffff; --border: #e7e9f1; --text: #1f2430;
+      --muted: #6b7280; --accent: #6366f1; --accent-strong: #4f46e5;
+      --danger: #dc2626; --danger-soft: #fdecec; --ok-soft: #e5f6ec;
+      --shadow: 0 1px 2px rgba(16,24,40,.04), 0 6px 20px rgba(16,24,40,.06);
+      --radius: 14px;
+    }
+    [data-theme="dark"] {
+      --bg: #0e1016; --surface: #171a22; --border: #282d3a; --text: #e6e8ee;
+      --muted: #98a1b2; --accent: #818cf8; --accent-strong: #a5b4fc;
+      --danger: #f87171; --danger-soft: #3a1f24; --ok-soft: #16311f;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 28px rgba(0,0,0,.4);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; display: grid; place-items: center;
+      padding: 2rem 1rem; background: var(--bg); color: var(--text);
+      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    main { width: 100%; max-width: 420px; }
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow); padding: 1.6rem 1.7rem;
+    }
+    .card h1 { margin: 0 0 1.1rem; font-size: 1.35rem; }
+    label { display: block; margin: .8rem 0 .3rem; font-size: .8rem;
+            font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+    input[type="text"], input[type="password"], input[type="email"] {
+      width: 100%; padding: .55rem .7rem; border-radius: 10px; font: inherit;
+      border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    }
+    input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .btn-full {
+      width: 100%; margin-top: 1.2rem; padding: .6rem 1rem; border: 0; cursor: pointer;
+      border-radius: 10px; font: inherit; font-weight: 600;
+      background: var(--accent); color: #fff;
+    }
+    .btn-full:hover { background: var(--accent-strong); }
+    .error, .notice {
+      padding: .6rem .8rem; border-radius: 10px; margin-bottom: 1rem; font-size: .9rem;
+    }
+    .error { background: var(--danger-soft); color: var(--danger); }
+    .notice { background: var(--ok-soft); }
+    .muted { color: var(--muted); font-size: .88rem; }
+    a { color: var(--accent-strong); }
+  </style>
+</head>
+<body>
+  <main>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="{{ 'error' if category == 'error' else 'notice' }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

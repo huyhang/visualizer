@@ -120,6 +120,95 @@ class Plotline:
         )
 
 
+# What a legacy single-calendar book's one attachment is called once promoted.
+# Books written before this field existed have exactly one calendar, so the id
+# is never shown: the view switcher only appears when there is a choice to make.
+DEFAULT_CALENDAR_ID = "default"
+
+
+@dataclass
+class LibraryCalendar:
+    """A named, reusable calendar in a writer's library.
+
+    Identity is ``(owner, id)``, not ``id`` alone -- calendar names are generic
+    ("imperial", "lunar", "elvish") and every writer reaches for the same dozen
+    words, so a global namespace would make the first writer to register one the
+    owner of that word forever, and would tell the next writer that a calendar
+    they cannot read exists. The owner lives on the record rather than in this
+    dataclass's identity because the store supplies it (see ``CalendarStore``).
+
+    A library entry is only ever *copied* into a book. Nothing here is on the
+    read path of a book's dates.
+    """
+
+    id: str
+    name: str
+    descriptor: dict
+    notes: str = ""
+
+    def to_storage(self) -> dict:
+        return {"name": self.name, "descriptor": self.descriptor, "notes": self.notes}
+
+    @classmethod
+    def from_storage(cls, doc: dict) -> "LibraryCalendar":
+        return cls(
+            id=doc["id"],
+            name=doc.get("name", doc["id"]),
+            descriptor=doc.get("descriptor") or {},
+            notes=doc.get("notes", ""),
+        )
+
+
+@dataclass
+class CalendarAttachment:
+    """One reckoning a book keeps its dates in.
+
+    The descriptor is **copied** into the book rather than referenced (see
+    ``calendar.codec_for``); ``source`` records where the copy came from so an
+    update can be offered explicitly, never applied behind the writer's back.
+    A copy is also what keeps a book readable by anyone who can read the book --
+    the labels are its own bytes, not another writer's record.
+
+    ``from_tick``/``until_tick`` bound the era this reckoning was kept in, so a
+    destroyed culture's calendar stops dating scenes that happened after it.
+    """
+
+    id: str
+    descriptor: dict | None = None
+    label: str = ""
+    # {"owner": ..., "calendar": ..., "rev": ...} -- owner-qualified, because
+    # library ids are unique per writer, not globally. An unqualified pointer
+    # would let one writer's "imperial" offer to overwrite another's.
+    source: dict | None = None
+    from_tick: int | None = None
+    until_tick: int | None = None
+
+    @property
+    def display_label(self) -> str:
+        return self.label or self.id
+
+    def to_storage(self) -> dict:
+        return {
+            "id": self.id,
+            "label": self.label,
+            "descriptor": self.descriptor,
+            "source": self.source,
+            "from_tick": self.from_tick,
+            "until_tick": self.until_tick,
+        }
+
+    @classmethod
+    def from_storage(cls, doc: dict) -> "CalendarAttachment":
+        return cls(
+            id=doc["id"],
+            descriptor=doc.get("descriptor"),
+            label=doc.get("label", ""),
+            source=doc.get("source"),
+            from_tick=doc.get("from_tick"),
+            until_tick=doc.get("until_tick"),
+        )
+
+
 @dataclass
 class Book:
     """A collection of plotlines converging on one terminus event."""
@@ -127,7 +216,9 @@ class Book:
     id: str
     title: str | None = None
     terminus: str | None = None
-    calendar: dict | None = None
+    # Ordered; the first is what the book reads through by default. Several at
+    # once are the point -- parallel cultures reckoning one tick line.
+    calendars: list[CalendarAttachment] = field(default_factory=list)
     # The Akasha database this book's cast and places live in. A *default* for
     # the article pickers, not a rule: an ``EntityRef`` still names its own
     # database, so a scene may reach into another world if the writer means it.
@@ -141,11 +232,21 @@ class Book:
     # every reader (and every form) to handle.
     overview: str = ""
 
+    @property
+    def calendar(self) -> dict | None:
+        """The descriptor a single-calendar client still expects.
+
+        Kept so every reader written before books could hold several calendars
+        keeps working, and derived rather than stored: two copies of one fact is
+        how they come to disagree.
+        """
+        return self.calendars[0].descriptor if self.calendars else None
+
     def to_storage(self) -> dict:
         return {
             "title": self.title,
             "terminus": self.terminus,
-            "calendar": self.calendar,
+            "calendars": [c.to_storage() for c in self.calendars],
             "world": self.world,
             "overview": self.overview,
         }
@@ -156,8 +257,25 @@ class Book:
             id=doc["id"],
             title=doc.get("title"),
             terminus=doc.get("terminus"),
-            calendar=doc.get("calendar"),
+            calendars=_calendars_from_storage(doc),
             world=doc.get("world"),
             # Books written before the field existed simply have none.
             overview=doc.get("overview", ""),
         )
+
+
+def _calendars_from_storage(doc: dict) -> list[CalendarAttachment]:
+    """A book's attachments, promoting a pre-library single ``calendar``.
+
+    No migration runs: a book stored with the old field is read as a one-element
+    list, and the next write puts it in the new shape. Promotion is deliberately
+    one-way -- nothing writes ``calendar`` back -- so there is never a document
+    carrying both spellings for a later reader to have to choose between.
+    """
+    stored = doc.get("calendars")
+    if stored:
+        return [CalendarAttachment.from_storage(c) for c in stored]
+    legacy = doc.get("calendar")
+    if legacy:
+        return [CalendarAttachment(id=DEFAULT_CALENDAR_ID, descriptor=legacy)]
+    return []

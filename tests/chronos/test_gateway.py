@@ -16,10 +16,12 @@ from visualizer.gateway import combine
 
 
 @pytest.fixture
-def gateway(doc_store, story_store, fake_gate, auth_store):
+def gateway(doc_store, story_store, fake_gate, auth_store, calendar_store):
     kw = {"secret_key": "test-secret", "akasha_url": "/", "chronos_url": "/timeline"}
     akasha_app = create_akasha_app(doc_store, auth_store, **kw)
-    chronos_app = create_chronos_app(story_store, fake_gate, auth_store, **kw)
+    chronos_app = create_chronos_app(
+        story_store, fake_gate, auth_store, calendar_store=calendar_store, **kw
+    )
     for app in (akasha_app, chronos_app):
         app.config.update(TESTING=True, WTF_CSRF_ENABLED=False, RATELIMIT_ENABLED=False)
     return combine(akasha_app, chronos_app)

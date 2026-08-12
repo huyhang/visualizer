@@ -162,7 +162,12 @@ function labelsAreUseful(calendar) {
 // asks (debounced, latest-wins) rather than reimplementing the calendar.
 function timingPreview(book, calendar, startInput, endInput) {
   const node = el("p", { class: "field-hint tick-preview muted" });
-  if (!labelsAreUseful(calendar)) return { node, refresh: () => {} };
+  // Every *other* reckoning the book keeps, dated alongside the main line. This
+  // is the one place the parallel calendars pay for themselves without being
+  // asked for: at the moment a writer is choosing when a scene happens.
+  const others = el("ul", { class: "field-hint tick-readings muted", hidden: "" });
+  const wrap = el("div", {}, [node, others]);
+  if (!labelsAreUseful(calendar)) return { node: wrap, refresh: () => {} };
 
   let timer = null;
   let seq = 0;
@@ -184,9 +189,11 @@ function timingPreview(book, calendar, startInput, endInput) {
       const { ticks } = await api.formatTicks(book, wanted);
       if (mine !== seq) return;
       node.textContent = describe(ticks, start, end, calendar);
+      showReadings(others, ticks, start);
     } catch (e) {
       if (mine !== seq) return;
       node.textContent = "";
+      others.hidden = true;
     }
   }
 
@@ -194,7 +201,20 @@ function timingPreview(book, calendar, startInput, endInput) {
   startInput.addEventListener("input", schedule);
   endInput.addEventListener("input", schedule);
   run();
-  return { node, refresh: run };
+  return { node: wrap, refresh: run };
+}
+
+// Silent unless the book keeps more than one calendar — a single reckoning is
+// already the line above, and repeating it would be noise.
+function showReadings(list, ticks, start) {
+  const entry = ticks.find((t) => t.tick === start) || ticks[0];
+  const readings = (entry && entry.readings) || [];
+  clear(list);
+  list.hidden = readings.length < 2;
+  if (list.hidden) return;
+  for (const reading of readings) {
+    list.appendChild(el("li", { text: `${reading.name}: ${reading.label}` }));
+  }
 }
 
 function describe(ticks, start, end, calendar) {
