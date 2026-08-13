@@ -9,6 +9,10 @@ Your writing is organised as **collections** (a folder-like group, e.g.
 *Characters* or *Locations*) that hold **articles** (a single entry, e.g.
 *Aragorn*). You can share either a whole collection or one individual article.
 
+You can also share the things you keep on the **timeline** side: a **book** and
+a **calendar**. All four work the same way and are shared from the same place,
+so the rest of this guide says "thing" where it means any of them.
+
 ---
 
 ## The three levels of access
@@ -55,15 +59,39 @@ them here first.
 
 ### 2. Share a collection or article
 
-**From the Account page** — under **Shared access**, switch between *Collections*
-and *Articles*, find the one you want (there's a filter box if the list is long),
-expand it, pick a collaborator and a role, and click **Share**.
+**From the Account page** — under **Shared access**, switch between
+*Categories*, *Articles*, *Books* and *Calendars*, find the one you want (there's
+a filter box if the list is long), expand it, pick a collaborator and a role, and
+click **Share**. This is the only place that shows everything you own at once.
 
 **From the editor** — while reading an article, click the **Share** button in the
 toolbar. You can choose to share *just this article* or the *whole collection*
 it lives in, then pick a collaborator and a role.
 
-Both routes do the same thing; use whichever is closer to hand.
+**From the calendar library** — the timeline's calendar library has its own share
+control, for when you're already working in one. It asks you to type a username
+rather than offering your collaborator list; the Account page offers the list.
+
+All three do the same thing; use whichever is closer to hand.
+
+> **Books and calendars are shown by their short name** (the id you gave them),
+> not their title. That is a deliberate limit rather than an oversight: the
+> permission records only ever store the name, and looking up every title would
+> mean the Account page asking the timeline about each book every time it loads.
+
+---
+
+## Sharing a book, and what comes with it
+
+Share a **book** and the person gets that access to everything in it — its
+scenes, its threads, its ending. Books are not shared scene by scene; the book
+is the unit.
+
+Its **dates** come along without any extra step. When you attach a calendar to a
+book, the book keeps its own copy of it, so anyone who can read the book can read
+its dates — even if they have no access to the calendar in your library. Sharing
+a **calendar** is a separate thing entirely: it lets someone attach *your*
+calendar to *their* books.
 
 ---
 
@@ -117,6 +145,9 @@ Changes take effect **immediately** — there's no waiting or re-login.
 - **Administrators** look after accounts and can also grant access when needed,
   but the admin role does **not** let someone read your content by default — like
   everyone else, they only see what they've specifically been given.
+- **Worlds cannot be shared as a whole.** You share the categories and articles
+  inside one, not the world itself. Nobody is recorded as a world's owner, so
+  there is nobody the system could let hand one over.
 - **If an account is deleted**, all of that person's access disappears and they're
   automatically taken off everyone's collaborator lists.
 - **If an account is disabled**, that person is signed out and kept out until it's

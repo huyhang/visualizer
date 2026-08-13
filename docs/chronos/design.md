@@ -164,6 +164,7 @@ An **ordered list of event ids**, plus a set of **goals**.
 | `events`         | ordered `[id]`    | this plotline's **own segment**; order is meaningful      |
 | `goals`          | set of strings    | required to be non-empty                                  |
 | `continues_into` | plotline `id`     | optional; the thread carries on into that plotline        |
+| `continues_into_at`   | event `id`        | optional; **where** in that plotline it joins; null = its start |
 
 The order is the contract: if event **A** precedes event **B** in the list,
 then **A must end strictly before B begins** (§5.2). Two plotlines may list the
@@ -185,21 +186,50 @@ knights-road      [aldric-departs]    → continues_into: trunk
 spys-shadow       [lyra-infiltrates]  → continues_into: trunk
 ```
 
+**Joining partway down.** A thread does not always catch the trunk at its head:
+one that has been away comes back to a story already in progress. `continues_into_at`
+names the scene in the target's *resolved* path where the join happens, and
+everything before it is not inherited:
+
+```
+trunk             [meet-at-emberport, the-vigil, the-coronation]
+late-arrival      [rides-hard]        → continues_into: trunk, at: the-vigil
+                                        effective: rides-hard, the-vigil, the-coronation
+```
+
+Null means "at the head", which is what every thread written before the field
+existed says — so nothing migrates. The join point is a scene **id, not an
+index**: an index slides the moment the trunk gains a scene above it, silently
+re-pointing a join nobody touched. Resolution folds the chain from its tail
+back, so each hop's join is applied to an already-resolved target — which is
+why `continues_into_at` may name a scene the target itself only inherits, exactly the
+scenes a writer sees when they open that thread.
+
 Every rule — ordering (§5.2), convergence (§5.3), the story graph (§7.4) — runs
 on the **effective** path, so a thread stored as a segment is indistinguishable
 from one written out in full. Ordering therefore also checks the *junction*: the
-segment's last event must end before the continuation's first event begins. Reads
-return both: `events` (what is stored, and what you send back) and
+segment's last event must end before the continuation's first event begins —
+which, with a join point, is the joined-at scene, with no second rule to state.
+Reads return both: `events` (what is stored, and what you send back) and
 `effective_events` (the resolved path).
 
-Two structural rules, both **hard** (unlike the story-logic ones), because an
+Three structural rules, all **hard** (unlike the story-logic ones), because an
 unresolvable chain has no effective path at all and would break every later read:
 
 - `continues_into` must name a plotline in the same book → `400 INVALID_PLOTLINE`
+- `continues_into_at` must name a scene on that plotline's resolved path, and needs a
+  `continues_into` to qualify → `400 INVALID_PLOTLINE`
 - the chain must not loop → `422 PLOTLINE_CYCLE`
 - deleting a plotline others continue into → `409 PLOTLINE_IN_USE`, unless
   `?inline=true` absorbs it into each dependent first (the same shape as
   `EVENT_IN_USE` / `?detach=true` for events, §7.2)
+
+The scene a join points at is its **anchor**. An anchor can be stranded without
+anyone writing the thread that holds it: the *target* may drop it — either
+directly, or by moving its own join past it. That is **reported** on the
+dependent thread's `status.continuation` as `anchor_missing`, not repaired:
+guessing a new anchor would silently rewrite a story, either handing back the
+trunk's opening or losing a scene.
 
 The inverse operation is **`POST …/plotlines/<id>/inline`**: it copies the
 resolved path into the thread's own `events` and clears `continues_into`, so the

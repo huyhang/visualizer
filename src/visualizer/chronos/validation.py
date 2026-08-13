@@ -154,9 +154,21 @@ def validate_plotline_payload(plotline_id: str, payload: Any) -> Plotline:
         raise InvalidPlotline("'continues_into' must be a plotline id string.")
     if continues_into == plotline_id:
         raise InvalidPlotline("A plotline cannot continue into itself.")
+    continues_into_at = body.get("continues_into_at")
+    if continues_into_at is not None and not (isinstance(continues_into_at, str) and continues_into_at):
+        raise InvalidPlotline("'continues_into_at' must be an event id string.")
+    # Structural, so it is caught here rather than at the service layer: a join
+    # point names a scene *within a continuation*, so without one it describes
+    # nothing at all. Whether the scene actually exists on that thread's path is
+    # a referential question, and belongs where the siblings can be read.
+    if continues_into_at is not None and continues_into is None:
+        raise InvalidPlotline(
+            "'continues_into_at' says where to join a continuation, so it needs a "
+            "'continues_into' target."
+        )
     return Plotline(
         id=plotline_id, events=list(events), goals=list(goals),
-        title=title, continues_into=continues_into,
+        title=title, continues_into=continues_into, continues_into_at=continues_into_at,
         overview=_parse_overview(body, InvalidPlotline),
     )
 

@@ -1159,6 +1159,462 @@
           }
         }
       }
+    },
+    "/account/sharing/collection/{database}/{collection}/collaborators": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Database"
+        },
+        {
+          "$ref": "#/components/parameters/Collection"
+        }
+      ],
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Who can access this collection",
+        "description": "One uniform family the account page drives, covering every shareable kind including the two whose resources live in Chronos. Served here because sharing is pure grant work on the store both services already share -- so the page needs no cross-origin request, and still works when the services run standalone on separate ports. The resource-shaped routes elsewhere in this file (and Chronos's own) run the same code. Owner-only.",
+        "responses": {
+          "200": {
+            "description": "Everyone granted at this exact scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollaboratorList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/account/sharing/collection/{database}/{collection}/collaborators/{username}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Database"
+        },
+        {
+          "$ref": "#/components/parameters/Collection"
+        },
+        {
+          "$ref": "#/components/parameters/Username"
+        }
+      ],
+      "put": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Share this collection",
+        "description": "Owner-only, and idempotent: re-sharing replaces the role. You cannot share with yourself — it could only reduce your own access.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/RoleWrite"
+        },
+        "responses": {
+          "200": {
+            "description": "Shared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollaboratorResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Stop sharing this collection",
+        "responses": {
+          "204": {
+            "description": "Revoked."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/account/sharing/article/{database}/{collection}/{doc_id}/collaborators": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Database"
+        },
+        {
+          "$ref": "#/components/parameters/Collection"
+        },
+        {
+          "$ref": "#/components/parameters/DocId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Who can access this article",
+        "description": "One uniform family the account page drives, covering every shareable kind including the two whose resources live in Chronos. Served here because sharing is pure grant work on the store both services already share -- so the page needs no cross-origin request, and still works when the services run standalone on separate ports. The resource-shaped routes elsewhere in this file (and Chronos's own) run the same code. Owner-only.",
+        "responses": {
+          "200": {
+            "description": "Everyone granted at this exact scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollaboratorList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/account/sharing/article/{database}/{collection}/{doc_id}/collaborators/{username}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/Database"
+        },
+        {
+          "$ref": "#/components/parameters/Collection"
+        },
+        {
+          "$ref": "#/components/parameters/DocId"
+        },
+        {
+          "$ref": "#/components/parameters/Username"
+        }
+      ],
+      "put": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Share this article",
+        "description": "Owner-only, and idempotent: re-sharing replaces the role. You cannot share with yourself — it could only reduce your own access.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/RoleWrite"
+        },
+        "responses": {
+          "200": {
+            "description": "Shared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollaboratorResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Stop sharing this article",
+        "responses": {
+          "204": {
+            "description": "Revoked."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/account/sharing/book/{book}/collaborators": {
+      "parameters": [
+        {
+          "name": "book",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "Chronos book id."
+        }
+      ],
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Who can access this book",
+        "description": "One uniform family the account page drives, covering every shareable kind including the two whose resources live in Chronos. Served here because sharing is pure grant work on the store both services already share -- so the page needs no cross-origin request, and still works when the services run standalone on separate ports. The resource-shaped routes elsewhere in this file (and Chronos's own) run the same code. Owner-only.",
+        "responses": {
+          "200": {
+            "description": "Everyone granted at this exact scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollaboratorList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/account/sharing/book/{book}/collaborators/{username}": {
+      "parameters": [
+        {
+          "name": "book",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "Chronos book id."
+        },
+        {
+          "$ref": "#/components/parameters/Username"
+        }
+      ],
+      "put": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Share this book",
+        "description": "Owner-only, and idempotent: re-sharing replaces the role. You cannot share with yourself — it could only reduce your own access.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/RoleWrite"
+        },
+        "responses": {
+          "200": {
+            "description": "Shared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollaboratorResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Stop sharing this book",
+        "responses": {
+          "204": {
+            "description": "Revoked."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/account/sharing/calendar/{owner}/{calendar}/collaborators": {
+      "parameters": [
+        {
+          "name": "owner",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "The writer whose library holds the calendar; half its identity."
+        },
+        {
+          "name": "calendar",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "Calendar slug within that writer's library."
+        }
+      ],
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Who can access this library calendar",
+        "description": "One uniform family the account page drives, covering every shareable kind including the two whose resources live in Chronos. Served here because sharing is pure grant work on the store both services already share -- so the page needs no cross-origin request, and still works when the services run standalone on separate ports. The resource-shaped routes elsewhere in this file (and Chronos's own) run the same code. Owner-only.",
+        "responses": {
+          "200": {
+            "description": "Everyone granted at this exact scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollaboratorList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/account/sharing/calendar/{owner}/{calendar}/collaborators/{username}": {
+      "parameters": [
+        {
+          "name": "owner",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "The writer whose library holds the calendar; half its identity."
+        },
+        {
+          "name": "calendar",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "Calendar slug within that writer's library."
+        },
+        {
+          "$ref": "#/components/parameters/Username"
+        }
+      ],
+      "put": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Share this library calendar",
+        "description": "Owner-only, and idempotent: re-sharing replaces the role. You cannot share with yourself — it could only reduce your own access.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/RoleWrite"
+        },
+        "responses": {
+          "200": {
+            "description": "Shared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollaboratorResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Stop sharing this library calendar",
+        "responses": {
+          "204": {
+            "description": "Revoked."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
     }
   },
   "components": {

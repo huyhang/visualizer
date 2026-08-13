@@ -92,6 +92,12 @@ class Plotline:
     goals: list[str]
     title: str | None = None
     continues_into: str | None = None
+    # Where in the continuation this thread joins: a scene in the target's
+    # resolved path, or ``None`` for its first scene. A thread that catches up
+    # with the trunk halfway needs this; without it the only way to say so was
+    # to copy the trunk's opening scenes into ``events``, which is the edit
+    # amplification ``continues_into`` exists to remove.
+    continues_into_at: str | None = None
     # The writer's own prose about this thread. See ``Book.overview``.
     overview: str = ""
 
@@ -105,6 +111,7 @@ class Plotline:
             "events": list(self.events),
             "goals": list(self.goals),
             "continues_into": self.continues_into,
+            "continues_into_at": self.continues_into_at,
             "overview": self.overview,
         }
 
@@ -116,6 +123,9 @@ class Plotline:
             goals=list(doc.get("goals", [])),
             title=doc.get("title"),
             continues_into=doc.get("continues_into"),
+            # Threads written before the field existed join at the head, which
+            # is exactly what ``None`` means -- so no migration runs.
+            continues_into_at=doc.get("continues_into_at"),
             overview=doc.get("overview", ""),
         )
 

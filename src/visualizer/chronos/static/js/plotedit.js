@@ -70,6 +70,11 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
     goals: [],
     events: [],
     continuesInto: null,
+    // The target's title, kept beside its id purely so the chip reads as the
+    // thread's *name* rather than its slug. Never sent back — the server
+    // derives it, and two copies of one fact is how they come to disagree.
+    continuesIntoTitle: null,
+    continuesIntoAt: null,  // scene on the target's path to join at; null = its start
     rev: null,
     preview: null,      // the last server verdict...
     previewKey: null,   // ...and the candidate it belongs to
@@ -92,8 +97,10 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
       Object.assign(state, {
         title: pl.title || "", overview: pl.overview || "",
         goals: pl.goals.slice(), events: pl.events.slice(),
-        continuesInto: pl.continues_into, rev: pl.rev, preview: pl,
-        previewKey: candidateKey(pl.events, pl.continues_into),
+        continuesInto: pl.continues_into, continuesIntoAt: pl.continues_into_at,
+        continuesIntoTitle: pl.continues_into_title,
+        rev: pl.rev, preview: pl,
+        previewKey: candidateKey(pl.events, pl.continues_into, pl.continues_into_at),
       });
       for (const summary of pl.effective_events) rows.set(summary.id, summaryRow(summary));
     } catch (e) {
@@ -123,18 +130,19 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
   let previewTimer = null;
   let previewSeq = 0;
 
-  function candidateKey(events, continuesInto) {
-    return JSON.stringify([events, continuesInto || null]);
+  function candidateKey(events, continuesInto, continuesIntoAt) {
+    return JSON.stringify([events, continuesInto || null, continuesIntoAt || null]);
   }
 
   function inSync() {
-    return state.previewKey === candidateKey(state.events, state.continuesInto);
+    return state.previewKey === candidateKey(
+      state.events, state.continuesInto, state.continuesIntoAt);
   }
 
   async function runPreview() {
     if (!state.events.length) { state.preview = null; state.previewKey = null; return; }
     const mine = ++previewSeq;
-    const key = candidateKey(state.events, state.continuesInto);
+    const key = candidateKey(state.events, state.continuesInto, state.continuesIntoAt);
     state.checking = true;
     try {
       const preview = await api.previewPlotline(book, {
@@ -143,6 +151,7 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
         events: state.events,
         goals: state.goals,
         continues_into: state.continuesInto,
+        continues_into_at: state.continuesIntoAt,
       });
       if (mine !== previewSeq) return; // a later edit already asked
       state.preview = preview;
@@ -254,6 +263,10 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
         "A note to yourself about this thread. No rule reads it, so it changes no verdict."),
       labelled("Goals", goalEditor(), "What this thread is trying to achieve. At least one is required."),
       labelled("Continues into", continuationField(), "Carry on into another thread instead of repeating its scenes."),
+      state.continuesInto
+        ? labelled("Joins at", joinField(),
+          "Where this thread catches the other one. Everything before it is not inherited.")
+        : null,
     ]);
   }
 
@@ -287,17 +300,40 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
     return el("div", { class: "goal-editor" }, [chips, input]);
   }
 
+  // The target as the writer named it, falling back to the id — which is also
+  // what the server does for a thread that never got a title.
+  function continuationName() {
+    return state.continuesIntoTitle || state.continuesInto;
+  }
+
+  // A name with its id one hover away. The title is what the writer called the
+  // thing; the id is what they will need the moment they reach for the API or
+  // read a finding, and showing only the title takes that away.
+  function chip(text, id) {
+    return el("span", { class: "chip", text, title: id !== text ? id : null });
+  }
+
   function continuationField() {
     const current = state.continuesInto;
     const label = current
-      ? el("span", { class: "chip", text: current })
+      ? chip(continuationName(), current)
       : el("span", { class: "muted", text: "Ends on its own." });
     return el("div", { class: "inline-controls" }, [
       label,
       el("button", { class: "btn secondary sm", type: "button", text: current ? "Change" : "Choose", onclick: chooseContinuation }),
       current ? el("button", { class: "btn secondary sm", type: "button", text: "Clear",
-        onclick: () => { state.continuesInto = null; changed(); } }) : null,
+        onclick: () => { setContinuation(null); } }) : null,
     ]);
+  }
+
+  // A join point belongs to the target it names, so switching or clearing the
+  // target drops it. Carrying it across would leave a scene id pointing at a
+  // thread that may not contain it -- refused on save, and baffling until then.
+  function setContinuation(id, title = null, at = null) {
+    state.continuesInto = id;
+    state.continuesIntoTitle = id ? title : null;
+    state.continuesIntoAt = id ? at : null;
+    changed();
   }
 
   function chooseContinuation() {
@@ -310,9 +346,60 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
         el("span", { class: "suggest-sub muted", text: p.id }),
       ],
       empty: "No other plotline matches.",
-      onPick: (p) => { state.continuesInto = p.id; dialog.close(); changed(); },
+      onPick: (p) => { dialog.close(); setContinuation(p.id, p.name); },
     });
     const dialog = modal("Continue into which thread?", picker.el);
+  }
+
+  // -- where the continuation is joined --------------------------------------
+
+  function joinField() {
+    const at = state.continuesIntoAt;
+    const label = at
+      ? chip((rows.get(at) || {}).title || at, at)
+      : el("span", { class: "muted", text: "Beginning — inherits the whole thread" });
+    return el("div", { class: "inline-controls" }, [
+      label,
+      el("button", { class: "btn secondary sm", type: "button",
+        text: at ? "Change" : "Choose", onclick: chooseJoinPoint }),
+      at ? el("button", { class: "btn secondary sm", type: "button", text: "From the start",
+        onclick: () => { state.continuesIntoAt = null; changed(); } }) : null,
+    ]);
+  }
+
+  // The target's *resolved* path, which is what the server validates against --
+  // so a scene the trunk itself inherits is offered, exactly as the writer sees
+  // it when they open that thread.
+  async function chooseJoinPoint() {
+    let scenes;
+    try {
+      const target = await api.getPlotline(book, state.continuesInto, { expand: true });
+      scenes = target.effective_events.map(summaryRow);
+    } catch (e) {
+      toast("Could not read that thread's scenes.", true);
+      return;
+    }
+    // Remembered so the chosen scene reads as its title straight away, rather
+    // than as a bare id until the next preview comes back.
+    for (const s of scenes) rows.set(s.id, { ...s, owned: false });
+    const pick = (id) => { dialog.close(); state.continuesIntoAt = id; changed(); };
+    const option = (id, title, sub) => el("button", {
+      class: "suggest-row", type: "button", onclick: () => pick(id),
+    }, [
+      el("span", { class: "suggest-title", text: title }),
+      el("span", { class: "suggest-sub muted", text: sub }),
+    ]);
+    // A plain ordered list, not a search box: the order *is* the information --
+    // joining later means inheriting less -- and a thread short enough to read
+    // is the only kind worth joining partway down. Same rows the type-ahead
+    // draws, so it looks like every other picker in the editor.
+    const dialog = modal(
+      `Join ${continuationName()} at which scene?`,
+      el("div", { class: "suggest-results" }, [
+        option(null, "At the beginning", "inherits the whole thread"),
+        ...scenes.map((s) => option(s.id, s.title, s.when)),
+      ]),
+    );
   }
 
   function sceneSection() {
@@ -365,7 +452,7 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
           // as the rest of the UI names it (cards.js); the ✦ tool below is where
           // the plain-language explanation lives.
           row.id === state.terminus ? el("span", { class: "badge terminus", text: "terminus" }) : null,
-          owned ? null : el("span", { class: "badge inherited-badge", text: `from ${state.continuesInto}` }),
+          owned ? null : el("span", { class: "badge inherited-badge", text: `from ${continuationName()}` }),
         ]),
         findingList(book, row, { onJump: jumpTo }),
       ]),
@@ -565,6 +652,7 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
       events: state.events,
       goals: state.goals,
       continues_into: state.continuesInto,
+      continues_into_at: state.continuesIntoAt,
     };
   }
 

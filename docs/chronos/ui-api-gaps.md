@@ -1,6 +1,6 @@
 # What the Chronos UI cannot do yet
 
-*Audited 2026-08-11 against the routes the app actually registers and the calls
+*Audited 2026-08-12 against the routes the app actually registers and the calls
 `static/js/api.js` actually makes. Not a wish list — every gap below is a
 capability the JSON API already has, tested, that the browser has no way to
 reach.*
@@ -11,15 +11,22 @@ time](design.md#2-principles-consistent-with-the-existing-codebase), so the
 interesting question is not "what is missing from the product" but **"where does
 a writer with no terminal hit a wall?"**
 
-Of the **34 content routes** the app registers, **29 are reachable from the UI**
-and **5 are not**. (The count grew by the seven calendar-library routes, all of
-which the UI reaches.)
+Of the **36 content routes** the app registers, **33 are reachable from a
+browser** and **3 are not**. (The count grew by the two collaborator-listing
+routes added with sharing.)
+
+One wrinkle in "from the UI": the three book-collaborator routes are reached
+from **Akasha's Account page**, not from anything Chronos serves. They are
+counted as reachable because the question this document asks is whether a writer
+without a terminal hits a wall, and they do not — but no view in this service
+calls them.
 
 **There is no longer a blocking gap, and no housekeeping one either.** A writer
 can create a book, write its scenes, thread them into a plotline, mark the
 book's ending, and now also *tidy up*: delete a scene, delete a thread, delete
-the whole book — see [the flow, end to end](#the-flow-end-to-end). What remains
-is **sharing** and one **report**.
+the whole book — see [the flow, end to end](#the-flow-end-to-end). **Sharing is
+closed too**, in Akasha's Account page rather than here. What remains is one
+**report**.
 
 ---
 
@@ -28,7 +35,7 @@ is **sharing** and one **report**.
 | Missing from the UI | The API it would call | Notes |
 | --- | --- | --- |
 | **Whole-book report** | `GET /books/{book}/validate` | Never called by any view. Findings are shown per thread instead, so a book card reading `conflicted` has nowhere to click through to. |
-| **Collaborators** | `PUT` / `DELETE /books/{book}/collaborators/{user}` | Sharing a book is entirely API-only. |
+| ~~**Collaborators**~~ | `GET` / `PUT` / `DELETE /books/{book}/collaborators[/{user}]` | **Closed.** Sharing a book is now in Akasha's **Account** page, alongside categories, articles and calendars — see [sharing](../akasha/sharing.md). The list route is new; the browser had no way to ask who could already see a book. |
 | **Absorb a continuation** | `POST /books/{book}/plotlines/{plotline}/inline` | Reachable only indirectly, through the delete-with-dependents dialog. |
 | **Scene neighbourhood** | `GET /books/{book}/events/{event}/plotlines` | Not even wrapped in `api.js`. The connected-plots graph covers the same ground visually, so this may never need a UI. |
 
@@ -107,11 +114,32 @@ line: the audience for it is precisely the audience that bounces off a terminal.
 It is now written, opens with *Register*, and ends where a guide should, with the
 reader deleting the book they built.
 
-The remaining five gaps are *sharing a book* (collaborators) and *reporting* (the
-whole-book verdict). None of them stops a story being written or tidied up,
-which is why none is marked blocking. Note that sharing a **calendar** is now in
-the UI even though sharing a *book* is not — the library needed it, since a
-library nobody can share is only half a library.
+What remains is *reporting* (the whole-book verdict), which stops no story being
+written, and so is not marked blocking.
+
+### Built: sharing a book
+
+*This row previously read "sharing a book is entirely API-only".* Sharing now
+lives in one place for everything a writer owns — categories, articles, books
+and calendars — on Akasha's **Account** page, and every kind gained the `GET
+…/collaborators` route the browser needed to show who can already see a thing.
+
+It landed on one observation: sharing is the *same* operation everywhere, and
+was written three times over. The shared implementation is
+[`visualizer/sharing.py`](../../src/visualizer/sharing.py), which describes a
+shareable kind by the shape of its grant and nothing else. That is what lets
+Akasha list and share a **book** without importing Chronos: both services
+already share one grant store, so no cross-service call is involved and the page
+still works when the two run standalone on separate ports.
+
+Chronos keeps its own calendar share dialog — sharing a calendar while you are
+using one is the right place for it — but it is the only surface that asks for a
+username as free text, because Chronos has no collaborator roster. The Account
+page offers the roster instead.
+
+Books and calendars are listed **by id**. Grants know ids, not titles, and
+resolving a book's title would couple the account page to Chronos's story store
+for one query per row.
 
 ### Built: the calendar library
 

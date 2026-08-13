@@ -193,7 +193,7 @@ _STORE_OWNED = {"rev", "updated_by"}
 
 @pytest.mark.parametrize("rewrite,may_change", [
     ("detach", {"events"}),
-    ("inline", {"events", "continues_into"}),
+    ("inline", {"events", "continues_into", "continues_into_at"}),
 ], ids=["detach", "inline"])
 def test_a_side_effect_rewrite_changes_only_what_it_is_about(svc, rewrite, may_change):
     """The guard that outlives this feature.
@@ -214,7 +214,7 @@ def test_a_side_effect_rewrite_changes_only_what_it_is_about(svc, rewrite, may_c
     svc["plotlines"].create(BOOK, "tail", {"events": ["b"], "goals": ["g"]})
     svc["plotlines"].create(BOOK, "p1", {
         "events": ["a", "spare"], "goals": ["g"], "title": "A Distinctive Title",
-        "continues_into": "tail", "overview": PROSE,
+        "continues_into": "tail", "continues_into_at": "b", "overview": PROSE,
     })
     before = _stored_plotline(svc, "p1")
 

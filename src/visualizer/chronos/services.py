@@ -345,6 +345,28 @@ class PlotlineService(_Service):
                 "This continuation would make the plotline chain loop.",
                 evidence={"cycle": cycle},
             )
+        self._check_join_point(plotline, siblings)
+
+    def _check_join_point(self, plotline: Plotline, siblings: list[Plotline]) -> None:
+        """``continues_into_at`` must name a scene on the target's resolved path.
+
+        Hard, for the same reason the other two are: a join point that matches
+        nothing leaves the thread with no path to be judged on. Checked against
+        the *resolved* target, so joining at a scene the trunk itself inherits
+        is allowed -- what the writer sees on that thread is what they may pick.
+        """
+        if plotline.continues_into_at is None:
+            return
+        target = resolve(plotline.continues_into, {p.id: p for p in siblings})
+        if plotline.continues_into_at not in target.events:
+            raise InvalidPlotline(
+                f"Joins '{plotline.continues_into}' at '{plotline.continues_into_at}', "
+                "which is not a scene on that thread.",
+                evidence={
+                    "continues_into": plotline.continues_into,
+                    "continues_into_at": plotline.continues_into_at,
+                },
+            )
 
     def _present(self, book, public, calendar_id=None) -> dict:
         events_by_id = self._events_by_id(book.id)
@@ -408,11 +430,20 @@ class PlotlineService(_Service):
                 "not exist.",
                 evidence={"missing": resolution.missing},
             )
-        # Same rule as the detach rewrite above: change the two fields this
-        # operation is *about* and carry the rest across untouched. Inlining is
-        # defined as a change of representation, not of content -- a thread must
-        # come out of it saying exactly what it said going in.
-        inlined = replace(plotline, events=resolution.events, continues_into=None)
+        if resolution.anchor_missing:
+            raise InvalidPlotline(
+                f"Cannot inline: joins at '{resolution.anchor_missing}', which is no "
+                "longer on the continuation's path.",
+                evidence={"anchor_missing": resolution.anchor_missing},
+            )
+        # Same rule as the detach rewrite above: change the fields this operation
+        # is *about* and carry the rest across untouched. Inlining is defined as
+        # a change of representation, not of content -- a thread must come out of
+        # it saying exactly what it said going in, which is why the join point
+        # goes with the target it qualified.
+        inlined = replace(
+            plotline, events=resolution.events, continues_into=None, continues_into_at=None
+        )
         updated = self.store.update_plotline(
             book_id, plotline_id, inlined.to_storage(), expected_rev, author
         )

@@ -152,16 +152,39 @@ def test_shared_with_me_lists_resources_others_granted(app, auth_store, client):
     assert ADMIN_USER in body      # who shared it (the "Shared by" column)
 
 
-def test_shared_access_splits_collections_and_articles(app, auth_store, client):
+def test_shared_access_offers_one_toggleable_list_per_kind(app, auth_store, client):
     client.post(collection_url(database="mine", collection="cast"))
     client.post(doc_url("aldric", database="mine", collection="cast"), json={"n": 1})
     body = client.get("/account").data.decode()
-    # Both scope modes render as separate, toggleable lists.
-    assert 'data-mode="collections"' in body
-    assert 'data-mode="articles"' in body
+    # Every kind gets its own list, including the two whose resources live in
+    # chronos -- and including the empty ones, so a writer with no books still
+    # learns that sharing one is a thing they could do.
+    for kind in ("collection", "article", "book", "calendar"):
+        assert f'data-mode="{kind}"' in body, f"no list for {kind}"
     # The owned collection and the owned article each appear as a share row.
     assert "cast" in body
     assert "aldric" in body
+
+
+def test_a_book_owned_in_chronos_is_shareable_from_the_account_page(app, auth_store):
+    """The point of the exercise: one grant store, so akasha can list and share
+    a book without chronos being involved at all."""
+    alice = _user(app, "alice")
+    bo = _user(app, "bo")  # noqa: F841 -- must exist for the share to be accepted
+    auth_store.grant_owner(
+        "alice", "ember-pact", None, None, ["read", "write", "delete"],
+        resource_type="book",
+    )
+    body = alice.get("/account").data.decode()
+    assert "ember-pact" in body
+    assert "/account/sharing/book/ember-pact/collaborators" in body
+
+    resp = alice.put(
+        "/account/sharing/book/ember-pact/collaborators/bo", json={"role": "editor"}
+    )
+    assert resp.status_code == 200
+    listed = alice.get("/account/sharing/book/ember-pact/collaborators").get_json()
+    assert {"username": "bo", "role": "editor"} in listed["collaborators"]
 
 
 def test_shared_with_me_excludes_your_own_resources(app, auth_store):

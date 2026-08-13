@@ -657,6 +657,35 @@
         }
       }
     },
+    "/books/{book}/collaborators": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/BookId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "collaborators"
+        ],
+        "summary": "Who can access this book",
+        "description": "Owners only -- ownership is holding `delete` at this scope, which the creator gets automatically. The admin role does not confer it.",
+        "responses": {
+          "200": {
+            "description": "Everyone granted at this exact scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollaboratorList"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
     "/books/{book}/collaborators/{username}": {
       "parameters": [
         {
@@ -1314,6 +1343,38 @@
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/calendars/{owner}/{calendar}/collaborators": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/CalendarOwner"
+        },
+        {
+          "$ref": "#/components/parameters/CalendarSlug"
+        }
+      ],
+      "get": {
+        "tags": [
+          "calendars"
+        ],
+        "summary": "Who can access this calendar",
+        "description": "Owners only -- ownership is holding `delete` at this scope, which the creator gets automatically. The admin role does not confer it.",
+        "responses": {
+          "200": {
+            "description": "Everyone granted at this exact scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollaboratorList"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
           }
         }
       }
@@ -2097,6 +2158,17 @@
             "nullable": true,
             "description": "Id of the plotline this thread continues into, so a shared ending is stored once. Null when the thread carries its own full path."
           },
+          "continues_into_title": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true,
+            "description": "Display title of the `continues_into` target, so a client can name the thread rather than showing its slug. Null when there is no continuation -- and when the target does not exist, which `status.continuation` reports rather than this field papering over."
+          },
+          "continues_into_at": {
+            "type": "string",
+            "nullable": true,
+            "description": "Scene on the continuation's resolved path where this thread joins it. Null means its first scene. Lets a thread catch the trunk partway down without copying the trunk's opening into its own `events`."
+          },
           "effective_events": {
             "type": "array",
             "readOnly": true,
@@ -2156,6 +2228,8 @@
             ]
           },
           "continues_into": "trunk",
+          "continues_into_title": "The Road to the Crown",
+          "continues_into_at": null,
           "effective_events": [
             "aldric-departs",
             "meet-at-emberport",
@@ -2198,6 +2272,11 @@
             "type": "string",
             "nullable": true,
             "description": "Another plotline in the same book to continue into. Must exist, and must not create a loop (422 PLOTLINE_CYCLE)."
+          },
+          "continues_into_at": {
+            "type": "string",
+            "nullable": true,
+            "description": "Where to join `continues_into`: a scene on that thread's resolved path, or null for its first. Requires `continues_into`, and the scene must be on its path (400 INVALID_PLOTLINE)."
           }
         },
         "example": {
@@ -2208,7 +2287,8 @@
           "events": [
             "aldric-departs"
           ],
-          "continues_into": "trunk"
+          "continues_into": "trunk",
+          "continues_into_at": null
         }
       },
       "PlotlineStatus": {
@@ -2831,6 +2911,10 @@
             }
           },
           "continues_into": {
+            "type": "string",
+            "nullable": true
+          },
+          "continues_into_at": {
             "type": "string",
             "nullable": true
           },
@@ -3651,6 +3735,10 @@
           "continues_into": {
             "type": "string",
             "nullable": true
+          },
+          "continues_into_at": {
+            "type": "string",
+            "nullable": true
           }
         },
         "example": {
@@ -3663,7 +3751,8 @@
           "goals": [
             "Deliver the Ember Seal"
           ],
-          "continues_into": null
+          "continues_into": null,
+          "continues_into_at": null
         }
       },
       "EntityCandidate": {
@@ -3796,6 +3885,17 @@
             "type": "string",
             "nullable": true,
             "description": "Id of the plotline this thread continues into, so a shared ending is stored once. Null when the thread carries its own full path."
+          },
+          "continues_into_title": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true,
+            "description": "Display title of the `continues_into` target, so a client can name the thread rather than showing its slug. Null when there is no continuation -- and when the target does not exist, which `status.continuation` reports rather than this field papering over."
+          },
+          "continues_into_at": {
+            "type": "string",
+            "nullable": true,
+            "description": "Scene on the continuation's resolved path where this thread joins it. Null means its first scene."
           },
           "effective_events": {
             "type": "array",
@@ -4173,6 +4273,45 @@
           "role": {
             "$ref": "#/components/schemas/Role"
           }
+        }
+      },
+      "CollaboratorList": {
+        "type": "object",
+        "description": "Everyone granted access at exactly this scope, including the owner. Sorted by username.",
+        "required": [
+          "collaborators"
+        ],
+        "properties": {
+          "collaborators": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "username",
+                "role"
+              ],
+              "properties": {
+                "username": {
+                  "type": "string"
+                },
+                "role": {
+                  "$ref": "#/components/schemas/Role"
+                }
+              }
+            }
+          }
+        },
+        "example": {
+          "collaborators": [
+            {
+              "username": "finn",
+              "role": "editor"
+            },
+            {
+              "username": "mara",
+              "role": "owner"
+            }
+          ]
         }
       }
     }

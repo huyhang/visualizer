@@ -6,9 +6,7 @@ from visualizer.auth.authz import (
     WRITE,
     effective_perms,
     is_allowed,
-    owned_resources,
     perm_for_method,
-    resources_shared_with,
     role_for_perms,
 )
 
@@ -99,74 +97,3 @@ def test_role_for_perms_is_custom_when_no_bundle_matches():
     assert role_for_perms([WRITE]) == "custom"
     assert role_for_perms([]) == "custom"
     assert role_for_perms([READ, DELETE]) == "custom"
-
-
-# -- owned resources ----------------------------------------------------------
-
-
-def test_owned_resources_lists_only_delete_scoped_collections_and_documents():
-    grants = [
-        grant(database="db", collection="c", perms=[READ, WRITE, DELETE]),  # owned collection
-        grant(database="db", collection="c", doc_id="a1", perms=[READ, WRITE, DELETE]),  # owned doc
-        grant(database="db", collection="c2", perms=[READ, WRITE]),  # editor only, not owned
-    ]
-    assert owned_resources(grants) == [
-        {"database": "db", "collection": "c", "doc_id": None},
-        {"database": "db", "collection": "c", "doc_id": "a1"},
-    ]
-
-
-def test_owned_resources_excludes_database_and_instance_wide_grants():
-    grants = [
-        grant(perms=[READ, WRITE, DELETE]),  # instance-wide (admin) -- not a shareable unit
-        grant(database="db", perms=[READ, WRITE, DELETE]),  # whole-database -- excluded
-    ]
-    assert owned_resources(grants) == []
-
-
-def test_owned_resources_ignores_non_akasha_grants():
-    book = {
-        "resource_type": "book",
-        "database": "b",
-        "collection": "c",
-        "doc_id": None,
-        "perms": [READ, WRITE, DELETE],
-    }
-    assert owned_resources([book]) == []
-
-
-def test_owned_resources_deduplicates_scopes():
-    grants = [
-        grant(database="db", collection="c", perms=[READ, WRITE, DELETE]),
-        grant(database="db", collection="c", perms=[READ, WRITE, DELETE]),
-    ]
-    assert owned_resources(grants) == [
-        {"database": "db", "collection": "c", "doc_id": None}
-    ]
-
-
-# -- resources shared with me -------------------------------------------------
-
-
-def test_resources_shared_with_keeps_only_others_grants():
-    grants = [
-        # My own ownership auto-grant (granted_by me) -- not "shared with me".
-        {**grant(database="db", collection="c", perms=[READ, WRITE, DELETE]), "granted_by": "me"},
-        # Something Alice shared with me.
-        {**grant(database="db", collection="c2", perms=[READ]), "granted_by": "alice"},
-    ]
-    assert resources_shared_with(grants, "me") == [
-        {"database": "db", "collection": "c2", "doc_id": None, "role": "reader", "granted_by": "alice"}
-    ]
-
-
-def test_resources_shared_with_ignores_non_akasha_grants():
-    book = {
-        "resource_type": "book",
-        "database": "b",
-        "collection": None,
-        "doc_id": None,
-        "perms": [READ],
-        "granted_by": "alice",
-    }
-    assert resources_shared_with([book], "me") == []

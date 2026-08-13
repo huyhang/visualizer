@@ -207,7 +207,8 @@ def _body_builder(source: str) -> str:
     # reckonings now, and "calendar" would go on passing against it by accident
     # while pinning nothing.
     ("bookform.js", ("title", "overview", "calendars", "world", "terminus")),
-    ("plotedit.js", ("title", "overview", "events", "goals", "continues_into")),
+    ("plotedit.js", ("title", "overview", "events", "goals", "continues_into",
+                     "continues_into_at")),
 ], ids=lambda v: v if isinstance(v, str) else "")
 def test_the_editors_resend_every_stored_field(module, fields):
     """A PUT replaces the whole document, so a payload that omits a field erases it.

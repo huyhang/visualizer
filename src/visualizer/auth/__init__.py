@@ -16,9 +16,7 @@ from .authz import (
     WRITE,
     effective_perms,
     is_allowed,
-    owned_resources,
     perm_for_method,
-    resources_shared_with,
     role_for_perms,
 )
 from .errors import (
@@ -91,12 +89,10 @@ __all__ = [
     "generate_temp_password",
     "init_login",
     "is_allowed",
-    "owned_resources",
     "perm_for_method",
     "register_auth_routes",
     "register_service_links",
     "registration_allowed",
-    "resources_shared_with",
     "role_for_perms",
     # validation
     "validate_email",

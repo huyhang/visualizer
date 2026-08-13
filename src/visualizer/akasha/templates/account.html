@@ -3,14 +3,14 @@
 {% block content %}
 {% macro share_item(res, contacts, roles) %}
 <li class="share-item" data-collab-url="{{ res.collab_url }}"
-    data-name="{{ ((res.doc_id ~ ' ' if res.doc_id else '') ~ res.collection ~ ' ' ~ res.database) | lower }}">
+    data-name="{{ (res.name ~ ' ' ~ res.context | join(' ')) | lower }}">
   <button type="button" class="share-toggle" aria-expanded="false" onclick="toggle(this)">
     <span class="chev">&#9654;</span>
-    <span class="share-name"><code>{{ res.doc_id or res.collection }}</code></span>
-    {% if res.doc_id %}
-    <span class="muted">{{ res.database | title_of }} / {{ res.collection | title_of }}</span>
-    {% else %}
-    <span class="muted">{{ res.database | title_of }}</span>
+    <span class="share-name"><code>{{ res.name }}</code></span>
+    {# The coarser scope fields, as context. A book or a calendar has none: its
+       name is the whole address. #}
+    {% if res.context %}
+    <span class="muted">{{ res.context | map('title_of') | join(' / ') }}</span>
     {% endif %}
     <span class="share-count" hidden></span>
   </button>
@@ -90,34 +90,35 @@
 <div class="card">
   <div class="card-head">
     <h2>Shared access</h2>
-    <p>Resources you own. Switch between {{ terms.collection.many }} and {{ terms.document.many }}, filter to find
-      one, then expand it to share as a <strong>reader</strong>,
-      <strong>editor</strong> or <strong>owner</strong>. Only you (and anyone you
-      make an owner) can manage sharing.</p>
+    <p>Everything you own, across both {{ terms.database.one }}-building and
+      timelines. Switch between kinds, filter to find one, then expand it to
+      share as a <strong>reader</strong>, <strong>editor</strong> or
+      <strong>owner</strong>. Only you (and anyone you make an owner) can manage
+      sharing.</p>
   </div>
 
-  {% if not owned_collections and not owned_articles %}
-  <p class="muted">You don't own any {{ terms.collection.many }} or {{ terms.document.many }} yet. Create one and it
-    will appear here to share.</p>
+  {% if not owned_total %}
+  <p class="muted">You don't own anything shareable yet. Write a
+    {{ terms.document.one }} or start a book, and it will appear here.</p>
   {% else %}
   <div class="share-controls">
     <div class="segmented">
-      <button type="button" class="seg active" data-mode="collections" onclick="switchMode(this)">
-        {{ terms.collection.Many }} ({{ owned_collections | length }})
+      {% for k in owned_kinds %}
+      <button type="button" class="seg {{ 'active' if loop.first }}" data-mode="{{ k.name }}"
+              onclick="switchMode(this)">
+        {{ k.plural }} ({{ k.resources | length }})
       </button>
-      <button type="button" class="seg" data-mode="articles" onclick="switchMode(this)">
-        Articles ({{ owned_articles | length }})
-      </button>
+      {% endfor %}
     </div>
     <input type="search" id="share-filter" placeholder="Filter…" autocomplete="off" oninput="filterShare()">
   </div>
 
-  <ul class="share-list" data-mode="collections">
-    {% for res in owned_collections %}{{ share_item(res, contacts, roles) }}{% endfor %}
+  {% for k in owned_kinds %}
+  <ul class="share-list" data-mode="{{ k.name }}" data-empty="You don't own any {{ k.plural | lower }} yet."
+      {{ '' if loop.first else 'hidden' }}>
+    {% for res in k.resources %}{{ share_item(res, contacts, roles) }}{% endfor %}
   </ul>
-  <ul class="share-list" data-mode="articles" hidden>
-    {% for res in owned_articles %}{{ share_item(res, contacts, roles) }}{% endfor %}
-  </ul>
+  {% endfor %}
 
   <p class="muted share-empty" hidden></p>
   <div class="share-pager" hidden>
@@ -141,10 +142,15 @@
         {% for s in shared_with_me %}
         <tr>
           <td>
-            {% if s.doc_id %}Article <code>{{ s.doc_id }}</code>
+            {% if s.kind == 'article' %}{{ terms.document.One }} <code>{{ s.doc_id }}</code>
               <span class="muted">in {{ s.database | title_of }} / {{ s.collection | title_of }}</span>
-            {% elif s.collection %}{{ terms.collection.One }} <code>{{ s.collection }}</code>
+            {% elif s.kind == 'collection' %}{{ terms.collection.One }} <code>{{ s.collection }}</code>
               <span class="muted">in {{ s.database | title_of }}</span>
+            {% elif s.kind == 'book' %}Book <code>{{ s.database }}</code>
+            {% elif s.kind == 'calendar' %}Calendar <code>{{ s.doc_id }}</code>
+              <span class="muted">from {{ s.database }}</span>
+            {# Broader than one resource, so it names no kind: a whole world, or
+               the instance-wide grant an administrator holds. #}
             {% elif s.database %}{{ terms.database.One }} <code>{{ s.database }}</code>
             {% else %}<span class="muted">Everything</span>{% endif %}
           </td>
@@ -298,7 +304,10 @@
 
   // -- mode / filter / pagination -------------------------------------------
   const SHARE_PAGE_SIZE = 8;
-  let shareMode = 'collections';
+  // Whichever kind the server put first, rather than a name hard-coded here:
+  // the list of kinds is built in Python and a fifth one should not need this
+  // file edited to become selectable.
+  let shareMode = (document.querySelector('.share-list') || {}).dataset?.mode;
   let sharePage = 1;
 
   function activeShareList() {
@@ -327,10 +336,7 @@
     const empty = document.querySelector('.share-empty');
     if (empty) {
       empty.hidden = shown.length !== 0;
-      empty.textContent = q ? 'No matches.'
-        : (shareMode === 'collections'
-            ? "You don't own any {{ terms.collection.many }} yet."
-            : "You don't own any {{ terms.document.many }} yet.");
+      empty.textContent = q ? 'No matches.' : (ul.dataset.empty || '');
     }
     const pager = document.querySelector('.share-pager');
     if (pager) pager.hidden = shown.length <= SHARE_PAGE_SIZE;

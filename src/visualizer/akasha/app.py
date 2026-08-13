@@ -19,11 +19,14 @@ Browser GUI (server-rendered): ``/login``, ``/register``, ``/`` (home) and
 ``/admin`` (user + grant management, admins only).
 """
 
+from dataclasses import replace
+
 from flask import Flask, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from flask_wtf.csrf import CSRFProtect
 from werkzeug.security import generate_password_hash
 
+from visualizer import sharing
 from visualizer.auth import (
     ALL_PERMS,
     DELETE,
@@ -41,12 +44,9 @@ from visualizer.auth import (
     generate_temp_password,
     init_login,
     is_allowed,
-    owned_resources,
     perm_for_method,
     register_auth_routes,
     register_service_links,
-    resources_shared_with,
-    role_for_perms,
     validate_email,
     validate_password_strength,
 )
@@ -126,6 +126,9 @@ def create_app(
     _register_browse_routes(app, store, auth_store, csrf)
     _register_version_routes(app, store, auth_store, csrf)
     _register_sharing_routes(app, auth_store, csrf)
+    # The account page lists things from both services, so it reaches them all
+    # through one uniform family on this origin. See ``visualizer.sharing``.
+    sharing.register_account_sharing_routes(app, auth_store, csrf, ACCOUNT_KINDS)
     _register_account_routes(app, auth_store, csrf, limiter)
     _register_admin_routes(app, auth_store)
     _register_error_handlers(app)
@@ -136,6 +139,40 @@ def _reject_reserved(database: str) -> None:
     """Block access to internal/reserved databases (e.g. the auth store)."""
     if database.startswith("_"):
         raise ReservedName(f"Database '{database}' is reserved and not accessible.")
+
+
+# Akasha's two shareable kinds, tightened from the neutral descriptors: the
+# writer-facing words from ``terms.py``, and the guard that keeps the reserved
+# `_auth` / `_chronos` namespaces unshareable. The chronos two are taken as they
+# come -- akasha needs them to *list* a book on the account page, and a grant is
+# all that takes, so nothing here imports chronos.
+AKASHA_COLLECTION = replace(
+    sharing.COLLECTION,
+    label=TERMS["collection"]["One"], plural=TERMS["collection"]["Many"],
+    guard=lambda scope: _reject_reserved(scope["database"]),
+)
+AKASHA_ARTICLE = replace(
+    sharing.ARTICLE,
+    label=TERMS["document"]["One"], plural=TERMS["document"]["Many"],
+    guard=lambda scope: _reject_reserved(scope["database"]),
+)
+# The order the account page shows them in: this writer's own world first, then
+# what they have built on top of it.
+ACCOUNT_KINDS = (AKASHA_COLLECTION, AKASHA_ARTICLE, sharing.BOOK, sharing.CALENDAR)
+
+
+def _require_owner(auth_store: AuthStore, database, collection, doc_id=None) -> None:
+    """Only a resource's owner may manage who else can access it.
+
+    Ownership is holding ``delete`` at the resource's scope -- which the creator
+    gets automatically, and which a collection owner also holds over the
+    documents beneath it. The admin role does *not* confer this: content access
+    (and who may share it) follows ownership, not the admin console.
+    """
+    sharing.require_owner(
+        auth_store, _kind_for(collection, doc_id),
+        _scope(database, collection, doc_id), current_user.username,
+    )
 
 
 def _authorize(auth_store: AuthStore, method: str, database, collection, doc_id=None) -> None:
@@ -733,82 +770,41 @@ def _is_owner(auth_store: AuthStore, database, collection, doc_id=None) -> bool:
     return is_allowed(grants, DELETE, database, collection, doc_id)
 
 
-def _require_owner(auth_store: AuthStore, database, collection, doc_id=None) -> None:
-    """Only a resource's owner may manage who else can access it.
-
-    Ownership is holding ``delete`` at the resource's scope -- which the creator
-    gets automatically, and which a collection owner also holds over the
-    documents beneath it. The admin role does *not* confer this: content access
-    (and who may share it) follows ownership, not the admin console.
-    """
-    if not _is_owner(auth_store, database, collection, doc_id):
-        raise Forbidden("Only the owner may manage sharing for this resource.")
+def _kind_for(collection, doc_id):
+    """Which shareable kind a collection/document scope names."""
+    return AKASHA_ARTICLE if doc_id is not None else AKASHA_COLLECTION
 
 
-def _replace_scope_grants(auth_store: AuthStore, username, database, collection, doc_id) -> None:
-    """Drop ``username``'s grant at *exactly* this akasha scope (idempotent).
-
-    Namespaced to akasha (the ``database`` resource type) and matched on the
-    exact scope tuple, so re-sharing merely replaces the role and never touches
-    a chronos grant or the user's access to a different collection/document.
-    """
-    for grant in auth_store.grants_on(database, collection, doc_id):
-        if grant["username"] == username:
-            auth_store.delete_grant(grant["id"])
+def _scope(database, collection, doc_id):
+    return {"database": database, "collection": collection, "doc_id": doc_id}
 
 
 def _collaborators(auth_store: AuthStore, database, collection, doc_id) -> list[dict]:
-    """Everyone granted access to this exact scope, as ``{username, role}`` pairs.
-
-    Sorted by username for a stable display order. Includes the owner's own
-    grant; callers that render "who else can see this" filter themselves out.
-    """
-    people = [
-        {"username": g["username"], "role": role_for_perms(g["perms"])}
-        for g in auth_store.grants_on(database, collection, doc_id)
-    ]
-    return sorted(people, key=lambda p: p["username"])
+    return sharing.collaborators(
+        auth_store, _kind_for(collection, doc_id), _scope(database, collection, doc_id)
+    )
 
 
 def _share(auth_store: AuthStore, database, collection, doc_id, username):
-    """Grant ``username`` a role on a resource the current user owns."""
-    _reject_reserved(database)
-    _require_owner(auth_store, database, collection, doc_id)
-    if auth_store.get_user(username) is None:
-        raise UserNotFound(f"User '{username}' does not exist.")
-    if username == current_user.username:
-        # You already own it; sharing with yourself could only *reduce* your own
-        # access, so refuse rather than risk locking an owner out.
-        raise Forbidden("You already own this resource.")
-    role = (request.get_json(silent=True) or {}).get("role", "editor")
-    perms = ROLE_PERMS.get(role)
-    if perms is None:
-        raise Forbidden(f"Unknown role '{role}'.")
-    _replace_scope_grants(auth_store, username, database, collection, doc_id)
-    auth_store.add_grant(
-        username,
-        database,
-        collection,
-        doc_id,
-        list(perms),
-        granted_by=current_user.username,
-    )
-    return jsonify(
-        {
-            "database": database,
-            "collection": collection,
-            "doc_id": doc_id,
-            "user": username,
-            "role": role,
-        }
-    )
+    """Grant ``username`` a role on a resource the current user owns.
+
+    The resource-shaped spelling of the same operation the account page reaches
+    through ``/account/sharing/...``; both run ``visualizer.sharing.share``.
+    """
+    kind = _kind_for(collection, doc_id)
+    role = (request.get_json(silent=True) or {}).get("role", kind.default_role)
+    return jsonify(sharing.share(
+        auth_store, kind, _scope(database, collection, doc_id), username, role,
+        me=current_user.username,
+    ))
 
 
 def _unshare(auth_store: AuthStore, database, collection, doc_id, username):
     """Revoke ``username``'s access to a resource the current user owns."""
-    _reject_reserved(database)
-    _require_owner(auth_store, database, collection, doc_id)
-    _replace_scope_grants(auth_store, username, database, collection, doc_id)
+    sharing.unshare(
+        auth_store, _kind_for(collection, doc_id), _scope(database, collection, doc_id),
+        username, me=current_user.username,
+    )
     return "", 204
 
 
@@ -874,42 +870,53 @@ def _account_field(name: str):
     return request.form.get(name)
 
 
+def _owned_by_kind(grants) -> list[dict]:
+    """The resources the user owns, grouped into one segment per kind.
+
+    Every kind gets a group even when it is empty, so the page's segmented
+    control is stable: a writer with no books still sees *Books (0)* and learns
+    that sharing one is a thing they could do.
+    """
+    by_kind: dict[str, list] = {k.name: [] for k in ACCOUNT_KINDS}
+    for scope in sharing.owned_resources(grants, ACCOUNT_KINDS):
+        kind = next(k for k in ACCOUNT_KINDS if k.name == scope["kind"])
+        by_kind[kind.name].append({
+            **scope,
+            "name": kind.describe(scope),
+            # The context shown beside the name: the coarser scope fields, which
+            # for a book or a calendar is nothing at all.
+            "context": [scope[f] for f in kind.fills[:-1] if scope[f]],
+            # The GET-collaborators URL doubles as the base for the PUT/DELETE
+            # the page's sharing controls call (append ``/<username>``).
+            "collab_url": sharing.account_sharing_url(kind, scope),
+        })
+    # "resources", not "items": in Jinja ``k.items`` resolves to the dict's own
+    # ``items`` method rather than this key, and renders as a bound method.
+    return [
+        {"name": k.name, "label": k.label, "plural": k.plural,
+         "resources": by_kind[k.name]}
+        for k in ACCOUNT_KINDS
+    ]
+
+
 def _render_account(auth_store: AuthStore):
     """Render the account page: profile plus a compact list of the resources the
-    user owns. Each resource's collaborators are loaded on demand (see the page's
+    user owns -- across both services, since one grant store holds them all.
+    Each resource's collaborators are loaded on demand (see the page's
     ``/collaborators`` fetch), so this stays cheap no matter how much is owned."""
     username = current_user.username
     record = auth_store.get_user(username) or {}
     grants = auth_store.grants_for(username)
-    owned = []
-    for scope in owned_resources(grants):
-        # The GET-collaborators URL doubles as the base for the PUT/DELETE the
-        # page's sharing controls call (append ``/<username>``).
-        if scope["doc_id"] is None:
-            collab_url = url_for(
-                "list_collection_collaborators",
-                database=scope["database"],
-                collection=scope["collection"],
-            )
-        else:
-            collab_url = url_for(
-                "list_document_collaborators",
-                database=scope["database"],
-                collection=scope["collection"],
-                doc_id=scope["doc_id"],
-            )
-        owned.append({**scope, "collab_url": collab_url})
+    owned = _owned_by_kind(grants)
     return render_template(
         "account.html",
         username=username,
         email=record.get("email"),
         role=record.get("role", "user"),
-        # Split by scope so the page can offer a collection view and an article
-        # view as separate, filterable/paginated modes.
-        owned_collections=[r for r in owned if r["doc_id"] is None],
-        owned_articles=[r for r in owned if r["doc_id"] is not None],
+        owned_kinds=owned,
+        owned_total=sum(len(k["resources"]) for k in owned),
         contacts=auth_store.list_contacts(username),
-        shared_with_me=resources_shared_with(grants, username),
+        shared_with_me=sharing.resources_shared_with(grants, username, ACCOUNT_KINDS),
         roles=list(ROLE_PERMS.keys()),
     )
 

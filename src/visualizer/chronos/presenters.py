@@ -273,7 +273,30 @@ def _continuation_verdict(resolution: Resolution) -> dict:
             "evidence": {"missing": resolution.missing},
             "doc": "docs/chronos/design.md#33",
         }
+    if resolution.anchor_missing:
+        # Reachable without anyone writing this thread: dropping the joined-at
+        # scene from the *target* strands the join. Reported rather than
+        # repaired, because guessing a new join point would silently rewrite a
+        # story -- either gaining the trunk's opening or losing a scene.
+        return {
+            "state": "conflicted", "code": "INVALID_PLOTLINE",
+            "message": (
+                f"Joins at '{resolution.anchor_missing}', which is no longer on the "
+                "continuation's path."
+            ),
+            "evidence": {"anchor_missing": resolution.anchor_missing},
+            "doc": "docs/chronos/design.md#33",
+        }
     return _ok()
+
+
+def _title_of(plotline_id: str | None, plotlines: list[Plotline]) -> str | None:
+    """A plotline's display title from its id, or None if it names nothing."""
+    if plotline_id is None:
+        return None
+    return next(
+        (p.display_title for p in plotlines if p.id == plotline_id), None
+    )
 
 
 def present_plotline(
@@ -335,6 +358,15 @@ def present_plotline(
         "goals": this.goals,
         "events": list(this.events),
         "continues_into": this.continues_into,
+        # The target's display title, alongside its id. Supplied because the
+        # caller showing "continues into <x>" has the *id* and would otherwise
+        # have to fetch the whole target to name it readably -- while this
+        # presenter already holds every plotline in the book. Null when there is
+        # no continuation, and when the target does not exist: a dangling
+        # pointer is already reported by ``status.continuation``, and inventing
+        # a title for it would dress the break up as working.
+        "continues_into_title": _title_of(this.continues_into, plotlines),
+        "continues_into_at": this.continues_into_at,
         "effective_events": events_field,
         "rev": public["rev"],
         "status": {
@@ -648,6 +680,7 @@ def present_graph(
             "title": pl.display_title if pl else pid,
             "events": list(pl.events) if pl else list(effective),
             "continues_into": pl.continues_into if pl else None,
+            "continues_into_at": pl.continues_into_at if pl else None,
             "effective_events": list(effective),
         }
 

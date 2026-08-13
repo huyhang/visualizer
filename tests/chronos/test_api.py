@@ -387,6 +387,43 @@ def test_graph_lanes_record_stored_and_resolved_paths(seeded, client):
     assert lanes["knights"]["effective_events"] == ["a", "m", "t"]  # resolved path
 
 
+def test_a_thread_may_join_its_continuation_partway_down(seeded, client):
+    """Over HTTP: the join point round-trips, and only the tail is inherited."""
+    _make_book(client)
+    for eid, s, e in [("a", 0, 10), ("m", 20, 30), ("t", 40, 50)]:
+        client.post(f"/books/{BOOK}/events/{eid}", json=_event("highkeep", s, e))
+    client.post(f"/books/{BOOK}/plotlines/trunk", json={"events": ["m", "t"], "goals": ["g"]})
+    resp = client.post(f"/books/{BOOK}/plotlines/late",
+                       json={"events": ["a"], "goals": ["g"],
+                             "continues_into": "trunk", "continues_into_at": "t"})
+    assert resp.status_code == 201
+    body = resp.get_json()
+    assert body["continues_into_at"] == "t"
+    assert body["effective_events"] == ["a", "t"], "'m' is before the junction"
+
+    # The expanded read marks the inherited scene as not this thread's own, so
+    # the editor knows to route an edit to the trunk.
+    expanded = client.get(f"/books/{BOOK}/plotlines/late?expand=events").get_json()
+    assert [(s["id"], s["owned"]) for s in expanded["effective_events"]] == [
+        ("a", True), ("t", False),
+    ]
+
+    lanes = {p["id"]: p for p in client.get(f"/books/{BOOK}/graph").get_json()["plotlines"]}
+    assert lanes["late"]["continues_into_at"] == "t"
+
+
+def test_joining_at_a_scene_off_the_targets_path_is_refused(seeded, client):
+    _make_book(client)
+    for eid, s, e in [("a", 0, 10), ("m", 20, 30), ("t", 40, 50)]:
+        client.post(f"/books/{BOOK}/events/{eid}", json=_event("highkeep", s, e))
+    client.post(f"/books/{BOOK}/plotlines/trunk", json={"events": ["t"], "goals": ["g"]})
+    resp = client.post(f"/books/{BOOK}/plotlines/late",
+                       json={"events": ["a"], "goals": ["g"],
+                             "continues_into": "trunk", "continues_into_at": "m"})
+    assert resp.status_code == 400
+    assert resp.get_json()["code"] == "INVALID_PLOTLINE"
+
+
 def test_expanded_summary_marks_divergence(seeded, client):
     # A thread splitting off is now visible in the single-plotline timeline.
     _make_book(client)

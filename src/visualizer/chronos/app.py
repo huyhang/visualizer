@@ -12,6 +12,7 @@ from flask import Flask, jsonify, render_template, request
 from flask_login import current_user, login_required
 from flask_wtf.csrf import CSRFProtect
 
+from visualizer import sharing
 from visualizer.akasha.browsing import can_read_in_database, visible_collections
 from visualizer.auth import (
     build_limiter,
@@ -50,12 +51,6 @@ BOOK_RESOURCE = "book"
 # Library calendars are a second, separate kind: a grant on the *book* called
 # "imperial" must not confer anything on the *calendar* called "imperial".
 CALENDAR_RESOURCE = "calendar"
-
-_ROLE_PERMS = {
-    "reader": ["read"],
-    "editor": ["read", "write"],
-    "owner": ["read", "write", "delete"],
-}
 
 
 def create_app(
@@ -383,29 +378,38 @@ def _register_routes(app, csrf, auth_store, books, plotlines, events, visualizer
         ))
 
     # -- collaborators (book owners only, §7.5/§8.2) -------------------------
+    #
+    # The operation itself lives in ``visualizer.sharing``, which akasha's
+    # account page drives through its own uniform routes. These are the
+    # resource-shaped spelling of the same thing.
+
+    @app.get(_BOOK + "/collaborators")
+    @csrf.exempt
+    @login_required
+    def list_collaborators(book):
+        _require_owner(auth_store, book)
+        return jsonify({
+            "collaborators": sharing.collaborators(auth_store, sharing.BOOK, _book_scope(book))
+        })
 
     @app.put(_BOOK + "/collaborators/<username>")
     @csrf.exempt
     @login_required
     def add_collaborator(book, username):
-        _require_owner(auth_store, book)
-        role = (request.get_json(silent=True) or {}).get("role", "editor")
-        perms = _ROLE_PERMS.get(role)
-        if perms is None:
-            raise Forbidden(f"Unknown role '{role}'.")
-        _replace_book_grants(auth_store, username, book)
-        auth_store.add_grant(
-            username, book, None, None, perms,
-            granted_by=current_user.username, resource_type=BOOK_RESOURCE,
+        role = (request.get_json(silent=True) or {}).get("role", sharing.BOOK.default_role)
+        result = sharing.share(
+            auth_store, sharing.BOOK, _book_scope(book), username, role,
+            me=current_user.username,
         )
-        return jsonify({"book": book, "user": username, "role": role})
+        return jsonify({"book": book, "user": username, "role": result["role"]})
 
     @app.delete(_BOOK + "/collaborators/<username>")
     @csrf.exempt
     @login_required
     def remove_collaborator(book, username):
-        _require_owner(auth_store, book)
-        _replace_book_grants(auth_store, username, book)
+        sharing.unshare(
+            auth_store, sharing.BOOK, _book_scope(book), username, me=current_user.username
+        )
         return "", 204
 
 
@@ -437,7 +441,7 @@ def _revoke_calendar_grants(auth_store, owner: str, calendar: str) -> None:
     recreated, so a grant left behind is a grant on a *name* -- and the next
     calendar the writer creates under it would silently arrive pre-shared.
     """
-    auth_store.delete_grants_on(owner, None, calendar, resource_type=CALENDAR_RESOURCE)
+    sharing.revoke_all(auth_store, sharing.CALENDAR, _calendar_scope(owner, calendar))
 
 
 def _register_calendar_routes(app, csrf, auth_store, calendars):
@@ -513,28 +517,38 @@ def _register_calendar_routes(app, csrf, auth_store, calendars):
         _revoke_calendar_grants(auth_store, owner, calendar)
         return "", 204
 
+    @app.get(_CALENDAR + "/collaborators")
+    @csrf.exempt
+    @login_required
+    def list_calendar_collaborators(owner, calendar):
+        _require_calendar_owner(auth_store, owner, calendar)
+        return jsonify({
+            "collaborators": sharing.collaborators(
+                auth_store, sharing.CALENDAR, _calendar_scope(owner, calendar)
+            )
+        })
+
     @app.put(_CALENDAR + "/collaborators/<username>")
     @csrf.exempt
     @login_required
     def share_calendar(owner, calendar, username):
-        _require_calendar_owner(auth_store, owner, calendar)
-        role = (request.get_json(silent=True) or {}).get("role", "reader")
-        perms = _ROLE_PERMS.get(role)
-        if perms is None:
-            raise Forbidden(f"Unknown role '{role}'.")
-        _replace_calendar_grants(auth_store, username, owner, calendar)
-        auth_store.add_grant(
-            username, owner, None, calendar, perms,
-            granted_by=current_user.username, resource_type=CALENDAR_RESOURCE,
+        role = (request.get_json(silent=True) or {}).get("role", sharing.CALENDAR.default_role)
+        result = sharing.share(
+            auth_store, sharing.CALENDAR, _calendar_scope(owner, calendar), username, role,
+            me=current_user.username,
         )
-        return jsonify({"calendar": f"{owner}/{calendar}", "user": username, "role": role})
+        return jsonify({
+            "calendar": f"{owner}/{calendar}", "user": username, "role": result["role"],
+        })
 
     @app.delete(_CALENDAR + "/collaborators/<username>")
     @csrf.exempt
     @login_required
     def unshare_calendar(owner, calendar, username):
-        _require_calendar_owner(auth_store, owner, calendar)
-        _replace_calendar_grants(auth_store, username, owner, calendar)
+        sharing.unshare(
+            auth_store, sharing.CALENDAR, _calendar_scope(owner, calendar), username,
+            me=current_user.username,
+        )
         return "", 204
 
 
@@ -543,21 +557,18 @@ def _require_calendar_owner(auth_store, owner: str, calendar: str) -> None:
         raise Forbidden(f"Only an owner may share '{owner}/{calendar}'.")
 
 
-def _replace_calendar_grants(auth_store, username: str, owner: str, calendar: str) -> None:
-    """Drop this user's existing grants on *this calendar* (idempotent invite)."""
-    for grant in auth_store.grants_for(username):
-        if (
-            grant.get("resource_type") == CALENDAR_RESOURCE
-            and grant.get("database") == owner
-            and grant.get("collection") is None
-            and grant.get("doc_id") == calendar
-        ):
-            auth_store.delete_grant(grant["id"])
-
-
 def _require_owner(auth_store, book: str) -> None:
     if not _is_owner(auth_store, book):
         raise Forbidden(f"Only an owner may manage collaborators on '{book}'.")
+
+
+def _book_scope(book: str) -> dict:
+    """A book's grant scope: the id in ``database``, nothing finer."""
+    return sharing.BOOK.scope({"database": book})
+
+
+def _calendar_scope(owner: str, calendar: str) -> dict:
+    return sharing.CALENDAR.scope({"database": owner, "doc_id": calendar})
 
 
 def _revoke_book_grants(auth_store, book: str) -> None:
@@ -570,23 +581,7 @@ def _revoke_book_grants(auth_store, book: str) -> None:
     say so. Scoped to ``BOOK_RESOURCE``, so akasha grants that happen to share
     the name are untouched.
     """
-    auth_store.delete_grants_on(book, None, None, resource_type=BOOK_RESOURCE)
-
-
-def _replace_book_grants(auth_store, username: str, book: str) -> None:
-    """Drop this user's existing grants on *this book* (idempotent invite).
-
-    Scoped to ``BOOK_RESOURCE`` so a user's akasha grants -- which may
-    share the same name -- are never touched.
-    """
-    for grant in auth_store.grants_for(username):
-        if (
-            grant.get("resource_type") == BOOK_RESOURCE
-            and grant.get("database") == book
-            and grant.get("collection") is None
-            and grant.get("doc_id") is None
-        ):
-            auth_store.delete_grant(grant["id"])
+    sharing.revoke_all(auth_store, sharing.BOOK, _book_scope(book))
 
 
 # -- visualiser UI -----------------------------------------------------------

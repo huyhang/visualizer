@@ -39,8 +39,8 @@ Chronos references them and refuses to invent them.
 > all), write its scenes, thread them into plotlines, and mark the scene every
 > thread must reach. See [Starting a book](#starting-a-book-in-the-ui) and
 > [Editing plotlines](#editing-plotlines-in-the-ui). A book can be renamed and
-> its calendar swapped afterwards; collaborators and deletion are still
-> API-only.
+> its calendar swapped afterwards, and **sharing a book** is done from Akasha's
+> [Account page](../akasha/sharing.md) alongside everything else you own.
 
 ---
 
@@ -105,7 +105,7 @@ Akasha API deliberately refuses to expose.
 | Term | What it is |
 | --- | --- |
 | **Event** | Characters + items, at one location, over a timeframe, with a description. The atom of the model. |
-| **Plotline** | An **ordered** list of events plus a non-empty set of goals. Order is the contract. May `continues_into` another plotline so a shared ending is stored once. |
+| **Plotline** | An **ordered** list of events plus a non-empty set of goals. Order is the contract. May `continues_into` another plotline so a shared ending is stored once — optionally `continues_into_at` a named scene partway down it. |
 | **Book** | A collection of plotlines with one designated **Terminus**. |
 | **Overview** | Free prose on a book or a plotline, saying what it is about. Optional, read by no rule, empty rather than null when unwritten, and capped at 10 000 characters — it is returned whole in every listing. |
 | **Terminus** | The single event every plotline in the book must end at. |
@@ -198,6 +198,7 @@ whether the data makes structural sense.
 | An `EntityRef` doesn't exist in Akasha | `422 ENTITY_NOT_FOUND` |
 | `start_tick > end_tick`, a non-integer tick, or only one of the two given | `400 INVALID_TIMEFRAME` |
 | Empty event list, empty goals, unknown event id, unknown `continues_into` target | `400 INVALID_PLOTLINE` |
+| A `continues_into_at` that is not on the target's path, or has no `continues_into` | `400 INVALID_PLOTLINE` |
 | A `continues_into` chain that loops | `422 PLOTLINE_CYCLE` |
 | Deleting a plotline others continue into | `409 PLOTLINE_IN_USE` |
 | Deleting an event a plotline still lists | `409 EVENT_IN_USE` |
@@ -257,6 +258,7 @@ PUT    /books/<book>/events/<event>
 DELETE /books/<book>/events/<event>[?detach=true]    detach removes it from plotlines first
 GET    /books/<book>/events/<event>/plotlines[?relation=converging|diverging|through]
 
+GET    /books/<book>/collaborators                   who can see it (owners only)
 PUT    /books/<book>/collaborators/<user>            invite / set role (owners only)
 DELETE /books/<book>/collaborators/<user>            remove (owners only)
 
@@ -265,6 +267,7 @@ POST   /calendars/<owner>/<cal>                      create (owner must be you)
 GET    /calendars/<owner>/<cal>
 PUT    /calendars/<owner>/<cal>                      replace
 DELETE /calendars/<owner>/<cal>                      books that copied it are untouched
+GET    /calendars/<owner>/<cal>/collaborators        who can see it (owners only)
 PUT    /calendars/<owner>/<cal>/collaborators/<user> share (owners only)
 DELETE /calendars/<owner>/<cal>/collaborators/<user> stop sharing (owners only)
 ```
@@ -302,8 +305,29 @@ converge on the terminus and still appear in the graph with the junction edge.
 Reads give you both `events` (stored, send this back on a write) and
 `effective_events` (resolved). Edit `trunk` once and every thread on it follows.
 
-The two chain rules are hard: the target must exist (`400`), and the chain must
-not loop (`422 PLOTLINE_CYCLE`).
+**Joining partway down.** Not every thread catches the trunk at its first scene
+— one that has been away comes back to a story already under way. Add
+`continues_into_at` to say *where* it joins, and everything before that scene is not
+inherited:
+
+```
+trunk         [meet-at-emberport, the-vigil, the-coronation]
+late-arrival  [rides-hard]         continues_into: trunk, continues_into_at: the-vigil
+                                   effective: rides-hard, the-vigil, the-coronation
+```
+
+Leave it out and the thread joins at the head, exactly as before. The scene is
+named by id, so a trunk gaining a scene above the junction doesn't quietly move
+it, and it may be any scene on the trunk's *resolved* path — including one the
+trunk itself inherits.
+
+The chain rules are hard: the target must exist (`400`), `continues_into_at` must be
+a scene on its resolved path and needs a target to qualify (`400`), and the
+chain must not loop (`422 PLOTLINE_CYCLE`). If the trunk later drops the scene a
+thread joined at, that thread's `status.continuation` reports it as
+`anchor_missing` — the *anchor* being the scene a join points at — rather than
+guessing a new junction, which would either hand back the trunk's opening or
+lose a scene.
 
 **Breaking a thread off the trunk.** `POST …/plotlines/<id>/inline` copies the
 resolved path into the thread's own `events` and clears `continues_into` — it
@@ -331,6 +355,7 @@ labels, and convergence markers into `effective_events`.
   "goals": ["Deliver the Ember Seal", "Reach the coronation alive"],
   "events": ["aldric-departs"],                // stored: this thread's own segment
   "continues_into": "trunk",                   // ... then it joins the shared ending
+  "continues_into_at": null,                        // ... at its first scene (a scene id joins later)
   "effective_events": ["aldric-departs", "meet-at-emberport", "the-coronation"],
   "rev": 1,
   "status": {                                  // computed, read-only
@@ -501,7 +526,9 @@ Two things make it more than a list editor:
   (§8.1): the marks tell you what does not add up; you decide.
 - **Inherited scenes are locked.** A thread that `continues_into` another shows
   that thread's scenes greyed out: they are stored elsewhere, so reordering them
-  here would be a lie. Each expanded scene says which it is (`owned`).
+  here would be a lie. Each expanded scene says which it is (`owned`). **Joins
+  at** beside the continuation picks the scene where the two threads meet, and
+  the greyed-out list shortens to what is actually inherited.
 
 Scenes themselves can be written and corrected from the same screen — **Add
 scene → Write a new scene**, or ✎ on a scene you already have (fixing a scene's
@@ -548,7 +575,8 @@ blocked — see the soft rules above.
 
 > **Divergences from the design, as built:** ownership is inferred from holding
 > `delete` at book scope rather than a dedicated `share` permission, and
-> `GET /collaborators` and `GET /activity` (design §7.5) are not implemented.
+> `GET /activity` (design §7.5) is not implemented. `GET /collaborators` now is
+> — the browser needed a way to ask who could already see a book.
 
 ### Grants and the shared store
 
