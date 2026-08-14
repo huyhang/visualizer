@@ -214,6 +214,7 @@ def story_client(app, fake_gate):
         (f"/books/{BOOK}/events/m", "Event"),
         (f"/books/{BOOK}/events/m/plotlines", "EventNeighborhood"),
         (f"/books/{BOOK}/validate", "ValidateReport"),
+        (f"/books/{BOOK}/ui/issues", "BookReport"),
         (f"/books/{BOOK}/graph", "Graph"),
     ],
 )
@@ -258,3 +259,11 @@ def test_live_conflicted_report_conforms(schema_doc, story_client, fake_gate):
     assert body["ordering"], "expected an ordering violation"
     assert body["convergence"]["failures"], "expected a convergence failure"
     _validator(schema_doc, "ValidateReport").validate(body)
+
+    # The same book, said for a reader: every category above must appear in the
+    # grouped report too, or the two halves of one answer have drifted.
+    report = story_client.get(f"/books/{BOOK}/ui/issues").get_json()
+    assert report["status"] == "conflicted"
+    codes = {i["code"] for g in report["problems"] for i in g["issues"]}
+    assert {"TEMPORAL_CONFLICT", "ORDERING_VIOLATION", "TERMINUS_VIOLATION"} <= codes
+    _validator(schema_doc, "BookReport").validate(report)

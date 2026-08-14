@@ -1,6 +1,6 @@
 # What the Chronos UI cannot do yet
 
-*Audited 2026-08-12 against the routes the app actually registers and the calls
+*Audited 2026-08-13 against the routes the app actually registers and the calls
 `static/js/api.js` actually makes. Not a wish list — every gap below is a
 capability the JSON API already has, tested, that the browser has no way to
 reach.*
@@ -8,12 +8,16 @@ reach.*
 Chronos is an API first, with a visualiser layered on top. The visualiser grew
 read-only and is being made editable [one surface at a
 time](design.md#2-principles-consistent-with-the-existing-codebase), so the
-interesting question is not "what is missing from the product" but **"where does
-a writer with no terminal hit a wall?"**
+question this document asks is not "what is missing from the product" but
+**"where does a writer with no terminal hit a wall?"**
 
-Of the **36 content routes** the app registers, **33 are reachable from a
-browser** and **3 are not**. (The count grew by the two collaborator-listing
-routes added with sharing.)
+Of the **37 content routes** the app registers, **34 are called from a browser**
+and **3 are not**. Two of the three are the gaps below.
+
+The third, `GET /books/{book}/validate`, is uncalled **by design** and is not a
+gap: the whole-book report it would serve is in the UI, built instead on
+`GET /books/{book}/ui/issues` — the same rules, shaped for a reader rather than
+a machine. See [the book's report](README.md#the-books-report).
 
 One wrinkle in "from the UI": the three book-collaborator routes are reached
 from **Akasha's Account page**, not from anything Chronos serves. They are
@@ -21,12 +25,8 @@ counted as reachable because the question this document asks is whether a writer
 without a terminal hits a wall, and they do not — but no view in this service
 calls them.
 
-**There is no longer a blocking gap, and no housekeeping one either.** A writer
-can create a book, write its scenes, thread them into a plotline, mark the
-book's ending, and now also *tidy up*: delete a scene, delete a thread, delete
-the whole book — see [the flow, end to end](#the-flow-end-to-end). **Sharing is
-closed too**, in Akasha's Account page rather than here. What remains is one
-**report**.
+**Neither remaining gap is blocking, and neither is housekeeping.** A whole story
+can be written, checked, shared and deleted from the browser.
 
 ---
 
@@ -34,147 +34,10 @@ closed too**, in Akasha's Account page rather than here. What remains is one
 
 | Missing from the UI | The API it would call | Notes |
 | --- | --- | --- |
-| **Whole-book report** | `GET /books/{book}/validate` | Never called by any view. Findings are shown per thread instead, so a book card reading `conflicted` has nowhere to click through to. |
-| ~~**Collaborators**~~ | `GET` / `PUT` / `DELETE /books/{book}/collaborators[/{user}]` | **Closed.** Sharing a book is now in Akasha's **Account** page, alongside categories, articles and calendars — see [sharing](../akasha/sharing.md). The list route is new; the browser had no way to ask who could already see a book. |
-| **Absorb a continuation** | `POST /books/{book}/plotlines/{plotline}/inline` | Reachable only indirectly, through the delete-with-dependents dialog. |
+| **Absorb a continuation** | `POST /books/{book}/plotlines/{plotline}/inline` | The *capability* is reachable — the delete-with-dependents dialog absorbs a thread via `DELETE …?inline=true` — but this route, which absorbs without deleting, is called by nothing. A writer who wants to flatten a continuation and keep both threads has no way to say so. |
 | **Scene neighbourhood** | `GET /books/{book}/events/{event}/plotlines` | Not even wrapped in `api.js`. The connected-plots graph covers the same ground visually, so this may never need a UI. |
 
 ---
-
-## What the UI *does* cover
-
-For completeness, the 22 reachable routes: listing, reading, **creating**,
-**updating** and **deleting** books — including the Akasha **world** their cast
-is drawn from and their **overview**; **designating the terminus**; the story
-graph; listing, reading, creating, updating and **deleting** scenes; the full
-plotline lifecycle (create, read, update, delete); the five book-scoped
-visualiser helpers (`/ui/plotlines`, `/ui/ticks`, `/ui/entities`,
-`/ui/entity/...`, `/ui/plotline-preview`); and the one that is **not**
-book-scoped, `/ui/worlds`, because it answers a question asked while a book is
-being created.
-
-### The flow, end to end
-
-What a writer with no terminal can now do from a standing start:
-
-1. **Register**, and land on *Your books* — which offers **+ New book** rather
-   than an apology.
-2. **Create a book**, choosing the **world** its cast comes from (offered from
-   the Akasha databases you can read, and chosen for you when there is only
-   one — without it a book with no scenes has nothing to point its pickers at)
-   and whether ticks are plain numbers or
-   a calendar of named cycles. The calendar choice is shown back in plain language
-   (*"Ticks are hours: 24 hours to a day, 30 days to a month"*) rather than left
-   to be inferred from the form — and it is no longer a one-time choice: **✎**
-   beside the book's title reopens the same form to rename it or swap the
-   calendar.
-3. **Write the cast** in Akasha (never blocked — see below).
-4. **+ New plotline**, and inside it **Add scene → Write a new scene**, choosing
-   characters, items and places from the real canon. A scene that turns out to
-   be missing from the *middle* goes in with **⤵** on the row above it, or
-   **Insert at the start**, rather than being appended and dragged up.
-5. **✦ Mark a scene as the ending**, which is what turns the third story rule
-   from invisible into reported.
-6. Watch the findings appear as scenes are dragged, and save.
-7. **Keep house.** **Scenes** in the book header opens the scene library — every
-   scene in the book, filtered and paged, written, edited or removed there. A
-   scene a thread still uses names the threads before it goes; the book's ending
-   refuses until another is designated; and a scene that is some thread's *only*
-   scene is refused outright, because dropping it would leave a plotline with an
-   empty path that no later save would accept.
-8. **Delete the experiment**, from the same **✎** that renames the book — with
-   the real counts of what goes with it, and the book's id to type.
-
-Steps 2 and 5 are what this document previously called blocking; steps 7 and 8
-are what it called housekeeping.
-
-## Not a gap: Akasha
-
-A book is only half the story — its scenes reference characters, items and
-places, and Chronos [refuses to invent them](README.md). None of that is
-blocked:
-
-- Akasha's **New article** flow takes a database, collection, title and slug,
-  and `ensureCollection` creates the database and collection implicitly. No
-  namespace has to exist first.
-- Creating a collection *or* a document calls `grant_owner`, so the writer
-  immediately holds read on what they made — which is why Chronos's article
-  picker returns their own cast rather than an empty list.
-
-So the cast and the places can be written entirely in the browser today.
-
----
-
-## What this unblocks
-
-[**getting-started.md**](getting-started.md) — "build the Ember Pact yourself,
-and watch the three continuity problems appear" — was **deferred until the
-blocking gap closed**, so that the guide would not have to open with a `curl`
-line: the audience for it is precisely the audience that bounces off a terminal.
-It is now written, opens with *Register*, and ends where a guide should, with the
-reader deleting the book they built.
-
-What remains is *reporting* (the whole-book verdict), which stops no story being
-written, and so is not marked blocking.
-
-### Built: sharing a book
-
-*This row previously read "sharing a book is entirely API-only".* Sharing now
-lives in one place for everything a writer owns — categories, articles, books
-and calendars — on Akasha's **Account** page, and every kind gained the `GET
-…/collaborators` route the browser needed to show who can already see a thing.
-
-It landed on one observation: sharing is the *same* operation everywhere, and
-was written three times over. The shared implementation is
-[`visualizer/sharing.py`](../../src/visualizer/sharing.py), which describes a
-shareable kind by the shape of its grant and nothing else. That is what lets
-Akasha list and share a **book** without importing Chronos: both services
-already share one grant store, so no cross-service call is involved and the page
-still works when the two run standalone on separate ports.
-
-Chronos keeps its own calendar share dialog — sharing a calendar while you are
-using one is the right place for it — but it is the only surface that asks for a
-username as free text, because Chronos has no collaborator roster. The Account
-page offers the roster instead.
-
-Books and calendars are listed **by id**. Grants know ids, not titles, and
-resolving a book's title would couple the account page to Chronos's story store
-for one query per row.
-
-### Built: the calendar library
-
-*This section previously described a plan. It is now implemented — see
-[the calendar library](README.md#the-calendar-library).*
-
-A book's calendar used to be chosen once, inline, at creation. There is now a
-library of **named, reusable calendars** (`#/~calendars`) that attach to many
-books, and a book may keep **several at once** — parallel cultures reckoning one
-canonical tick line — with a switcher to read its scenes through any of them.
-
-It landed on the design that was written here: attaching **copies the descriptor
-into the book** and records where it came from, rather than pointing at a shared
-record. Copying keeps `codec_for` pure and I/O-free, keeps `GET /books` from
-becoming N+1, stops one writer's edit from silently re-labelling another
-writer's book, and — the consequence that only became obvious once sharing was
-real — means anyone who can read a book can read its *dates*, with no grant on
-the library entry at all. Provenance (`source`, owner-qualified) is what still
-allows an explicit, previewable *"the library version changed — update?"*.
-
-Two things the plan did not anticipate:
-
-- **Identity is `(owner, id)`, not `id`.** Calendar names are generic, so a
-  global namespace would have made the first writer to register "imperial" its
-  owner for everybody — and would have leaked the existence of calendars a
-  writer cannot read.
-- **Calendars begin and end.** `from_tick`/`until_tick` on an attachment, applied
-  by a small `EraCodec` decorator, so a destroyed culture's reckoning stops
-  dating the scenes that outlived it instead of inventing years for them.
-
-The browser side was already shaped for it, as predicted: `calendars.js` held the
-descriptor vocabulary with no DOM in it, and `calendarfield.js` reduced the whole
-question to `value() -> descriptor | null` with its sources held as a list. The
-library picker joined that list as one more `MODES` entry, and nothing that
-consumes a calendar had to change.
 
 ## Re-checking this list
 
@@ -211,3 +74,11 @@ Then cross-reference against `src/visualizer/chronos/static/js/api.js`. Mind one
 trap: a naive `api\.(\w+)\(` grep reports `getEntity` as unused, because
 `entities.js` splits the call across two lines. Allow whitespace:
 `api\s*\.\s*(\w+)\s*\(`.
+
+A closed gap leaves this document rather than accumulating in it — the reasoning
+belongs with the thing that was built. Sharing is in
+[`sharing.py`](../../src/visualizer/sharing.py) and [akasha's
+sharing](../akasha/sharing.md); the calendar library and the book's report are in
+[the chronos README](README.md); why the report folds per-thread findings instead
+of reading `/validate` is in
+[`book_health.py`](../../src/visualizer/chronos/book_health.py).

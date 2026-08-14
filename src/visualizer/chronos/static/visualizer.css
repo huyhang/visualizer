@@ -6,6 +6,11 @@
   --accent: #6366f1; --accent-strong: #4f46e5; --accent-soft: #eef1ff;
   --danger: #dc2626; --danger-soft: #fdecec; --ok: #16a34a; --ok-soft: #e5f6ec;
   --warn: #b45309; --warn-soft: #fef3c7;
+  /* Between danger and warn: "fix this" without the alarm of a hard error.
+     The book report's problems use it — a page that is nothing but problems
+     should not be a page of red. Dark enough in this theme to carry small
+     bold text at AA, so the edge and its tally can share one token. */
+  --attention: #c2410c; --attention-soft: #ffefe4;
   --shadow: 0 1px 2px rgba(16,24,40,.04), 0 6px 20px rgba(16,24,40,.06);
   --shadow-lg: 0 10px 40px rgba(16,24,40,.18);
   --radius: 14px;
@@ -16,6 +21,7 @@
   --accent: #818cf8; --accent-strong: #a5b4fc; --accent-soft: #1c2140;
   --danger: #f87171; --danger-soft: #3a1f24; --ok: #4ade80; --ok-soft: #16311f;
   --warn: #fbbf24; --warn-soft: #37300f;
+  --attention: #fb923c; --attention-soft: #3a2515;
   --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 28px rgba(0,0,0,.4);
   --shadow-lg: 0 12px 48px rgba(0,0,0,.55);
   --radius: 14px;
@@ -133,10 +139,18 @@ input:focus {
   text-align: left; border: 1px solid var(--border); background: var(--surface);
   border-radius: var(--radius); box-shadow: var(--shadow); padding: 1rem 1.1rem;
   display: flex; flex-direction: column; gap: .35rem; color: var(--text);
+  cursor: pointer;
 }
 .book-card:hover { border-color: var(--accent); }
 .book-card-head { display: flex; align-items: center; gap: .5rem; justify-content: space-between; }
-.book-title { font-weight: 700; font-size: 1.02rem; }
+/* The title carries the card's action for the keyboard (the card is a div now,
+   because the status pill inside it is a link to the report). */
+.book-title {
+  font-weight: 700; font-size: 1.02rem; text-align: left;
+  background: none; border: 0; padding: 0; color: inherit; font-family: inherit;
+}
+button.status-pill { border: 0; font-family: inherit; }
+button.status-pill.conflicted:hover { filter: brightness(.94); text-decoration: underline; }
 .book-sub { color: var(--muted); font-size: .8rem; }
 .book-meta { color: var(--muted); font-size: .82rem; }
 
@@ -432,6 +446,83 @@ button.sg-legend-chip:hover { border-color: var(--accent); }
 body:not(.focus-mode) .tl-dot.has-conflict { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
 body:not(.focus-mode) .tl-dot.has-hint { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
 
+/* The book report: every problem in the book, grouped by kind.
+
+   It deliberately does *not* borrow the timeline's finding chip. A finding sits
+   alone under one scene, where a filled mark is a useful flag; a report is
+   dozens of them in a column, where the same mark becomes a wall of red saying
+   nothing — and saying it redundantly, since a group is one kind of problem and
+   severity follows the kind. So severity is the card's left edge and the tint of
+   its tally, stated once per group, and the rows stay quiet enough to read. */
+.report-verdict { font-size: 1.05rem; margin: 0 0 1.3rem; color: var(--muted); }
+.report-verdict .tally strong { font-weight: 800; font-size: 1.15rem; color: var(--text); }
+.report-verdict .tally.conflict strong { color: var(--attention); }
+.report-verdict .tally-sep { margin: 0 .5rem; opacity: .45; }
+.report-verdict.sound { color: var(--ok); font-weight: 600; }
+.report-heading {
+  font-size: .78rem; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--muted); margin: 1.8rem 0 .6rem; padding-top: .9rem;
+  border-top: 1px solid var(--border);
+}
+.thread-filter {
+  padding: .45rem .6rem; background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 9px; font: inherit; font-size: .88rem;
+}
+
+/* one card per kind; the left edge carries the severity */
+.issue-group {
+  margin: 0 0 .9rem; background: var(--surface); overflow: hidden;
+  border: 1px solid var(--border); border-left: 3px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.issue-group.conflict { border-left-color: var(--attention); }
+/* Notes step down to grey rather than to amber: at 3px, amber beside orange is
+   two shades of the same thing, and a to-do is not a lesser fault — it is a
+   different kind of entry. Grey says "not a fault" in a way a warm colour cannot. */
+.issue-group.info { border-left-color: var(--muted); }
+.issue-group-title {
+  display: flex; align-items: center; gap: .6rem; margin: 0;
+  padding: .6rem .9rem; font-size: .9rem; font-weight: 700;
+  background: var(--surface-2); border-bottom: 1px solid var(--border);
+}
+.issue-group-name { flex: 1; }
+.issue-count {
+  font-size: .72rem; font-weight: 700; padding: .1rem .5rem; border-radius: 999px;
+  background: var(--surface-3); color: var(--muted);
+}
+.issue-group.conflict .issue-count { background: var(--attention-soft); color: var(--attention); }
+/* notes keep the default grey pill — nothing to say beyond the count */
+
+/* rows, separated by hairlines rather than each boxed in its own card */
+.issue { padding: .7rem .9rem; border-top: 1px solid var(--border); }
+.issue:first-child { border-top: 0; }
+.issue:hover { background: var(--surface-2); }
+.issue-head { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.issue-scene {
+  background: none; border: 0; padding: 0; font: inherit; font-weight: 700;
+  color: var(--text); text-align: left;
+}
+.issue-scene:hover { color: var(--accent-strong); text-decoration: underline; }
+.thread-chip { border: 0; font-size: .74rem; }
+.thread-chip:hover { filter: brightness(.95); text-decoration: underline; }
+.issue-text { margin: .25rem 0 0; font-size: .88rem; line-height: 1.5; color: var(--text); }
+.issue-links { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .5rem; align-items: center; }
+.issue-links .banner-link { border-color: var(--border); font-weight: 500; }
+.issue-links .banner-link:hover { border-color: var(--accent); }
+/* the people and places a message names, as things you can open */
+.ref-chip { border: 0; font-size: .74rem; }
+.ref-chip:hover { filter: brightness(.95); text-decoration: underline; }
+
+/* the notes fold, and the triage table under it */
+.report-heading-row { display: flex; align-items: baseline; gap: .8rem; }
+.report-heading-row .report-heading { flex: 1; }
+.report-rollup { margin-top: 1.8rem; }
+.report-rollup .report-heading { border-top: 1px solid var(--border); }
+.rollup-hint { font-size: .84rem; margin: 0 0 .6rem; }
+.report-rollup .pl-table td:last-child,
+.report-rollup .pl-table th:last-child { width: 9rem; }
+.report-rollup .pl-row.is-current td { background: var(--accent-soft); }
+
 /* plotline table health column */
 .health-flag {
   display: inline-block; font-size: .78rem; font-weight: 700; white-space: nowrap;
@@ -653,7 +744,8 @@ body:not(.focus-mode) .scene-row.has-hint { border-color: color-mix(in srgb, var
    Focus mode — the marks are hidden, never unmade. Nothing here stops a finding
    being computed; the toggle button keeps stating the count so a quiet screen
    is never mistaken for a sound story. Scoped to the plotline view and the
-   editor: the book's table keeps its health column on purpose.
+   editor: the book's table keeps its health column on purpose, and so does the
+   report — a page that is nothing but marks is one you went to for the marks.
    --------------------------------------------------------------------------- */
 .focus-mode .findings,
 .focus-mode .banner.conflict { display: none; }

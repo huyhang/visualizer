@@ -7,13 +7,14 @@ to one definition. It turns ids into titles, ticks into codec labels, and adds
 `_links` / `status` so responses explain themselves.
 """
 
+from .book_health import Issue
 from .book_rules import Neighborhood, build_graph
 from .calendar import TimeCodec
 from .conflicts import Conflict
 from .continuation import Resolution, effective_paths, resolve
 from .models import Book, CalendarAttachment, Event, LibraryCalendar, Plotline
 from .ordering import Violation
-from .plotline_health import Finding, conflict_count, findings_for_path
+from .plotline_health import CONFLICT, Finding, conflict_count, findings_for_path
 from .reports import BookReport
 from .scheduling import Window
 
@@ -630,6 +631,128 @@ def present_validate(report: BookReport, codec: TimeCodec) -> dict:
             {"event": eid, "window": _window(window, codec)}
             for eid, window in sorted(report.unscheduled.items())
         ],
+    }
+
+
+# -- the book's continuity report ---------------------------------------------
+
+# Every issue code, in the order the report reads, under the heading it is filed
+# beneath. Two codes may share a heading (a continuation is broken the same way
+# whether the chain loops or points at nothing), and the report merges them.
+#
+# The headings live here rather than in the browser for the same reason the
+# finding messages do: one vocabulary, decided once, so the report and the
+# plotline view cannot end up calling the same rule two different things.
+_ISSUE_GROUPS = (
+    ("TEMPORAL_CONFLICT", "A character in two places at once"),
+    ("ORDERING_VIOLATION", "Scenes out of order"),
+    ("IMPOSSIBLE_WINDOW", "Scenes with no room on the timeline"),
+    ("MISSING_ENTITY", "Articles that are no longer there"),
+    ("NO_TERMINUS", "No ending designated"),
+    ("TERMINUS_VIOLATION", "Threads that do not reach the ending"),
+    ("EMPTY_PLOTLINE", "Threads with no scenes"),
+    ("UNSCHEDULED", "Scenes still waiting for a time"),
+    ("PLOTLINE_CYCLE", "Broken continuations"),
+    ("INVALID_PLOTLINE", "Broken continuations"),
+)
+
+
+def _scene_ref(event_id: str | None, events_by_id: dict[str, Event]) -> dict | None:
+    if event_id is None:
+        return None
+    event = events_by_id.get(event_id)
+    return {"id": event_id, "title": event.display_title if event else event_id}
+
+
+def present_issue(issue: Issue, events_by_id: dict[str, Event], titles: dict) -> dict:
+    """One issue in the book report.
+
+    ``scene`` is what the message is said *about* -- findings are phrased from a
+    scene's point of view, so the two are only legible together. ``plotlines``
+    is every thread that can see it, which at book scale is the question a
+    per-thread view never has to answer.
+    """
+    out = {
+        "code": issue.code,
+        "severity": issue.severity,
+        "message": issue.message,
+        "scene": _scene_ref(issue.scene, events_by_id),
+        "events": [_scene_ref(e, events_by_id) for e in issue.events],
+        "plotlines": [{"id": p, "title": titles.get(p, p)} for p in issue.plotlines],
+        "refs": [ref.to_dict() for ref in issue.refs],
+    }
+    if issue.doc:
+        out["doc"] = issue.doc
+    return out
+
+
+def _issue_groups(issues: list[Issue], events_by_id, titles) -> list[dict]:
+    """Issues filed under their headings, in the fixed order above.
+
+    Stable within a group, so the story order the report was built in survives.
+    """
+    rank = {code: i for i, (code, _) in enumerate(_ISSUE_GROUPS)}
+    heading = dict(_ISSUE_GROUPS)
+    groups: dict[str, dict] = {}
+    for issue in sorted(issues, key=lambda i: rank.get(i.code, len(rank))):
+        title = heading.get(issue.code, issue.code)
+        # Uniform by construction -- severity follows the code, groups follow the
+        # heading, and problems and notes are grouped separately -- so the group
+        # can state it once instead of every row in it repeating the same mark.
+        group = groups.setdefault(
+            title, {"title": title, "severity": issue.severity, "codes": [], "issues": []}
+        )
+        if issue.code not in group["codes"]:
+            group["codes"].append(issue.code)
+        group["issues"].append(present_issue(issue, events_by_id, titles))
+    return list(groups.values())
+
+
+def _thread_rollup(problems: list[Issue], plotlines: list[Plotline]) -> list[dict]:
+    """Every thread, with how many of this report's problems name it.
+
+    A triage list -- which thread to open first -- and the filter's menu, in one
+    answer. Deliberately **not** the same number as the plotline table's Health
+    column: that counts contradictions among the scenes on a thread, while this
+    also counts the whole-thread verdicts (never reaching the ending, no scenes
+    at all) which the table has never shown. Two questions, so the report labels
+    its column for the one it is answering rather than inviting the comparison.
+    """
+    counted: dict[str, int] = {}
+    for issue in problems:
+        for plotline_id in issue.plotlines:
+            counted[plotline_id] = counted.get(plotline_id, 0) + 1
+    return [{**_plotline_ref(p), "problems": counted.get(p.id, 0)} for p in plotlines]
+
+
+def present_book_report(
+    issues: list[Issue], events_by_id: dict[str, Event], plotlines: list[Plotline]
+) -> dict:
+    """The whole book's continuity report, grouped and counted for reading.
+
+    Two sections rather than one list. ``problems`` are the contradictions --
+    exactly the categories a book's ``status`` is computed from, so a book this
+    calls conflicted is a book whose card says ``conflicted``. ``notes`` are
+    things worth knowing that are not faults: a scene still waiting for a time is
+    a draft state, and saying otherwise would leave every book in progress red.
+    """
+    titles = {p.id: p.display_title for p in plotlines}
+    problems = [i for i in issues if i.severity == CONFLICT]
+    notes = [i for i in issues if i.severity != CONFLICT]
+    return {
+        "status": "conflicted" if problems else "consistent",
+        "summary": {
+            "problems": len(problems),
+            "notes": len(notes),
+            # Counted apart from the other notes: it is the one a writer works
+            # down as a to-do list, and the report's headline says how long it is.
+            "unscheduled": sum(1 for i in notes if i.code == "UNSCHEDULED"),
+        },
+        "problems": _issue_groups(problems, events_by_id, titles),
+        "notes": _issue_groups(notes, events_by_id, titles),
+        # Every thread in the book and its share of the problems, so the report
+        # can be triaged and narrowed to one without a second request.
+        "plotlines": _thread_rollup(problems, plotlines),
     }
 
 

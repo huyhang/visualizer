@@ -281,10 +281,18 @@ one question per screen:
 
 ```
 GET    /books/<book>/ui/plotlines    filtered, name-ordered, paginated table
+GET    /books/<book>/ui/issues       the book's problems, grouped for reading
 POST   /books/<book>/ui/plotline-preview   judge a candidate thread; writes nothing
 GET    /books/<book>/ui/entities     type-ahead over referenceable Akasha articles
 GET    /books/<book>/ui/entity/<db>/<collection>/<id>   read one article
 ```
+
+`…/ui/issues` and `…/validate` answer the same question for different readers.
+`/validate` is the machine's answer: ids, one list per category, the first
+ordering violation on each thread. `…/ui/issues` is the writer's: the same rules
+run thread by thread and folded into one list, so a problem two threads can see
+is one entry naming both, phrased in the same words the plotline view uses and
+grouped by kind. See [the report](#the-books-report).
 
 ### Shared endings
 
@@ -544,6 +552,56 @@ letting you hit a 422. Deleting a thread that others continue into is refused
 until you agree to absorb it into them (the `?inline=true` path), which keeps
 their stories intact.
 
+### The book's report
+
+**Report** in the book's header — and the **conflicted** pill on its card, which
+is a link now — opens `#/<book>/~issues`: everything wrong across every plotline
+in the book, on one page.
+
+It exists because the marks were only ever per thread. A book that said
+*conflicted* had nowhere to click through to, a writer with six threads had to
+open all six to find out which were broken, and a contradiction between two of
+them showed up twice with nothing to say it was one problem.
+
+Four things it does that a per-thread view cannot:
+
+- **One problem, once.** A conflict reported on both its scenes and on every
+  thread either scene sits on becomes a single entry that *names* those threads.
+  The number a thread contributes here is the number its row in the table
+  already prints — held to it by a test, because the two are computed
+  differently and a writer sees them on adjacent screens.
+- **Grouped by kind**, in a fixed order, so the page answers "what sorts of
+  thing are wrong" before it answers "where". The headings come from the server
+  along with the wording, for the same reason the per-scene findings do: one
+  vocabulary, so the report and the timeline cannot end up calling the same rule
+  two different things.
+- **Problems and notes are separated.** *Problems* are the contradictions —
+  exactly what a book's `status` is computed from, so a book this page calls
+  conflicted is a book whose card says conflicted. *Worth knowing* holds the
+  rest: a scene still waiting for a time is a draft state, not a fault, and
+  counting it as one would leave every book in progress red.
+- **Things no thread can carry** get said at last: a book with no ending
+  designated, a thread that stops short of it, a thread with no scenes, a
+  continuation chain that cannot be followed — and any scene written but never
+  threaded, which every per-thread pass is blind to by construction.
+
+Each entry names the scene it is about (findings are phrased from a scene's
+point of view — *"this scene has not ended when…"* — and only read correctly
+beside it) and goes there: to that scene on that thread
+(`#/<book>/<plotline>/at/<event>`, which scrolls to it and flashes it), or to a
+peek card for the scene at the other end of the problem, which often lives on a
+thread you were not looking at. The people and places a message names are chips
+beside it, so you can open the article and check what the message claims.
+
+Under the entries, **By plotline** — every thread with its share of the
+problems, most first, and clicking one narrows the report to it. That number is
+deliberately *not* the plotline table's **Health** column: Health counts
+contradictions among the scenes on a thread, while this also counts the
+whole-thread verdicts (never reaching the ending, no scenes at all) that the
+table has never shown. Two questions, so the column is labelled for the one it
+answers. **Worth knowing** folds away, and stays folded, for a book being
+drafted with more undated scenes than problems.
+
 ### Errors
 
 Every error shares one shape, so learning it once covers all of them:
@@ -644,7 +702,7 @@ touch a database.
 
 | Module | Role |
 | --- | --- |
-| `timeline`, `conflicts`, `ordering`, `book_rules`, `reports`, `plotline_health`, `browsing`, `calendar`, `validation`, `models` | **pure logic** — no I/O, no Flask; where correctness lives |
+| `timeline`, `conflicts`, `ordering`, `book_rules`, `reports`, `plotline_health`, `book_health`, `browsing`, `calendar`, `validation`, `models` | **pure logic** — no I/O, no Flask; where correctness lives |
 | `documents.ScopedDocuments` | the composite key, `_rev` concurrency and author stamp both stores share |
 | `store.StoryStore` | persistence seam for books/plotlines/events, scoped to a book |
 | `store.CalendarStore` | persistence seam for the calendar library, scoped to an owner |

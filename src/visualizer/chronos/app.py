@@ -618,6 +618,20 @@ def _register_ui_routes(app, csrf, auth_store, visualizer):
             visualizer.browse_plotlines(book, calendar_id=_calendar_arg(), **_browse_args())
         )
 
+    @app.get(_BOOK + "/ui/issues")
+    @csrf.exempt
+    @login_required
+    def ui_book_issues(book):
+        """Everything wrong across the whole book, grouped for reading.
+
+        ``/validate`` answers the same question for a machine -- ids, categories,
+        one ordering violation per thread. This answers it for the writer, in the
+        same words the plotline view uses, which is why it is a visualiser helper
+        rather than a second shape of the report.
+        """
+        _authorize(auth_store, "GET", book)
+        return jsonify(visualizer.book_report(book, _calendar_arg()))
+
     @app.post(_BOOK + "/ui/plotline-preview")
     @csrf.exempt
     @login_required

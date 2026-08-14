@@ -9,12 +9,34 @@ import { api } from "./api.js";
 import { openBookForm } from "./bookform.js";
 import { clear, el } from "./dom.js";
 
-function bookCard(book, onOpen) {
+// A book that reads `conflicted` used to say so and stop there. It is a button
+// now, and it goes to the report that explains it.
+function statusPill(book, onReport) {
+  if (book.status !== "conflicted") {
+    return el("span", { class: `status-pill ${book.status}`, text: book.status });
+  }
+  return el("button", {
+    class: "status-pill conflicted", type: "button", text: book.status,
+    title: "See what is wrong with this book",
+    // The card behind it opens the book; this is the one place on it that goes
+    // somewhere else.
+    onclick: (e) => { e.stopPropagation(); onReport(book.id); },
+  });
+}
+
+// A div rather than a button, because it contains one: a control inside a
+// control is invalid, and the pill has to be reachable by keyboard as well as
+// by mouse. So the title carries the card's action for the keyboard, and the
+// card itself carries it for the pointer.
+function bookCard(book, { onOpen, onReport }) {
   const count = (book.plotlines || []).length;
-  return el("button", { class: "book-card", onclick: () => onOpen(book.id) }, [
+  return el("div", { class: "book-card", onclick: () => onOpen(book.id) }, [
     el("div", { class: "book-card-head" }, [
-      el("span", { class: "book-title", text: book.title || book.id }),
-      el("span", { class: `status-pill ${book.status}`, text: book.status }),
+      el("button", {
+        class: "book-title", type: "button", text: book.title || book.id,
+        onclick: (e) => { e.stopPropagation(); onOpen(book.id); },
+      }),
+      statusPill(book, onReport),
     ]),
     el("div", { class: "book-sub", text: book.id }),
     // What the book is about, clamped to a couple of lines so the cards keep a
@@ -33,7 +55,7 @@ function newBookButton(onOpen, { primary = false } = {}) {
   });
 }
 
-export async function mountBooks(container, { onOpen, onCalendars }) {
+export async function mountBooks(container, { onOpen, onCalendars, onReport }) {
   clear(container);
   const results = el("div", { class: "book-results" },
     el("p", { class: "muted", text: "Loading…" }));
@@ -76,5 +98,6 @@ export async function mountBooks(container, { onOpen, onCalendars }) {
     ]));
     return;
   }
-  results.appendChild(el("div", { class: "book-grid" }, books.map((b) => bookCard(b, onOpen))));
+  results.appendChild(el("div", { class: "book-grid" },
+    books.map((b) => bookCard(b, { onOpen, onReport }))));
 }

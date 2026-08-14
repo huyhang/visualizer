@@ -31,7 +31,11 @@ export function markerClass(summary) {
 // slug alone when it refuses, which is the right outcome for someone without the
 // grant. Exact match including the quotes, so a slug can never rewrite part of
 // another word.
-function withArticleTitles(book, finding, node) {
+//
+// Exported because the book report quotes articles the same way and must not
+// resolve them differently: one substitution rule, used wherever a message with
+// refs beside it is rendered.
+export function withArticleTitles(book, finding, node) {
   for (const ref of finding.refs || []) {
     entityTitle(book, ref).then((title) => {
       if (!title || title === ref.id) return;

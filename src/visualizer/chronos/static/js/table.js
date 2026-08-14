@@ -60,7 +60,7 @@ function table(rows, onOpen) {
   ]));
 }
 
-export async function mountPlotlineTable(container, book, { onOpen, onBooks, onScenes }) {
+export async function mountPlotlineTable(container, book, { onOpen, onBooks, onScenes, onIssues }) {
   clear(container);
   const state = lastState[book] || { query: "", page: 1 };
   lastState[book] = state;
@@ -75,6 +75,27 @@ export async function mountPlotlineTable(container, book, { onOpen, onBooks, onS
   const results = el("div", { class: "pl-results" }, el("p", { class: "muted", text: "Loading…" }));
 
   const canWrite = Boolean((bookMeta.permissions || {}).write);
+  const conflicted = bookMeta.status === "conflicted";
+
+  // How many, not just whether — the button's whole job is to say if it is worth
+  // opening. Two things keep it cheap. It is filled in *after* the page is on
+  // screen, so the table never waits on a whole-book pass for a label; and it is
+  // only asked for at all when the book is already known to be conflicted, since
+  // a sound book has no count to show.
+  const reportButton = el("button", {
+    class: `btn ${conflicted ? "danger ghost" : "secondary"} sm`,
+    type: "button", text: "Report",
+    title: "Everything wrong across this book's plotlines",
+    onclick: onIssues,
+  });
+  if (conflicted) {
+    api.bookIssues(book)
+      .then(({ summary }) => {
+        const n = summary.problems;
+        if (n) reportButton.textContent = `Report · ${n} problem${n === 1 ? "" : "s"}`;
+      })
+      .catch(() => { /* the plain label is a fine answer */ });
+  }
 
   container.appendChild(el("div", { class: "view table-view" }, [
     breadcrumb(bookMeta.title || book, onBooks),
@@ -90,7 +111,7 @@ export async function mountPlotlineTable(container, book, { onOpen, onBooks, onS
           book: bookMeta,
           // Remount rather than patch the heading: the calendar may have
           // changed, and every tick label on the page is written in it.
-          onDone: () => mountPlotlineTable(container, book, { onOpen, onBooks, onScenes }),
+          onDone: () => mountPlotlineTable(container, book, { onOpen, onBooks, onScenes, onIssues }),
           // This view is *about* the book that just stopped existing, so there
           // is nothing here to return to.
           onDeleted: onBooks,
@@ -104,6 +125,12 @@ export async function mountPlotlineTable(container, book, { onOpen, onBooks, onS
         title: "Every scene in this book — write, edit or remove them",
         onclick: onScenes,
       }),
+      // The Health column below says which threads have problems; this says what
+      // they are, across all of them at once — including the ones no single
+      // thread can explain, like a book with no ending designated. Marked when
+      // the book is already known to be conflicted, so the writer does not have
+      // to open it to find out whether it is worth opening.
+      reportButton,
     ].filter(Boolean)),
     // What the book is about, under its title — the one screen that is about
     // this book and nothing else is where its summary belongs.

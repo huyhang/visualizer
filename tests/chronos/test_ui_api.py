@@ -604,6 +604,308 @@ def test_the_table_and_the_plotline_view_agree_about_a_thread(book_with_plotline
         assert row["conflicts"] == thread["status"]["conflicts"], row["id"]
 
 
+# -- the whole-book report ----------------------------------------------------
+
+
+def _issues(client, **params):
+    query = "&".join(f"{k}={v}" for k, v in params.items())
+    resp = client.get(f"/books/{BOOK}/ui/issues" + (f"?{query}" if query else ""))
+    assert resp.status_code == 200, resp.get_json()
+    return resp.get_json()
+
+
+def _codes(section):
+    return [i["code"] for group in section for i in group["issues"]]
+
+
+def test_the_report_gathers_problems_from_every_thread(book_with_plotlines):
+    # One contradiction on each thread: the knight's road runs backwards, and the
+    # spy is put in two places at once.
+    book_with_plotlines.put(
+        f"/books/{BOOK}/plotlines/knights-road",
+        json={"events": ["coronation", "aldric-departs"], "goals": ["Deliver the Seal"]},
+    )
+    # The harbour exchange puts aldric at emberport 20-30; this puts him at
+    # highkeep over the same hours.
+    _event(book_with_plotlines, "quay-sighting", "highkeep", 25, 35, title="The Quay Sighting")
+    book_with_plotlines.put(
+        f"/books/{BOOK}/plotlines/spys-shadow",
+        json={"events": ["harbor-exchange", "quay-sighting", "coronation"],
+              "goals": ["Infiltrate"]},
+    )
+    body = _issues(book_with_plotlines)
+    assert "ORDERING_VIOLATION" in _codes(body["problems"])
+    assert "TEMPORAL_CONFLICT" in _codes(body["problems"])
+    assert body["summary"]["problems"] == len(_codes(body["problems"]))
+
+
+def test_the_report_says_which_threads_a_problem_lands_on(book_with_plotlines):
+    # Both threads end at the coronation, so a conflict against it is visible
+    # from each of them — which is the thing no single-thread view can say.
+    _event(book_with_plotlines, "quay-sighting", "emberport", 45, 55, title="The Quay Sighting")
+    book_with_plotlines.put(
+        f"/books/{BOOK}/plotlines/knights-road",
+        json={"title": "The Knight's Road", "goals": ["Deliver the Seal"],
+              "events": ["aldric-departs", "quay-sighting", "coronation"]},
+    )
+    body = _issues(book_with_plotlines)
+    conflict = next(
+        i for g in body["problems"] for i in g["issues"] if i["code"] == "TEMPORAL_CONFLICT"
+    )
+    assert {p["id"] for p in conflict["plotlines"]} == {"knights-road", "spys-shadow"}
+    # Named by title, not by id: the report is read, not parsed.
+    assert {p["title"] for p in conflict["plotlines"]} == {
+        "The Knight's Road", "The Spy's Shadow",
+    }
+
+
+def test_the_report_names_the_scene_a_message_is_about(book_with_plotlines):
+    book_with_plotlines.put(
+        f"/books/{BOOK}/plotlines/knights-road",
+        json={"events": ["coronation", "aldric-departs"], "goals": ["Deliver the Seal"]},
+    )
+    issue = next(
+        i for g in _issues(book_with_plotlines)["problems"] for i in g["issues"]
+        if i["code"] == "ORDERING_VIOLATION"
+    )
+    assert issue["scene"]["title"] == "The Coronation"
+    assert issue["events"] == [{"id": "aldric-departs", "title": "Aldric Departs"}]
+
+
+# -- the report and the book card must never disagree -------------------------
+#
+# A book card reading `conflicted` is a link to this report now, so a card that
+# says one thing and a page that says the other is the exact failure the
+# click-through was built to prevent. And they are computed *independently*: the
+# card from `reports.BookReport.ok`, the report from whether any issue came back
+# at conflict severity.
+#
+# Each case below drives the book into one — and deliberately only one — of the
+# ways `ok` can be false, and asserts both halves agree. The `code` is what pins
+# the case honestly: without it a mutation that stopped the report noticing
+# *this* category could still pass on some other fault firing at the same time.
+#
+# An empty plotline is the one member of `ok` missing here: a write refuses a
+# thread with no scenes of its own, so it cannot be reached through the API.
+# `test_book_health` covers it directly.
+
+TERMINUS = f"/books/{BOOK}/terminus/coronation"
+
+
+def _undated(client, event_id, title):
+    return client.post(f"/books/{BOOK}/events/{event_id}", json={
+        "location": ref("highkeep", "locations").to_dict(), "title": title,
+    })
+
+
+def _thread(client, events):
+    return client.put(f"/books/{BOOK}/plotlines/knights-road", json={
+        "title": "The Knight's Road", "goals": ["Deliver the Seal"], "events": events,
+    })
+
+
+def _sound(client, gate):
+    client.post(TERMINUS)
+
+
+def _only_an_undated_scene(client, gate):
+    client.post(TERMINUS)
+    _undated(client, "the-vigil", "The Vigil")
+    # Between hours 10 and 40 — a window it can fit in, so a note, not a fault.
+    _thread(client, ["aldric-departs", "the-vigil", "coronation"])
+
+
+def _a_character_in_two_places(client, gate):
+    client.post(TERMINUS)
+    # The harbour exchange has aldric at emberport 20-30; this has him at
+    # highkeep over the same hours, on a thread of its own.
+    _event(client, "vigil-at-keep", "highkeep", 20, 30, title="Vigil At The Keep")
+    _plotline(client, "kings-watch", ["vigil-at-keep", "coronation"], title="The King's Watch")
+
+
+def _a_conflict_on_a_scene_no_thread_uses(client, gate):
+    client.post(TERMINUS)
+    # Never threaded: the case every per-thread pass is blind to by construction.
+    _event(client, "stray-sighting", "emberport", 0, 10, title="A Stray Sighting")
+
+
+def _scenes_out_of_order(client, gate):
+    client.post(TERMINUS)
+    _event(client, "dawn-ride", "highkeep", 60, 70, characters=("lyra",), title="The Dawn Ride")
+    _thread(client, ["dawn-ride", "aldric-departs", "coronation"])
+
+
+def _a_scene_with_no_room(client, gate):
+    client.post(TERMINUS)
+    _undated(client, "the-vigil", "The Vigil")
+    # Must start after hour 30 and end before hour 0: no room at all.
+    _thread(client, ["harbor-exchange", "the-vigil", "aldric-departs", "coronation"])
+
+
+def _an_article_deleted_underneath_a_scene(client, gate):
+    client.post(TERMINUS)
+    gate.remove(ref("aldric"))
+
+
+def _no_ending_designated(client, gate):
+    pass  # the fixture never designates one
+
+
+def _a_thread_that_stops_short(client, gate):
+    client.post(TERMINUS)
+    _thread(client, ["aldric-departs"])
+
+
+@pytest.mark.parametrize("mutate,code", [
+    (_sound, None),
+    (_only_an_undated_scene, None),
+    (_a_character_in_two_places, "TEMPORAL_CONFLICT"),
+    (_a_conflict_on_a_scene_no_thread_uses, "TEMPORAL_CONFLICT"),
+    (_scenes_out_of_order, "ORDERING_VIOLATION"),
+    (_a_scene_with_no_room, "IMPOSSIBLE_WINDOW"),
+    (_an_article_deleted_underneath_a_scene, "MISSING_ENTITY"),
+    (_no_ending_designated, "NO_TERMINUS"),
+    (_a_thread_that_stops_short, "TERMINUS_VIOLATION"),
+], ids=lambda v: v.__name__.strip("_") if callable(v) else (v or ""))
+def test_the_report_and_the_book_card_never_disagree(
+    book_with_plotlines, fake_gate, mutate, code
+):
+    mutate(book_with_plotlines, fake_gate)
+
+    body = _issues(book_with_plotlines)
+    card = book_with_plotlines.get(f"/books/{BOOK}").get_json()["status"]
+    assert body["status"] == card
+
+    # ...and the case really did exercise the category it claims to.
+    assert (code in _codes(body["problems"])) if code else body["status"] == "consistent"
+
+
+def test_an_undated_scene_is_a_note_rather_than_a_problem(book_with_plotlines):
+    book_with_plotlines.post(f"/books/{BOOK}/terminus/coronation")
+    book_with_plotlines.post(
+        f"/books/{BOOK}/events/the-vigil",
+        json={"location": ref("highkeep", "locations").to_dict(),
+              "characters": [ref("lyra").to_dict()], "title": "The Vigil"},
+    )
+    book_with_plotlines.put(
+        f"/books/{BOOK}/plotlines/knights-road",
+        json={"events": ["aldric-departs", "the-vigil", "coronation"],
+              "goals": ["Deliver the Seal"]},
+    )
+    body = _issues(book_with_plotlines)
+    assert _codes(body["problems"]) == []
+    assert _codes(body["notes"]) == ["UNSCHEDULED"]
+    assert body["summary"]["unscheduled"] == 1
+
+
+def test_the_report_says_when_the_book_has_no_ending(book_with_plotlines):
+    # The book fixture never designates one, so this is what a writer sees first.
+    body = _issues(book_with_plotlines)
+    assert _codes(body["problems"]) == ["NO_TERMINUS"]
+    # Once said, once — not repeated at every thread in the book.
+    assert body["problems"][0]["issues"][0]["plotlines"] == []
+
+
+def test_the_report_names_a_thread_that_stops_short_of_the_ending(book_with_plotlines):
+    book_with_plotlines.post(f"/books/{BOOK}/terminus/coronation")
+    book_with_plotlines.put(
+        f"/books/{BOOK}/plotlines/knights-road",
+        json={"events": ["aldric-departs"], "goals": ["Deliver the Seal"]},
+    )
+    issue = next(
+        i for g in _issues(book_with_plotlines)["problems"] for i in g["issues"]
+        if i["code"] == "TERMINUS_VIOLATION"
+    )
+    assert [p["id"] for p in issue["plotlines"]] == ["knights-road"]
+    assert "'Aldric Departs'" in issue["message"]
+    assert "'The Coronation'" in issue["message"]
+
+
+def test_the_report_lists_the_books_threads_so_it_can_be_narrowed(book_with_plotlines):
+    body = _issues(book_with_plotlines)
+    assert {p["id"] for p in body["plotlines"]} == {"knights-road", "spys-shadow"}
+    # Named and counted, so the same answer serves as the filter's menu and as
+    # the "which thread do I open first" triage list.
+    assert {p["title"] for p in body["plotlines"]} == {
+        "The Knight's Road", "The Spy's Shadow",
+    }
+    assert all(isinstance(p["problems"], int) for p in body["plotlines"])
+
+
+def test_the_rollup_agrees_with_the_issues_on_the_page(book_with_plotlines):
+    # Two numbers on one screen that could drift: the triage table at the foot
+    # and the entries above it.
+    book_with_plotlines.post(f"/books/{BOOK}/terminus/coronation")
+    book_with_plotlines.put(
+        f"/books/{BOOK}/plotlines/knights-road",
+        json={"events": ["coronation", "aldric-departs"], "goals": ["Deliver the Seal"]},
+    )
+    body = _issues(book_with_plotlines)
+    named = {}
+    for group in body["problems"]:
+        for issue in group["issues"]:
+            for pl in issue["plotlines"]:
+                named[pl["id"]] = named.get(pl["id"], 0) + 1
+    for row in body["plotlines"]:
+        assert row["problems"] == named.get(row["id"], 0), row["id"]
+    assert named["knights-road"] >= 2  # runs backwards *and* misses the ending
+
+
+def test_the_report_and_the_table_agree_about_a_thread(book_with_plotlines):
+    """The same invariant the pure tests pin, through the real app.
+
+    The report folds per-thread findings across the book; the table counts them
+    in one pass. A writer sees both on adjacent screens.
+    """
+    book_with_plotlines.post(f"/books/{BOOK}/terminus/coronation")
+    _event(book_with_plotlines, "quay-sighting", "emberport", 5, 15, title="The Quay Sighting")
+    book_with_plotlines.put(
+        f"/books/{BOOK}/plotlines/knights-road",
+        json={"events": ["coronation", "aldric-departs", "quay-sighting"],
+              "goals": ["Deliver the Seal"]},
+    )
+    body = _issues(book_with_plotlines)
+    whole_thread = {"TERMINUS_VIOLATION", "EMPTY_PLOTLINE", "NO_TERMINUS"}
+    rows = book_with_plotlines.get(f"/books/{BOOK}/ui/plotlines").get_json()["plotlines"]
+    for row in rows:
+        mine = [
+            i for g in body["problems"] for i in g["issues"]
+            if i["code"] not in whole_thread
+            and any(p["id"] == row["id"] for p in i["plotlines"])
+        ]
+        assert len(mine) == row["conflicts"], row["id"]
+
+
+def test_the_report_is_read_through_the_books_calendar(calendared):
+    """Two of the messages quote ticks, so they are the calendar's to name."""
+    calendared.post(
+        f"/books/{BOOK}/events/the-vigil",
+        json={"location": ref("highkeep", "locations").to_dict(), "title": "The Vigil"},
+    )
+    calendared.put(
+        f"/books/{BOOK}/plotlines/knights-road",
+        json={"events": ["aldric-departs", "the-vigil", "coronation"],
+              "goals": ["Deliver the Seal"]},
+    )
+    note = next(
+        i for g in _issues(calendared)["notes"] for i in g["issues"]
+        if i["code"] == "UNSCHEDULED"
+    )
+    assert "Day" in note["message"], note["message"]
+
+
+def test_the_report_needs_read_permission_on_the_book(book_with_plotlines, app):
+    from tests.chronos.conftest import _login
+
+    other = app.test_client()
+    _login(other, "admin", "admin-pass")  # no grant on this book
+    assert other.get(f"/books/{BOOK}/ui/issues").status_code == 403
+
+
+def test_the_report_needs_a_session(seeded):
+    assert seeded.test_client().get(f"/books/{BOOK}/ui/issues").status_code in (302, 401)
+
+
 # -- the world a book draws its cast from ------------------------------------
 #
 # Before this existed the scope could only be *inferred* from scenes that were

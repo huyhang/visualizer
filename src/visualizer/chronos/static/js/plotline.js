@@ -143,7 +143,8 @@ function jumpTo(container, book, eventId) {
 }
 
 export async function mountPlotline(container, book, plotlineId,
-  { showEntity, onBooks, onBook, onConnected, onConnectedAt, onGone, onRenamed, onSaved }) {
+  { showEntity, onBooks, onBook, onConnected, onConnectedAt, onGone, onRenamed, onSaved,
+    focusEvent = null }) {
   clear(container);
   const loading = el("div", { class: "view" }, el("p", { class: "muted", text: "Loading plotline…" }));
   container.appendChild(loading);
@@ -210,7 +211,8 @@ export async function mountPlotline(container, book, plotlineId,
       // re-labels: every date on the page comes from the server's codec.
       calendarSwitcher(book, bookMeta.calendars, () => mountPlotline(
         container, book, plotlineId,
-        { showEntity, onBooks, onBook, onConnected, onConnectedAt, onGone, onRenamed, onSaved },
+        { showEntity, onBooks, onBook, onConnected, onConnectedAt, onGone, onRenamed, onSaved,
+          focusEvent },
       )),
     ].filter(Boolean)),
     el("p", { class: "muted axis-note", text: allScheduled(events)
@@ -229,4 +231,9 @@ export async function mountPlotline(container, book, plotlineId,
     verdictNotes(pl.status, events),
     body,
   ]));
+
+  // Arrived from the book report, which names a scene as well as a thread. The
+  // same move the findings' own "show" makes — after a frame, so the rows have
+  // been laid out and there is something to scroll to.
+  if (focusEvent) requestAnimationFrame(() => jumpTo(container, book, focusEvent));
 }

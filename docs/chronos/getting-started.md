@@ -308,6 +308,15 @@ have said nothing at all.
 > tell it and reports what does not add up — a draft is allowed to be wrong, and
 > the report is a to-do list rather than a gate.
 
+### All three at once
+
+You found those by opening one thread and knowing where to look. **Report**, in
+the book's header — or the `conflicted` pill on the book's card, which is a link
+— lists all of them on one page, grouped by kind, each naming the scene it is
+about and every thread it shows up on. The temporal conflict appears **once**
+there, not twice: it is one problem seen from two threads, and the report says
+so. Clicking a scene takes you to it, on its thread, scrolled to and flashed.
+
 ---
 
 ## 8. Fix all three

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from .book_health import book_issues
 from .book_rules import graph_view, neighborhood
 from .browsing import (
     DEFAULT_PER_PAGE,
@@ -19,7 +20,7 @@ from .browsing import (
     dominant_database,
 )
 from .calendar import codec_for, codec_for_attachment, select_calendar
-from .continuation import effective_paths, resolve, would_cycle
+from .continuation import effective_paths, resolve, resolve_all, would_cycle
 from .entity_gate import EntityGate
 from .errors import (
     EntityNotFound,
@@ -35,6 +36,7 @@ from .presenters import (
     as_preview,
     event_when,
     present_book,
+    present_book_report,
     present_calendar,
     present_event,
     present_graph,
@@ -605,6 +607,29 @@ class VisualizerService(_Service):
             "keywords": [ref.id for ref in event.entity_refs()],
             "plotlines": sorted(pid for pid, path in paths.items() if event.id in path),
         }
+
+    # -- the book's continuity report ------------------------------------------
+
+    def book_report(self, book_id, calendar_id=None) -> dict:
+        """Everything wrong across every thread in one book (``book_health``).
+
+        The per-thread views answer "what is wrong *here*"; this answers the
+        question a writer with six threads has instead, and which nothing in the
+        browser could reach before. Resolutions are loaded once and passed whole,
+        so the paths the rules run on and the reason a chain is broken are read
+        from the same data.
+        """
+        book = self._require_book(book_id)
+        plotlines = self._plotlines(book_id)
+        events_by_id = self._events_by_id(book_id)
+        issues = book_issues(
+            resolve_all(plotlines),
+            events_by_id,
+            codec_for(book, calendar_id),
+            missing_refs=self._missing_refs(events_by_id.values()),
+            terminus=book.terminus,
+        )
+        return present_book_report(issues, events_by_id, plotlines)
 
     # -- preview --------------------------------------------------------------
 

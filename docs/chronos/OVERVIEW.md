@@ -204,12 +204,18 @@ terminus. If one wanders off, Chronos says which one and where it stopped.
 **This is the most important thing to know: Chronos will not stop you writing.**
 
 If you record something contradictory, it saves anyway. Your book is simply
-marked **"conflicted"**, and you can ask for the full list of problems whenever
-you want:
+marked **"conflicted"** — and that word is a link. Click it (or **Report** in
+the book's own header) for the full list, whenever you want:
 
-> **The Ember Pact** — conflicted
-> - "Aldric At Emberport" and "Aldric Departs" place a character in two places
->   at once. *(Aldric: Emberport hours 10–30, Highkeep hours 0–24.)*
+> **The Ember Pact** — 2 problems · 1 scene still waiting for a time
+>
+> **A character in two places at once**
+> - **Aldric At Emberport** — *The Witness's Tale*, *The Knight's Road*
+>   'Sir Aldric' cannot be here and in 'Aldric Departs' at once — that scene is
+>   at 'Highkeep' over an overlapping time.
+
+Each problem is listed **once**, however many threads it turns up on, and says
+which ones those are — the thing you cannot see from inside any single thread.
 
 Fix it — move the scene, change the location, split the character — and the book
 goes back to **"consistent"**.

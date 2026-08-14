@@ -95,6 +95,12 @@ export const api = {
   // Read helper: the paginated, filtered, name-ordered plotline table.
   listPlotlines: (book, opts) => request("GET", `${bookPath(book)}/ui/plotlines${pageQuery(opts)}`),
 
+  // Everything wrong across every thread in the book, grouped by kind. The
+  // reader's shape of `/books/{book}/validate`, in the same words the plotline
+  // view uses — two of the messages quote ticks, hence the calendar.
+  bookIssues: (book, { calendar } = {}) =>
+    request("GET", `${bookPath(book)}/ui/issues${viewQuery(calendar)}`),
+
   // The book's scenes in story order — what the editor picks from.
   listEvents: (book, opts) => request("GET", `${bookPath(book)}/events${pageQuery(opts)}`),
 

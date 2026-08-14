@@ -900,6 +900,41 @@
         }
       }
     },
+    "/books/{book}/ui/issues": {
+      "get": {
+        "tags": [
+          "visualizer"
+        ],
+        "summary": "The book's continuity report",
+        "description": "Everything wrong across every plotline in one book, in the same words the plotline view uses, grouped by kind and ordered to be read top to bottom. `/books/{book}/validate` answers the same question for a machine \u2014 ids, categories, one ordering violation per thread; this answers it for the writer. `problems` are contradictions and are exactly what the book's `status` is computed from; `notes` are things worth knowing that are not faults (an undated scene is a draft state, not a fault).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/BookId"
+          },
+          {
+            "$ref": "#/components/parameters/CalendarView"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The whole book's report.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BookReport"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/books/{book}/ui/entity/{database}/{collection}/{entity_id}": {
       "get": {
         "tags": [
@@ -3513,6 +3548,262 @@
           "pages": 1
         }
       },
+      "Issue": {
+        "type": "object",
+        "description": "One problem in a book. Folded across every thread that can see it: a pair problem reported on both scenes, and on each thread either scene sits on, is one issue here.",
+        "required": [
+          "code",
+          "severity",
+          "message",
+          "events",
+          "plotlines",
+          "refs"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "TEMPORAL_CONFLICT",
+              "ORDERING_VIOLATION",
+              "IMPOSSIBLE_WINDOW",
+              "MISSING_ENTITY",
+              "UNSCHEDULED",
+              "NO_TERMINUS",
+              "TERMINUS_VIOLATION",
+              "EMPTY_PLOTLINE",
+              "PLOTLINE_CYCLE",
+              "INVALID_PLOTLINE"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "conflict",
+              "info"
+            ],
+            "description": "`conflict` is a contradiction to fix; `info` is worth knowing but not a fault."
+          },
+          "message": {
+            "type": "string",
+            "description": "Written for the novelist, not the machine."
+          },
+          "scene": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NodeRef"
+              }
+            ],
+            "nullable": true,
+            "description": "The scene the message is said about (\"this scene has not ended when \u2026\"). Null for a book-wide issue such as no ending being designated."
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NodeRef"
+            },
+            "description": "Other scenes the message names."
+          },
+          "plotlines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlotlineRef"
+            },
+            "description": "Every thread this lands on. Empty for a book-wide issue, and for a scene no thread lists."
+          },
+          "refs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EntityRef"
+            },
+            "description": "The Akasha articles this message quotes, by id \u2014 a client holding the grant may substitute each title for the quoted `'id'`."
+          },
+          "doc": {
+            "type": "string",
+            "description": "Where the rule is defined."
+          }
+        }
+      },
+      "IssueGroup": {
+        "type": "object",
+        "description": "Issues of one kind, under the heading they are filed beneath.",
+        "required": [
+          "title",
+          "severity",
+          "codes",
+          "issues"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "The heading, e.g. \"Scenes out of order\"."
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "conflict",
+              "info"
+            ],
+            "description": "Shared by every issue in the group \u2014 severity follows the code and a group is one heading's worth of codes, so it is stated once here rather than repeated on each entry."
+          },
+          "codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The codes filed under it; more than one where two codes share a heading."
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Issue"
+            }
+          }
+        }
+      },
+      "BookReport": {
+        "type": "object",
+        "description": "Everything wrong across one book's plotlines, grouped for reading.",
+        "required": [
+          "status",
+          "summary",
+          "problems",
+          "notes",
+          "plotlines"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "consistent",
+              "conflicted"
+            ],
+            "description": "Conflicted when there is at least one problem. Agrees with the book's own `status`."
+          },
+          "summary": {
+            "type": "object",
+            "required": [
+              "problems",
+              "notes",
+              "unscheduled"
+            ],
+            "properties": {
+              "problems": {
+                "type": "integer",
+                "description": "How many contradictions."
+              },
+              "notes": {
+                "type": "integer",
+                "description": "How many non-faults worth knowing."
+              },
+              "unscheduled": {
+                "type": "integer",
+                "description": "Of those notes, how many are scenes still waiting for a time."
+              }
+            }
+          },
+          "problems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IssueGroup"
+            }
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IssueGroup"
+            }
+          },
+          "plotlines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadRollup"
+            },
+            "description": "Every thread in the book and its share of the problems \u2014 the report's triage list and its filter menu, without a second request."
+          }
+        },
+        "example": {
+          "status": "conflicted",
+          "summary": {
+            "problems": 1,
+            "notes": 1,
+            "unscheduled": 1
+          },
+          "problems": [
+            {
+              "title": "Scenes out of order",
+              "severity": "conflict",
+              "codes": [
+                "ORDERING_VIOLATION"
+              ],
+              "issues": [
+                {
+                  "code": "ORDERING_VIOLATION",
+                  "severity": "conflict",
+                  "message": "This scene has not ended when 'The Harbor Exchange' begins.",
+                  "scene": {
+                    "id": "coronation",
+                    "title": "The Coronation"
+                  },
+                  "events": [
+                    {
+                      "id": "harbor-exchange",
+                      "title": "The Harbor Exchange"
+                    }
+                  ],
+                  "plotlines": [
+                    {
+                      "id": "spys-shadow",
+                      "title": "The Spy's Shadow"
+                    }
+                  ],
+                  "refs": [],
+                  "doc": "docs/chronos/design.md#52"
+                }
+              ]
+            }
+          ],
+          "notes": [
+            {
+              "title": "Scenes still waiting for a time",
+              "severity": "info",
+              "codes": [
+                "UNSCHEDULED"
+              ],
+              "issues": [
+                {
+                  "code": "UNSCHEDULED",
+                  "severity": "info",
+                  "message": "No timing yet \u2014 its neighbours put it between 10 and 20.",
+                  "scene": {
+                    "id": "the-vigil",
+                    "title": "The Vigil"
+                  },
+                  "events": [],
+                  "plotlines": [
+                    {
+                      "id": "knights-road",
+                      "title": "The Knight's Road"
+                    }
+                  ],
+                  "refs": []
+                }
+              ]
+            }
+          ],
+          "plotlines": [
+            {
+              "id": "spys-shadow",
+              "title": "The Spy's Shadow",
+              "problems": 1
+            },
+            {
+              "id": "knights-road",
+              "title": "The Knight's Road",
+              "problems": 0
+            }
+          ]
+        }
+      },
       "Permissions": {
         "type": "object",
         "readOnly": true,
@@ -4312,6 +4603,27 @@
               "role": "owner"
             }
           ]
+        }
+      },
+      "ThreadRollup": {
+        "type": "object",
+        "description": "One thread, with how many of this report's problems name it. Not the same number as `PlotlineRow.conflicts`: that counts contradictions among the scenes on a thread, while this also counts the whole-thread verdicts (never reaching the ending, no scenes at all) which the table never shows.",
+        "required": [
+          "id",
+          "problems"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "description": "Display name; defaults to id."
+          },
+          "problems": {
+            "type": "integer",
+            "readOnly": true
+          }
         }
       }
     }
