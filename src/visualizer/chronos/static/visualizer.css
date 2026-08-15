@@ -332,26 +332,44 @@ button.status-pill.conflicted:hover { filter: brightness(.94); text-decoration: 
    hidden until an inline card is expanded) */
 .event-peek .ev-detail { display: block; padding: .6rem .9rem .9rem; margin-top: 0; border-top: 0; }
 
-/* connected plots (story graph) */
-.sg-legend { display: flex; flex-wrap: wrap; gap: .4rem; margin: .2rem 0 1rem; }
-.sg-legend-chip {
-  display: inline-flex; align-items: center; gap: .4rem;
+/* the story map (and the connected-plots preset that shares it) */
+
+/* the thread picker: a legend you can click. A thread that is off still shows
+   its mark, so the key is readable whatever is selected. */
+.axis-note .sep { opacity: .5; margin: 0 .35rem; }
+.axis-note .link-btn { font-size: inherit; padding: 0; }
+.sg-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin: .3rem 0 .5rem; }
+.sg-controls .filter-box { max-width: 260px; }
+.sg-picker { display: flex; flex-wrap: wrap; gap: .4rem; margin: .2rem 0 1rem; }
+.sg-pick {
+  display: inline-flex; align-items: center; gap: .4rem; cursor: pointer;
   font-size: .8rem; font-weight: 600; padding: .2rem .6rem;
   border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2);
-  color: var(--text);
+  color: var(--muted); opacity: .72;
 }
-button.sg-legend-chip { cursor: pointer; }
-button.sg-legend-chip:hover { border-color: var(--accent); }
-.sg-legend-chip.is-focus { background: var(--accent-soft); border-color: var(--accent); }
+.sg-pick:hover { border-color: var(--accent); }
+.sg-pick.is-on { background: var(--accent-soft); border-color: var(--accent); color: var(--text); opacity: 1; }
 .sg-swatch { width: .8rem; height: .8rem; border-radius: 50%; flex: none; }
-.sg-you { color: var(--muted); font-weight: 500; }
+/* the second identity channel: past a full turn of the palette a hue comes back
+   with a different stroke, and the swatch says which (see layout.js). */
+/* past a full turn of the palette a hue comes back with a different stroke, and
+   the mark has to say which one -- see layout.js LANE_DASHES */
+.sg-swatch.is-dashed, .sg-lane-dot.is-dashed { background: none; border: 2px dashed currentColor; }
+.sg-swatch.is-dotted, .sg-lane-dot.is-dotted { background: none; border: 2px dotted currentColor; }
 
-.storygraph { position: relative; margin: .2rem 0 .4rem; }
+/* The gutter scrolls rather than squeezing the titles: rows are positioned at a
+   computed y but wrap their content, so a too-narrow column overlaps them. */
+.sg-canvas { margin: .2rem 0 .4rem; }
+.sg-pane { overflow-x: auto; overflow-y: visible; }
+.storygraph { position: relative; }
 .sg-svg { position: absolute; top: 0; left: 0; overflow: visible; }
 .sg-edge { fill: none; stroke-width: 2.5; opacity: .85; }
 .sg-edge.is-focus { stroke-width: 3.6; opacity: 1; }
 .sg-dot { stroke: var(--surface); stroke-width: 2; }
 .sg-dot.is-merge, .sg-dot.is-split { stroke-width: 2.5; }
+/* a folded run is a stretch of story, not a scene -- drawn hollow so it never
+   reads as one more event on the thread */
+.sg-dot.is-band { fill: var(--surface); stroke-width: 2.5; }
 .sg-ring { fill: none; stroke-width: 2; opacity: .7; }
 .sg-focus-ring { fill: none; stroke: var(--accent); stroke-width: 2.5; opacity: .9; }
 
@@ -362,18 +380,34 @@ button.sg-legend-chip:hover { border-color: var(--accent); }
 .sg-head-top::before { content: ""; width: 11px; height: 11px; border-radius: 3px; background: var(--accent); }
 .sg-head-sub { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
 .sg-head-sub::before { content: ""; width: 8px; height: 8px; border-radius: 50%; border: 2px solid var(--accent); box-sizing: border-box; }
-.sg-row {
-  position: absolute; transform: translateY(-50%);
+
+/* One row per drawn node, centred on its dot. Minimized to a legible line by
+   default; `expanded` holds the full scene card and reports its own height back
+   to the layout, which is what moves every row below it down. */
+.sg-row { position: absolute; transform: translateY(-50%); width: 100%; }
+.sg-row-head {
   display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap;
   text-align: left; width: 100%; cursor: pointer;
   background: none; border: none; padding: .15rem .3rem; border-radius: 8px;
-  color: var(--text);
+  color: var(--text); font: inherit;
 }
-.sg-row:hover { background: var(--surface-2); }
-.sg-row.focused { background: var(--accent-soft); }
+.sg-row-head:hover { background: var(--surface-2); }
+.sg-row.focused .sg-row-head { background: var(--accent-soft); }
 .sg-row-title { font-weight: 600; font-size: .92rem; }
 .sg-row-when { color: var(--muted); font-size: .76rem; }
 .sg-row-badges { gap: .25rem; }
+.sg-row.is-band .sg-row-title { font-weight: 600; color: var(--muted); font-style: italic; }
+
+.sg-row.expanded { z-index: 2; }
+.sg-row.expanded .sg-row-head { background: var(--accent-soft); }
+/* the same card the peek slot shows, sitting inline under its own row */
+/* inline, the card must be as tall as its content: the row's measured height is
+   what the layout uses to push the rows below it down, so a card that scrolled
+   inside itself would report a height that hides half the scene. */
+.sg-row.expanded .peek-card {
+  margin: .25rem 0 0; width: 100%; max-width: 620px;
+  max-height: none; overflow: visible;
+}
 
 /* toast */
 .toast {
@@ -753,3 +787,37 @@ body:not(.focus-mode) .scene-row.has-hint { border-color: color-mix(in srgb, var
    only where it is the last child, so it never shoves later controls along. */
 .pl-actions .focus-btn:last-child,
 .section-head .focus-btn:last-child { margin-left: auto; }
+
+
+/* A moment shared by several threads: one row, one y, a scene per line. Merged
+   by default — a stack of separate rows would imply an order the story has not
+   got (see layout.js `slots`). */
+/* A moment sits at the same level as any other row -- it *is* a row. Only its
+   scenes are indented, under the twisty, the way a tree indents children. */
+.sg-group-bar { display: flex; align-items: baseline; gap: .4rem; padding: .15rem .3rem; }
+.sg-group-scenes {
+  display: flex; flex-direction: column;
+  margin-left: 1.15rem; padding-left: .5rem; border-left: 2px solid var(--border);
+}
+.sg-group-scene .sg-row-head { padding: .1rem .3rem; }
+.sg-group-scene .sg-row-head:hover { background: var(--surface-2); }
+.sg-group-scene.focused .sg-row-head { background: var(--accent-soft); }
+.sg-group-scene.expanded .sg-row-head { background: var(--accent-soft); }
+.sg-group-scene.expanded .peek-card {
+  margin: .25rem 0 .35rem; width: 100%; max-width: 620px;
+  max-height: none; overflow: visible;
+}
+/* which thread each scene in the group belongs to, without re-reading the legend */
+/* the book's terminus, marked where its name is rather than with a badge (the
+   note under the diagram says what the underline means) */
+.sg-row-title.is-terminus { text-decoration: underline; text-underline-offset: 3px; }
+.sg-lane-dot { width: .55rem; height: .55rem; border-radius: 50%; flex: none; display: inline-block; }
+/* the same twisty as Akasha's tree browser (editor.css `.twisty`), so "there is
+   more inside this" looks the same in both apps */
+.sg-row .twisty, .sg-group-bar .twisty {
+  width: 1.15rem; color: var(--muted); font-size: 1rem; line-height: 1;
+  font-weight: 600; text-align: center; flex: none; display: inline-block;
+}
+.twisty-btn { background: none; border: 0; padding: 0; display: inline-flex; }
+.sg-row-head:hover .twisty, .twisty-btn:hover .twisty { color: var(--accent); }
+/* the way back out of an opened moment, in the margin beside its first row */

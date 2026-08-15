@@ -306,9 +306,10 @@ described. Neither of you gets blocked by the other's work.
 - **Not a plot generator.** Every event and thread is yours.
 - **Not a judge of quality.** "Consistent" means your timeline doesn't
   contradict itself — nothing about whether the story is any good.
-- **Partly visual.** From any plotline you can open **Connected plots** — a
-  branch/merge picture of that thread and the others it meets. Drawing the
-  *whole-book* map on one screen is still planned, not built.
+- **Visual, up to a point.** The **story map** draws any number of the book's
+  threads together — where they split, where they meet, in time order — with
+  each scene one line until you click it. It will not tell you whether the
+  shape is any good.
 
 ---
 

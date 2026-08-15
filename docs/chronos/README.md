@@ -30,10 +30,15 @@ Chronos references them and refuses to invent them.
 > the article's own Akasha read grant.
 >
 > The timeline also flags where a thread **joins, departs, or is shared with**
-> others, and from any plotline you can open **Connected plots** — a branch/merge
-> (git-graph) diagram of just the threads that meet it (i.e. share a *non-terminus*
-> event), laid out by time and colour-coded per thread. A full whole-book **story
-> map** over the same `/graph` data is still planned (design §12).
+> others, and the book page opens a **story map**: tick any number of the book's
+> threads and see them drawn together as a branch/merge (git-graph) diagram, laid
+> out by time and colour-coded per thread. Each scene is one legible line until
+> you click it, when it enlarges in place and the diagram reflows around it; the
+> stretches a thread walks alone fold into a band you can unfold. The selection
+> rides in the URL, so a map of three threads is a link. **Connected plots** is
+> now a preset of that map rather than a screen of its own — opening it from a
+> plotline preselects that thread and every thread it meets (i.e. shares a
+> *non-terminus* event with). See design §12.
 >
 > **A whole story can now be written from the UI** — create a book (calendar and
 > all), write its scenes, thread them into plotlines, and mark the scene every

@@ -5,14 +5,22 @@
 //   #/<book>                  -> that book's filtered, paginated plotline table
 //   #/<book>/~scenes          -> that book's scene library
 //   #/<book>/~issues          -> everything wrong across all of its plotlines
+//   #/<book>/~map             -> the story map: every thread, woven
+//   #/<book>/~map/<a,b,c>     -> the same, narrowed to the threads you ticked
 //   #/<book>/<plotline>       -> one plotline, its events as cards (+ time axis)
 //   #/<book>/<plotline>/at/<event> -> the same, scrolled to one scene
 //
-// Segments are ids, so the three library-ish views take names no id can collide
-// with: `slugify` strips a leading `~`, so nothing derived from a title can ever
-// be `~scenes`, `~issues` or `~calendars`. The calendar library sits at the top
-// level rather than under a book because that is the whole point of it — a
+// Segments are ids, so the library-ish views take names no id can collide with:
+// `slugify` strips a leading `~`, so nothing derived from a title can ever be
+// `~scenes`, `~issues`, `~map` or `~calendars`. The calendar library sits at the
+// top level rather than under a book because that is the whole point of it — a
 // calendar outlives any one book, and is chosen while a book is being created.
+//
+// A selection of threads is worth a link, so it rides in the URL as a
+// comma-joined list (the empty list means "all of them"). The old
+// `#/<book>/<pl>/connected` route still works and still means what it did: it
+// lands on the map with that thread and everything it meets already ticked, and
+// rewrites itself to the selection it stands for.
 //
 // The plotline editor is a modal, not a route: editing is a detour from reading,
 // and closing it should put you back exactly where you were.
@@ -23,13 +31,13 @@
 
 import { api, ApiError, BASE } from "./api.js";
 import { $ } from "./dom.js";
-import { clearPeek, showArticle, showScene } from "./peek.js";
+import { clearPeek, showArticle } from "./peek.js";
 import { mountBooks } from "./books.js";
 import { mountCalendarLibrary } from "./calendarlibrary.js";
 import { mountPlotline } from "./plotline.js";
 import { mountBookReport } from "./report.js";
 import { mountScenes } from "./scenes.js";
-import { mountConnected } from "./storygraph.js";
+import { mountStoryMap } from "./storymap.js";
 import { mountPlotlineTable } from "./table.js";
 import { applyFocus } from "./focus.js";
 import { initFontScale } from "./fontscale.js";
@@ -43,6 +51,7 @@ const content = $("#content");
 const SCENES = "~scenes";
 const ISSUES = "~issues";
 const CALENDARS = "~calendars";
+const MAP = "~map";
 
 const enc = encodeURIComponent;
 const go = (hash) => { window.location.hash = hash; };
@@ -58,6 +67,11 @@ const toPlotlineAt = (book, pl, ev) =>
   go(ev ? `#/${enc(book)}/${enc(pl)}/at/${enc(ev)}` : `#/${enc(book)}/${enc(pl)}`);
 const toConnected = (book, pl) => go(`#/${enc(book)}/${enc(pl)}/connected`);
 const toConnectedAt = (book, pl, ev) => go(`#/${enc(book)}/${enc(pl)}/connected/${enc(ev)}`);
+// The story map, over a chosen set of threads. An empty list is the whole book,
+// which keeps the plain `#/<book>/~map` link meaning what it looks like it means.
+const mapHash = (book, ids) =>
+  `#/${enc(book)}/${MAP}` + (ids && ids.length ? `/${ids.map(enc).join(",")}` : "");
+const toMap = (book) => go(mapHash(book, []));
 
 function parseHash() {
   const raw = window.location.hash.replace(/^#\/?/, "");
@@ -68,7 +82,6 @@ function parseHash() {
 // Owned by peek.js; these just bind it to whichever book is on screen.
 
 const showEntity = (ref) => showArticle(currentBook, ref);
-const showEventPeek = (node) => showScene(currentBook, node);
 
 // -- routing -----------------------------------------------------------------
 
@@ -92,6 +105,7 @@ function route() {
       onBooks: toBooks,
       onScenes: () => toScenes(parts[0]),
       onIssues: () => toIssues(parts[0]),
+      onMap: () => toMap(parts[0]),
     });
   } else if (parts[1] === SCENES) {
     mountScenes(content, parts[0], {
@@ -104,14 +118,28 @@ function route() {
       onBook: () => toBook(parts[0]),
       onScene: (pl, ev) => toPlotlineAt(parts[0], pl, ev),
     });
-  } else if (parts[2] === "connected") {
-    mountConnected(content, parts[0], parts[1], {
-      focusEvent: parts[3] || null,
-      showEventPeek,
+  } else if (parts[1] === MAP) {
+    mountStoryMap(content, parts[0], {
+      selection: parts[2] ? parts[2].split(",").filter(Boolean) : [],
+      connectedFrom: null,
+      focusEvent: null,
+      hashFor: (ids) => mapHash(parts[0], ids),
+      showEntity,
       onBooks: toBooks,
       onBook: () => toBook(parts[0]),
-      onTimeline: () => toPlotline(parts[0], parts[1]),
-      onPlotline: (pl) => toConnected(parts[0], pl),
+    });
+  } else if (parts[2] === "connected") {
+    // The old link into "Connected plots". Same screen now, entered on a preset:
+    // the map works out which threads meet this one and rewrites the URL to say
+    // so, so what you share is the selection and not how you got to it.
+    mountStoryMap(content, parts[0], {
+      selection: [],
+      connectedFrom: parts[1],
+      focusEvent: parts[3] || null,
+      hashFor: (ids) => mapHash(parts[0], ids),
+      showEntity,
+      onBooks: toBooks,
+      onBook: () => toBook(parts[0]),
     });
   } else {
     mountPlotline(content, parts[0], parts[1], {

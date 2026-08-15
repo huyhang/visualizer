@@ -26,7 +26,11 @@ Usage (from the repo root, stack already up):
                                           # visualiser's nested year/month rail).
                                           # Runs past the terminus, so it adds one
                                           # (soft) convergence finding by design.
-                                          # Flags combine, e.g. --fix --mixed --periods.
+    python docker/seed_demo.py --solo     # also add "The Coronation Bell", a
+                                          # thread that meets no other thread at
+                                          # all -- a second lane of its own on the
+                                          # story map, beside "The Long Survey".
+                                          # Flags combine, e.g. --fix --periods --solo.
 
 Re-running is safe: existing records are updated rather than duplicated.
 """
@@ -271,6 +275,55 @@ LONG_SURVEY_PLOTLINE = ("the-long-survey", "The Long Survey",
                         ["survey-first-light", "survey-second-month", "survey-a-year-on"],
                         None)
 
+# -- optional: a second thread that meets nobody (enabled with --solo) ----------
+# A subplot running the whole length of the book without ever touching the main
+# cast: it shares only the terminus, and the story map deliberately does not count
+# the terminus as a meeting (every thread ends there, so counting it would make
+# every thread "connected"). So this is a thread the map draws in a lane of its
+# own, alongside "The Long Survey" -- and the two make the pair worth looking at:
+#
+#   The Long Survey     solo AND never reaches the ending (a convergence finding)
+#   The Coronation Bell solo and perfectly well-formed (no findings at all)
+#
+# Its scenes are interleaved in time with the main cast's rather than sitting
+# before or after them, which is the thing to look at on the map: two threads
+# that never touch, whose scenes still take their turn down the same time axis.
+# Its own character, so it cannot temporally conflict with anyone.
+BELLFOUNDER = {
+    "title": "Elin the Bellfounder",
+    "role": "Bellfounder",
+    "commission": "The coronation bell",
+    "body": (
+        "Elin casts bells in the foundry below [[locations/highkeep|Highkeep]], and "
+        "has been given until the coronation to hang a new one in "
+        "[[locations/throne-hall|the Throne Hall]].\n\n"
+        "She never meets [[characters/aldric|Sir Aldric]] or "
+        "[[characters/lyra|Lyra Vane]], and knows nothing of "
+        "[[items/ember-seal|the Ember Seal]] -- her thread runs the length of the "
+        "book beside theirs and touches it only at the end."
+    ),
+}
+
+SOLO_EVENTS = [
+    ("bell-the-commission", "The Commission", "highkeep", 12, 20,
+     ["elin-the-bellfounder"], [],
+     "Elin is given until the coronation to cast and hang a new bell."),
+    ("bell-the-pour", "The Pour", "highkeep", 60, 68,
+     ["elin-the-bellfounder"], [],
+     "The melt goes into the mould at dawn; nothing can be corrected after this."),
+    ("bell-the-flaw", "The Flaw", "emberport", 120, 128,
+     ["elin-the-bellfounder"], [],
+     "A hairline crack, found late, that only Elin can hear."),
+    ("bell-the-hanging", "The Hanging", "throne-hall", 168, 176,
+     ["elin-the-bellfounder"], [],
+     "The bell goes up the night before, flaw and all."),
+]
+
+SOLO_PLOTLINE = ("the-coronation-bell", "The Coronation Bell",
+                 ["Hang a bell worth the crowning"],
+                 ["bell-the-commission", "bell-the-pour", "bell-the-flaw",
+                  "bell-the-hanging", "the-coronation"], None)
+
 
 class Client:
     """Cookie-preserving JSON HTTP client (one session across both services)."""
@@ -478,6 +531,21 @@ def seed_experiment(client):
     seed_thread(client, MIXED_EVENTS, MIXED_PLOTLINE)
 
 
+def ensure_bellfounder(client):
+    """Upsert the character the solo thread belongs to. Idempotent."""
+    status, _ = client.upsert(
+        f"{DOCS}/databases/{DB}/collections/characters/documents/elin-the-bellfounder",
+        BELLFOUNDER,
+    )
+    show(status, "characters/elin-the-bellfounder", BELLFOUNDER["title"])
+
+
+def seed_solo(client):
+    step("chronos: a second thread that meets nobody (--solo)")
+    ensure_bellfounder(client)
+    seed_thread(client, SOLO_EVENTS, SOLO_PLOTLINE)
+
+
 def seed_periods(client):
     step("chronos: a multi-period thread for the nested year/month rail (--periods)")
     ensure_cartographer(client)
@@ -517,7 +585,7 @@ def report(client):
         print(f"    - [{f['plotline']}] {f['reason']} (stops at '{f.get('last_event')}')")
 
 
-def next_steps(fixed, mixed, periods):
+def next_steps(fixed, mixed, periods, solo=False):
     step("what to try next")
     base = f"{CHRONOS}/books/{BOOK}"
     print(f"  curl -b cookies.txt {base}                      # one-glance status")
@@ -542,12 +610,19 @@ def next_steps(fixed, mixed, periods):
     else:
         print("\n  Add a thread spanning several months/years (nested rail) with --periods:")
         print("    python docker/seed_demo.py --periods")
+    if solo:
+        print(f"  {CHRONOS}/#/{BOOK}/~map/the-coronation-bell,the-long-survey"
+              "  # the two threads that meet nobody")
+    else:
+        print("\n  Add a second thread that meets no other thread with --solo:")
+        print("    python docker/seed_demo.py --solo")
 
 
 def main():
     fix = "--fix" in sys.argv
     mixed = "--mixed" in sys.argv
     periods = "--periods" in sys.argv
+    solo = "--solo" in sys.argv
     client = Client()
     login(client)
     seed_entities(client)
@@ -560,6 +635,8 @@ def main():
         seed_experiment(client)
     if periods:
         seed_periods(client)
+    if solo:
+        seed_solo(client)
 
     if fix:
         step("repairing the story")
@@ -574,7 +651,7 @@ def main():
         show(status, "pointed the witness thread at the trunk so it reaches the terminus")
 
     report(client)
-    next_steps(fix, mixed, periods)
+    next_steps(fix, mixed, periods, solo)
     print(f"\nExplore: {CHRONOS}/books/{BOOK}   |   articles UI: {DOCS}/")
 
 

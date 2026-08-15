@@ -1,107 +1,88 @@
-// The "Connected plots" view: the focus thread and every plotline that meets it,
-// drawn as a branch/merge (git-graph) diagram laid out by time. This module does
-// the impure work -- fetch, mount, wire clicks; the *what goes where* is the pure
-// subgraph.js + layout.js it drives, so the same drawing serves the whole story
-// map later (feed layoutGraph the full graph instead of a connected slice).
+// The drawing half of the story map: a laid-out model in, DOM out. Nothing here
+// fetches, routes or decides what is shown -- subgraph.js chooses the threads,
+// collapse.js chooses the density, layout.js places everything, and storymap.js
+// owns the state and hands the result here.
 //
 // Rendering is a hybrid: one <svg> holds the lanes, node dots and the curved
-// edges (which span rows, so they can't be per-row); the event titles + times
+// edges (which span rows, so they can't be per-row); the event titles and times
 // ride alongside as absolutely-positioned HTML, aligned to each node's y, so the
 // text and role badges stay crisp and reuse the app's chip/badge styles.
+//
+// The whole drawing sits in a horizontally scrollable pane. Rows are positioned
+// at a computed y but wrap their content, so once the lane gutter squeezes the
+// titles past `TEXT_MIN` the rows would overlap rather than merely look cramped
+// -- the pane scrolls instead.
 
-import { api } from "./api.js";
-import { calendarSwitcher, currentFor } from "./calendarview.js";
-import { clear, el, svgEl } from "./dom.js";
-import { geometry, layoutGraph, paletteColor } from "./layout.js";
-import { connectedTo } from "./subgraph.js";
-import { groupByPeriod } from "./timeaxis.js";
+import { el, svgEl } from "./dom.js";
+import { geometry } from "./layout.js";
 
-const HEADER_H = 30; // vertical room a calendar period band takes
+// Hue runs out before threads do, so identity rides on colour *and* stroke (see
+// layout.paletteDash). Every mark that stands for a thread has to show both, and
+// has to tell the strokes apart from each other -- lumping them together as
+// "dashed" would make the 13th thread and the 25th identical again, which is the
+// collision the second channel exists to prevent.
+const STROKE_MARK = { "7 4": " is-dashed", "2 4": " is-dotted" };
+const strokeMark = (dash) => STROKE_MARK[dash] || "";
 
-// -- small pieces ------------------------------------------------------------
-
-function breadcrumb(bookTitle, focusTitle, { onBooks, onBook, onTimeline }) {
-  return el("nav", { class: "crumbs" }, [
-    el("a", { href: "#/", text: "Books", onclick: (e) => { e.preventDefault(); onBooks(); } }),
-    el("span", { class: "sep", text: "›" }),
-    el("a", { href: "#/", text: bookTitle, onclick: (e) => { e.preventDefault(); onBook(); } }),
-    el("span", { class: "sep", text: "›" }),
-    el("a", { href: "#/", text: focusTitle, onclick: (e) => { e.preventDefault(); onTimeline(); } }),
-    el("span", { class: "sep", text: "›" }),
-    el("span", { text: "Connected plots" }),
-  ]);
+// A thread's colour and stroke, as one small mark. Shared by the picker (so a
+// swatch a writer clicks is exactly the lane it turns on) and by every row.
+function threadMark(cls, { color, dash }) {
+  const mark = strokeMark(dash);
+  return el("span", {
+    class: cls + mark,
+    // Hollow and outlined once a stroke is in play, so the ring shows the
+    // pattern; the inline colour beats the stylesheet's `currentColor`.
+    style: mark ? `border-color:${color}` : `background:${color}`,
+  });
 }
 
-// Promote coarse calendar components (Year, Month, …) into period header bands
-// and keep only the fine part on each event row -- exactly how the single-plotline
-// timeline reads -- by running the shared `groupByPeriod` grouper over the nodes
-// in time order. Headers take vertical room, so node/edge y are recomputed from
-// the grouped sequence (and edges just span the larger gaps). Returns the drawing
-// model: { headers, nodes (with y + compact `when`), edges, width, height }.
-function applyPeriodGrouping(layout) {
-  const ordered = [...layout.nodes].sort((a, b) => a.y - b.y);
-  // Adapter objects in the shape groupByPeriod expects (snake_case + parts).
-  const adapters = ordered.map((n) => ({
-    scheduled: n.scheduled,
-    start_label: n.startLabel,
-    end_label: n.endLabel,
-    start_parts: n.startParts,
-    end_parts: n.endParts,
-    _node: n,
-  }));
+export const swatch = (lane) => threadMark("sg-swatch", lane);
 
-  const headers = [];
-  const cy = new Map();   // node id -> centre y
-  const when = new Map(); // node id -> compact period label
-  let y = geometry.PAD_TOP;
-  for (const item of groupByPeriod(adapters)) {
-    if (item.type === "header") {
-      headers.push({ level: item.level, label: item.label, y });
-      y += HEADER_H;
-    } else {
-      const n = item.event._node;
-      cy.set(n.id, y + geometry.ROW_H / 2);
-      when.set(n.id, item.label);
-      y += geometry.ROW_H;
-    }
-  }
+// How far from the node a thread starts to turn, before the lane distance is
+// added in. Threads reaching further across turn earlier and sweep wider, so
+// several joining one node nest instead of crossing.
+const TURN = 18;
 
-  const nodes = ordered.map((n) => ({ ...n, y: cy.get(n.id), when: when.get(n.id) }));
-  const yOf = new Map(nodes.map((n) => [n.id, n.y]));
-  const edges = layout.edges.map((e) => ({ ...e, y1: yOf.get(e.from), y2: yOf.get(e.to) }));
-  return { headers, nodes, edges, width: layout.width, height: y + 8 };
-}
-
-// A colour swatch + name per thread; clicking another thread re-centres the view
-// on it, so the writer can follow a thread through the weave.
-function legend(layout, focusId, onPlotline) {
-  const chip = (l) => {
-    const swatch = el("span", { class: "sg-swatch", style: `background:${l.color}` });
-    if (l.id === focusId) {
-      return el("span", { class: "sg-legend-chip is-focus", title: "The thread you're viewing" },
-        [swatch, el("span", { text: l.title }), el("span", { class: "sg-you", text: "· this thread" })]);
-    }
-    return el("button", {
-      class: "sg-legend-chip", title: `Centre on “${l.title}”`, onclick: () => onPlotline(l.id),
-    }, [swatch, el("span", { text: l.title })]);
-  };
-  return el("div", { class: "sg-legend" }, layout.lanes.map(chip));
+// A thread keeps its own column for the whole descent and turns *once* — right
+// at the node it joins, or immediately after the node it leaves.
+//
+// The obvious shape, a symmetric S with both control points at the vertical
+// midpoint, is wrong here in a way that only shows up on a real book: it reaches
+// the target's column halfway up, so a thread joining a lane that already has a
+// line running down it lands *on top of that line* for the rest of the way. Two
+// threads then read as one. Turning late keeps every thread in a column of its
+// own until the moment it actually merges, which is also how the lanes read.
+function edgeShape(e) {
+  if (e.x1 === e.x2) return `M ${e.x1} ${e.y1} L ${e.x2} ${e.y2}`;
+  const span = Math.abs(e.y2 - e.y1);
+  const turn = Math.min(span, TURN + Math.abs(e.x2 - e.x1) * 0.5);
+  // A quadratic whose control point is the corner itself draws the rounded
+  // right-angle we want: it leaves one way and arrives the other.
+  return e.x2 < e.x1
+    // joining a thread to the left: hold this column, then turn in at the end
+    ? `M ${e.x1} ${e.y1} V ${e.y2 - turn} Q ${e.x1} ${e.y2}, ${e.x2} ${e.y2}`
+    // departing to the right: turn out at once, then hold the new column
+    : `M ${e.x1} ${e.y1} Q ${e.x2} ${e.y1}, ${e.x2} ${e.y1 + turn} V ${e.y2}`;
 }
 
 function edgePath(e) {
-  const midY = (e.y1 + e.y2) / 2;
-  const d = e.x1 === e.x2
-    ? `M ${e.x1} ${e.y1} L ${e.x2} ${e.y2}`
-    : `M ${e.x1} ${e.y1} C ${e.x1} ${midY}, ${e.x2} ${midY}, ${e.x2} ${e.y2}`;
-  return svgEl("path", { class: "sg-edge" + (e.isFocus ? " is-focus" : ""), d, style: `stroke:${e.color}` });
+  const path = svgEl("path", {
+    class: "sg-edge" + (e.isFocus ? " is-focus" : ""),
+    d: edgeShape(e),
+    style: `stroke:${e.color}`,
+  });
+  if (e.dash) path.setAttribute("stroke-dasharray", e.dash);
+  return path;
 }
 
 function nodeDot(n) {
   const g = svgEl("g", { class: "sg-node" });
-  // The focus thread keeps its own (stable) colour; an accent ring marks it as
-  // "you are here" without changing the colour when you re-centre.
+  // The thread a writer arrived from keeps its own (stable) colour; an accent
+  // ring marks it as "you are here" without recolouring anything.
   if (n.isFocus && !n.isTerminus) {
-    g.appendChild(svgEl("circle", { class: "sg-focus-ring", cx: n.x, cy: n.y, r: geometry.NODE_R + 3 }));
+    g.appendChild(svgEl("circle", {
+      class: "sg-focus-ring", cx: n.x, cy: n.y, r: geometry.NODE_R + 3,
+    }));
   }
   if (n.isTerminus) {
     g.appendChild(svgEl("circle", {
@@ -109,15 +90,26 @@ function nodeDot(n) {
       style: `stroke:${n.color}`,
     }));
   }
+  // A folded run is drawn hollow: it is a stretch of story, not a scene, and it
+  // should not read as one more event on the thread.
+  if (n.isBand) {
+    g.appendChild(svgEl("circle", {
+      class: "sg-dot is-band", cx: n.x, cy: n.y, r: geometry.NODE_R - 1,
+      style: `stroke:${n.color}`,
+    }));
+    return g;
+  }
   const cls = "sg-dot"
     + (n.isConvergence ? " is-merge" : "")
     + (n.isDivergence ? " is-split" : "");
-  g.appendChild(svgEl("circle", { class: cls, cx: n.x, cy: n.y, r: geometry.NODE_R, style: `fill:${n.color}` }));
+  g.appendChild(svgEl("circle", {
+    class: cls, cx: n.x, cy: n.y, r: geometry.NODE_R, style: `fill:${n.color}`,
+  }));
   return g;
 }
 
-// A calendar period band (Year, Month, …) in the right column, indented by depth
-// -- the same nesting the single-plotline timeline shows.
+// A calendar period band (Year, Month, …), indented by depth -- the same nesting
+// the single-plotline timeline shows.
 function headerBand(h) {
   return el("div", {
     class: "sg-head " + (h.level === 0 ? "sg-head-top" : "sg-head-sub"),
@@ -126,25 +118,169 @@ function headerBand(h) {
   });
 }
 
-function nodeRow(n, focusEvent, onOpen) {
-  const badges = [];
-  if (n.isTerminus) badges.push(el("span", { class: "badge terminus", text: "terminus" }));
-  else if (n.isConvergence) badges.push(el("span", { class: "badge merge", text: "join" }));
-  if (n.isDivergence) badges.push(el("span", { class: "badge split", text: "split" }));
+// The time on a row, printed once per slot. A merged group says how many scenes
+// share the moment, so "at once" is in the text and not only in the layout --
+// which a screen reader would never see.
+// The time on a row, printed once per slot -- a moment states it for every scene
+// standing in it.
+function whenLabel(slot) {
+  return el("span", { class: "sg-row-when", text: slot.when });
+}
 
+// A scene's name. The book's terminus is underlined rather than labelled: it is
+// one row in the whole map, the note under the diagram says what the underline
+// means, and a badge on the busiest row was the thing that wrapped.
+function titleSpan(n) {
+  if (!n.isTerminus) return el("span", { class: "sg-row-title", text: n.title });
+  return el("span", {
+    class: "sg-row-title is-terminus",
+    title: "The book's terminus — every thread ends here",
+    text: n.title,
+  });
+}
+
+// `+` to open, `−` to close -- the same twisty Akasha's tree browser uses, so a
+// writer learns one vocabulary for "there is more inside this" across both apps.
+function twisty(open, { title, onToggle } = {}) {
+  const mark = el("span", {
+    class: "twisty", text: open ? "−" : "+", "aria-hidden": "true",
+  });
+  if (!onToggle) return mark;
   return el("button", {
-    class: "sg-row" + (n.id === focusEvent ? " focused" : ""),
-    style: `top:${n.y}px`,
-    onclick: () => onOpen(n),
+    class: "twisty-btn", type: "button", title,
+    "aria-expanded": open ? "true" : "false",
+    onclick: (e) => { e.stopPropagation(); onToggle(); },
+  }, mark);
+}
+
+// A thread's mark, beside the scene it belongs to. Every row carries one, not
+// only the scenes inside a shared moment -- otherwise a row's thread is only
+// legible when it happens to be crowded, which is backwards.
+const laneDot = (n) => threadMark("sg-lane-dot", n);
+
+// Merge a group back, or open it out into a row per scene. Offered on the merged
+// row and again on the first row of an opened group, so the way in and the way
+// back sit in the same place.
+function groupToggle(slot, onToggleGroup) {
+  const open = !slot.collapsed;
+  return twisty(open, {
+    title: open
+      ? `Hide the ${slot.count} scenes at this moment`
+      : `Show the ${slot.count} scenes at this moment`,
+    onToggle: () => onToggleGroup(slot.id),
+  });
+}
+
+// A folded stretch of one thread's solitary scenes. Reads as what it is -- an
+// amount of story -- and unfolds into its scenes on click.
+function bandRow(slot, n, opts) {
+  return el("div", {
+    class: "sg-row is-band",
+    style: `top:${slot.y}px`,
   }, [
-    el("span", { class: "sg-row-title", text: n.title }),
-    el("span", { class: "sg-row-when", text: n.when }),
-    badges.length ? el("div", { class: "chip-row sg-row-badges" }, badges) : null,
+    el("button", {
+      class: "sg-row-head",
+      title: `Unfold these ${n.events.length} scenes`,
+      onclick: () => opts.onToggleBand(n),
+    }, [
+      twisty(false),
+      laneDot(n),
+      titleSpan(n),
+      whenLabel(slot),
+    ]),
   ]);
 }
 
-function diagram(model, focusEvent, onOpen) {
-  const wrap = el("div", { class: "storygraph", style: `height:${model.height}px` });
+// Several scenes at one moment, sharing one row and one y -- so the dots sit at
+// the same height on their own threads and nothing implies an order that the
+// story does not have. Each scene still opens on its own.
+function groupRow(slot, opts) {
+  const { expanded, cardFor, onToggleEvent, onToggleBand, onToggleGroup, focusEvent } = opts;
+  const scenes = slot.nodes.map((n) => {
+    // A moment can hold a folded stretch as easily as a single scene, and the two
+    // open onto different things: a band unfolds into its scenes (and leaves the
+    // moment), a scene opens its card in place. Wiring both to the same handler
+    // asks the API for an event id that was never an event.
+    const open = !n.isBand && expanded.has(n.id);
+    const toggle = () => (n.isBand ? onToggleBand(n) : onToggleEvent(n));
+    return el("div", {
+      class: "sg-group-scene" + (open ? " expanded" : "")
+        + (n.isBand ? " is-band" : "")
+        + (n.id === focusEvent ? " focused" : ""),
+      dataset: { event: n.id },
+      onkeydown: (e) => {
+        if (e.key !== "Escape" || !open) return;
+        e.stopPropagation();
+        onToggleEvent(n);
+      },
+    }, [
+      el("button", {
+        class: "sg-row-head",
+        title: n.isBand
+          ? `Unfold these ${n.events.length} scenes`
+          : (open ? "Collapse this scene" : "Show this scene in full"),
+        onclick: toggle,
+      }, [
+        twisty(open),
+        laneDot(n),
+        titleSpan(n),
+      ]),
+      open ? cardFor(n) : null,
+    ].filter(Boolean));
+  });
+
+  return el("div", {
+    class: "sg-row is-group" + (slot.collapsed ? " collapsed" : ""),
+    style: `top:${slot.y}px`,
+    dataset: { slot: slot.id },
+  }, [
+    el("div", { class: "sg-group-bar" }, [
+      groupToggle(slot, onToggleGroup),
+      el("span", { class: "sg-row-title", text: `${slot.count} at once` }),
+      whenLabel(slot),
+    ]),
+    slot.collapsed ? null : el("div", { class: "sg-group-scenes" }, scenes),
+  ].filter(Boolean));
+}
+
+// One scene. Minimized to a single legible line by default; clicking enlarges it
+// in place into the full card, and every row below moves down to make room.
+function eventRow(slot, opts) {
+  const { expanded, cardFor, onToggleEvent, onToggleGroup, focusEvent } = opts;
+  const n = slot.nodes[0];
+  const open = expanded.has(n.id);
+  const head = el("button", {
+    class: "sg-row-head",
+    title: open ? "Collapse this scene" : "Show this scene in full",
+    onclick: () => onToggleEvent(n),
+  }, [
+    twisty(open),
+    laneDot(n),
+    titleSpan(n),
+    whenLabel(slot),
+  ]);
+
+  const row = el("div", {
+    class: "sg-row" + (open ? " expanded" : "") + (n.id === focusEvent ? " focused" : ""),
+    style: `top:${slot.y}px`,
+    dataset: { event: n.id },
+    // Esc closes the scene you are reading without reaching for the mouse.
+    // Only when it is open, so the key stays free for whatever encloses this view.
+    onkeydown: (e) => {
+      if (e.key !== "Escape" || !open) return;
+      e.stopPropagation();
+      onToggleEvent(n);
+    },
+  }, [head, open ? cardFor(n) : null].filter(Boolean));
+  return row;
+}
+
+// model: what applyPeriodGrouping returned. Returns the scrollable pane.
+export function diagram(model, opts) {
+  const wrap = el("div", {
+    class: "storygraph",
+    style: `height:${model.height}px; min-width:${model.minWidth}px`,
+  });
   const svg = svgEl("svg", {
     class: "sg-svg", width: model.width, height: model.height,
     viewBox: `0 0 ${model.width} ${model.height}`,
@@ -155,90 +291,13 @@ function diagram(model, focusEvent, onOpen) {
 
   const rows = el("div", { class: "sg-rows", style: `left:${model.width + 12}px` });
   model.headers.forEach((h) => rows.appendChild(headerBand(h)));
-  model.nodes.forEach((n) => rows.appendChild(nodeRow(n, focusEvent, onOpen)));
+  (model.rows || []).forEach((slot) => {
+    if (slot.isGroup) return rows.appendChild(groupRow(slot, opts));
+    const n = slot.nodes[0];
+    return rows.appendChild(
+      n.isBand ? bandRow(slot, n, opts) : eventRow(slot, opts),
+    );
+  });
   wrap.appendChild(rows);
-  return wrap;
-}
-
-// -- mount -------------------------------------------------------------------
-
-export async function mountConnected(container, book, plotlineId, deps) {
-  const { focusEvent, showEventPeek, onBooks, onBook, onTimeline, onPlotline } = deps;
-  clear(container);
-  container.appendChild(el("div", { class: "view" },
-    el("p", { class: "muted", text: "Loading connections…" })));
-
-  // The book first: the graph's node labels are written in one of its
-  // calendars, so the choice has to be known before the graph is asked for.
-  let bookMeta = { title: book };
-  try { bookMeta = await api.getBook(book); } catch (e) { /* fall back to id */ }
-
-  let graph;
-  try {
-    graph = await api.getGraph(book, { calendar: currentFor(book, bookMeta.calendars) });
-  } catch (e) {
-    clear(container);
-    container.appendChild(el("div", { class: "view" },
-      el("p", { class: "empty", text: "Could not load the story graph." })));
-    return;
-  }
-
-  const focusLane = (graph.plotlines || []).find((p) => p.id === plotlineId);
-  const focusTitle = focusLane ? focusLane.title : plotlineId;
-
-  const view = el("div", { class: "view connected-view" });
-  view.appendChild(breadcrumb(bookMeta.title || book, focusTitle, { onBooks, onBook, onTimeline }));
-
-  if (!focusLane) {
-    view.appendChild(el("p", { class: "empty", text: "That plotline does not exist." }));
-    clear(container);
-    container.appendChild(view);
-    return;
-  }
-
-  const sub = connectedTo(graph, plotlineId);
-  const others = sub.plotlines.filter((p) => p.id !== plotlineId);
-
-  view.appendChild(el("div", { class: "pl-header" }, [
-    el("h1", { class: "view-title", text: focusTitle }),
-    calendarSwitcher(book, bookMeta.calendars,
-      () => mountConnected(container, book, plotlineId, deps)),
-    el("p", { class: "muted axis-note", text: others.length
-      ? `Connected plots — meets ${others.length} other plotline${others.length === 1 ? "" : "s"}. `
-        + `Threads run top to bottom in time; the highlighted spine is “${focusTitle}”.`
-      : "Connected plots" }),
-  ]));
-
-  if (!others.length) {
-    view.appendChild(el("p", { class: "empty", text:
-      "This thread doesn't meet any other plotline in the story — it runs on its "
-      + "own until the shared ending." }));
-    clear(container);
-    container.appendChild(view);
-    return;
-  }
-
-  // Stable colours: index each thread by its position in the whole book (the
-  // full graph is name-ordered), so a thread's colour is identical across every
-  // connected view and never shifts when you re-centre on another thread.
-  const bookOrder = (graph.plotlines || []).map((p) => p.id);
-  const colorOf = (id) => paletteColor(bookOrder.indexOf(id));
-
-  const layout = layoutGraph(sub, { colorOf });
-  const model = applyPeriodGrouping(layout);
-  view.appendChild(legend(layout, plotlineId, onPlotline));
-  view.appendChild(diagram(model, focusEvent, showEventPeek));
-  if (layout.hasUnscheduled) {
-    view.appendChild(el("p", { class: "muted axis-note", text:
-      "Some scenes have no timing yet; they settle below the scheduled ones." }));
-  }
-
-  clear(container);
-  container.appendChild(view);
-
-  // If we arrived from a specific event marker, bring it into view.
-  if (focusEvent) {
-    const row = view.querySelector(".sg-row.focused");
-    if (row) row.scrollIntoView({ block: "center" });
-  }
+  return el("div", { class: "sg-pane" }, wrap);
 }

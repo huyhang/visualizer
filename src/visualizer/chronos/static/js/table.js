@@ -60,7 +60,7 @@ function table(rows, onOpen) {
   ]));
 }
 
-export async function mountPlotlineTable(container, book, { onOpen, onBooks, onScenes, onIssues }) {
+export async function mountPlotlineTable(container, book, { onOpen, onBooks, onScenes, onIssues, onMap }) {
   clear(container);
   const state = lastState[book] || { query: "", page: 1 };
   lastState[book] = state;
@@ -111,7 +111,7 @@ export async function mountPlotlineTable(container, book, { onOpen, onBooks, onS
           book: bookMeta,
           // Remount rather than patch the heading: the calendar may have
           // changed, and every tick label on the page is written in it.
-          onDone: () => mountPlotlineTable(container, book, { onOpen, onBooks, onScenes, onIssues }),
+          onDone: () => mountPlotlineTable(container, book, { onOpen, onBooks, onScenes, onIssues, onMap }),
           // This view is *about* the book that just stopped existing, so there
           // is nothing here to return to.
           onDeleted: onBooks,
@@ -124,6 +124,14 @@ export async function mountPlotlineTable(container, book, { onOpen, onBooks, onS
         class: "btn secondary sm", type: "button", text: "Scenes",
         title: "Every scene in this book — write, edit or remove them",
         onclick: onScenes,
+      }),
+      // How the threads below actually weave: pick any number of them and see
+      // where they meet. The table says what the threads *are*, one per row;
+      // this is the one screen that says how they relate to each other.
+      el("button", {
+        class: "btn secondary sm", type: "button", text: "Story Map",
+        title: "Draw any number of these threads together, laid out by time",
+        onclick: onMap,
       }),
       // The Health column below says which threads have problems; this says what
       // they are, across all of them at once — including the ones no single

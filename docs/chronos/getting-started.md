@@ -363,8 +363,9 @@ Housekeeping is part of writing, and all of it is here.
 - **Add a scene to the trunk** and watch it appear on all three threads at once.
 - **Insert one into the middle** of a thread with **↥** / **↧** on a row, instead
   of appending and dragging.
-- **Connected plots** on a thread that meets others — the same story as a graph,
-  with the merge and the split drawn.
+- **Story Map** from the book page — tick a few threads and watch the merge and
+  the split get drawn. Click a scene to open it in place; unfold a "N scenes"
+  band to see the stretch a thread walks alone.
 - **Leave a scene unscheduled** and see the window its neighbours imply: the
   earliest and latest it could possibly go.
 - **Swap the calendar** to *No calendar* and back, and confirm no verdict moves.

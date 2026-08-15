@@ -42,8 +42,9 @@ testable.
 > visualiser now ships with the service (book → filtered plotline table → a
 > plotline's events as cards on a vertical timeline, with the referenced Akasha
 > articles shown inline). A first graph viewer has since been added on top of the
-> same read paths — a **Connected plots** branch/merge diagram reachable from any
-> plotline (see §12).
+> same read paths — a **story map** that draws any number of the book's threads
+> together as a branch/merge diagram, with *Connected plots* as one preset of it
+> (see §12).
 >
 > It is no longer read-only: **plotlines can be created, edited (including
 > drag-to-reorder), and deleted from the UI**, and scenes can be written and
@@ -1112,22 +1113,75 @@ The layering exists to make this cheap:
   cross-referencing termini) with events still book-local — not cross-book
   events; that would first require defining cross-timeline conflict semantics and
   a multi-book graph/terminus model.
-- **The `/graph` view as a real visualization.** *Partly built.* The API was
-  always visualization-ready — `/graph` (nodes + labeled edges +
+- **The `/graph` view as a real visualization.** *Built.* The API was always
+  visualization-ready — `/graph` (nodes + labeled edges +
   convergence/divergence/terminus), the event-neighborhood endpoint, titles +
-  codec-formatted `when` on every node, and `status`/`/validate` for coloring.
-  A first viewer now ships: a **Connected plots** view (vanilla-JS + SVG, no
-  build toolchain) reachable from any plotline, rendering that thread and every
-  plotline it *actually interacts with* as a branch/merge (git-graph) diagram
-  laid out by tick. "Interacts with" deliberately excludes the terminus — because
-  every plotline ends there, counting it would make the view show the whole book
-  every time; only threads sharing a **non-terminus** event are drawn. To feed it,
-  `/graph` was enriched (additively) so one call carries everything the layout
-  needs: per-node ticks + codec labels + role flags, and a `plotlines` block with
-  each thread's title, stored `events`, `continues_into`, and resolved
-  `effective_events` (the last kept alongside the stored fields so a future *edit*
-  mode can route a change back to the right stored field, not the flattened path).
-  The reusable core — a pure `subgraph` filter + a pure git-graph `layout` + an
-  SVG renderer — is written so the **whole-book story map** is the same renderer
-  fed the full graph instead of a per-plotline slice. That whole-book map, laid
-  out by tick and colored by `status`, is the remaining *future work*.
+  codec-formatted `when` on every node, and `status`/`/validate` for coloring —
+  and one call now carries everything a layout needs: per-node ticks + codec
+  labels + role flags, and a `plotlines` block with each thread's title, stored
+  `events`, `continues_into`, and resolved `effective_events` (the last kept
+  alongside the stored fields so a future *edit* mode can route a change back to
+  the right stored field, not the flattened path).
+
+  What ships on top is the **story map** (`#/<book>/~map`, vanilla-JS + SVG, no
+  build toolchain): tick any number of the book's threads and see them drawn
+  together as a branch/merge (git-graph) diagram laid out by tick. The whole
+  book's graph is fetched once and re-sliced in the browser, so toggling a
+  thread is instant, and the selection rides in the URL (`~map/a,b,c`; empty
+  means all of them) so a map of three threads is a link. **Connected plots** is
+  no longer a view of its own but a *preset* of this one: arriving from a
+  plotline preselects that thread plus every thread it *actually interacts with*
+  and rewrites the URL to the selection that stands for. "Interacts with" still
+  excludes the terminus — every plotline ends there, so counting it would select
+  the whole book every time.
+
+  Four things keep it readable as a book grows, and each is a pure function the
+  test suite drives directly under node (`tests/chronos/test_graph_js.py`):
+
+  - **`subgraph.restrictTo`** narrows the payload to the ticked threads. The
+    connected preset is the same function fed a computed list, so there is one
+    slicing rule and not two.
+  - **`collapse.collapseRuns`** folds the stretches a thread walks *alone* into
+    a single band that unfolds on click, because what a map carries is where
+    threads *meet* — a scene only one thread passes through reads better on that
+    thread's own timeline. Junctions (shared scenes, splits, joins, the
+    terminus) always draw in full. On the seeded ten-thread demo this is 97 rows
+    down to 47.
+  - **`layout.orderLanes`** orders the columns to minimise crossings rather than
+    by name, since name order is arbitrary with respect to who meets whom. Two
+    candidates (the book's order, and one barycentre sweep from it) are each
+    polished by adjacent-swap descent and the cheaper wins, so the result is
+    deterministic and *never worse* than the book's own order. Colour stays keyed
+    to a thread's book-wide index, so identity never shifts even as position
+    adapts; past a full turn of the twelve-hue palette a second channel (stroke
+    dash) keeps threads distinct instead of silently colliding.
+  - **`layout.layoutGraph`** takes row height as an *injected* function, which is
+    what lets a scene expand in place: the row reports its measured height and
+    every row below it moves down, edges following. The same seam gives the
+    compact density toggle for free.
+
+  **Edge routing** is the renderer's one real decision, and the obvious shape is
+  wrong. A symmetric S-curve (control points at the vertical midpoint) reaches
+  the target's column *halfway up*, so a thread joining a lane that already has a
+  line running down it lands on top of that line for the rest of the way — on
+  *The Ember Pact* the Knight's Road and the Magister's Gambit were drawn
+  literally coincident for their last 58px, and read as one thread. Instead each
+  thread holds its own column for the whole descent and turns once, at the node
+  it joins (or immediately after the node it leaves), with the turn starting
+  earlier the further it reaches — so several threads joining one scene nest
+  rather than cross. `tests/chronos/test_graph_js.py` asserts the path shape, not
+  just the endpoints: the endpoints were always right, and that was the point.
+
+  One bug fell out of thinking about scale: `.sg-row` is absolutely positioned at
+  a computed y but wraps its content, so a lane gutter wide enough to squeeze the
+  titles made rows *overlap* rather than merely look cramped. The layout now
+  reports a `minWidth` (gutter + a `TEXT_MIN` floor under the titles) and the
+  drawing sits in a horizontally scrollable pane.
+
+  What none of that can see is the browser itself, so there is one more check
+  outside pytest: `docker/smoke_story_map.py` drives the real page in the
+  official Playwright container against the running stack — it opens the map,
+  unfolds a band, expands a scene and *measures* that the rows below it moved and
+  the rows above did not, follows the connected preset, and leaves screenshots
+  behind. Seed it first with `docker/seed_story_map.py`, which builds a
+  ten-thread book shaped to exercise every one of the behaviours above.

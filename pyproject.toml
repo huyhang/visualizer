@@ -18,7 +18,16 @@ dependencies = [
 
 [project.optional-dependencies]
 # jsonschema backs the OpenAPI contract test (tests/chronos/test_contract.py).
-dev = ["pytest", "ruff", "mongomock>=4.1", "jsonschema>=4.0"]
+# nodejs-wheel-binaries ships a node binary as a wheel, so the handful of pure
+# browser modules with real logic in them (the story map's slicing, folding and
+# layout) can be exercised from pytest -- see tests/chronos/test_graph_js.py.
+# Declared here rather than installed by hand so it is a fact about the repo and
+# not about one machine: whatever env runs the tests gets node from the same
+# `pip install -e ".[dev]"` that gets it pytest.
+dev = [
+    "pytest", "ruff", "mongomock>=4.1", "jsonschema>=4.0",
+    "nodejs-wheel-binaries>=20",
+]
 
 [build-system]
 requires = ["setuptools>=68.0"]
