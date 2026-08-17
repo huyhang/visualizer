@@ -8,6 +8,7 @@ from the URL, so it is passed in rather than read from the body.
 
 from typing import Any
 
+from .calendar import TimeCodec
 from .errors import (
     InvalidBook,
     InvalidCalendar,
@@ -88,18 +89,49 @@ def _parse_tick(value: Any, field: str) -> int | None:
     return value
 
 
-def _parse_timeframe(body: dict) -> tuple[int | None, int | None]:
-    """Both ticks or neither -- a scene is fully scheduled or not at all.
+def _parse_dated_timeframe(body: dict, codec: TimeCodec) -> tuple[int | None, int | None]:
+    """A timeframe given as calendar dates rather than raw ticks.
+
+    Each date names a *period* (see ``TimeCodec.span``), and the two ends take
+    opposite halves of it: the start takes the period's first tick, the end the
+    first tick after it. So the same date in both fields spans exactly that day
+    -- which is how a writer means "this scene happens on Day 12", and it lands
+    on the half-open ``[start, end)`` the rest of Chronos already assumes.
+    """
+    start_date, end_date = body.get("start_date"), body.get("end_date")
+    start = None if start_date is None else codec.span(start_date)[0]
+    end = None if end_date is None else codec.span(end_date)[1]
+    return start, end
+
+
+def _parse_timeframe(body: dict, codec: TimeCodec) -> tuple[int | None, int | None]:
+    """Both ends or neither -- a scene is fully scheduled or not at all.
 
     Half-known timing would multiply the cases every rule has to handle for
     little gain, so it is rejected rather than guessed at.
+
+    A writer may say when a scene happens in either of two ways: raw ticks, or
+    dates in the calendar being read through. Never both at once -- two answers
+    to one question is a client bug, and picking a winner would hide it.
     """
-    start = _parse_tick(body.get("start_tick"), "start_tick")
-    end = _parse_tick(body.get("end_tick"), "end_tick")
+    dated = [f for f in ("start_date", "end_date") if body.get(f) is not None]
+    ticked = [f for f in ("start_tick", "end_tick") if body.get(f) is not None]
+    if dated and ticked:
+        raise InvalidTimeframe(
+            "Give a timeframe as ticks or as calendar dates, not both.",
+            evidence={"given": sorted(dated + ticked)},
+        )
+    if dated:
+        start, end = _parse_dated_timeframe(body, codec)
+        fields = ("start_date", "end_date")
+    else:
+        start = _parse_tick(body.get("start_tick"), "start_tick")
+        end = _parse_tick(body.get("end_tick"), "end_tick")
+        fields = ("start_tick", "end_tick")
     if (start is None) != (end is None):
         raise InvalidTimeframe(
-            "Give both 'start_tick' and 'end_tick', or neither (an unscheduled "
-            "scene). A half-known timeframe is not supported.",
+            f"Give both '{fields[0]}' and '{fields[1]}', or neither (an "
+            "unscheduled scene). A half-known timeframe is not supported.",
             evidence={"start_tick": start, "end_tick": end},
         )
     if start is not None and start > end:
@@ -110,12 +142,30 @@ def _parse_timeframe(body: dict) -> tuple[int | None, int | None]:
     return start, end
 
 
-def validate_event_payload(event_id: str, payload: Any) -> Event:
+def validate_timeframe_payload(payload: Any, codec: TimeCodec) -> tuple[int | None, int | None]:
+    """Just the timing half of an event body, for the scene form's live echo.
+
+    Shares ``_parse_timeframe`` with the real write rather than approximating
+    it, so a date the preview accepts is one the save will accept -- the same
+    bargain the plotline editor's preview strikes.
+    """
+    return _parse_timeframe(_require_mapping(payload, InvalidTimeframe), codec)
+
+
+def validate_event_payload(event_id: str, payload: Any, codec: TimeCodec) -> Event:
+    """Parse an event body into the model, in the calendar it was written in.
+
+    The codec is passed in rather than looked up: this stays a pure function of
+    its arguments, so it tests against a literal descriptor with no book, no
+    store and no app. It is also the only reason validation knows calendars
+    exist at all -- the ``Event`` it returns carries ticks, like everything
+    downstream of here.
+    """
     body = _require_mapping(payload, InvalidEvent)
     if "location" not in body:
         raise InvalidEvent("An event requires a 'location'.")
     location = parse_entity_ref(body["location"], "location")
-    start, end = _parse_timeframe(body)
+    start, end = _parse_timeframe(body, codec)
     title = body.get("title")
     if title is not None and not isinstance(title, str):
         raise InvalidEvent("'title' must be a string.")

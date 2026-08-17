@@ -1482,6 +1482,54 @@
           }
         }
       }
+    },
+    "/books/{book}/ui/dates": {
+      "post": {
+        "tags": [
+          "visualizer"
+        ],
+        "summary": "Resolve calendar dates to ticks",
+        "description": "Turns a date the writer typed into the ticks it names, so the scene form can echo `= Year 3, Month 4, Day 12 -> ticks 19704 -> 19728` while they type. The inverse of `GET /books/{book}/ui/ticks`.\n\nA POST for a read, like `ui/plotline-preview`: a date is a nested object and there are two of them, which a query string says badly. It writes nothing and needs only `read`.\n\nThe arithmetic lives here rather than in the browser so that client and server cannot disagree about what a date means. Shares its parsing with the real write, so a timeframe this accepts is one `PUT .../events/{event}` will accept.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/BookId"
+          },
+          {
+            "$ref": "#/components/parameters/CalendarView"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DateQuery"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The ticks the dates name, dated back again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolvedDates"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1556,7 +1604,7 @@
         "schema": {
           "type": "string"
         },
-        "description": "Which of the book's attached calendars to write dates in. Omit for its primary (first) one. A calendar the book has not attached is a 404, never a silent fallback \u2014 a stale choice must say so rather than mislabel every date in the response. Ticks are unaffected: this changes labels only."
+        "description": "Which of the book's attached calendars to write dates in. Omit for its primary (first) one. A calendar the book has not attached is a 404, never a silent fallback \u2014 a stale choice must say so rather than mislabel every date in the response. Ticks stay canonical: this chooses how they are *said* -- and, on a write carrying `start_date`/`end_date`, which reckoning those dates are read in."
       }
     },
     "requestBodies": {
@@ -1896,7 +1944,7 @@
       "Calendar": {
         "type": "object",
         "nullable": true,
-        "description": "Optional descriptor that formats integer ticks into readable labels (output only \u2014 writes must send integer ticks). Cycles are ordered smallest first and nest over the base unit.",
+        "description": "Optional descriptor that translates between integer ticks and readable dates. Cycles are ordered smallest first and nest over the base unit; their names are the keys a `Date` is written with.",
         "properties": {
           "base_unit": {
             "type": "string",
@@ -2065,7 +2113,7 @@
       },
       "EventWrite": {
         "type": "object",
-        "description": "Writable fields of an event. The id comes from the URL. Every EntityRef must already exist in Akasha. Give both ticks or neither \u2014 omitting them records an unscheduled scene, which a drafting writer can time later.",
+        "description": "Writable fields of an event. The id comes from the URL. Every EntityRef must already exist in Akasha.\n\nThe timeframe may be given as raw `start_tick`/`end_tick` or as `start_date`/`end_date` in the calendar named by `?calendar=` -- never both. Either way: both ends or neither, and omitting them records an unscheduled scene, which a drafting writer can time later.",
         "required": [
           "location"
         ],
@@ -2079,7 +2127,7 @@
           "start_tick": {
             "type": "integer",
             "nullable": true,
-            "description": "Omit or null to leave the scene unscheduled. Must be paired with end_tick."
+            "description": "Omit or null to leave the scene unscheduled. Must be paired with end_tick, and not combined with start_date/end_date."
           },
           "end_tick": {
             "type": "integer",
@@ -2100,6 +2148,16 @@
           },
           "description": {
             "type": "string"
+          },
+          "start_date": {
+            "$ref": "#/components/schemas/Date",
+            "nullable": true,
+            "description": "Takes the first tick of the period it names. Paired with end_date."
+          },
+          "end_date": {
+            "$ref": "#/components/schemas/Date",
+            "nullable": true,
+            "description": "Takes the first tick *after* the period it names, so the same date in both fields spans exactly that period."
           }
         },
         "example": {
@@ -4213,7 +4271,7 @@
       },
       "TickLabels": {
         "type": "object",
-        "description": "What a book's calendar calls a set of ticks. One direction only: a fantasy calendar's labels cannot be parsed back into ticks (see `Calendar`), so a client sends integers and gets names.",
+        "description": "What a book's calendar calls a set of ticks, in prose (`label`, `parts`) and in numbers (`components`). The inverse -- turning a date back into ticks -- is `POST /books/{book}/ui/dates`.",
         "required": [
           "ticks"
         ],
@@ -4264,6 +4322,14 @@
                       }
                     }
                   }
+                },
+                "components": {
+                  "type": "object",
+                  "nullable": true,
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "description": "The same date as numbers, keyed by the calendar's own unit names -- what a form puts back into its date inputs, and what it would send to `POST /books/{book}/ui/dates` or as an event's `start_date`. Cycles are 1-indexed, the base unit 0-indexed, and the top cycle is open-ended (so `Year 0` and below are the pre-epoch ticks). `null` when there is no date to be had: a plain tick line, a tick outside the era this reckoning was kept for, or a calendar that names two units the same."
                 }
               }
             }
@@ -4291,7 +4357,13 @@
                   "name": "Elvish Count",
                   "label": "before Elvish Count"
                 }
-              ]
+              ],
+              "components": {
+                "year": 1,
+                "month": 1,
+                "day": 11,
+                "hour": 0
+              }
             }
           ]
         }
@@ -4624,6 +4696,168 @@
             "type": "integer",
             "readOnly": true
           }
+        }
+      },
+      "Date": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "integer"
+        },
+        "description": "A date, keyed by this calendar's own unit names (see `Calendar.cycles` and `base_unit`; `TickLabels.components` is the same shape coming back). Cycles are 1-indexed, the base unit 0-indexed, and the top cycle is open-ended.\n\nComponents must run contiguously from the largest unit down -- `{year, month}` is a date, a bare `{day}` is not. Omitting the finer ones is how a date names a **period**: `{year: 3, month: 4, day: 12}` is the whole of that day. A `start_date` takes the period's first tick and an `end_date` the first tick after it, so the same date in both fields spans exactly that day.",
+        "example": {
+          "year": 3,
+          "month": 4,
+          "day": 12
+        }
+      },
+      "DateQuery": {
+        "type": "object",
+        "description": "A timeframe to resolve. Accepts exactly what `EventWrite` accepts -- dates or ticks, both ends or neither -- and applies the same rules, so a timeframe this endpoint accepts is one the save will accept.",
+        "properties": {
+          "start_date": {
+            "$ref": "#/components/schemas/Date",
+            "nullable": true
+          },
+          "end_date": {
+            "$ref": "#/components/schemas/Date",
+            "nullable": true
+          },
+          "start_tick": {
+            "type": "integer",
+            "nullable": true
+          },
+          "end_tick": {
+            "type": "integer",
+            "nullable": true
+          }
+        },
+        "example": {
+          "start_date": {
+            "year": 3,
+            "month": 4,
+            "day": 12
+          },
+          "end_date": {
+            "year": 3,
+            "month": 4,
+            "day": 12
+          }
+        }
+      },
+      "ResolvedDates": {
+        "type": "object",
+        "description": "The ticks a timeframe resolves to, plus those ticks dated back again -- so a form can echo the reading it is about to save without a second round trip. `ticks` omits an end that was not given.",
+        "required": [
+          "start_tick",
+          "end_tick",
+          "ticks"
+        ],
+        "properties": {
+          "start_tick": {
+            "type": "integer",
+            "nullable": true
+          },
+          "end_tick": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Exclusive, as everywhere else: the first tick after the scene."
+          },
+          "ticks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "tick",
+                "label",
+                "parts"
+              ],
+              "properties": {
+                "tick": {
+                  "type": "integer"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "parts": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "The label split coarse-to-fine, as in EventSummary.start_parts."
+                },
+                "readings": {
+                  "type": "array",
+                  "description": "The same tick dated in *every* calendar the book keeps, including any that were not being kept then. `label`/`parts` above stay the chosen (or primary) reckoning, so a pre-library client is unaffected.",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "calendar",
+                      "name",
+                      "label"
+                    ],
+                    "properties": {
+                      "calendar": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string",
+                        "example": "before Elvish Count"
+                      }
+                    }
+                  }
+                },
+                "components": {
+                  "type": "object",
+                  "nullable": true,
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "description": "The same date as numbers, keyed by the calendar's own unit names -- what a form puts back into its date inputs, and what it would send to `POST /books/{book}/ui/dates` or as an event's `start_date`. Cycles are 1-indexed, the base unit 0-indexed, and the top cycle is open-ended (so `Year 0` and below are the pre-epoch ticks). `null` when there is no date to be had: a plain tick line, a tick outside the era this reckoning was kept for, or a calendar that names two units the same."
+                }
+              }
+            }
+          }
+        },
+        "example": {
+          "start_tick": 19704,
+          "end_tick": 19728,
+          "ticks": [
+            {
+              "tick": 19704,
+              "label": "Year 3, Month 4, Day 12, 00:00 AF",
+              "parts": [
+                "Year 3",
+                "Month 4",
+                "Day 12",
+                "00:00 AF"
+              ],
+              "components": {
+                "year": 3,
+                "month": 4,
+                "day": 12,
+                "hour": 0
+              }
+            },
+            {
+              "tick": 19728,
+              "label": "Year 3, Month 4, Day 13, 00:00 AF",
+              "parts": [
+                "Year 3",
+                "Month 4",
+                "Day 13",
+                "00:00 AF"
+              ],
+              "components": {
+                "year": 3,
+                "month": 4,
+                "day": 13,
+                "hour": 0
+              }
+            }
+          ]
         }
       }
     }

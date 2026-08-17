@@ -93,16 +93,21 @@ The form reads your choice back in plain language as you build it:
 
 > *Ticks are hours: 24 hours to a day, 30 days to a month, 12 months to a year.*
 
-That sentence is the whole point of the calendar. A scene is always placed at a
-whole number — a **tick** — and the calendar only decides how that number reads
-back:
+That sentence is the whole point of the calendar. A scene is always *stored* at a
+whole number — a **tick** — and the calendar decides how that number reads, and
+lets you type a date instead of it:
 
-| You type | It reads |
+| Tick | Reads as |
 | --- | --- |
 | `0` | Year 1, Month 1, Day 1, 00:00 AF |
 | `24` | Year 1, Month 1, Day 2, 00:00 AF |
 | `48` | Year 1, Month 1, Day 3, 00:00 AF |
 | `200` | Year 1, Month 1, Day 9, 08:00 AF |
+
+The translation runs both ways, so when you write a scene in step 4 you can give
+it a date and Chronos works out the tick. Ticks remain the stored truth — every
+continuity check runs on them, which is why changing calendars never moves a
+scene.
 
 ---
 
@@ -163,13 +168,27 @@ search the articles you just wrote — pick from the list rather than typing.
 | Corwin Plots | `corwin-plots` | Highkeep | `96` | `120` | Corwin | — |
 | The Coronation | `the-coronation` | The Throne Hall | `200` | `210` | Aldric, Lyra, Corwin | The Ember Seal |
 
-As you type the ticks, a line under the fields tells you what they mean —
-*"Year 1, Month 1, Day 1, 00:00 AF → Year 1, Month 1, Day 2, 00:00 AF (24
-hours)"*. You never have to do mixed-radix arithmetic in your head.
+**Date or Tick.** Because this book has a calendar, the timing fields start in
+**Date** mode: a box per unit — Year, Month, Day, Hour — rather than one raw
+number. Type *Year 1, Month 1, Day 1* and the line beneath tells you what it
+became: *"Year 1, Month 1, Day 1, 00:00 AF → Year 1, Month 1, Day 2, 00:00 AF
+(24 hours) — ticks 0 → 24."* Switch to **Tick** to type the number directly; the
+same line translates the other way. Either mode saves the same scene — the
+table above lists ticks because they are what gets stored.
 
-> **Leave the ticks blank** if you do not know when a scene happens yet. An
+> **You can stop early.** Fill in Year, Month and Day and leave Hour blank and
+> the date means *the whole of that day*. Put the same date in both fields and
+> the scene covers exactly that day and nothing more, which is usually what you
+> meant. Fill in the hour too when you need the scene to be more precise than
+> that.
+
+> **Leave the timing blank** if you do not know when a scene happens yet. An
 > unscheduled scene is a to-do, not an error: it takes part in no timing rule
 > until you place it, and the library marks it `unscheduled`.
+
+> **Dates that do not exist are refused.** Day 31 of a 30-day month, or a date
+> in a reckoning that had not begun yet, comes back as an error rather than
+> being quietly rounded to something you did not ask for.
 
 Back in the library, try **⤢** on a row. The whole scene opens beside the table —
 its description, and its place, cast and items as chips. Click **Highkeep** and

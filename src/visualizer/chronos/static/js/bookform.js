@@ -12,7 +12,7 @@
 // everywhere downstream — what the timeline rail groups by, what the scene form
 // reads back as you type — so a bare title field would quietly commit every book
 // to plain integers. Editing it later is safe by construction: ticks are
-// canonical integers and a calendar formats output only, so swapping one
+// canonical integers and a calendar only translates them, so swapping one
 // re-labels the book without moving a single scene or changing any verdict.
 
 import { api } from "./api.js";

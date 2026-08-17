@@ -573,6 +573,11 @@ def present_ticks(ticks: list[int], codec: TimeCodec, readings=()) -> dict:
     moment a writer is choosing when a scene happens, they see it dated in every
     reckoning their book keeps, including the ones that were not being kept then.
     ``label``/``parts`` stay exactly what a single-calendar client always got.
+
+    ``components`` is the same date as numbers rather than prose -- what a form
+    puts *back into* its inputs, and what it would send to schedule this tick.
+    ``null`` where there is no date to be had: a plain tick line, or a tick
+    outside the era this reckoning was kept for.
     """
     return {
         "ticks": [
@@ -580,6 +585,7 @@ def present_ticks(ticks: list[int], codec: TimeCodec, readings=()) -> dict:
                 "tick": tick,
                 "label": codec.format(tick),
                 "parts": codec.parts(tick),
+                "components": codec.components(tick),
                 "readings": [
                     {
                         "calendar": attachment.id,
@@ -591,6 +597,24 @@ def present_ticks(ticks: list[int], codec: TimeCodec, readings=()) -> dict:
             }
             for tick in ticks
         ]
+    }
+
+
+def present_dates(start: int | None, end: int | None, codec: TimeCodec, readings=()) -> dict:
+    """What a pair of dates resolves to -- the scene form's live "= tick" echo.
+
+    The inverse of ``present_ticks``, and deliberately shaped like it: the ticks
+    the dates named, plus those ticks dated back again, so the form can show the
+    reading it is about to save without a second round trip. Resolving here
+    rather than in the browser keeps the calendar arithmetic in exactly one
+    place; a client that disagreed with the server about what "Day 12" means
+    would be the worst possible bug in this feature.
+    """
+    ticks = [t for t in (start, end) if t is not None]
+    return {
+        "start_tick": start,
+        "end_tick": end,
+        **present_ticks(ticks, codec, readings),
     }
 
 

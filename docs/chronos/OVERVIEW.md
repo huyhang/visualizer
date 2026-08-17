@@ -129,9 +129,9 @@ Numbers sound unromantic, but they're why Chronos can be useful: comparing
 "hour 200" to "hour 210" is something it can never get wrong, whereas real-world
 dates fall apart the moment your story isn't set on Earth.
 
-You don't have to *read* numbers, though. Tell Chronos your world's calendar —
-how many hours in a day, days in a month, months in a year, and what the era is
-called — and it translates for you:
+You don't have to *read* numbers, though — or type them. Tell Chronos your
+world's calendar — how many hours in a day, days in a month, months in a year,
+and what the era is called — and it translates for you, both ways:
 
 | Your world's calendar | What Chronos shows |
 | --- | --- |
@@ -151,9 +151,13 @@ dating things and says so, rather than inventing years no one was counting.
 Calendars you want again live in a **library**, so you build one once and attach
 it to any book — and can share it with the people you write with.
 
-> **One practical note today:** Chronos *shows* you calendar dates, but when
-> you record a scene you still give it the plain number. Typing "Day 9" and
-> having it understood isn't built yet.
+**Writing a date.** Once a book has a calendar, the scene form asks for a date
+rather than a number: Year, Month, Day, Hour. You can stop wherever you like —
+give a year, a month and a day and leave the hour blank, and the scene simply
+covers that whole day. The number is still what gets stored, which is why
+swapping calendars later re-labels every scene without moving one, and why a
+date in a reckoning that had not begun yet is politely refused rather than
+invented.
 
 ### You don't need to know when it happens
 

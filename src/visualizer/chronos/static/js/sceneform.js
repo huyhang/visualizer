@@ -8,11 +8,11 @@
 // real canon (proxied same-origin) rather than typed free-hand.
 
 import { api } from "./api.js";
-import { calendarHint, plural } from "./calendars.js";
 import { eventTimeframe } from "./cards.js";
 import { clear, el, toast } from "./dom.js";
 import { entityTitle } from "./entities.js";
 import { suggestBox } from "./picker.js";
+import { sceneTiming } from "./scenetiming.js";
 import { slugify } from "./shared/slug.js";
 
 // The conventional collection each field draws from. A book may name its
@@ -21,7 +21,6 @@ import { slugify } from "./shared/slug.js";
 const ROLE_COLLECTION = { location: "locations", characters: "characters", items: "items" };
 
 const MAX_ID_ATTEMPTS = 20;
-const TICK_DEBOUNCE_MS = 250;
 
 // A scene is created *at* its id, so unlike a book or a plotline it cannot fall
 // back on refusing an empty one -- there is always a name to write it under.
@@ -151,96 +150,18 @@ function collectionOptions(scope, role) {
   return Array.from(new Set([mine, ...observed]));
 }
 
-// Whether asking the server for a label would tell the writer anything: with no
-// calendar the label *is* the number, so the round trip would be noise.
-function labelsAreUseful(calendar) {
-  return Boolean(calendar) && calendar.kind !== "identity" && (calendar.cycles || []).length > 0;
-}
-
-// The live "what does 240 mean?" line under the timeframe fields. The book's
-// codec is the only thing that can answer, and it lives on the server, so this
-// asks (debounced, latest-wins) rather than reimplementing the calendar.
-function timingPreview(book, calendar, startInput, endInput) {
-  const node = el("p", { class: "field-hint tick-preview muted" });
-  // Every *other* reckoning the book keeps, dated alongside the main line. This
-  // is the one place the parallel calendars pay for themselves without being
-  // asked for: at the moment a writer is choosing when a scene happens.
-  const others = el("ul", { class: "field-hint tick-readings muted", hidden: "" });
-  const wrap = el("div", {}, [node, others]);
-  if (!labelsAreUseful(calendar)) return { node: wrap, refresh: () => {} };
-
-  let timer = null;
-  let seq = 0;
-
-  async function run() {
-    const start = intOrNull(startInput);
-    const end = intOrNull(endInput);
-    if (Number.isNaN(start) || Number.isNaN(end)) {
-      node.textContent = "Whole numbers only.";
-      return;
-    }
-    if (start === null && end === null) {
-      node.textContent = "No timing yet — you can place this scene later.";
-      return;
-    }
-    const wanted = [start, end].filter((t) => t !== null);
-    const mine = ++seq;
-    try {
-      const { ticks } = await api.formatTicks(book, wanted);
-      if (mine !== seq) return;
-      node.textContent = describe(ticks, start, end, calendar);
-      showReadings(others, ticks, start);
-    } catch (e) {
-      if (mine !== seq) return;
-      node.textContent = "";
-      others.hidden = true;
-    }
-  }
-
-  const schedule = () => { clearTimeout(timer); timer = setTimeout(run, TICK_DEBOUNCE_MS); };
-  startInput.addEventListener("input", schedule);
-  endInput.addEventListener("input", schedule);
-  run();
-  return { node: wrap, refresh: run };
-}
-
-// Silent unless the book keeps more than one calendar — a single reckoning is
-// already the line above, and repeating it would be noise.
-function showReadings(list, ticks, start) {
-  const entry = ticks.find((t) => t.tick === start) || ticks[0];
-  const readings = (entry && entry.readings) || [];
-  clear(list);
-  list.hidden = readings.length < 2;
-  if (list.hidden) return;
-  for (const reading of readings) {
-    list.appendChild(el("li", { text: `${reading.name}: ${reading.label}` }));
-  }
-}
-
-function describe(ticks, start, end, calendar) {
-  const label = (tick) => (ticks.find((t) => t.tick === tick) || {}).label || String(tick);
-  if (start === null) return `Ends ${label(end)} — but give a start too, or neither.`;
-  if (end === null) return `Starts ${label(start)} — but give an end too, or neither.`;
-  if (start > end) return `${label(start)} is after ${label(end)} — the start must come first.`;
-  if (start === end) return `${label(start)} (a moment).`;
-  return `${label(start)} → ${label(end)} (${end - start} ${plural(calendar.base_unit || "tick")}).`;
-}
-
-function intOrNull(input) {
-  const raw = input.value.trim();
-  if (raw === "") return null;
-  const n = Number(raw);
-  return Number.isInteger(n) ? n : NaN;
-}
-
 // event === null -> create a scene; otherwise edit that one.
+// `calendars` is the book's attachments and `calendarId` which to start in; the
+// timing section lets the writer switch between them and reports back which one
+// the timeframe was typed in, so the save resolves it the same way the form
+// previewed it.
 // onSaved(row, event) receives the picker row and the full saved event.
-export function sceneForm(book, { scope, calendar = null, event = null, onSaved, onCancel }) {
+export function sceneForm(book, {
+  scope, calendars = [], calendarId = null, event = null, onSaved, onCancel,
+}) {
   const editing = event !== null;
   const title = el("input", { type: "text", value: editing ? (event.title || "") : "", placeholder: "The Harbor Exchange" });
   const idBox = el("input", { type: "text", value: editing ? event.id : "", placeholder: "harbor-exchange", disabled: editing ? "" : null });
-  const start = el("input", { type: "text", inputmode: "numeric", value: event && event.start_tick != null ? String(event.start_tick) : "", placeholder: "e.g. 240" });
-  const end = el("input", { type: "text", inputmode: "numeric", value: event && event.end_tick != null ? String(event.end_tick) : "", placeholder: "e.g. 264" });
   const description = el("textarea", { rows: "3", placeholder: "What happens here (optional)" });
   if (editing && event.description) description.value = event.description;
 
@@ -265,7 +186,7 @@ export function sceneForm(book, { scope, calendar = null, event = null, onSaved,
     initial: editing ? event.items.slice() : [],
   });
 
-  const timing = timingPreview(book, calendar, start, end);
+  const timing = sceneTiming(book, { calendars, calendarId, event });
 
   const error = el("p", { class: "form-error", hidden: "" });
   const fail = (message) => { error.textContent = message; error.hidden = false; return null; };
@@ -274,21 +195,18 @@ export function sceneForm(book, { scope, calendar = null, event = null, onSaved,
     error.hidden = true;
     const place = location.value()[0];
     if (!place) return fail("Choose where this scene happens.");
-    const startTick = intOrNull(start);
-    const endTick = intOrNull(end);
-    if (Number.isNaN(startTick) || Number.isNaN(endTick)) return fail("Ticks must be whole numbers.");
-    if ((startTick === null) !== (endTick === null)) {
-      return fail("Give both ticks, or neither — a half-known timeframe is not supported.");
-    }
-    if (startTick !== null && startTick > endTick) return fail("The start must not be after the end.");
+    const when = timing.timeframe();
+    if (when.error) return fail(when.error);
     return {
-      title: title.value.trim() || null,
-      location: place,
-      start_tick: startTick,
-      end_tick: endTick,
-      description: description.value,
-      characters: characters.value(),
-      items: items.value(),
+      calendar: when.calendar,
+      body: {
+        title: title.value.trim() || null,
+        location: place,
+        ...when.body,
+        description: description.value,
+        characters: characters.value(),
+        items: items.value(),
+      },
     };
   }
 
@@ -296,14 +214,16 @@ export function sceneForm(book, { scope, calendar = null, event = null, onSaved,
 
   const form = el("form", { class: "scene-form", onsubmit: async (e) => {
     e.preventDefault();
-    const body = payload();
-    if (!body) return;
+    const written = payload();
+    if (!written) return;
+    const { body, calendar } = written;
     save.disabled = true;
     try {
       const saved = editing
-        ? await api.updateEvent(book, event.id, body, event.rev)
+        ? await api.updateEvent(book, event.id, body, event.rev, { calendar })
         : await createWithFreeId(
-          book, idBox.value.trim() || slugify(title.value) || FALLBACK_SCENE_ID, body,
+          book, idBox.value.trim() || slugify(title.value) || FALLBACK_SCENE_ID,
+          body, calendar,
         );
       onSaved(eventRow(saved), saved);
     } catch (err) {
@@ -316,14 +236,7 @@ export function sceneForm(book, { scope, calendar = null, event = null, onSaved,
     field("Title", title, "What you will recognise it by in the timeline."),
     field("Id", idBox, editing ? "A scene's id is permanent." : "Used in links and in the API. Derived from the title until you change it."),
     location.node,
-    el("div", { class: "timing" }, [
-      el("div", { class: "field-row" }, [
-        field("Starts at (tick)", start),
-        field("Ends at (tick)", end),
-      ]),
-      timing.node,
-      el("p", { class: "field-hint muted", text: calendarHint(calendar) }),
-    ]),
+    timing.node,
     characters.node,
     items.node,
     field("What happens", description),
@@ -338,11 +251,11 @@ export function sceneForm(book, { scope, calendar = null, event = null, onSaved,
 
 // Ids are unique per book; rather than refuse a duplicate title, take the next
 // free suffix — the writer is naming a scene, not choosing a primary key.
-async function createWithFreeId(book, baseId, body) {
+async function createWithFreeId(book, baseId, body, calendar) {
   for (let n = 1; n <= MAX_ID_ATTEMPTS; n++) {
     const id = n === 1 ? baseId : `${baseId}-${n}`;
     try {
-      return await api.createEvent(book, id, body);
+      return await api.createEvent(book, id, body, { calendar });
     } catch (err) {
       if (err.code !== "ALREADY_EXISTS") throw err;
     }

@@ -232,7 +232,10 @@ export async function mountScenes(container, book, { onBooks, onBook }) {
     const holder = el("div");
     const dialog = modal(title, holder);
     holder.appendChild(sceneForm(book, {
-      scope, calendar: bookMeta.calendar, event,
+      // Start in whichever reckoning the page is being read in — the form then
+      // offers the rest, so a scene can be dated in the calendar its *setting*
+      // keeps rather than the one the table happens to be showing.
+      scope, calendars: bookMeta.calendars || [], calendarId: calendar, event,
       onCancel: () => dialog.close(),
       onSaved: (saved) => {
         dialog.close();

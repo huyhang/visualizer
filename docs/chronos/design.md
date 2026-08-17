@@ -325,13 +325,15 @@ boundary: **parse on the way in, format on the way out.** Storage and every
 invariant/graph module see only `int` — they never know a calendar exists.
 
 Each **Book** carries a small `calendar` descriptor that selects a **`TimeCodec`**
-— a pure strategy object whose two methods round-trip:
+— a pure strategy object facing two ways:
 
 ```python
 class TimeCodec(Protocol):
-    def format(self, tick: int) -> str: ...   # 10567 -> "Year 2, Month 3, Day 21, 07:00 AF"
-    def parse(self, label: str) -> int: ...    # inverse; raises InvalidTimeframe on garbage
-    # invariant, and the key property test: parse(format(t)) == t
+    def format(self, tick: int) -> str: ...   # 19704 -> "Year 3, Month 4, Day 12, 00:00 AF"
+    def parts(self, tick: int) -> list[str]: ...      # the same, split coarse-to-fine
+    def components(self, tick: int) -> dict | None: ...  # ...and as numbers: {"year": 3, …}
+    def span(self, components: dict) -> tuple[int, int]: ...  # the inverse
+    # invariant, and the key property test: span(components(t)) == (t, t + 1)
 ```
 
 Three implementations satisfy the same interface (strategy / IoC); the book's
@@ -351,24 +353,42 @@ descriptor picks one via a pure `codec_for(book)` factory:
     "epoch_label": "AF" }
   ```
 
-  `format` is repeated `divmod` (mixed-radix decomposition); `parse` is the
+  `format` is repeated `divmod` (mixed-radix decomposition); `span` is the
   inverse composition.
 - **`GregorianCodec` (optional).** For real-world settings, back the same
   interface with `datetime`.
 
+**A date names a period, not an instant.** `span` returns a *range* because that
+is what a writer means. Components are given from the largest unit down and the
+finer ones may simply be omitted: `{year: 3, month: 4, day: 12}` is the whole of
+that day, `{year: 3}` the whole of that year. A `start_date` takes the period's
+first tick and an `end_date` the first tick *after* it, so the same date at both
+ends of a timeframe spans exactly that period — landing on the half-open
+`[start, end)` convention of §4 with no special case. A *gap* in the components
+(`{year, day}`) is refused rather than guessed at, and a digit outside its cycle
+(`Day 31` of a 30-day month) is reported rather than rolled forward. The top
+cycle is open-ended, which is what lets a story run past "Year 12" and makes
+`Year 0` and below the pre-epoch ticks the odometer already prints.
+
 **Where it plugs in** — only the request/response edge of the service layer:
 
-- **Input:** a route may accept raw `start_tick`/`end_tick` *or* `start`/`end`
-  label strings; the service calls `codec_for(book).parse(...)` **first**,
-  before any validation or storage. Only ticks are persisted.
-- **Output:** event reads and the `/validate` / `/graph` responses may include a
+- **Input:** an event body may carry raw `start_tick`/`end_tick` *or*
+  `start_date`/`end_date` — never both — and `?calendar=` says which reckoning
+  the dates are in. `validate_event_payload` takes the codec as an argument and
+  resolves the dates **first**, before anything else. Only ticks are persisted;
+  nothing records which spelling was used, because nothing downstream could act
+  on it.
+- **Output:** event reads and the `/validate` / `/graph` responses include a
   computed `start_label`/`end_label` alongside the raw ticks, formatted at
   serialization time. The book also exposes its `calendar`, so a client can
-  format on its own.
+  format on its own. `GET .../ui/ticks` adds `components` — the same date as
+  numbers — which is how a form fills its date fields in from a stored tick, and
+  `POST .../ui/dates` is the inverse, so the browser needs no odometer of its
+  own and cannot disagree with the server about what "Day 12" means.
 
 Because `TimeCodec` is pure and constructed from plain book data, it unit-tests
-in isolation (a literal descriptor + the `parse(format(t)) == t` round-trip),
-and it never leaks into the invariant logic.
+in isolation (a literal descriptor + the `span(components(t)) == (t, t+1)`
+round-trip), and it never leaks into the invariant logic.
 
 **Two notes.** (1) The base unit is a one-time choice — changing it later means
 rescaling stored ticks — so pick a *fine* base unit (e.g. minutes) up front;
@@ -389,7 +409,10 @@ Eras are a decorator, not a fourth codec: **`EraCodec`** wraps any `TimeCodec`,
 offsets by `from_tick` (so a reckoning founded mid-story reads Year 1 at its own
 beginning) and refuses to label ticks outside `[from_tick, until_tick)`,
 formatting them as `before …`/`after …`. Half-open, matching `timeline.overlaps`,
-so the two cannot disagree at a boundary.
+so the two cannot disagree at a boundary. Writing works the same way round: a
+date in a reckoning nobody was keeping is refused rather than resolved, which is
+the write-side twin of refusing to invent a label for one. Only the *start* must
+fall inside the era — a scene may begin under a reckoning and outlast it.
 
 Reusable calendars live in a **library** keyed `(owner, id)` behind a second
 persistence seam (`CalendarStore`), and a book **copies** the descriptor it

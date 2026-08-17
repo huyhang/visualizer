@@ -7,6 +7,7 @@ the pure window inference, the relaxed rules, and the end-to-end draft workflow.
 import pytest
 
 from tests.chronos.conftest import ref
+from visualizer.chronos.calendar import IdentityCodec
 from visualizer.chronos.conflicts import all_conflicts, find_temporal_conflicts
 from visualizer.chronos.continuation import effective_paths
 from visualizer.chronos.errors import InvalidTimeframe
@@ -38,14 +39,20 @@ def test_is_scheduled():
     assert not ev("a").is_scheduled
 
 
+# Timing is parsed through a calendar; with none attached that is the identity
+# one, and a payload's ticks are its own integer selves (see test_dates.py for
+# the same rules said in dates).
+TICKS = IdentityCodec()
+
+
 def test_payload_accepts_no_timing():
-    e = validate_event_payload("a", {"location": LOC.to_dict()})
+    e = validate_event_payload("a", {"location": LOC.to_dict()}, TICKS)
     assert e.start_tick is None and e.end_tick is None and not e.is_scheduled
 
 
 def test_payload_accepts_explicit_nulls():
     e = validate_event_payload(
-        "a", {"location": LOC.to_dict(), "start_tick": None, "end_tick": None}
+        "a", {"location": LOC.to_dict(), "start_tick": None, "end_tick": None}, TICKS
     )
     assert not e.is_scheduled
 
@@ -53,13 +60,13 @@ def test_payload_accepts_explicit_nulls():
 @pytest.mark.parametrize("body", [{"start_tick": 5}, {"end_tick": 5}])
 def test_half_known_timing_is_rejected(body):
     with pytest.raises(InvalidTimeframe, match="both"):
-        validate_event_payload("a", {"location": LOC.to_dict(), **body})
+        validate_event_payload("a", {"location": LOC.to_dict(), **body}, TICKS)
 
 
 def test_start_after_end_still_rejected():
     with pytest.raises(InvalidTimeframe):
         validate_event_payload(
-            "a", {"location": LOC.to_dict(), "start_tick": 10, "end_tick": 5}
+            "a", {"location": LOC.to_dict(), "start_tick": 10, "end_tick": 5}, TICKS
         )
 
 

@@ -38,6 +38,7 @@ from .presenters import (
     present_book,
     present_book_report,
     present_calendar,
+    present_dates,
     present_event,
     present_graph,
     present_neighborhood,
@@ -53,6 +54,7 @@ from .validation import (
     validate_calendar_payload,
     validate_event_payload,
     validate_plotline_payload,
+    validate_timeframe_payload,
 )
 
 # Stand-ins used only while previewing a plotline that has no id or goals yet.
@@ -247,12 +249,16 @@ class EventService(_Service):
                 evidence={"missing": [r.to_dict() for r in missing]},
             )
 
-    def create(self, book_id, event_id, payload, author=None) -> dict:
-        self._require_book(book_id)
-        event = validate_event_payload(event_id, payload)
+    def create(self, book_id, event_id, payload, author=None, calendar_id=None) -> dict:
+        """Write a scene. ``calendar_id`` is which reckoning the body's dates are
+        written in -- the same selector reads use, so a writer schedules in
+        whichever calendar they are looking at, and reads the result back in it."""
+        book = self._require_book(book_id)
+        codec = codec_for(book, calendar_id)
+        event = validate_event_payload(event_id, payload, codec)
         self._check_entities(event)
         public = self.store.create_event(book_id, event_id, event.to_storage(), author=author)
-        return present_event(public, codec_for(self._book(book_id)))
+        return present_event(public, codec)
 
     def get(self, book_id, event_id, calendar_id=None) -> dict:
         public = self.store.get_event(book_id, event_id)
@@ -268,14 +274,16 @@ class EventService(_Service):
             return None
         return window_for(event_id, effective_paths(self._plotlines(book_id)), events)
 
-    def update(self, book_id, event_id, payload, expected_rev=None, author=None) -> dict:
-        self._require_book(book_id)
-        event = validate_event_payload(event_id, payload)
+    def update(self, book_id, event_id, payload, expected_rev=None, author=None,
+               calendar_id=None) -> dict:
+        book = self._require_book(book_id)
+        codec = codec_for(book, calendar_id)
+        event = validate_event_payload(event_id, payload, codec)
         self._check_entities(event)
         public = self.store.update_event(
             book_id, event_id, event.to_storage(), expected_rev, author
         )
-        return present_event(public, codec_for(self._book(book_id)))
+        return present_event(public, codec)
 
     def delete(self, book_id, event_id, expected_rev=None, author=None, detach=False) -> None:
         book = self._require_book(book_id)
@@ -675,8 +683,26 @@ class VisualizerService(_Service):
         and the codecs are pure, so the extra readings cost no I/O.
         """
         book = self._require_book(book_id)
-        readings = [(c, codec_for_attachment(c)) for c in book.calendars]
-        return present_ticks(ticks, codec_for(book, calendar_id), readings)
+        return present_ticks(ticks, codec_for(book, calendar_id), self._readings(book))
+
+    def resolve_dates(self, book_id, payload, calendar_id=None) -> dict:
+        """Which ticks a pair of calendar dates names (see ``present_dates``).
+
+        The write-side twin of ``format_ticks``: the scene form asks this while
+        the writer types, so what it echoes is the server's own arithmetic
+        rather than a second implementation of the odometer in JavaScript.
+        Judges nothing and stores nothing -- an impossible date is the only way
+        it fails.
+        """
+        book = self._require_book(book_id)
+        codec = codec_for(book, calendar_id)
+        start, end = validate_timeframe_payload(payload, codec)
+        return present_dates(start, end, codec, self._readings(book))
+
+    def _readings(self, book) -> list:
+        """Every attached reckoning, ready to date the same tick. Pure, so the
+        extra labels cost no I/O."""
+        return [(c, codec_for_attachment(c)) for c in book.calendars]
 
     # -- akasha articles ------------------------------------------------------
 

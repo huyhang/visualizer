@@ -334,7 +334,8 @@ def _register_routes(app, csrf, auth_store, books, plotlines, events, visualizer
     def create_event(book, event):
         _authorize(auth_store, "POST", book)
         result = events.create(
-            book, event, request.get_json(silent=True) or {}, current_user.username
+            book, event, request.get_json(silent=True) or {}, current_user.username,
+            calendar_id=_calendar_arg(),
         )
         return _resp(result, 201)
 
@@ -352,7 +353,7 @@ def _register_routes(app, csrf, auth_store, books, plotlines, events, visualizer
         _authorize(auth_store, "PUT", book)
         result = events.update(
             book, event, request.get_json(silent=True) or {}, _expected_rev(),
-            current_user.username,
+            current_user.username, calendar_id=_calendar_arg(),
         )
         return _resp(result)
 
@@ -661,10 +662,26 @@ def _register_ui_routes(app, csrf, auth_store, visualizer):
     @login_required
     def ui_format_ticks(book):
         """What the book's calendar calls these ticks -- the scene form's live
-        "240 means Day 11" hint. One way only: labels are formatted here because
-        a fantasy calendar cannot be parsed back (see calendar.py)."""
+        "240 means Day 11" hint, and the numbers to put back in its date fields
+        (see ``present_ticks``)."""
         _authorize(auth_store, "GET", book)
         return jsonify(visualizer.format_ticks(book, _ticks_arg(), _calendar_arg()))
+
+    @app.post(_BOOK + "/ui/dates")
+    @csrf.exempt
+    @login_required
+    def ui_resolve_dates(book):
+        """Which ticks these calendar dates name -- the other half of the scene
+        form's timing hint, while the writer is typing a date rather than a tick.
+
+        A POST for a read, like ``ui/plotline-preview``: a date is a nested
+        object and there are two of them, which a query string says badly. It
+        writes nothing, so *read* permission is what it asks for.
+        """
+        _authorize(auth_store, "GET", book)
+        return jsonify(visualizer.resolve_dates(
+            book, request.get_json(silent=True) or {}, _calendar_arg()
+        ))
 
     @app.get("/ui/worlds")
     @csrf.exempt

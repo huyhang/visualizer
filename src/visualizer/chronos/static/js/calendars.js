@@ -98,6 +98,38 @@ export function calendarHint(calendar) {
   return `Ticks are ${plural(base)}: ${steps.join(", ")}.`;
 }
 
+// The units a date is written in, coarsest first — one entry per input the
+// scene form offers, with the range the server will enforce.
+//
+// Naming only: which unit sits where, and how far each one counts. Turning a
+// date into a tick stays on the server (see api.resolveDates), so there is no
+// arithmetic here to fall out of step with the codec.
+//
+// An empty list means "this calendar cannot be written in", and is the one
+// signal the form keys date entry off. Two cases give it: a book with no
+// calendar (ticks are already the plainest thing to type), and a calendar that
+// names two units alike — legal, but a date keyed by name could not say which
+// was meant, so the server refuses one and the form must not offer one.
+export function dateUnits(calendar) {
+  if (!calendar || calendar.kind === "identity") return [];
+  const cycles = calendar.cycles || [];
+  if (!cycles.length) return [];
+  // Cycles are stored smallest first; a date is said largest first.
+  const ordered = [...cycles].reverse();
+  const units = ordered.map((cycle, i) => ({
+    name: cycle.name,
+    // A cycle counts 1..(how many of it fit in the one above). The topmost has
+    // nothing above it and is open-ended, which is what lets a story run past
+    // "Year 12" and lets Year 0 and below be the ticks before the epoch.
+    min: 1,
+    max: i === 0 ? null : ordered[i - 1].size,
+  }));
+  // The base unit reads 0-indexed, the way a clock does.
+  units.push({ name: calendar.base_unit || "tick", min: 0, max: ordered[ordered.length - 1].size - 1 });
+  const distinct = new Set(units.map((u) => String(u.name).trim().toLowerCase()));
+  return distinct.size === units.length ? units : [];
+}
+
 // Why this draft cannot be saved yet, in the writer's words. Mirrors what
 // `validation._check_calendar` enforces server-side and goes no further: a
 // browser that refuses a descriptor the API would accept is a worse bug than one

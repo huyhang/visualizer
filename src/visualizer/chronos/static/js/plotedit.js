@@ -580,7 +580,7 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
       clear(panel);
       for (const b of tabs.children) b.classList.toggle("active", b.dataset.tab === which);
       panel.appendChild(which === "existing" ? existing.el : sceneForm(book, {
-        scope, calendar: bookMeta.calendar,
+        scope, calendars: bookMeta.calendars || [],
         onCancel: dialog.close,
         onSaved: (row) => { dialog.close(); addScene(row, at); toast(`Added “${row.title}”.`); },
       }));
@@ -607,7 +607,7 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
     const holder = el("div");
     const dialog = modal(`Edit “${event.title || event.id}”`, holder);
     holder.appendChild(sceneForm(book, {
-      scope, calendar: bookMeta.calendar, event,
+      scope, calendars: bookMeta.calendars || [], event,
       onCancel: dialog.close,
       onSaved: (row) => {
         rows.set(row.id, { ...rows.get(row.id), ...row });

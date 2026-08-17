@@ -182,12 +182,42 @@ every other interval here.
 Reusable calendars live in a **library** (`/calendars`) and are *copied* into a
 book when attached — see [the calendar library](#the-calendar-library).
 
-> **Note:** the calendar currently formats **output only**. Writes must send
-> integer ticks; posting a label string is not yet supported.
+**Scheduling by date.** A scene's timeframe may be given as a date instead of a
+tick, in whichever calendar `?calendar=` names:
+
+```jsonc
+POST /books/ember-pact/events/dawn?calendar=imperial
+{"location": {…},
+ "start_date": {"year": 3, "month": 4, "day": 12},
+ "end_date":   {"year": 3, "month": 4, "day": 12}}
+```
+
+which stores `start_tick: 19704, end_tick: 19728`. Four rules:
+
+- Components are keyed by the calendar's **own unit names** and run from the
+  largest down. Cycles are 1-indexed, the base unit 0-indexed, and the top cycle
+  is open-ended (`Year 0` and below are the ticks before the epoch).
+- **A date names a period.** Omitting the finer units is how you say "some time
+  that day": the start takes the period's first tick and the end the first tick
+  *after* it, so the same date at both ends spans exactly that day. `{"year": 3}`
+  alone is the whole of Year 3.
+- A **gap** (`{year, day}`) or a digit outside its cycle (`Day 31` of a 30-day
+  month) is a `400 INVALID_TIMEFRAME`, not a guess. So is a date in a calendar
+  whose era was not being kept then.
+- Dates and ticks are alternatives, never a mixture: sending both is a `400`.
+  Only ticks are stored, and nothing records which spelling was used.
+
+`POST /books/{book}/ui/dates` resolves a date to ticks without writing anything
+(the scene form's live echo), and `GET /books/{book}/ui/ticks` returns
+`components` — the same date as numbers — which is how a form fills its date
+fields in from a stored tick.
+
+> **Note:** the older single `"calendar": {…}` field is still accepted on writes
+> and still returned on reads (as the primary attachment's descriptor). A body
+> may send one spelling or the other, never both.
 >
-> The older single `"calendar": {…}` field is still accepted on writes and still
-> returned on reads (as the primary attachment's descriptor). A body may send
-> one spelling or the other, never both.
+> Parsing a formatted *label string* back into a tick is still unsupported —
+> send components, or an integer tick.
 
 ---
 
@@ -288,9 +318,14 @@ one question per screen:
 GET    /books/<book>/ui/plotlines    filtered, name-ordered, paginated table
 GET    /books/<book>/ui/issues       the book's problems, grouped for reading
 POST   /books/<book>/ui/plotline-preview   judge a candidate thread; writes nothing
+GET    /books/<book>/ui/ticks        what the calendar calls these ticks (label + components)
+POST   /books/<book>/ui/dates        which ticks these dates name; writes nothing
 GET    /books/<book>/ui/entities     type-ahead over referenceable Akasha articles
 GET    /books/<book>/ui/entity/<db>/<collection>/<id>   read one article
 ```
+
+`…/ui/ticks` and `…/ui/dates` are inverses, and between them they are the whole
+reason the browser needs no calendar arithmetic of its own.
 
 `…/ui/issues` and `…/validate` answer the same question for different readers.
 `/validate` is the machine's answer: ids, one list per category, the first
@@ -449,8 +484,8 @@ you type.
 **Changing it later.** The **✎** beside a book's title on its plotline table
 reopens the same form to rename the book, edit its overview or swap its calendar.
 This is safe by construction rather than by care: ticks are canonical integers
-and a calendar formats output only, so a swap re-labels the book without moving a
-single scene, and no conflict, ordering or convergence verdict can change as a
+and a calendar only translates them, so a swap re-labels the book without moving
+a single scene, and no conflict, ordering or convergence verdict can change as a
 result.
 
 One thing the form has to do that the route does not advertise: `PUT

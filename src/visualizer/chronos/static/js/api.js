@@ -122,8 +122,15 @@ export const api = {
 
   getEvent: (book, id, { calendar } = {}) =>
     request("GET", evPath(book, id) + viewQuery(calendar)),
-  createEvent: (book, id, body) => request("POST", evPath(book, id), { body }),
-  updateEvent: (book, id, body, rev) => request("PUT", evPath(book, id), { body, ifMatch: rev }),
+  // `calendar` says which reckoning a `start_date`/`end_date` in the body is
+  // written in — the same selector the reads take. It is not optional dressing:
+  // the scene form shows the writer what their date resolves to *through that
+  // calendar*, so a save that omitted it would store a different tick than the
+  // one on screen. Bodies carrying plain ticks are unaffected either way.
+  createEvent: (book, id, body, { calendar } = {}) =>
+    request("POST", evPath(book, id) + viewQuery(calendar), { body }),
+  updateEvent: (book, id, body, rev, { calendar } = {}) =>
+    request("PUT", evPath(book, id) + viewQuery(calendar), { body, ifMatch: rev }),
   // `detach` first removes the scene from every plotline that lists it; without
   // it the API refuses with EVENT_IN_USE and names them, which is what the
   // caller shows before asking again. The book's terminus is refused either way
@@ -141,8 +148,8 @@ export const api = {
   getEntity: (book, database, collection, id) =>
     request("GET", `${bookPath(book)}/ui/entity/${enc(database)}/${enc(collection)}/${enc(id)}`),
 
-  // What the book's calendar calls these ticks. One way only — a fantasy
-  // calendar cannot be parsed back, so the browser never guesses a label.
+  // What the book's calendar calls these ticks — as prose (`label`, `parts`)
+  // and as numbers (`components`, what a date field puts back in its inputs).
   // Every reading comes back, not just the chosen one: `readings` dates the
   // tick in each calendar the book keeps, which is what the scene form shows.
   formatTicks: (book, ticks, { calendar } = {}) => {
@@ -151,6 +158,14 @@ export const api = {
     if (calendar) p.set("calendar", calendar);
     return request("GET", `${bookPath(book)}/ui/ticks?${p.toString()}`);
   },
+
+  // The inverse: which ticks a pair of dates names. A POST for a read (a date
+  // is a nested object; two of them say badly in a query string), and the one
+  // reason the browser needs no mixed-radix arithmetic of its own — client and
+  // server cannot disagree about what "Day 12" means if only one of them knows.
+  // Takes exactly what a scene body takes, so what it accepts the save accepts.
+  resolveDates: (book, timeframe, { calendar } = {}) =>
+    request("POST", `${bookPath(book)}/ui/dates${viewQuery(calendar)}`, { body: timeframe }),
 
   // -- the calendar library --------------------------------------------------
   //

@@ -276,6 +276,32 @@ def test_no_module_sets_value_as_an_attribute_on(tag):
         )
 
 
+_CSS = Path(__file__).resolve().parents[2] / "src" / "visualizer" / "chronos" / "static" / "visualizer.css"
+
+
+def test_the_stylesheet_lets_hidden_win():
+    """Setting `.hidden` must actually hide, whatever classes the node carries.
+
+    `[hidden] { display: none }` lives in the *user-agent* stylesheet, so any
+    author rule beats it -- and `!important` is needed rather than mere source
+    order, because the author rules that collide with it (`.field-row`,
+    `.date-end`) have the same specificity and come later.
+
+    This cost the scene form's Date/Tick toggle: the JS set `.hidden` on both
+    rows correctly and neither ever disappeared, because `.field-row` is
+    `display: flex`. Nothing else in the suite can see that -- the JS tests run
+    against a fake DOM with no CSS at all -- so the rule is pinned here.
+    """
+    css = _CSS.read_text()
+    rule = re.search(r"\[hidden\]\s*\{([^}]*)\}", css)
+    assert rule, "no [hidden] rule: an element with a display of its own will not hide"
+    body = rule.group(1)
+    assert "display" in body and "none" in body, f"[hidden] does not set display:none: {body!r}"
+    assert "!important" in body, (
+        f"[hidden] must be !important to beat same-specificity author rules: {body!r}"
+    )
+
+
 def test_no_module_builds_dom_from_untrusted_html():
     """The DOM helpers take `text`, never `innerHTML`, for anything user-supplied.
 
