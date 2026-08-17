@@ -43,6 +43,28 @@ function breadcrumb(bookTitle, { onBooks, onBook }) {
   ]);
 }
 
+// What a calendar switch has to hand the remount.
+//
+// Switching calendars rebuilds the whole map, because every label on it changes.
+// The `deps` this view was mounted with are frozen at route entry, though, and
+// the selection has moved since: ticking a thread writes the new list with
+// `replaceState` precisely so the router does *not* remount. So reusing `deps`
+// verbatim rebuilds the map from a selection the writer abandoned, silently
+// undoing every tick they have made since they arrived.
+//
+// `connectedFrom` is dropped for the same reason. It is how the view was
+// *entered* -- "this thread and everything it meets" -- and re-deriving from it
+// would beat the explicit selection that has since replaced it. An empty list
+// means "all of them", matching what `hashFor` writes to the URL.
+export function remountDeps(deps, bookOrder, selected) {
+  const everything = selected.size === bookOrder.length;
+  return {
+    ...deps,
+    selection: everything ? [] : bookOrder.filter((id) => selected.has(id)),
+    connectedFrom: null,
+  };
+}
+
 // A thread's toggle. The swatch is the lane's own colour and stroke, so what you
 // click is what you get -- and a thread that is off still shows its mark, which
 // is what makes the picker read as a legend too.
@@ -381,7 +403,7 @@ export async function mountStoryMap(container, book, deps) {
   view.appendChild(el("div", { class: "pl-header" }, [
     title,
     calendarSwitcher(book, bookMeta.calendars,
-      () => mountStoryMap(container, book, deps)),
+      () => mountStoryMap(container, book, remountDeps(deps, bookOrder, selected))),
     note,
   ]));
   view.appendChild(el("div", { class: "sg-controls" }, [

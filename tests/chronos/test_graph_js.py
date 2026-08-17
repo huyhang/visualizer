@@ -28,7 +28,13 @@ import pytest
 _JS_DIR = Path(__file__).resolve().parents[2] / "src" / "visualizer" / "chronos" / "static" / "js"
 # layout.js imports timeaxis.js for the calendar period grouping.
 _MODULES = ("layout.js", "subgraph.js", "collapse.js", "timeaxis.js",
-            "storygraph.js", "dom.js")
+            "storygraph.js", "dom.js",
+            # storymap.js and everything it reaches, for `remountDeps`. It
+            # imports cleanly under node -- nothing in the graph touches the DOM
+            # at module scope -- so the helper can be exercised directly.
+            "storymap.js", "api.js", "calendarview.js", "cards.js", "findings.js",
+            "focus.js", "fontscale.js", "peek.js", "entities.js", "picker.js",
+            "paging.js", "table.js")
 
 # Enough of a DOM for the renderer to build against, and no more. Deliberately
 # unforgiving: anything storygraph.js reaches for that is not here throws, which
@@ -90,6 +96,7 @@ _PREAMBLE = """\
 import { applyPeriodGrouping, geometry, layoutGraph, orderLanes } from "./layout.js";
 import { connectedTo, restrictTo } from "./subgraph.js";
 import { collapseRuns } from "./collapse.js";
+import { remountDeps } from "./storymap.js";
 const INPUT = %s;
 const emit = (value) => console.log(JSON.stringify(value));
 """
@@ -1260,3 +1267,59 @@ def test_closing_the_gaps_does_not_move_a_node_to_another_thread(run_js, graph):
 
     assert got["wrong"] == []
     assert got["a1"] == got["alphaColour"]
+
+
+# -- what survives a change of calendar ---------------------------------------
+#
+# Switching calendars rebuilds the map, because every label on it changes. The
+# `deps` the view was mounted with are frozen at route entry, while the
+# selection moves as the writer ticks threads -- and those ticks are written
+# with `replaceState`, precisely so the router does *not* remount. Handing the
+# frozen deps back to the remount therefore rebuilds from a selection the writer
+# abandoned. `remountDeps` is what stops that.
+
+
+def test_a_calendar_switch_keeps_the_threads_the_writer_ticked(run_js):
+    """The reported bug. Arriving from "Connected plots" leaves out any thread
+    that meets the focus only at the terminus -- "The Magister's Gambit" in the
+    demo book. Ticking it on and then switching calendar used to drop it again,
+    because the remount re-read the selection the URL had at route entry."""
+    got = run_js("""
+      const bookOrder = ["knights-road","magisters-gambit","spys-shadow","trunk","witness-tale"];
+      const deps = { selection: ["knights-road","trunk","witness-tale"],
+                     connectedFrom: "knights-road", focusEvent: null, hashFor: null };
+      const selected = new Set([...deps.selection, "magisters-gambit"]);
+      emit(remountDeps(deps, bookOrder, selected));
+    """)
+    assert "magisters-gambit" in got["selection"]
+    assert got["selection"] == ["knights-road", "magisters-gambit", "trunk", "witness-tale"]
+
+
+def test_the_entry_preset_does_not_outlive_the_selection_it_became(run_js):
+    """`connectedFrom` is how the map was *entered*. Carrying it through a
+    remount would re-derive "this thread and everything it meets" and beat the
+    explicit selection that has since replaced it."""
+    got = run_js("""
+      const bookOrder = ["a","b","c"];
+      emit(remountDeps({ selection: ["a"], connectedFrom: "a" }, bookOrder, new Set(["a","b"])));
+    """)
+    assert got["connectedFrom"] is None
+    assert got["selection"] == ["a", "b"]
+
+
+def test_every_thread_selected_is_carried_as_the_empty_list(run_js):
+    """The URL's convention for "all of them" — so a remount after Show all does
+    not pin the map to a list that a later-added thread would fall out of."""
+    got = run_js("""
+      const bookOrder = ["a","b","c"];
+      emit(remountDeps({ selection: ["a"] }, bookOrder, new Set(bookOrder)));
+    """)
+    assert got["selection"] == []
+
+
+def test_unrelated_deps_ride_through_untouched(run_js):
+    got = run_js("""
+      emit(remountDeps({ selection: [], focusEvent: "e1", hashFor: null, extra: 7 },
+                       ["a"], new Set(["a"])));
+    """)
+    assert got["focusEvent"] == "e1" and got["extra"] == 7
