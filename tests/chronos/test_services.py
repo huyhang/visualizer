@@ -83,13 +83,13 @@ def test_temporal_conflict_is_soft(svc):
 
 def test_plotline_rejects_unknown_event(svc):
     with pytest.raises(InvalidPlotline):
-        svc["plotlines"].create(BOOK, "p1", {"events": ["ghost"], "goals": ["g"]})
+        svc["plotlines"].create(BOOK, "p1", {"events": ["ghost"], "goals": []})
 
 
 def test_plotline_ordering_is_soft_and_reported(svc):
     svc["events"].create(BOOK, "a", _event("highkeep", 0, 72))
     svc["events"].create(BOOK, "b", _event("highkeep", 0, 48))
-    pl = svc["plotlines"].create(BOOK, "p1", {"events": ["a", "b"], "goals": ["g"]})
+    pl = svc["plotlines"].create(BOOK, "p1", {"events": ["a", "b"], "goals": []})
     assert pl["status"]["ordering"]["state"] == "conflicted"
     assert pl["status"]["ordering"]["code"] == "ORDERING_VIOLATION"
 
@@ -97,8 +97,8 @@ def test_plotline_ordering_is_soft_and_reported(svc):
 def test_plotline_expand_marks_convergence(svc):
     for eid, s, e in [("a", 0, 10), ("b", 0, 10), ("m", 20, 30), ("t", 40, 50)]:
         svc["events"].create(BOOK, eid, _event("highkeep", s, e))
-    svc["plotlines"].create(BOOK, "p1", {"events": ["a", "m", "t"], "goals": ["g"]})
-    svc["plotlines"].create(BOOK, "p2", {"events": ["b", "m", "t"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "p1", {"events": ["a", "m", "t"], "goals": []})
+    svc["plotlines"].create(BOOK, "p2", {"events": ["b", "m", "t"], "goals": []})
     expanded = svc["plotlines"].get(BOOK, "p1", expand=True)
     by_id = {e["id"]: e for e in expanded["effective_events"]}
     assert by_id["m"]["is_convergence"] is True
@@ -110,7 +110,7 @@ def test_plotline_expand_marks_convergence(svc):
 
 def test_delete_referenced_event_blocked(svc):
     svc["events"].create(BOOK, "a", _event())
-    svc["plotlines"].create(BOOK, "p1", {"events": ["a"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "p1", {"events": ["a"], "goals": []})
     with pytest.raises(EventInUse) as ei:
         svc["events"].delete(BOOK, "a")
     assert ei.value.evidence["plotlines"] == ["p1"]
@@ -119,7 +119,7 @@ def test_delete_referenced_event_blocked(svc):
 def test_delete_with_detach_removes_from_plotlines(svc):
     svc["events"].create(BOOK, "a", _event("highkeep", 0, 10))
     svc["events"].create(BOOK, "b", _event("highkeep", 20, 30))
-    svc["plotlines"].create(BOOK, "p1", {"events": ["a", "b"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "p1", {"events": ["a", "b"], "goals": []})
     svc["events"].delete(BOOK, "a", detach=True)
     assert svc["plotlines"].get(BOOK, "p1")["events"] == ["b"]
 
@@ -137,8 +137,8 @@ def test_delete_terminus_blocked(svc):
 def test_set_terminus_and_converge(svc):
     for eid, s, e in [("a", 0, 10), ("b", 0, 10), ("t", 40, 50)]:
         svc["events"].create(BOOK, eid, _event("highkeep", s, e))
-    svc["plotlines"].create(BOOK, "p1", {"events": ["a", "t"], "goals": ["g"]})
-    svc["plotlines"].create(BOOK, "p2", {"events": ["b", "t"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "p1", {"events": ["a", "t"], "goals": []})
+    svc["plotlines"].create(BOOK, "p2", {"events": ["b", "t"], "goals": []})
     svc["books"].set_terminus(BOOK, "t")
     assert svc["books"].validate(BOOK)["status"] == "consistent"
 
@@ -148,7 +148,7 @@ def test_set_terminus_and_converge(svc):
 
 def test_deleting_a_book_cascades_to_its_plotlines_and_events(svc):
     svc["events"].create(BOOK, "a", _event())
-    svc["plotlines"].create(BOOK, "p1", {"events": ["a"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "p1", {"events": ["a"], "goals": []})
     svc["books"].delete(BOOK)
     assert svc["books"].list() == []
     # Not merely unreachable through the book -- actually gone from the store.
@@ -161,7 +161,7 @@ def test_a_stale_delete_leaves_the_book_and_its_story_intact(svc):
     it. There is no transaction to roll back, so "refused" has to mean nothing
     happened rather than everything but the book."""
     svc["events"].create(BOOK, "a", _event())
-    svc["plotlines"].create(BOOK, "p1", {"events": ["a"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "p1", {"events": ["a"], "goals": []})
     svc["books"].update(BOOK, {"title": "Renamed"})  # the book is now at rev 2
 
     with pytest.raises(RevisionConflict):
@@ -211,9 +211,9 @@ def test_a_side_effect_rewrite_changes_only_what_it_is_about(svc, rewrite, may_c
     svc["events"].create(BOOK, "a", _event("highkeep", 0, 10))
     svc["events"].create(BOOK, "b", _event("highkeep", 20, 30))
     svc["events"].create(BOOK, "spare", _event("highkeep", 40, 50))
-    svc["plotlines"].create(BOOK, "tail", {"events": ["b"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "tail", {"events": ["b"], "goals": []})
     svc["plotlines"].create(BOOK, "p1", {
-        "events": ["a", "spare"], "goals": ["g"], "title": "A Distinctive Title",
+        "events": ["a", "spare"], "goals": [], "title": "A Distinctive Title",
         "continues_into": "tail", "continues_into_at": "b", "overview": PROSE,
     })
     before = _stored_plotline(svc, "p1")
@@ -247,7 +247,7 @@ def test_overview_survives_detaching_a_deleted_scene(svc):
     svc["events"].create(BOOK, "a", _event("highkeep", 0, 10))
     svc["events"].create(BOOK, "b", _event("highkeep", 20, 30))
     svc["plotlines"].create(
-        BOOK, "p1", {"events": ["a", "b"], "goals": ["g"], "overview": PROSE},
+        BOOK, "p1", {"events": ["a", "b"], "goals": [], "overview": PROSE},
     )
     svc["events"].delete(BOOK, "a", detach=True)
     after = svc["plotlines"].get(BOOK, "p1")
@@ -259,9 +259,9 @@ def test_overview_survives_inlining_a_continuation(svc):
     """``PlotlineService.inline`` rebuilds the thread from a fresh model."""
     svc["events"].create(BOOK, "a", _event("highkeep", 0, 10))
     svc["events"].create(BOOK, "t", _event("highkeep", 20, 30))
-    svc["plotlines"].create(BOOK, "trunk", {"events": ["t"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "trunk", {"events": ["t"], "goals": []})
     svc["plotlines"].create(BOOK, "p1", {
-        "events": ["a"], "goals": ["g"], "continues_into": "trunk", "overview": PROSE,
+        "events": ["a"], "goals": [], "continues_into": "trunk", "overview": PROSE,
     })
     inlined = svc["plotlines"].inline(BOOK, "p1")
     assert inlined["events"] == ["a", "t"], "expected the chain to be absorbed"
@@ -278,8 +278,8 @@ def test_overview_survives_designating_a_terminus(svc):
 def test_neighborhood_convergence(svc):
     for eid, s, e in [("a", 0, 10), ("b", 0, 10), ("m", 20, 30), ("t", 40, 50)]:
         svc["events"].create(BOOK, eid, _event("highkeep", s, e))
-    svc["plotlines"].create(BOOK, "p1", {"events": ["a", "m", "t"], "goals": ["g"]})
-    svc["plotlines"].create(BOOK, "p2", {"events": ["b", "m", "t"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "p1", {"events": ["a", "m", "t"], "goals": []})
+    svc["plotlines"].create(BOOK, "p2", {"events": ["b", "m", "t"], "goals": []})
     n = svc["events"].neighborhood(BOOK, "m")
     assert n["role"] == "convergence"
     assert n["converging"]["is_convergence"] is True

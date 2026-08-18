@@ -29,6 +29,11 @@ Three things follow from folding per-thread answers together:
   invisible to every per-thread pass, but ``/validate`` sees it and so does the
   writer -- so each is checked as a path of its own.
 
+A fourth source joins the three per-thread ones: the book's **goals** (see
+``goal_rules``), which are not anchored to a scene at all. They fold in as
+findings like everything else, and are graded by the same two words, so the
+report gains a section rather than a second way of talking.
+
 Severity keeps the meaning ``reports.BookReport.ok`` gives it, so that a book the
 report calls conflicted is exactly a book whose card says ``conflicted``. The
 contradictions are ``conflict``; an undated scene is ``info``, because it is a
@@ -44,8 +49,10 @@ from dataclasses import dataclass, field, replace
 from .book_rules import validate_convergence
 from .calendar import TimeCodec
 from .continuation import Resolution
-from .models import EntityRef, Event
-from .plotline_health import CONFLICT, INFO, Finding, findings_for_path
+from .goal_rules import goal_findings
+from .models import EntityRef, Event, Goal, Plotline
+from .plotline_health import Finding, findings_for_path
+from .severity import CONFLICT, INFO
 
 _DESIGN = "docs/chronos/design.md"
 
@@ -61,8 +68,12 @@ class Issue:
     # Book-wide issues -- no ending designated, a thread that cannot be
     # resolved -- have none.
     scene: str | None = None
+    # The goal the message is said about, for the issues phrased from a goal's
+    # point of view. Exactly the same idea as ``scene``, one graph over.
+    goal: str | None = None
     events: tuple[str, ...] = field(default=())      # other scenes named
     plotlines: tuple[str, ...] = field(default=())   # threads this lands on
+    goals: tuple[str, ...] = field(default=())       # other goals named
     refs: tuple[EntityRef, ...] = field(default=())  # Akasha articles quoted
     doc: str | None = None
 
@@ -73,6 +84,8 @@ def book_issues(
     codec: TimeCodec,
     missing_refs: Iterable[EntityRef] = (),
     terminus: str | None = None,
+    goals: Iterable[Goal] = (),
+    plotlines: Iterable[Plotline] = (),
 ) -> list[Issue]:
     """Everything wrong with one book, in story order.
 
@@ -83,12 +96,18 @@ def book_issues(
     :param events_by_id: every scene in the book, including ones no thread uses.
     :param missing_refs: Akasha articles already found to be gone (existence is
         I/O; this module only decides what to say about it).
+    :param goals: the book's goals, judged against the same resolved paths as
+        everything else -- so a goal delivered on a scene a thread inherits
+        through a continuation counts as reached.
+    :param plotlines: the threads themselves, which the goal rules need for the
+        one thing a resolved path does not carry: which goals a thread serves.
     """
     paths = {pid: r.events for pid, r in resolutions.items()}
     issues = [
         *_scene_issues(paths, events_by_id, codec, missing_refs),
         *_convergence_issues(paths, terminus, events_by_id),
         *_continuation_issues(resolutions),
+        *_goal_issues(goals, plotlines, events_by_id, paths),
     ]
     return sorted(issues, key=_reading_order(events_by_id))
 
@@ -217,6 +236,30 @@ def _continuation_issue(plotline_id: str, resolution: Resolution) -> Issue | Non
             "which is no longer on that thread's path.",
         )
     return None
+
+
+def _goal_issues(goals, plotlines, events_by_id, paths) -> list[Issue]:
+    """What the book's goals say about themselves (``goal_rules``).
+
+    A translation and nothing more: the goal rules already speak in findings
+    graded with the same two words as every other rule, so folding them in is a
+    change of container. It is worth being a step of its own only because the
+    two vocabularies anchor differently -- a scene finding hangs off a scene, a
+    goal finding off a goal -- and the report shows each next to its anchor.
+    """
+    return [
+        Issue(
+            code=finding.code,
+            severity=finding.severity,
+            message=finding.message,
+            goal=finding.goal,
+            events=finding.events,
+            plotlines=finding.plotlines,
+            goals=finding.goals,
+            doc=finding.doc,
+        )
+        for finding in goal_findings(goals, plotlines, events_by_id, paths)
+    ]
 
 
 def _broken(plotline_id: str, code: str, message: str) -> Issue:

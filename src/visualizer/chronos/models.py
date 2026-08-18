@@ -80,7 +80,7 @@ class Event:
 
 @dataclass
 class Plotline:
-    """One thread: an ordered list of event ids plus a non-empty set of goals.
+    """One thread: an ordered list of event ids plus the goals it serves.
 
     ``events`` is this plotline's *own* segment. When ``continues_into`` names
     another plotline, the thread carries on into it -- so a shared ending is
@@ -89,6 +89,9 @@ class Plotline:
 
     id: str
     events: list[str]
+    # The ids of the ``Goal`` records in this book that this thread pursues. May
+    # be empty: a thread is often drafted before the writer has decided what it
+    # is for, and "serves no goal" is worth reporting rather than refusing.
     goals: list[str]
     title: str | None = None
     continues_into: str | None = None
@@ -127,6 +130,52 @@ class Plotline:
             # is exactly what ``None`` means -- so no migration runs.
             continues_into_at=doc.get("continues_into_at"),
             overview=doc.get("overview", ""),
+        )
+
+
+@dataclass
+class Goal:
+    """Something the story is trying to bring about.
+
+    A goal is what a thread is *for* -- ``Plotline.goals`` names these by id --
+    and goals rest on one another: a coronation needs a claim proved first, so
+    ``depends_on`` names the goals in this book that must be met before it.
+
+    ``achieved_at`` is the single point where a goal touches the timeline: the
+    scene that delivers it. Optional, because a goal is usually named long
+    before the scene that pays it off has been written. Everything else a reader
+    wants to know -- whether it is met, met too early, pursued by nobody -- is
+    *computed* from those two fields (see ``goal_rules``) rather than stored, so
+    each question has one answer instead of a stored one and a derived one that
+    drift apart.
+    """
+
+    id: str
+    title: str | None = None
+    description: str = ""
+    depends_on: list[str] = field(default_factory=list)
+    achieved_at: str | None = None
+
+    @property
+    def display_title(self) -> str:
+        return self.title or self.id
+
+    def to_storage(self) -> dict:
+        return {
+            "title": self.title,
+            "description": self.description,
+            "depends_on": list(self.depends_on),
+            "achieved_at": self.achieved_at,
+        }
+
+    @classmethod
+    def from_storage(cls, doc: dict) -> "Goal":
+        return cls(
+            id=doc["id"],
+            title=doc.get("title"),
+            description=doc.get("description", ""),
+            depends_on=list(doc.get("depends_on", [])),
+            achieved_at=doc.get("achieved_at"),
         )
 
 

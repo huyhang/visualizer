@@ -4,7 +4,7 @@ Two boundaries between the app and MongoDB, both built on ``ScopedDocuments``
 (which owns the composite key, the ``_rev`` optimistic concurrency and the
 author stamp -- see ``documents``):
 
-- ``StoryStore`` -- books, plotlines and events, scoped to a **book**.
+- ``StoryStore`` -- books, plotlines, events and goals, scoped to a **book**.
 - ``CalendarStore`` -- the library of named, reusable calendars, scoped to their
   **owner**.
 
@@ -25,6 +25,7 @@ from .errors import (
     BookNotFound,
     CalendarNotFound,
     EventNotFound,
+    GoalNotFound,
     PlotlineNotFound,
 )
 
@@ -32,6 +33,7 @@ CHRONOS_DB = "_chronos"
 _BOOKS = "books"
 _PLOTLINES = "plotlines"
 _EVENTS = "events"
+_GOALS = "goals"
 _CALENDARS = "calendars"
 
 
@@ -48,6 +50,7 @@ class StoryStore:
         self._books = docs(_BOOKS)
         self._plotlines = docs(_PLOTLINES)
         self._events = docs(_EVENTS)
+        self._goals = docs(_GOALS)
 
     # -- books ---------------------------------------------------------------
     #
@@ -113,6 +116,23 @@ class StoryStore:
 
     def list_events(self, book_id) -> list[dict]:
         return self._events.list_in_scope(book_id)
+
+    # -- goals ---------------------------------------------------------------
+
+    def create_goal(self, book_id, goal_id, body, author=None) -> dict:
+        return self._goals.insert(book_id, goal_id, body, author)
+
+    def get_goal(self, book_id, goal_id) -> dict:
+        return self._goals.get(book_id, goal_id, GoalNotFound)
+
+    def update_goal(self, book_id, goal_id, body, expected_rev=None, author=None) -> dict:
+        return self._goals.replace(book_id, goal_id, body, expected_rev, author, GoalNotFound)
+
+    def delete_goal(self, book_id, goal_id, expected_rev=None, author=None) -> None:
+        self._goals.remove(book_id, goal_id, expected_rev, author, GoalNotFound)
+
+    def list_goals(self, book_id) -> list[dict]:
+        return self._goals.list_in_scope(book_id)
 
     # -- targeted queries the invariants need (design §6.1) ------------------
 

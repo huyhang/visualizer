@@ -198,9 +198,9 @@ def story_client(app, fake_gate):
     for eid, s, e in [("a", 0, 10), ("b", 0, 10), ("m", 20, 30), ("t", 40, 50)]:
         c.post(f"/books/{BOOK}/events/{eid}", json=_event(start=s, end=e, title=eid.upper()))
     c.post(f"/books/{BOOK}/plotlines/knights",
-           json={"title": "The Knight's Road", "events": ["a", "m", "t"], "goals": ["g"]})
+           json={"title": "The Knight's Road", "events": ["a", "m", "t"], "goals": []})
     c.post(f"/books/{BOOK}/plotlines/spies",
-           json={"title": "The Spy's Shadow", "events": ["b", "m", "t"], "goals": ["g"]})
+           json={"title": "The Spy's Shadow", "events": ["b", "m", "t"], "goals": []})
     c.post(f"/books/{BOOK}/terminus/t")
     return c
 
@@ -228,7 +228,7 @@ def test_live_preview_conforms(schema_doc, story_client):
     """The editor's dry-run: same presenter, its own documented shape."""
     resp = story_client.post(
         f"/books/{BOOK}/ui/plotline-preview",
-        json={"id": "knights", "events": ["a", "m"], "goals": ["g"]},
+        json={"id": "knights", "events": ["a", "m"], "goals": []},
     )
     assert resp.status_code == 200, resp.get_json()
     _validator(schema_doc, "PlotlinePreviewResult").validate(resp.get_json())
@@ -250,7 +250,7 @@ def test_live_conflicted_report_conforms(schema_doc, story_client, fake_gate):
     ).status_code == 201
     # out of order (m is [20,30), a is [0,10)) and never reaches the terminus
     assert story_client.post(
-        f"/books/{BOOK}/plotlines/broken", json={"events": ["m", "a"], "goals": ["g"]}
+        f"/books/{BOOK}/plotlines/broken", json={"events": ["m", "a"], "goals": []}
     ).status_code == 201
 
     body = story_client.get(f"/books/{BOOK}/validate").get_json()

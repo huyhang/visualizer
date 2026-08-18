@@ -110,16 +110,18 @@ Akasha API deliberately refuses to expose.
 | Term | What it is |
 | --- | --- |
 | **Event** | Characters + items, at one location, over a timeframe, with a description. The atom of the model. |
-| **Plotline** | An **ordered** list of events plus a non-empty set of goals. Order is the contract. May `continues_into` another plotline so a shared ending is stored once — optionally `continues_into_at` a named scene partway down it. |
+| **Plotline** | An **ordered** list of events plus the goals it serves, named by id. Order is the contract. May `continues_into` another plotline so a shared ending is stored once — optionally `continues_into_at` a named scene partway down it. |
+| **Goal** | Something the book is trying to bring about. A record of its own: it may rest on other goals (`depends_on`) and name the scene that delivers it (`achieved_at`). See [Goals](#goals). |
 | **Book** | A collection of plotlines with one designated **Terminus**. |
 | **Overview** | Free prose on a book or a plotline, saying what it is about. Optional, read by no rule, empty rather than null when unwritten, and capped at 10 000 characters — it is returned whole in every listing. |
 | **Terminus** | The single event every plotline in the book must end at. |
 | **Trunk** | Not a distinct type — the conventional name for the plotline that holds a **shared ending** other threads `continues_into` (see [Shared endings](#shared-endings)). |
 | **EntityRef** | A pointer to a Akasha article — `{database, collection, id}`. Must already exist. |
 
-Events, plotlines and terminus are **scoped to one book**; ids are unique within
-their book. Two plotlines may share an event — that is how threads converge and
-diverge.
+Events, plotlines, goals and terminus are **scoped to one book**; ids are unique
+within their book. Two plotlines may share an event — that is how threads
+converge and diverge — and two may serve the same goal, which is how they say
+they are pulling in the same direction.
 
 ### Time
 
@@ -232,9 +234,12 @@ whether the data makes structural sense.
 | --- | --- |
 | An `EntityRef` doesn't exist in Akasha | `422 ENTITY_NOT_FOUND` |
 | `start_tick > end_tick`, a non-integer tick, or only one of the two given | `400 INVALID_TIMEFRAME` |
-| Empty event list, empty goals, unknown event id, unknown `continues_into` target | `400 INVALID_PLOTLINE` |
+| Empty event list, unknown event id, unknown goal id, unknown `continues_into` target | `400 INVALID_PLOTLINE` |
 | A `continues_into_at` that is not on the target's path, or has no `continues_into` | `400 INVALID_PLOTLINE` |
 | A `continues_into` chain that loops | `422 PLOTLINE_CYCLE` |
+| A goal depending on a goal that is not in the book, or achieved at a scene that is not | `400 INVALID_GOAL` |
+| A `depends_on` chain that loops | `422 GOAL_CYCLE` |
+| Deleting a goal threads serve, or other goals rest on | `409 GOAL_IN_USE` |
 | Deleting a plotline others continue into | `409 PLOTLINE_IN_USE` |
 | Deleting an event a plotline still lists | `409 EVENT_IN_USE` |
 | Deleting the book's terminus | `409 TERMINUS_IN_USE` |
@@ -250,6 +255,7 @@ a save, for any book, solo or shared.
 | **Ordering** — a plotline's events not in non-overlapping order | plotline `status.ordering` |
 | **Convergence** — a plotline not ending at the terminus | plotline `status.ends_at_terminus` |
 | **Missing article** — a scene naming a character, item or location that has been deleted from Akasha | `validate.missing_entities`, book `status`, the scene's findings |
+| **Goals** — one the story never reaches, or one achieved before what it rests on; and the notes: nobody pursuing it, no scene yet | `validate.goals`, goal `status`, book `status`, the report |
 
 A book reports `status: "consistent"` or `"conflicted"`. Draft freely; reconcile
 when you're ready.
@@ -292,6 +298,12 @@ GET    /books/<book>/events/<event>
 PUT    /books/<book>/events/<event>
 DELETE /books/<book>/events/<event>[?detach=true]    detach removes it from plotlines first
 GET    /books/<book>/events/<event>/plotlines[?relation=converging|diverging|through]
+
+GET    /books/<book>/goals                           every goal, read against the book
+POST   /books/<book>/goals/<goal>                    create
+GET    /books/<book>/goals/<goal>
+PUT    /books/<book>/goals/<goal>                    replace
+DELETE /books/<book>/goals/<goal>[?detach=true]      detach unpicks what points at it
 
 GET    /books/<book>/collaborators                   who can see it (owners only)
 PUT    /books/<book>/collaborators/<user>            invite / set role (owners only)
@@ -400,7 +412,11 @@ labels, and convergence markers into `effective_events`.
   "title": "The Knight's Road",
   "overview": "Aldric carries the seal north, and learns what it is for.",
   "book": "ember-pact",
-  "goals": ["Deliver the Ember Seal", "Reach the coronation alive"],
+  "goals": ["seal-delivered", "crown-reached"],   // stored: goal ids
+  "goal_refs": [                               // ... and what they are called
+    {"id": "seal-delivered", "title": "Deliver the Ember Seal", "achieved": true},
+    {"id": "crown-reached", "title": "Reach the coronation alive", "achieved": true}
+  ],
   "events": ["aldric-departs"],                // stored: this thread's own segment
   "continues_into": "trunk",                   // ... then it joins the shared ending
   "continues_into_at": null,                        // ... at its first scene (a scene id joins later)
@@ -418,6 +434,76 @@ labels, and convergence markers into `effective_events`.
 
 Top-level fields are stored and editable; `status`, `_links` and
 `rev` are server-computed — send only the stored fields back on a `PUT`.
+
+### Goals
+
+A goal is what a thread is *for*. It used to be a word typed on a plotline;
+it is a record now, so two threads pursuing the same thing point at the same
+object, a goal can rest on another, and the book can be asked whether it
+actually delivers what it set out to.
+
+```bash
+curl -s -b /tmp/c -X POST localhost:5002/timeline/books/ember-pact/goals/charter-sealed \
+  -H 'Content-Type: application/json' -d '{
+    "title": "See the Seal pressed to the charter",
+    "depends_on": ["seal-delivered", "traitor-exposed"],
+    "achieved_at": "the-coronation"
+  }'
+```
+
+Two fields carry the weight. **`depends_on`** names the goals that must be met
+first, which is what makes goals a graph instead of a list of labels.
+**`achieved_at`** names the scene that delivers this one — the single point where
+a goal touches the timeline, and the reason chronos can say anything about it
+beyond "you wrote this down". Both are optional-ish: a goal with no dependencies
+rests on nothing, and a goal with no scene yet is simply one you have not written
+the payoff for.
+
+Everything else comes back computed, so one read draws the whole picture:
+
+```jsonc
+{
+  "kind": "goal",
+  "id": "charter-sealed",
+  "name": "See the Seal pressed to the charter",
+  "depends_on": ["seal-delivered", "traitor-exposed"],
+  "dependencies": [ {"id": "seal-delivered", "title": "…", "achieved": true}, … ],
+  "required_by": [],                       // what would be stranded without it
+  "plotlines": [ {"id": "trunk", "title": "The Road to the Crown"} ],
+  "achieved_at": "the-coronation",
+  "achieved_scene": {"id": "the-coronation", "title": "The Coronation", "when": "…"},
+  "depth": 1,                              // how far down the graph, for the diagram
+  "status": {"state": "achieved", "findings": []}
+}
+```
+
+**What is refused.** A dependency or an achieving scene that is not in this book
+(`400 INVALID_GOAL`), a dependency chain that loops (`422 GOAL_CYCLE`), and a
+thread naming a goal the book does not have (`400 INVALID_PLOTLINE`). Deleting a
+goal that threads serve or goals rest on is `409 GOAL_IN_USE` and names them;
+`?detach=true` unpicks those references first. So is deleting the scene a goal is
+achieved at — `?detach=true` clears the anchor instead.
+
+**What is reported.** Two contradictions: a goal achieved at a scene no thread
+pursuing it ever passes through, and a goal achieved *before* something it
+depends on. Both count towards the book's `status`, like any other conflict.
+Everything else is a note — nobody pursuing it yet, no scene yet, a prerequisite
+not yet placed — because a book three chapters in has plenty of those and
+nothing wrong with it.
+
+A thread may serve **no** goals at all. That is a note too: you are allowed to
+draft a thread before you know what it is for.
+
+### Goals in the UI
+
+`#/<book>/~goals`, or the **Goals** button on the book page. The dependency
+diagram is drawn top-down — a goal sits below everything it rests on, so reading
+downward is reading the order things have to happen in — over a card per goal
+saying what rests on it, which threads pursue it, where it lands, and what is
+wrong. Selecting one is a URL (`#/<book>/~goals/<goal>`), so a particular goal is
+a link; the goal chips on a thread and in the plotline table link straight to it.
+The plotline editor picks goals from this list rather than taking free text, and
+can write a new one without leaving the thread you were editing.
 
 ### Where threads meet
 

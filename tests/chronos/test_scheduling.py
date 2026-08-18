@@ -174,7 +174,7 @@ def test_a_writer_can_sketch_a_whole_thread_with_no_timing(svc):
         assert out["scheduled"] is False
         assert out["start_label"] is None
     svc["plotlines"].create(BOOK, "draft",
-                            {"events": ["opening", "middle", "finale"], "goals": ["g"]})
+                            {"events": ["opening", "middle", "finale"], "goals": []})
     svc["books"].set_terminus(BOOK, "finale")
 
     report = svc["books"].validate(BOOK)
@@ -187,7 +187,7 @@ def test_windows_appear_as_the_writer_fills_timing_in(svc):
     _sketch(svc, "middle")
     _sketch(svc, "finale", 96, 100)
     svc["plotlines"].create(BOOK, "draft",
-                            {"events": ["opening", "middle", "finale"], "goals": ["g"]})
+                            {"events": ["opening", "middle", "finale"], "goals": []})
 
     got = svc["events"].get(BOOK, "middle")
     assert got["scheduled"] is False
@@ -198,7 +198,7 @@ def test_windows_appear_as_the_writer_fills_timing_in(svc):
 def test_scheduling_a_scene_clears_its_window(svc):
     _sketch(svc, "opening", 0, 24)
     _sketch(svc, "middle")
-    svc["plotlines"].create(BOOK, "draft", {"events": ["opening", "middle"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "draft", {"events": ["opening", "middle"], "goals": []})
     current = svc["events"].get(BOOK, "middle")
     svc["events"].update(BOOK, "middle", {
         "location": ref("highkeep", "locations").to_dict(),
@@ -212,8 +212,8 @@ def test_impossible_window_makes_the_book_conflicted(svc):
     _sketch(svc, "late", 90, 96)
     _sketch(svc, "x")
     _sketch(svc, "early", 40, 50)
-    svc["plotlines"].create(BOOK, "p1", {"events": ["late", "x"], "goals": ["g"]})
-    svc["plotlines"].create(BOOK, "p2", {"events": ["x", "early"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "p1", {"events": ["late", "x"], "goals": []})
+    svc["plotlines"].create(BOOK, "p2", {"events": ["x", "early"], "goals": []})
 
     report = svc["books"].validate(BOOK)
     assert report["status"] == "conflicted"

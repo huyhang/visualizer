@@ -7,16 +7,20 @@ to one definition. It turns ids into titles, ticks into codec labels, and adds
 `_links` / `status` so responses explain themselves.
 """
 
+from dataclasses import dataclass, field
+
 from .book_health import Issue
 from .book_rules import Neighborhood, build_graph
 from .calendar import TimeCodec
 from .conflicts import Conflict
 from .continuation import Resolution, effective_paths, resolve
-from .models import Book, CalendarAttachment, Event, LibraryCalendar, Plotline
+from .goal_rules import GoalFinding, depths, goal_findings, served_by
+from .models import Book, CalendarAttachment, Event, Goal, LibraryCalendar, Plotline
 from .ordering import Violation
-from .plotline_health import CONFLICT, Finding, conflict_count, findings_for_path
+from .plotline_health import Finding, conflict_count, findings_for_path
 from .reports import BookReport
 from .scheduling import Window
+from .severity import CONFLICT
 
 # -- links -------------------------------------------------------------------
 
@@ -35,6 +39,10 @@ def _calendar_url(owner: str, c: str) -> str:
 
 def _event_url(b: str, e: str) -> str:
     return f"/books/{b}/events/{e}"
+
+
+def _goal_url(b: str, g: str) -> str:
+    return f"/books/{b}/goals/{g}"
 
 
 # -- small pieces ------------------------------------------------------------
@@ -308,6 +316,7 @@ def present_plotline(
     codec: TimeCodec,
     expand: bool = False,
     missing_refs=(),
+    goals: list[Goal] = (),
 ) -> dict:
     this = Plotline.from_storage(public)
     paths = effective_paths([*(p for p in plotlines if p.id != this.id), this])
@@ -356,7 +365,11 @@ def present_plotline(
         "title": this.title,
         "overview": this.overview,
         "book": public["book"],
+        # The ids as stored -- what a PUT sends back -- and beside them the
+        # goals themselves, so a reader can name what this thread is for without
+        # fetching the book's goals to look each id up.
         "goals": this.goals,
+        "goal_refs": [goal_ref(g, {goal.id: goal for goal in goals}) for g in this.goals],
         "events": list(this.events),
         "continues_into": this.continues_into,
         # The target's display title, alongside its id. Supplied because the
@@ -410,6 +423,179 @@ def _ordering_violation(ordered: list[Event]) -> Violation | None:
     from .ordering import validate_order
 
     return validate_order(ordered)
+
+
+# -- goals (§3.5) ------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class GoalView:
+    """The book a goal is presented against.
+
+    Almost everything in a goal's response is *derived* from the rest of the
+    book rather than read off the record: the titles of what it rests on, the
+    threads pursuing it, how deep in the dependency graph it sits, and what is
+    wrong with it. Gathering that once and handing it to each goal is what keeps
+    listing thirty goals to one pass over the book instead of thirty.
+    """
+
+    events_by_id: dict[str, Event]
+    codec: TimeCodec
+    by_id: dict[str, Goal] = field(default_factory=dict)
+    dependents: dict[str, list[str]] = field(default_factory=dict)
+    served: dict[str, list[str]] = field(default_factory=dict)
+    depth: dict[str, int] = field(default_factory=dict)
+    findings: dict[str, list[GoalFinding]] = field(default_factory=dict)
+    plotline_titles: dict[str, str] = field(default_factory=dict)
+
+
+def goal_view(
+    goals: list[Goal],
+    plotlines: list[Plotline],
+    events_by_id: dict[str, Event],
+    codec: TimeCodec,
+    paths: dict[str, list[str]] | None = None,
+) -> GoalView:
+    """Gather what every goal in this book is presented against.
+
+    ``paths`` are the threads' effective paths, which the rules need to say
+    whether the story actually arrives at a goal. Resolved by the caller when it
+    already holds them, and from the plotlines otherwise.
+    """
+    resolved = effective_paths(plotlines) if paths is None else paths
+    found = goal_findings(goals, plotlines, events_by_id, resolved)
+    by_goal: dict[str, list[GoalFinding]] = {}
+    for finding in found:
+        # A finding with no goal is one said about a *thread* -- it names a goal
+        # the book does not have, so there is no goal to file it under. The book
+        # report shows it; a goal's own response cannot.
+        if finding.goal is not None:
+            by_goal.setdefault(finding.goal, []).append(finding)
+    return GoalView(
+        events_by_id=events_by_id,
+        codec=codec,
+        by_id={goal.id: goal for goal in goals},
+        dependents=_dependents(goals),
+        served=served_by(goals, plotlines),
+        depth=depths(goals),
+        findings=by_goal,
+        plotline_titles={p.id: p.display_title for p in plotlines},
+    )
+
+
+def _dependents(goals: list[Goal]) -> dict[str, list[str]]:
+    """Which goals rest on each goal -- ``depends_on`` read backwards.
+
+    Derived rather than stored, like every other reverse edge here: an edge
+    written down twice is an edge that can disagree with itself.
+    """
+    out: dict[str, list[str]] = {goal.id: [] for goal in goals}
+    for goal in sorted(goals, key=lambda g: g.id):
+        for dependency in goal.depends_on:
+            if dependency in out:
+                out[dependency].append(goal.id)
+    return out
+
+
+def goal_ref(goal_id: str, by_id: dict[str, Goal]) -> dict:
+    """One goal named by another, or by a thread.
+
+    ``missing`` rather than a guessed title: a dangling id is already reported
+    as a finding, and dressing it up as a working link would hide it.
+    """
+    goal = by_id.get(goal_id)
+    if goal is None:
+        return {"id": goal_id, "title": goal_id, "missing": True}
+    return {
+        "id": goal.id,
+        "title": goal.display_title,
+        "achieved": goal.achieved_at is not None,
+        "missing": False,
+    }
+
+
+def _goal_finding(finding: GoalFinding) -> dict:
+    out = {
+        "code": finding.code,
+        "severity": finding.severity,
+        "message": finding.message,
+        "goals": list(finding.goals),
+        "events": list(finding.events),
+        "plotlines": list(finding.plotlines),
+    }
+    if finding.doc:
+        out["doc"] = finding.doc
+    return out
+
+
+def _goal_state(goal: Goal, findings: list[GoalFinding], view: GoalView) -> str:
+    """One word for where this goal stands.
+
+    ``conflicted`` outranks the rest: a goal the story contradicts is not
+    ``achieved`` however firmly it names a scene. Otherwise a goal is
+    ``achieved`` once a scene delivers it, and ``open`` until then -- the two
+    states a writer is actually working in.
+    """
+    if any(f.severity == CONFLICT for f in findings):
+        return "conflicted"
+    if goal.achieved_at is not None and goal.achieved_at in view.events_by_id:
+        return "achieved"
+    return "open"
+
+
+def present_goal(public: dict, view: GoalView) -> dict:
+    """One goal: what it is, what it rests on, and whether the book delivers it.
+
+    The stored fields come back exactly as they are stored (``depends_on``,
+    ``achieved_at``), because a client is asked to send them back on a PUT and
+    can only do that for fields it was given. Everything beside them is the
+    resolved reading of the same facts -- titles, reverse edges, verdict -- so a
+    reader never has to fetch the rest of the book to draw one goal.
+    """
+    goal = Goal.from_storage(public)
+    findings = view.findings.get(goal.id, [])
+    scene = view.events_by_id.get(goal.achieved_at) if goal.achieved_at else None
+    book = public["book"]
+    return {
+        "kind": "goal",
+        "id": goal.id,
+        "book": book,
+        "title": goal.title,
+        "name": goal.display_title,
+        "description": goal.description,
+        "depends_on": list(goal.depends_on),
+        "dependencies": [goal_ref(d, view.by_id) for d in goal.depends_on],
+        # The other direction, which nothing stores: what would be left hanging
+        # if this goal were dropped, and what the diagram draws below it.
+        "required_by": [
+            goal_ref(d, view.by_id) for d in view.dependents.get(goal.id, [])
+        ],
+        "plotlines": [
+            {"id": pid, "title": view.plotline_titles.get(pid, pid)}
+            for pid in view.served.get(goal.id, [])
+        ],
+        "achieved_at": goal.achieved_at,
+        "achieved_scene": (
+            None if scene is None else _node_ref(scene, view.codec, span=True)
+        ),
+        # How far down the dependency graph this goal sits, so a client can lay
+        # the graph out in layers without walking the edges itself.
+        "depth": view.depth.get(goal.id, 0),
+        "status": {
+            "state": _goal_state(goal, findings, view),
+            "findings": [_goal_finding(f) for f in findings],
+        },
+        "rev": public["rev"],
+        "_links": {
+            "self": _goal_url(book, goal.id),
+            "book": _book_url(book),
+            **(
+                {"achieved_at": _event_url(book, goal.achieved_at)}
+                if goal.achieved_at
+                else {}
+            ),
+        },
+    }
 
 
 # -- neighborhood (§7.4) -----------------------------------------------------
@@ -655,6 +841,13 @@ def present_validate(report: BookReport, codec: TimeCodec) -> dict:
             {"event": eid, "window": _window(window, codec)}
             for eid, window in sorted(report.unscheduled.items())
         ],
+        # What the book is trying to bring about, and where it does not add up.
+        # Notes and faults together, each carrying its own severity: the two are
+        # told apart by the same word everywhere else, so a caller filtering
+        # this list uses the rule it already knows rather than a second one.
+        "goals": [
+            {"goal": f.goal, **_goal_finding(f)} for f in report.goal_findings
+        ],
     }
 
 
@@ -672,12 +865,20 @@ _ISSUE_GROUPS = (
     ("ORDERING_VIOLATION", "Scenes out of order"),
     ("IMPOSSIBLE_WINDOW", "Scenes with no room on the timeline"),
     ("MISSING_ENTITY", "Articles that are no longer there"),
+    ("GOAL_NOT_REACHED", "Goals the story never reaches"),
+    ("GOAL_OUT_OF_ORDER", "Goals achieved before what they rest on"),
     ("NO_TERMINUS", "No ending designated"),
     ("TERMINUS_VIOLATION", "Threads that do not reach the ending"),
     ("EMPTY_PLOTLINE", "Threads with no scenes"),
     ("UNSCHEDULED", "Scenes still waiting for a time"),
+    ("GOAL_UNSERVED", "Goals no thread is pursuing"),
+    ("GOAL_UNACHIEVED", "Goals still waiting for a scene"),
+    ("GOAL_DEPENDENCY_UNMET", "Goals resting on something not achieved yet"),
     ("PLOTLINE_CYCLE", "Broken continuations"),
     ("INVALID_PLOTLINE", "Broken continuations"),
+    ("GOAL_CYCLE", "Broken goal dependencies"),
+    ("GOAL_DEPENDENCY_MISSING", "Broken goal dependencies"),
+    ("GOAL_UNKNOWN", "Threads naming a goal that is gone"),
 )
 
 
@@ -688,21 +889,27 @@ def _scene_ref(event_id: str | None, events_by_id: dict[str, Event]) -> dict | N
     return {"id": event_id, "title": event.display_title if event else event_id}
 
 
-def present_issue(issue: Issue, events_by_id: dict[str, Event], titles: dict) -> dict:
+def present_issue(
+    issue: Issue, events_by_id: dict[str, Event], titles: dict, goal_titles: dict | None = None
+) -> dict:
     """One issue in the book report.
 
     ``scene`` is what the message is said *about* -- findings are phrased from a
-    scene's point of view, so the two are only legible together. ``plotlines``
-    is every thread that can see it, which at book scale is the question a
-    per-thread view never has to answer.
+    scene's point of view, so the two are only legible together. A goal issue
+    says "this goal..." instead, and carries ``goal`` for the same reason.
+    ``plotlines`` is every thread that can see it, which at book scale is the
+    question a per-thread view never has to answer.
     """
+    goal_titles = goal_titles or {}
     out = {
         "code": issue.code,
         "severity": issue.severity,
         "message": issue.message,
         "scene": _scene_ref(issue.scene, events_by_id),
+        "goal": _named_ref(issue.goal, goal_titles),
         "events": [_scene_ref(e, events_by_id) for e in issue.events],
         "plotlines": [{"id": p, "title": titles.get(p, p)} for p in issue.plotlines],
+        "goals": [_named_ref(g, goal_titles) for g in issue.goals],
         "refs": [ref.to_dict() for ref in issue.refs],
     }
     if issue.doc:
@@ -710,7 +917,18 @@ def present_issue(issue: Issue, events_by_id: dict[str, Event], titles: dict) ->
     return out
 
 
-def _issue_groups(issues: list[Issue], events_by_id, titles) -> list[dict]:
+def _named_ref(record_id: str | None, titles: dict) -> dict | None:
+    """An id with whatever it is called, falling back to the id itself.
+
+    The fallback is the honest answer for a record that has been deleted: the id
+    is all that is left of it, and the finding beside it already says so.
+    """
+    if record_id is None:
+        return None
+    return {"id": record_id, "title": titles.get(record_id, record_id)}
+
+
+def _issue_groups(issues: list[Issue], events_by_id, titles, goal_titles=None) -> list[dict]:
     """Issues filed under their headings, in the fixed order above.
 
     Stable within a group, so the story order the report was built in survives.
@@ -728,7 +946,7 @@ def _issue_groups(issues: list[Issue], events_by_id, titles) -> list[dict]:
         )
         if issue.code not in group["codes"]:
             group["codes"].append(issue.code)
-        group["issues"].append(present_issue(issue, events_by_id, titles))
+        group["issues"].append(present_issue(issue, events_by_id, titles, goal_titles))
     return list(groups.values())
 
 
@@ -750,7 +968,10 @@ def _thread_rollup(problems: list[Issue], plotlines: list[Plotline]) -> list[dic
 
 
 def present_book_report(
-    issues: list[Issue], events_by_id: dict[str, Event], plotlines: list[Plotline]
+    issues: list[Issue],
+    events_by_id: dict[str, Event],
+    plotlines: list[Plotline],
+    goals: list[Goal] = (),
 ) -> dict:
     """The whole book's continuity report, grouped and counted for reading.
 
@@ -761,6 +982,7 @@ def present_book_report(
     a draft state, and saying otherwise would leave every book in progress red.
     """
     titles = {p.id: p.display_title for p in plotlines}
+    goal_titles = {g.id: g.display_title for g in goals}
     problems = [i for i in issues if i.severity == CONFLICT]
     notes = [i for i in issues if i.severity != CONFLICT]
     return {
@@ -772,8 +994,8 @@ def present_book_report(
             # down as a to-do list, and the report's headline says how long it is.
             "unscheduled": sum(1 for i in notes if i.code == "UNSCHEDULED"),
         },
-        "problems": _issue_groups(problems, events_by_id, titles),
-        "notes": _issue_groups(notes, events_by_id, titles),
+        "problems": _issue_groups(problems, events_by_id, titles, goal_titles),
+        "notes": _issue_groups(notes, events_by_id, titles, goal_titles),
         # Every thread in the book and its share of the problems, so the report
         # can be triaged and narrowed to one without a second request.
         "plotlines": _thread_rollup(problems, plotlines),

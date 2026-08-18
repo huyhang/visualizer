@@ -1,6 +1,6 @@
 # What the Chronos UI cannot do yet
 
-*Audited 2026-08-13 against the routes the app actually registers and the calls
+*Audited 2026-08-17 against the routes the app actually registers and the calls
 `static/js/api.js` actually makes. Not a wish list — every gap below is a
 capability the JSON API already has, tested, that the browser has no way to
 reach.*
@@ -11,19 +11,25 @@ time](design.md#2-principles-consistent-with-the-existing-codebase), so the
 question this document asks is not "what is missing from the product" but
 **"where does a writer with no terminal hit a wall?"**
 
-Of the **37 content routes** the app registers, **34 are called from a browser**
-and **3 are not**. Two of the three are the gaps below.
+Of the **43 content routes** the app registers, **38 are called from a browser**
+and **5 are not**. Two of the five are the gaps below; the other three are
+uncalled **by design**, because in each case a *listing* already carries
+everything the single-record read would return:
 
-The third, `GET /books/{book}/validate`, is uncalled **by design** and is not a
-gap: the whole-book report it would serve is in the UI, built instead on
-`GET /books/{book}/ui/issues` — the same rules, shaped for a reader rather than
-a machine. See [the book's report](README.md#the-books-report).
+- `GET /books/{book}/validate` — the whole-book report is in the UI, built
+  instead on `GET /books/{book}/ui/issues`: the same rules, shaped for a reader
+  rather than a machine. See [the book's report](README.md#the-books-report).
+- `GET /books/{book}/goals/{goal}` — `GET /books/{book}/goals` returns every
+  goal already read against the rest of the book, and the dependency diagram
+  needs all of them anyway. See [Goals](README.md#goals).
+- `GET /calendars/{owner}/{calendar}` — likewise: the library listing returns
+  each entry in full.
 
-One wrinkle in "from the UI": the three book-collaborator routes are reached
-from **Akasha's Account page**, not from anything Chronos serves. They are
-counted as reachable because the question this document asks is whether a writer
-without a terminal hits a wall, and they do not — but no view in this service
-calls them.
+One wrinkle in "from the UI": the six collaborator routes (three for books,
+three for calendars) are reached from **Akasha's Account page**, not from
+anything Chronos serves — except sharing a calendar, which the library does call
+directly. They are counted as reachable because the question this document asks
+is whether a writer without a terminal hits a wall, and they do not.
 
 **Neither remaining gap is blocking, and neither is housekeeping.** A whole story
 can be written, checked, shared and deleted from the browser.

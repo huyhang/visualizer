@@ -34,10 +34,23 @@ def searchable_text(row: Mapping) -> str:
     """
     parts = [row.get("name") or row.get("id") or ""]
     parts.append(row.get("overview") or "")
-    parts.extend(row.get("goals", []))
+    parts.extend(_goal_text(g) for g in row.get("goals", []))
     parts.extend(row.get("event_titles", []))
     parts.extend(row.get("keywords", []))
     return " ".join(str(p) for p in parts).lower()
+
+
+def _goal_text(goal) -> str:
+    """A goal on a row, as text to match a filter word against.
+
+    Both what it is called and the id it is stored under: a writer filtering by
+    "coronation" should find the thread whether that word is in the goal's title
+    or only in its slug. A plain string is taken as the id it once was, so a row
+    built before goals were records still filters.
+    """
+    if isinstance(goal, Mapping):
+        return f"{goal.get('title') or ''} {goal.get('id') or ''}"
+    return str(goal)
 
 
 def matches_all_words(row: Mapping, query: str) -> bool:
@@ -110,6 +123,8 @@ def _present_row(row: Mapping) -> dict:
         # a writer can tell two similarly-titled threads apart without opening
         # either. Unlike ``event_titles``, this one earns its place in the row.
         "overview": row.get("overview") or "",
+        # ``{"id", "title"}`` per goal: the table draws the title and links the
+        # id, and it has both without a second request.
         "goals": list(row.get("goals", [])),
         # How many problems this thread has, so the table can flag it without
         # the writer opening every thread to find out.

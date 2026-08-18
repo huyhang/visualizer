@@ -45,7 +45,7 @@ function rememberNotes(open) {
   } catch (e) { /* private mode: the choice just does not outlive the page */ }
 }
 
-export async function mountBookReport(container, book, { onBooks, onBook, onScene }) {
+export async function mountBookReport(container, book, { onBooks, onBook, onScene, onGoal }) {
   clear(container);
 
   let bookMeta = { title: book };
@@ -103,7 +103,10 @@ export async function mountBookReport(container, book, { onBooks, onBook, onScen
       filter.value = id;
       render();
     };
-    const deps = { onScene, onThread, onNotes: (open) => { rememberNotes(open); render(); } };
+    const deps = {
+      onScene, onGoal, onThread,
+      onNotes: (open) => { rememberNotes(open); render(); },
+    };
     for (const node of sections(book, body, thread, deps)) results.appendChild(node);
   }
 
@@ -210,32 +213,37 @@ function count(groups, keep = () => true) {
 // One kind of problem, as a card. Severity is the card's left edge and the tint
 // of its tally — not a glyph on every row: within a group every row has the same
 // severity, so a mark repeated down the list only says what the heading said.
-function groupBlock(book, group, { onScene }) {
+function groupBlock(book, group, { onScene, onGoal }) {
   return el("section", { class: `issue-group ${group.severity}` }, [
     el("h3", { class: "issue-group-title" }, [
       el("span", { class: "issue-group-name", text: group.title }),
       el("span", { class: "issue-count", text: String(group.issues.length) }),
     ]),
     el("div", { class: "issue-list" },
-      group.issues.map((issue) => issueRow(book, issue, { onScene }))),
+      group.issues.map((issue) => issueRow(book, issue, { onScene, onGoal }))),
   ]);
 }
 
-function issueRow(book, issue, { onScene }) {
+function issueRow(book, issue, { onScene, onGoal }) {
   const message = el("p", { class: "issue-text", text: issue.message });
   // The message quotes article ids; swap in their titles where the reader holds
   // the grant, exactly as the timeline does.
   withArticleTitles(book, issue, message);
+  const others = issue.goals || [];
   return el("div", { class: "issue" }, [
     el("div", { class: "issue-head" }, [
       // Where the problem is, said before what it is: the message is phrased
       // from this scene's point of view ("this scene has not ended when…")
-      // and only reads correctly next to it.
+      // and only reads correctly next to it. A goal finding says "this goal…"
+      // instead, and needs its anchor named for exactly the same reason —
+      // without it the row reads "No scene achieves this goal yet" about
+      // nothing in particular.
       issue.scene ? sceneLink(book, issue, { onScene }) : null,
+      issue.goal ? goalLink(issue.goal, { onGoal }) : null,
       ...issue.plotlines.map((pl) => threadLink(pl, issue, { onScene })),
     ].filter(Boolean)),
     message,
-    issue.events.length || issue.refs.length
+    issue.events.length || others.length || issue.refs.length
       ? el("div", { class: "issue-links" }, [
         ...issue.events.map((other) => el("button", {
           class: "banner-link", type: "button", text: other.title,
@@ -245,6 +253,10 @@ function issueRow(book, issue, { onScene }) {
           // the report keeps them in the list they are working down.
           onclick: () => showScene(book, { id: other.id }),
         })),
+        // The other goals the message names — the one this rests on, or the
+        // ring it loops around. Same idea as the scenes above: the prose says
+        // them, and these take you to them.
+        ...others.map((other) => goalChip(other, { onGoal })),
         // The people and places the message names, as things you can open.
         // The message already says them in prose; what the prose cannot do is
         // take you to the article to check what it claims.
@@ -277,6 +289,24 @@ function sceneLink(book, issue, { onScene }) {
     class: "issue-scene", type: "button", text: issue.scene.title,
     title: plotline ? "Open this scene on its plotline" : "Look at this scene",
     onclick: () => (plotline ? onScene(plotline, issue.scene.id) : showScene(book, issue.scene)),
+  });
+}
+
+// The goal a message is said about, as somewhere to go: the goals view, opened
+// on it, where what it rests on and what the book does about it are answered.
+function goalLink(goal, { onGoal }) {
+  return el("button", {
+    class: "issue-goal", type: "button", text: goal.title,
+    title: "Open this goal",
+    onclick: () => onGoal && onGoal(goal.id),
+  });
+}
+
+function goalChip(goal, { onGoal }) {
+  return el("button", {
+    class: "chip goal link", type: "button", text: goal.title,
+    title: "Open this goal",
+    onclick: () => onGoal && onGoal(goal.id),
   });
 }
 

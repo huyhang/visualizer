@@ -231,32 +231,32 @@ def svc(story_store, fake_gate, calendar_store):
 def test_continuation_to_unknown_plotline_is_rejected(svc):
     with pytest.raises(InvalidPlotline) as ei:
         svc["plotlines"].create(BOOK, "knights",
-                                {"events": ["a"], "goals": ["g"], "continues_into": "ghost"})
+                                {"events": ["a"], "goals": [], "continues_into": "ghost"})
     assert ei.value.evidence["continues_into"] == "ghost"
 
 
 def test_cycle_is_rejected(svc):
-    svc["plotlines"].create(BOOK, "trunk", {"events": ["m", "t"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "trunk", {"events": ["m", "t"], "goals": []})
     svc["plotlines"].create(BOOK, "knights",
-                            {"events": ["a"], "goals": ["g"], "continues_into": "trunk"})
+                            {"events": ["a"], "goals": [], "continues_into": "trunk"})
     with pytest.raises(PlotlineCycle) as ei:
         svc["plotlines"].update(BOOK, "trunk",
-                                {"events": ["m", "t"], "goals": ["g"], "continues_into": "knights"})
+                                {"events": ["m", "t"], "goals": [], "continues_into": "knights"})
     assert "trunk" in ei.value.evidence["cycle"]
 
 
 def test_self_continuation_is_rejected(svc):
     with pytest.raises(InvalidPlotline):
         svc["plotlines"].create(BOOK, "knights",
-                                {"events": ["a"], "goals": ["g"], "continues_into": "knights"})
+                                {"events": ["a"], "goals": [], "continues_into": "knights"})
 
 
 def test_shared_tail_end_to_end(svc):
     """Three threads, one shared ending, written once."""
-    svc["plotlines"].create(BOOK, "trunk", {"events": ["m", "t"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "trunk", {"events": ["m", "t"], "goals": []})
     for pid, first in (("knights", "a"), ("spies", "b")):
         svc["plotlines"].create(BOOK, pid,
-                                {"events": [first], "goals": ["g"], "continues_into": "trunk"})
+                                {"events": [first], "goals": [], "continues_into": "trunk"})
     svc["books"].set_terminus(BOOK, "t")
     assert svc["books"].validate(BOOK)["status"] == "consistent"
 
@@ -270,10 +270,10 @@ def test_shared_tail_end_to_end(svc):
 
 def test_editing_the_trunk_updates_every_thread(svc):
     """The reason for the feature: no edit amplification on the shared tail."""
-    svc["plotlines"].create(BOOK, "trunk", {"events": ["m", "t"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "trunk", {"events": ["m", "t"], "goals": []})
     for pid, first in (("knights", "a"), ("spies", "b")):
         svc["plotlines"].create(BOOK, pid,
-                                {"events": [first], "goals": ["g"], "continues_into": "trunk"})
+                                {"events": [first], "goals": [], "continues_into": "trunk"})
     svc["books"].set_terminus(BOOK, "t")
 
     # insert a new scene into the shared ending -- touching only the trunk
@@ -284,7 +284,7 @@ def test_editing_the_trunk_updates_every_thread(svc):
     })
     current = svc["plotlines"].get(BOOK, "trunk")
     svc["plotlines"].update(BOOK, "trunk",
-                            {"events": ["m", "vigil", "t"], "goals": ["g"]}, current["rev"])
+                            {"events": ["m", "vigil", "t"], "goals": []}, current["rev"])
 
     for pid in ("knights", "spies"):
         assert "vigil" in svc["plotlines"].get(BOOK, pid)["effective_events"]
@@ -293,10 +293,10 @@ def test_editing_the_trunk_updates_every_thread(svc):
 
 def test_ordering_is_checked_across_the_junction(svc):
     """A thread whose segment ends after its continuation starts is reported."""
-    svc["plotlines"].create(BOOK, "trunk", {"events": ["m", "t"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "trunk", {"events": ["m", "t"], "goals": []})
     # 't' (40-50) ends after 'm' (20-30) begins -> junction is out of order
     got = svc["plotlines"].create(
-        BOOK, "late", {"events": ["t"], "goals": ["g"], "continues_into": "trunk"}
+        BOOK, "late", {"events": ["t"], "goals": [], "continues_into": "trunk"}
     )
     assert got["status"]["ordering"]["state"] == "conflicted"
 
@@ -305,10 +305,10 @@ def test_ordering_is_checked_across_the_junction(svc):
 
 
 def test_join_at_a_scene_the_target_does_not_have_is_rejected(svc):
-    svc["plotlines"].create(BOOK, "trunk", {"events": ["m", "t"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "trunk", {"events": ["m", "t"], "goals": []})
     with pytest.raises(InvalidPlotline) as ei:
         svc["plotlines"].create(BOOK, "late", {
-            "events": ["a"], "goals": ["g"],
+            "events": ["a"], "goals": [],
             "continues_into": "trunk", "continues_into_at": "b",   # 'b' exists, not on trunk
         })
     assert ei.value.evidence["continues_into_at"] == "b"
@@ -317,15 +317,15 @@ def test_join_at_a_scene_the_target_does_not_have_is_rejected(svc):
 def test_join_point_without_a_target_is_rejected(svc):
     with pytest.raises(InvalidPlotline):
         svc["plotlines"].create(
-            BOOK, "late", {"events": ["a"], "goals": ["g"], "continues_into_at": "m"}
+            BOOK, "late", {"events": ["a"], "goals": [], "continues_into_at": "m"}
         )
 
 
 def test_mid_trunk_join_end_to_end(svc):
     """A thread that catches the trunk at its last scene, not its first."""
-    svc["plotlines"].create(BOOK, "trunk", {"events": ["m", "t"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "trunk", {"events": ["m", "t"], "goals": []})
     svc["plotlines"].create(BOOK, "late", {
-        "events": ["a"], "goals": ["g"], "continues_into": "trunk", "continues_into_at": "t",
+        "events": ["a"], "goals": [], "continues_into": "trunk", "continues_into_at": "t",
     })
     svc["books"].set_terminus(BOOK, "t")
 
@@ -346,14 +346,14 @@ def test_ordering_is_checked_against_the_joined_at_scene(svc):
     joining back at 'm' puts the same scene twice -- the ordering rule catches
     it because it reads the resolved path.
     """
-    svc["plotlines"].create(BOOK, "trunk", {"events": ["m", "t"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "trunk", {"events": ["m", "t"], "goals": []})
     sound = svc["plotlines"].create(BOOK, "sound", {
-        "events": ["b"], "goals": ["g"], "continues_into": "trunk", "continues_into_at": "t",
+        "events": ["b"], "goals": [], "continues_into": "trunk", "continues_into_at": "t",
     })
     assert sound["status"]["ordering"]["state"] == "ok"
 
     doubled = svc["plotlines"].create(BOOK, "doubled", {
-        "events": ["b", "m"], "goals": ["g"], "continues_into": "trunk", "continues_into_at": "m",
+        "events": ["b", "m"], "goals": [], "continues_into": "trunk", "continues_into_at": "m",
     })
     assert doubled["effective_events"] == ["b", "m", "m", "t"]
     assert doubled["status"]["ordering"]["state"] == "conflicted"
@@ -361,13 +361,13 @@ def test_ordering_is_checked_against_the_joined_at_scene(svc):
 
 def test_dropping_the_joined_at_scene_reports_the_thread_as_conflicted(svc):
     """Nobody writes 'late', but the trunk moving out from under it is visible."""
-    svc["plotlines"].create(BOOK, "trunk", {"events": ["m", "t"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "trunk", {"events": ["m", "t"], "goals": []})
     svc["plotlines"].create(BOOK, "late", {
-        "events": ["a"], "goals": ["g"], "continues_into": "trunk", "continues_into_at": "m",
+        "events": ["a"], "goals": [], "continues_into": "trunk", "continues_into_at": "m",
     })
     current = svc["plotlines"].get(BOOK, "trunk")
     svc["plotlines"].update(
-        BOOK, "trunk", {"events": ["t"], "goals": ["g"]}, current["rev"]
+        BOOK, "trunk", {"events": ["t"], "goals": []}, current["rev"]
     )
 
     status = svc["plotlines"].get(BOOK, "late")["status"]["continuation"]
@@ -380,34 +380,34 @@ def test_the_continuation_target_is_named_as_well_as_identified(svc):
     the writer called the thread, and fetching the target just to name it would
     be a round trip for a label."""
     svc["plotlines"].create(
-        BOOK, "trunk", {"title": "The Road to the Crown", "events": ["m", "t"], "goals": ["g"]}
+        BOOK, "trunk", {"title": "The Road to the Crown", "events": ["m", "t"], "goals": []}
     )
     got = svc["plotlines"].create(BOOK, "knights", {
-        "events": ["a"], "goals": ["g"], "continues_into": "trunk",
+        "events": ["a"], "goals": [], "continues_into": "trunk",
     })
     assert got["continues_into"] == "trunk"
     assert got["continues_into_title"] == "The Road to the Crown"
 
 
 def test_an_untitled_target_is_named_by_its_id(svc):
-    svc["plotlines"].create(BOOK, "trunk", {"events": ["m", "t"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "trunk", {"events": ["m", "t"], "goals": []})
     got = svc["plotlines"].create(BOOK, "knights", {
-        "events": ["a"], "goals": ["g"], "continues_into": "trunk",
+        "events": ["a"], "goals": [], "continues_into": "trunk",
     })
     assert got["continues_into_title"] == "trunk"
 
 
 def test_a_thread_that_ends_on_its_own_names_nothing(svc):
-    got = svc["plotlines"].create(BOOK, "solo", {"events": ["a", "t"], "goals": ["g"]})
+    got = svc["plotlines"].create(BOOK, "solo", {"events": ["a", "t"], "goals": []})
     assert got["continues_into"] is None and got["continues_into_title"] is None
 
 
 def test_a_dangling_target_is_not_given_a_title(svc):
     """The break is reported by ``status.continuation``; echoing the id back as
     a title would dress it up as working."""
-    svc["plotlines"].create(BOOK, "trunk", {"events": ["m", "t"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "trunk", {"events": ["m", "t"], "goals": []})
     svc["plotlines"].create(BOOK, "knights", {
-        "events": ["a"], "goals": ["g"], "continues_into": "trunk",
+        "events": ["a"], "goals": [], "continues_into": "trunk",
     })
     # Reached through the store, because the service refuses to orphan a thread
     # (PLOTLINE_IN_USE) -- which is the point: this state is not one a caller can
@@ -425,12 +425,12 @@ def test_inline_collapses_a_chain_whose_every_hop_is_anchored(svc):
     multi-hop chain with a join point at *each* hop is where that is easiest to
     get wrong: the absorbed path must be the sliced one, not the flattened one.
     """
-    svc["plotlines"].create(BOOK, "last", {"events": ["m", "t"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "last", {"events": ["m", "t"], "goals": []})
     svc["plotlines"].create(BOOK, "mid", {
-        "events": ["b"], "goals": ["g"], "continues_into": "last", "continues_into_at": "t",
+        "events": ["b"], "goals": [], "continues_into": "last", "continues_into_at": "t",
     })
     svc["plotlines"].create(BOOK, "first", {
-        "events": ["a"], "goals": ["g"], "continues_into": "mid", "continues_into_at": "t",
+        "events": ["a"], "goals": [], "continues_into": "mid", "continues_into_at": "t",
     })
     before = svc["plotlines"].get(BOOK, "first")["effective_events"]
     assert before == ["a", "t"], "'b' and 'm' are both before the junctions"
@@ -441,9 +441,9 @@ def test_inline_collapses_a_chain_whose_every_hop_is_anchored(svc):
 
 
 def test_inline_absorbs_the_sliced_path_and_clears_the_join(svc):
-    svc["plotlines"].create(BOOK, "trunk", {"events": ["m", "t"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "trunk", {"events": ["m", "t"], "goals": []})
     svc["plotlines"].create(BOOK, "late", {
-        "events": ["a"], "goals": ["g"], "continues_into": "trunk", "continues_into_at": "t",
+        "events": ["a"], "goals": [], "continues_into": "trunk", "continues_into_at": "t",
     })
     out = svc["plotlines"].inline(BOOK, "late")
     assert out["events"] == ["a", "t"], "the story it had, not the trunk's opening"
@@ -455,10 +455,10 @@ def test_inline_absorbs_the_sliced_path_and_clears_the_join(svc):
 
 
 def _shared_tail(svc):
-    svc["plotlines"].create(BOOK, "trunk", {"events": ["m", "t"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "trunk", {"events": ["m", "t"], "goals": []})
     for pid, first in (("knights", "a"), ("spies", "b")):
         svc["plotlines"].create(BOOK, pid,
-                                {"events": [first], "goals": ["g"], "continues_into": "trunk"})
+                                {"events": [first], "goals": [], "continues_into": "trunk"})
     svc["books"].set_terminus(BOOK, "t")
 
 
@@ -489,11 +489,11 @@ def test_inline_is_a_no_op_without_a_continuation(svc):
 
 
 def test_inline_collapses_a_multi_hop_chain(svc):
-    svc["plotlines"].create(BOOK, "last", {"events": ["t"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "last", {"events": ["t"], "goals": []})
     svc["plotlines"].create(BOOK, "mid",
-                            {"events": ["m"], "goals": ["g"], "continues_into": "last"})
+                            {"events": ["m"], "goals": [], "continues_into": "last"})
     svc["plotlines"].create(BOOK, "first",
-                            {"events": ["a"], "goals": ["g"], "continues_into": "mid"})
+                            {"events": ["a"], "goals": [], "continues_into": "mid"})
     out = svc["plotlines"].inline(BOOK, "first")
     assert out["events"] == ["a", "m", "t"] and out["continues_into"] is None
 
@@ -520,6 +520,6 @@ def test_delete_with_inline_preserves_dependent_stories(svc):
 
 def test_deleting_an_independent_plotline_still_works(svc):
     _shared_tail(svc)
-    svc["plotlines"].create(BOOK, "loner", {"events": ["a", "t"], "goals": ["g"]})
+    svc["plotlines"].create(BOOK, "loner", {"events": ["a", "t"], "goals": []})
     svc["plotlines"].delete(BOOK, "loner")   # nothing depends on it
     assert "loner" not in svc["books"].get(BOOK)["plotlines"]

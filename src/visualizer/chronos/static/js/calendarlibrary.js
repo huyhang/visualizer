@@ -14,7 +14,7 @@
 // the calendars; a book copies one when it wants it.
 
 import { api } from "./api.js";
-import { clear, el, expandableText, toast } from "./dom.js";
+import { clear, el, expandableText, field, toast } from "./dom.js";
 import { calendarHint } from "./calendars.js";
 import { inlineCalendarEditor } from "./calendarfield.js";
 import { confirmModal, modal } from "./picker.js";
@@ -311,12 +311,4 @@ function confirmDelete(calendar, onDone) {
         }
       },
     });
-}
-
-function field(label, control, hint) {
-  return el("div", { class: "field" }, [
-    el("label", { class: "field-label", text: label }),
-    control,
-    hint ? el("p", { class: "field-hint muted", text: hint }) : null,
-  ]);
 }

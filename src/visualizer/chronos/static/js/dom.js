@@ -84,6 +84,19 @@ export function expandableText(text, { class: className = "" } = {}) {
   return el("div", { class: "expandable" }, [body, toggle]);
 }
 
+// One labelled row of a form: the label, the control, and an optional line of
+// guidance under it. Every editor in this app is built out of these — the book
+// form, the scene form, both calendar forms and the goal form — and each of
+// them used to carry its own identical copy. One definition, so a change to how
+// a field reads is a change everywhere rather than in four places and a miss.
+export function field(label, control, hint) {
+  return el("div", { class: "field" }, [
+    el("label", { class: "field-label", text: label }),
+    control,
+    hint ? el("p", { class: "field-hint muted", text: hint }) : null,
+  ]);
+}
+
 let toastTimer = null;
 export function toast(message, isError = false) {
   const node = $("#toast");

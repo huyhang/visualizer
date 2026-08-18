@@ -18,9 +18,9 @@ tired of checking.
 
 ---
 
-## The four ideas
+## The five ideas
 
-Everything in Chronos is built from four things. That's the entire vocabulary.
+Everything in Chronos is built from five things. That's the entire vocabulary.
 
 ### 1. An Event — one scene
 
@@ -38,7 +38,8 @@ as you like.
 ### 2. A Plotline — one thread, in order
 
 A **Plotline** is a sequence of events that form one thread of your story, plus
-the **goals** that thread is chasing.
+the **goals** that thread is chasing (see below — a goal is a thing in its own
+right, not a label).
 
 > **The Knight's Road** — *Goals: deliver the Ember Seal; reach the coronation
 > alive.*
@@ -49,12 +50,27 @@ the **goals** that thread is chasing.
 The order matters, and it is a promise: each scene must finish before the next
 one starts. If you list them in an impossible order, Chronos notices.
 
-### 3. A Book — all the threads together
+### 3. A Goal — what the story is trying to bring about
+
+A **Goal** is a thing your book means to achieve: *the Seal is delivered*, *the
+traitor is exposed*, *the charter is sealed in public*. Threads point at goals,
+so two threads pulling in the same direction say so by naming the same one.
+
+Goals rest on each other. The charter cannot be sealed until the Seal has
+changed hands and the traitor is out — so *charter sealed* **depends on** those
+two, and Chronos draws them above it.
+
+You can also say **which scene delivers a goal**. That is the useful part: once a
+goal has a scene, Chronos can tell you if your book never actually reaches it, or
+if it happens *before* the thing it was supposed to rest on. Until then it simply
+notes that the goal is still open, which is what a book in progress looks like.
+
+### 4. A Book — all the threads together
 
 A **Book** holds all the plotlines of one story. A book might have the knight's
 journey, the spy's infiltration, and the schemer's plotting all running at once.
 
-### 4. The Terminus — where everything lands
+### 5. The Terminus — where everything lands
 
 Every book has one ending that all its threads must reach: the **Terminus**.
 
@@ -187,7 +203,7 @@ different threads.
 
 ## What Chronos checks for you
 
-Three continuity questions, asked constantly.
+Four continuity questions, asked constantly.
 
 **1. Can a character be in two places at once?** No. If Aldric is riding from
 Highkeep between hours 0 and 24, he cannot also be seen at Emberport at hour 10.
@@ -202,6 +218,11 @@ pair.
 
 **3. Does every thread reach the ending?** All plotlines must finish at the
 terminus. If one wanders off, Chronos says which one and where it stopped.
+
+**4. Does the book deliver its goals, in an order that holds?** If a goal names
+the scene that achieves it, Chronos checks that the threads chasing it actually
+pass through that scene — and that nothing is achieved before the goal it was
+resting on. A goal you have not placed yet is a note, not a fault.
 
 ### It warns; it never blocks
 
@@ -266,8 +287,12 @@ describe your world's calendar.
 carry, where it happens, when it starts and ends, and what happens. You don't
 have to add them chronologically — you're building a pool of scenes.
 
-**Step 4 — Draw your threads.** Create a plotline: name it, give it its goals,
-and list its scenes in story order. Do the same for each thread.
+**Step 4 — Say what the book is trying to do.** Write down the goals: what has
+to come about, and what rests on what. You can do this later, or as you go — a
+thread with no goal yet is fine, and the report will remind you.
+
+**Step 5 — Draw your threads.** Create a plotline: name it, pick the goals it
+serves, and list its scenes in story order. Do the same for each thread.
 
 > The Knight's Road → Aldric Departs, The Harbor Exchange, The Coronation
 > The Spy's Shadow → Lyra Infiltrates, The Harbor Exchange, The Coronation
@@ -276,13 +301,13 @@ and list its scenes in story order. Do the same for each thread.
 Notice The Harbor Exchange appears in two threads — that's the meeting, and you
 created it just by listing the same scene twice.
 
-**Step 5 — Name the ending.** Mark The Coronation as the terminus. Chronos
+**Step 6 — Name the ending.** Mark The Coronation as the terminus. Chronos
 checks that every thread ends there.
 
-**Step 6 — Ask how it's holding up.** Request the book's report. Either
+**Step 7 — Ask how it's holding up.** Request the book's report. Either
 everything is consistent, or you get a precise list of what contradicts what.
 
-**Step 7 — Keep going.** Add scenes, reorder threads, move things in time. The
+**Step 8 — Keep going.** Add scenes, reorder threads, move things in time. The
 report is always current, so you can check whenever you like — after a writing
 session, before a rewrite, whenever a nagging doubt strikes.
 

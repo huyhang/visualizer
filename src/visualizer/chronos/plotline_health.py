@@ -28,11 +28,19 @@ from .calendar import TimeCodec
 from .conflicts import all_conflicts, find_temporal_conflicts
 from .models import EntityRef, Event
 from .ordering import all_violations
+from .phrasing import is_are, quoted_names
 from .reports import entity_roles
 from .scheduling import unscheduled_windows, window_for
+from .severity import CONFLICT, INFO
 
-CONFLICT = "conflict"
-INFO = "info"
+__all__ = [
+    "CONFLICT",
+    "INFO",
+    "Finding",
+    "conflict_count",
+    "conflict_counts",
+    "findings_for_path",
+]
 
 _DESIGN = "docs/chronos/design.md"
 
@@ -53,24 +61,11 @@ class Finding:
     doc: str | None = None
 
 
-def _names(ids: list[str]) -> str:
-    """"'aldric'", "'aldric' and 'lyra'", "'aldric', 'lyra' and 'bran'".
-
-    Every id is quoted, and that is load-bearing rather than decorative: it is
-    what lets a client replace ``'aldric'`` with ``'Sir Aldric'`` by exact match,
-    without risking a substring of some other word in the sentence.
-    """
-    quoted = [f"'{i}'" for i in ids]
-    if len(quoted) <= 1:
-        return "".join(quoted)
-    return f"{', '.join(quoted[:-1])} and {quoted[-1]}"
-
-
 def _conflict_findings(scene: Event, others: list[Event], title) -> list[Finding]:
     """This scene puts a shared character somewhere else at the same time (§5.1)."""
     out = []
     for conflict in find_temporal_conflicts(scene, others):
-        who = _names([ref.id for ref in conflict.characters])
+        who = quoted_names([ref.id for ref in conflict.characters])
         out.append(
             Finding(
                 code="TEMPORAL_CONFLICT",
@@ -131,8 +126,8 @@ def _missing_entity_findings(
     if not gone:
         return []
     roles = ", ".join(sorted({role for role, _ in gone}))
-    subject = _names([ref.id for _, ref in gone])
-    verb = "is" if len(gone) == 1 else "are"
+    subject = quoted_names([ref.id for _, ref in gone])
+    verb = is_are(gone)
     return [
         Finding(
             code="MISSING_ENTITY",

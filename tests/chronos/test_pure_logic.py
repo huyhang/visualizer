@@ -608,7 +608,7 @@ def _book(**body):
 
 
 def _plotline(**body):
-    return validate_plotline_payload("p", {"events": ["a"], "goals": ["g"], **body})
+    return validate_plotline_payload("p", {"events": ["a"], "goals": [], **body})
 
 
 @pytest.mark.parametrize("parse", [_book, _plotline], ids=["book", "plotline"])
@@ -667,7 +667,7 @@ def test_plotline_overview_round_trips_through_storage():
 
 @pytest.mark.parametrize("model,doc", [
     (Book, {"id": "b"}),
-    (Plotline, {"id": "p", "events": ["a"], "goals": ["g"]}),
+    (Plotline, {"id": "p", "events": ["a"], "goals": []}),
 ], ids=["book", "plotline"])
 def test_a_record_written_before_the_field_existed_reads_as_empty(model, doc):
     """No migration is needed: the key is simply absent on everything stored so

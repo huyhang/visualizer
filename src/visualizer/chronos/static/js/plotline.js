@@ -143,7 +143,7 @@ function jumpTo(container, book, eventId) {
 }
 
 export async function mountPlotline(container, book, plotlineId,
-  { showEntity, onBooks, onBook, onConnected, onConnectedAt, onGone, onRenamed, onSaved,
+  { showEntity, onBooks, onBook, onGoal, onConnected, onConnectedAt, onGone, onRenamed, onSaved,
     focusEvent = null }) {
   clear(container);
   const loading = el("div", { class: "view" }, el("p", { class: "muted", text: "Loading plotline…" }));
@@ -181,6 +181,11 @@ export async function mountPlotline(container, book, plotlineId,
     if (onSaved) onSaved();
   };
 
+  const goalChip = (ref) => (onGoal && !ref.missing
+    ? el("button", { class: "chip goal link", type: "button", text: ref.title,
+        title: "Open this goal", onclick: () => onGoal(ref.id) })
+    : el("span", { class: "chip goal" + (ref.missing ? " missing" : ""), text: ref.title }));
+
   const meets = meetCount(events);
   const canEdit = (bookMeta.permissions || {}).write;
   const header = el("div", { class: "pl-header" }, [
@@ -188,7 +193,9 @@ export async function mountPlotline(container, book, plotlineId,
     // The writer's own summary of the thread, above the goals: it says what this
     // is, where the goals say what it is for.
     pl.overview ? el("p", { class: "overview", text: pl.overview }) : null,
-    el("div", { class: "chip-row goals" }, (pl.goals || []).map((g) => el("span", { class: "chip goal", text: g }))),
+    // Goals are records now, so each chip is a link to the goal itself -- where
+    // what it rests on, and whether the book delivers it, are answered.
+    el("div", { class: "chip-row goals" }, (pl.goal_refs || []).map(goalChip)),
     el("div", { class: "pl-actions" }, [
       canEdit ? el("button", {
         class: "btn sm", type: "button", text: "Edit plotline",
@@ -211,8 +218,8 @@ export async function mountPlotline(container, book, plotlineId,
       // re-labels: every date on the page comes from the server's codec.
       calendarSwitcher(book, bookMeta.calendars, () => mountPlotline(
         container, book, plotlineId,
-        { showEntity, onBooks, onBook, onConnected, onConnectedAt, onGone, onRenamed, onSaved,
-          focusEvent },
+        { showEntity, onBooks, onBook, onGoal, onConnected, onConnectedAt, onGone, onRenamed,
+          onSaved, focusEvent },
       )),
     ].filter(Boolean)),
     el("p", { class: "muted axis-note", text: allScheduled(events)

@@ -31,6 +31,7 @@ from .services import (
     BookService,
     CalendarService,
     EventService,
+    GoalService,
     PlotlineService,
     VisualizerService,
 )
@@ -39,6 +40,7 @@ from .store import CalendarStore, StoryStore
 _BOOK = "/books/<book>"
 _PLOTLINE = "/books/<book>/plotlines/<plotline>"
 _EVENT = "/books/<book>/events/<event>"
+_GOAL = "/books/<book>/goals/<goal>"
 # Owner-qualified, because that pair *is* a library calendar's identity: two
 # writers may each keep an "imperial" and neither should block the other.
 _CALENDAR = "/calendars/<owner>/<calendar>"
@@ -88,10 +90,12 @@ def create_app(
     books = BookService(story_store, entity_gate, calendar_store)
     plotlines = PlotlineService(story_store, entity_gate)
     events = EventService(story_store, entity_gate)
+    goals = GoalService(story_store, entity_gate)
     visualizer = VisualizerService(story_store, entity_gate)
     calendars = CalendarService(calendar_store)
 
     _register_routes(app, csrf, auth_store, books, plotlines, events, visualizer)
+    _register_goal_routes(app, csrf, auth_store, goals)
     _register_calendar_routes(app, csrf, auth_store, calendars)
     _register_ui_routes(app, csrf, auth_store, visualizer)
     _register_error_handler(app)
@@ -410,6 +414,67 @@ def _register_routes(app, csrf, auth_store, books, plotlines, events, visualizer
     def remove_collaborator(book, username):
         sharing.unshare(
             auth_store, sharing.BOOK, _book_scope(book), username, me=current_user.username
+        )
+        return "", 204
+
+
+# -- goals -------------------------------------------------------------------
+
+
+def _register_goal_routes(app, csrf, auth_store, goals):
+    """What the book is trying to bring about, and what rests on what.
+
+    Book-scoped, like scenes and threads and for the same reason: a goal's
+    dependencies, the threads that pursue it and the scene that delivers it are
+    all inside one book, so a goal outside one would name things it could not
+    reach. That also means these need no authorization of their own -- the
+    book's grants are exactly the right answer.
+    """
+
+    @app.get(_BOOK + "/goals")
+    @csrf.exempt
+    @login_required
+    def list_goals(book):
+        _authorize(auth_store, "GET", book)
+        return jsonify({"goals": goals.list(book, _calendar_arg())})
+
+    @app.post(_GOAL)
+    @csrf.exempt
+    @login_required
+    def create_goal(book, goal):
+        _authorize(auth_store, "POST", book)
+        result = goals.create(
+            book, goal, request.get_json(silent=True) or {}, current_user.username,
+            calendar_id=_calendar_arg(),
+        )
+        return _resp(result, 201)
+
+    @app.get(_GOAL)
+    @csrf.exempt
+    @login_required
+    def get_goal(book, goal):
+        _authorize(auth_store, "GET", book)
+        return _resp(goals.get(book, goal, _calendar_arg()))
+
+    @app.put(_GOAL)
+    @csrf.exempt
+    @login_required
+    def update_goal(book, goal):
+        _authorize(auth_store, "PUT", book)
+        result = goals.update(
+            book, goal, request.get_json(silent=True) or {}, _expected_rev(),
+            current_user.username, calendar_id=_calendar_arg(),
+        )
+        return _resp(result)
+
+    @app.delete(_GOAL)
+    @csrf.exempt
+    @login_required
+    def delete_goal(book, goal):
+        _authorize(auth_store, "DELETE", book)
+        goals.delete(
+            book, goal, _expected_rev(), current_user.username,
+            detach=_truthy(request.args.get("detach")),
         )
         return "", 204
 

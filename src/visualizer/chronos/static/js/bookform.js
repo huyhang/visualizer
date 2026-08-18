@@ -18,7 +18,7 @@
 import { api } from "./api.js";
 import { calendarList } from "./calendarlist.js";
 import { openCalendarForm } from "./calendarlibrary.js";
-import { clear, el, toast } from "./dom.js";
+import { clear, el, field, toast } from "./dom.js";
 import { confirmModal, modal } from "./picker.js";
 import { slugify } from "./shared/slug.js";
 
@@ -329,12 +329,4 @@ function countPhrase(plotlines, scenes) {
   if (scenes === null) parts.push("every scene in it");
   else if (scenes) parts.push(`${scenes} scene${scenes === 1 ? "" : "s"}`);
   return parts.join(" and ");
-}
-
-function field(label, control, hint) {
-  return el("div", { class: "field" }, [
-    el("label", { class: "field-label", text: label }),
-    control,
-    hint ? el("p", { class: "field-hint muted", text: hint }) : null,
-  ]);
 }

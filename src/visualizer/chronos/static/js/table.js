@@ -24,8 +24,16 @@ function breadcrumb(bookTitle, onBooks) {
   ]);
 }
 
-function goalCells(goals) {
-  return el("div", { class: "chip-row" }, (goals || []).map((g) => el("span", { class: "chip", text: g })));
+// Each goal a thread serves, as a chip that opens the goal. Clicks stop there
+// rather than falling through to the row, which would open the plotline instead
+// of the thing that was clicked.
+function goalCells(goals, onGoals) {
+  return el("div", { class: "chip-row" }, (goals || []).map((g) => (g.missing
+    ? el("span", { class: "chip missing", text: g.title, title: "No longer in this book" })
+    : el("button", {
+        class: "chip link", type: "button", text: g.title, title: "Open this goal",
+        onclick: (e) => { e.stopPropagation(); onGoals(g.id); },
+      }))));
 }
 
 // How many problems this thread has (server-counted, so it matches what the
@@ -40,7 +48,7 @@ function healthCell(count) {
   });
 }
 
-function table(rows, onOpen) {
+function table(rows, onOpen, onGoals) {
   if (!rows.length) return el("p", { class: "empty", text: "No plotlines match your filter." });
   const body = rows.map((pl) => el("tr", { class: "pl-row", onclick: () => onOpen(pl.id) }, [
     el("td", {}, [
@@ -49,7 +57,7 @@ function table(rows, onOpen) {
       // column of prose would squeeze the two that are scannable.
       pl.overview ? el("p", { class: "row-overview", text: pl.overview }) : null,
     ]),
-    el("td", {}, goalCells(pl.goals)),
+    el("td", {}, goalCells(pl.goals, onGoals)),
     el("td", {}, healthCell(pl.conflicts)),
   ]));
   return el("div", { class: "table-wrap" }, el("table", { class: "pl-table" }, [
@@ -60,7 +68,7 @@ function table(rows, onOpen) {
   ]));
 }
 
-export async function mountPlotlineTable(container, book, { onOpen, onBooks, onScenes, onIssues, onMap }) {
+export async function mountPlotlineTable(container, book, { onOpen, onBooks, onScenes, onGoals, onIssues, onMap }) {
   clear(container);
   const state = lastState[book] || { query: "", page: 1 };
   lastState[book] = state;
@@ -111,7 +119,7 @@ export async function mountPlotlineTable(container, book, { onOpen, onBooks, onS
           book: bookMeta,
           // Remount rather than patch the heading: the calendar may have
           // changed, and every tick label on the page is written in it.
-          onDone: () => mountPlotlineTable(container, book, { onOpen, onBooks, onScenes, onIssues, onMap }),
+          onDone: () => mountPlotlineTable(container, book, { onOpen, onBooks, onScenes, onGoals, onIssues, onMap }),
           // This view is *about* the book that just stopped existing, so there
           // is nothing here to return to.
           onDeleted: onBooks,
@@ -124,6 +132,14 @@ export async function mountPlotlineTable(container, book, { onOpen, onBooks, onS
         class: "btn secondary sm", type: "button", text: "Scenes",
         title: "Every scene in this book — write, edit or remove them",
         onclick: onScenes,
+      }),
+      // What the threads below are *for*, and what rests on what. The Goals
+      // column says which ones a thread serves; this is where they are written,
+      // and where the book answers whether it delivers them.
+      el("button", {
+        class: "btn secondary sm", type: "button", text: "Goals",
+        title: "What this book is trying to bring about",
+        onclick: () => onGoals(),
       }),
       // How the threads below actually weave: pick any number of them and see
       // where they meet. The table says what the threads *are*, one per row;
@@ -163,7 +179,7 @@ export async function mountPlotlineTable(container, book, { onOpen, onBooks, onS
       const data = await api.listPlotlines(book, { filter: state.query, page: state.page, perPage: PER_PAGE });
       state.page = data.page; // server clamps out-of-range pages
       clear(results);
-      results.appendChild(table(data.plotlines, onOpen));
+      results.appendChild(table(data.plotlines, onOpen, onGoals));
       results.appendChild(pager(data, (p) => { state.page = p; render(); }, { noun: "plotline" }));
     } catch (e) {
       clear(results);

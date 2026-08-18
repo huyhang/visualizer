@@ -9,7 +9,7 @@
 
 import { api } from "./api.js";
 import { eventTimeframe } from "./cards.js";
-import { clear, el, toast } from "./dom.js";
+import { clear, el, field, toast } from "./dom.js";
 import { entityTitle } from "./entities.js";
 import { suggestBox } from "./picker.js";
 import { sceneTiming } from "./scenetiming.js";
@@ -37,14 +37,6 @@ export function eventRow(event) {
     end_tick: event.end_tick,
     location: event.location.id,
   };
-}
-
-function field(label, control, hint) {
-  return el("div", { class: "field" }, [
-    el("label", { class: "field-label", text: label }),
-    control,
-    hint ? el("p", { class: "field-hint muted", text: hint }) : null,
-  ]);
 }
 
 // A chosen article, shown as a removable chip. An existing scene's references

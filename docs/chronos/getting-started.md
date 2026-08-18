@@ -199,8 +199,22 @@ timeline joined up: one set of facts, referenced from both sides.
 
 ## 5. Thread the plotlines
 
-A **plotline** is an ordered list of scenes plus at least one goal. Order is the
-contract — it is what Chronos checks against the clock.
+A **plotline** is an ordered list of scenes plus the goals it serves. Order is
+the contract — it is what Chronos checks against the clock.
+
+Goals are records of their own, so write them before the threads that point at
+them. **Goals** in the book's header, then **+ New goal**, three times:
+
+| Name | Rests on | Achieved at |
+| --- | --- | --- |
+| Deliver the Ember Seal | — | The Harbor Exchange |
+| Expose the traitor | — | The Harbor Exchange |
+| See the Seal pressed to the charter | *both of the above* | The Coronation |
+
+The diagram draws the third one below the two it rests on, and calls all three
+`achieved` — the harbour scene ends at hour 72 and the coronation begins at 200,
+so nothing is delivered before what it was resting on. (You can skip **Achieved
+at** while drafting; a goal with no scene yet is a note, not a fault.)
 
 Three of these threads end the same way, at the coronation. Rather than repeat
 that ending in each, you will write it **once** in a trunk and have the others
@@ -211,7 +225,8 @@ that ending in each, you will write it **once** in a trunk and have the others
 Back on the plotline table, **+ New plotline**:
 
 - **Name** `The Road to the Crown` (id `the-road-to-the-crown`)
-- **Goal** `See the Seal pressed to the charter` — type it and press Enter
+- **Goals** — search for `See the Seal pressed to the charter` and pick it
+  (**+ New goal** here writes one without leaving the editor)
 - **Add scene** → *An existing scene* → `The Harbor Exchange`, then
   `The Coronation`
 
@@ -235,7 +250,7 @@ scene, then set **Continues into** → *The Road to the Crown*.
 | --- | --- | --- | --- |
 | The Knight's Road | Aldric Departs | Deliver the Ember Seal | The Road to the Crown |
 | The Spy's Shadow | Lyra Infiltrates | Expose the traitor | The Road to the Crown |
-| The Magister's Gambit | Corwin Plots, The Coronation | Contest the succession | — *(none)* |
+| The Magister's Gambit | Corwin Plots, The Coronation | *(none yet)* | — *(none)* |
 
 The magister joins only at the very end, so he keeps his own full path rather
 than continuing into the trunk.
@@ -260,8 +275,9 @@ mistake is the kind that hides in a manuscript for months.
 | --- | --- | --- | --- | --- | --- |
 | Aldric Seen At Emberport | `aldric-at-emberport` | Emberport | `10` | `30` | Aldric |
 
-Then **+ New plotline**, named `The Witness's Tale`, goal
-`Establish who was where`, with two scenes added **in this order**:
+Then **+ New plotline**, named `The Witness's Tale`, with no goal for now
+(the report will note it, which is the point — a thread without a purpose yet is
+a draft, not a mistake), and two scenes added **in this order**:
 
 1. The Harbor Exchange
 2. Aldric Seen At Emberport

@@ -3,8 +3,9 @@
 Creates, over the real HTTP APIs (no direct DB writes):
 
 - akasha: the canon -- characters, items, locations as articles.
-- chronos: the book "The Ember Pact" with a fictional calendar, six events, and
-  five plotlines -- three of which share one ending via `continues_into`.
+- chronos: the book "The Ember Pact" with a fictional calendar, six events,
+  five plotlines -- three of which share one ending via `continues_into` -- and
+  the goals those threads serve, one resting on two others.
 
 Three of those plotlines are sound. The fourth -- "The Witness's Tale" -- is
 deliberately broken, so a fresh seed leaves the book **conflicted** and you can
@@ -193,22 +194,54 @@ SIGHTING_FIXED = (*SIGHTING_BROKEN[:3], 30, 40, *SIGHTING_BROKEN[5:])
 # The shared ending, written once. The knight's and spy's threads continue into
 # it rather than repeating it -- add a scene here and both threads get it.
 # (Order matters: the trunk must exist before anything continues into it.)
+# What the book is trying to bring about. Goals are records of their own, and
+# threads name them by id -- so two threads pursuing one goal say so by pointing
+# at the same thing, and the book can be asked whether it delivers what it set
+# out to. (id, title, description, depends_on, achieved_at).
+#
+# The chain is the interesting part: the charter cannot be sealed until the Seal
+# has changed hands and the traitor is out, and both of those land at the harbour
+# (hours 48-72), well before the coronation (hour 200) -- so this book's goals
+# are achieved in an order that holds up. Move the exchange after the coronation
+# and chronos says so.
+GOALS = [
+    ("seal-delivered", "Deliver the Ember Seal",
+     ("The Seal has to reach Emberport and change hands before it can be "
+      "pressed to anything."), [], "meet-at-emberport"),
+    ("traitor-exposed", "Expose the traitor",
+     "Lyra's whole errand: find out who in the harbour is selling the crown.",
+     [], "meet-at-emberport"),
+    ("charter-sealed", "See the Seal pressed to the charter",
+     "The book's ending, stated as an intention.",
+     ["seal-delivered", "traitor-exposed"], "the-coronation"),
+    ("crown-reached", "Reach the coronation alive",
+     "Aldric's own stake in it.", ["seal-delivered"], "the-coronation"),
+    ("succession-contested", "Contest the succession",
+     "Corwin means the crowning to be argued, not merely watched.",
+     [], "the-coronation"),
+    # Deliberately left with no scene: a goal named before the scene that pays it
+    # off is written is the ordinary state of a book in progress, and chronos
+    # reports it as a note rather than a fault.
+    ("who-was-where", "Establish who was where",
+     "The witness's account -- still unwritten.", [], None),
+]
+
 SOUND_PLOTLINES = [
-    ("trunk", "The Road to the Crown", ["See the Seal pressed to the charter"],
+    ("trunk", "The Road to the Crown", ["charter-sealed"],
      ["meet-at-emberport", "the-coronation"], None),
     ("knights-road", "The Knight's Road",
-     ["Deliver the Ember Seal", "Reach the coronation alive"],
+     ["seal-delivered", "crown-reached"],
      ["aldric-departs"], "trunk"),
-    ("spys-shadow", "The Spy's Shadow", ["Expose the traitor"],
+    ("spys-shadow", "The Spy's Shadow", ["traitor-exposed"],
      ["lyra-infiltrates"], "trunk"),
     # This one joins only at the very end, so it keeps its own full path.
-    ("magisters-gambit", "The Magister's Gambit", ["Contest the succession"],
+    ("magisters-gambit", "The Magister's Gambit", ["succession-contested"],
      ["corwin-plots", "the-coronation"], None),
 ]
 
 # Out of order (hour 48-72 listed before hour 10-30) AND stops short of the
 # terminus -- two more findings on top of the temporal conflict.
-WITNESS_BROKEN = ("witness-tale", "The Witness's Tale", ["Establish who was where"],
+WITNESS_BROKEN = ("witness-tale", "The Witness's Tale", ["who-was-where"],
                   ["meet-at-emberport", "aldric-at-emberport"], None)
 WITNESS_FIXED = (*WITNESS_BROKEN[:3], ["aldric-at-emberport"], "trunk")
 
@@ -246,8 +279,16 @@ MIXED_EVENTS = [
 ]
 
 # Ends on the shared terminus so the thread converges (ordering stays clean).
+MIXED_GOALS = [
+    ("lands-mapped", "Map the disputed lands",
+     "The march between Highkeep and Emberport, drawn properly at last.",
+     [], "crossing-the-fens"),
+    ("survey-delivered", "Reach the coronation with the survey",
+     "A map is worth nothing in a saddlebag.", ["lands-mapped"], "the-coronation"),
+]
+
 MIXED_PLOTLINE = ("cartographers-doubt", "The Cartographer's Doubt",
-                  ["Map the disputed lands", "Reach the coronation with the survey"],
+                  ["lands-mapped", "survey-delivered"],
                   ["cartographer-sets-out", "a-rumor-in-the-market", "crossing-the-fens",
                    "the-unmarked-road", "the-coronation"], None)
 
@@ -270,8 +311,13 @@ LONG_SURVEY_EVENTS = [
      "A full year later, Mira returns to close the map."),
 ]
 
+LONG_SURVEY_GOALS = [
+    ("realm-charted", "Chart the realm across the seasons",
+     "One map, three visits, a year apart.", [], "survey-a-year-on"),
+]
+
 LONG_SURVEY_PLOTLINE = ("the-long-survey", "The Long Survey",
-                        ["Chart the realm across the seasons"],
+                        ["realm-charted"],
                         ["survey-first-light", "survey-second-month", "survey-a-year-on"],
                         None)
 
@@ -319,8 +365,13 @@ SOLO_EVENTS = [
      "The bell goes up the night before, flaw and all."),
 ]
 
+SOLO_GOALS = [
+    ("bell-hung", "Hang a bell worth the crowning",
+     "Cast, flawed, and hung anyway -- Elin's whole book.", [], "bell-the-hanging"),
+]
+
 SOLO_PLOTLINE = ("the-coronation-bell", "The Coronation Bell",
-                 ["Hang a bell worth the crowning"],
+                 ["bell-hung"],
                  ["bell-the-commission", "bell-the-pour", "bell-the-flaw",
                   "bell-the-hanging", "the-coronation"], None)
 
@@ -476,6 +527,31 @@ def demo_hard_rule(client):
          body.get("code", "") if body else "")
 
 
+def seed_goals(client, goals, heading=None):
+    """Upsert goals. Must run *after* the scenes and *before* the threads.
+
+    Both halves of that are enforced by the API rather than by convention: a
+    goal may only be achieved at a scene that exists, and a thread may only
+    serve a goal that exists. Ordering them correctly here is the difference
+    between a demo that seeds and one that prints two 400s.
+    """
+    if heading:
+        step(heading)
+    for gid, title, description, depends_on, achieved_at in goals:
+        status, body = client.upsert(f"{CHRONOS}/books/{BOOK}/goals/{gid}", {
+            "title": title,
+            "description": description,
+            "depends_on": depends_on,
+            "achieved_at": achieved_at,
+        })
+        detail = ""
+        if status < 400 and body:
+            detail = body["status"]["state"]
+            if depends_on:
+                detail += f", after {', '.join(depends_on)}"
+        show(status, f"goal {gid}", detail)
+
+
 def seed_plotlines(client, witness):
     step("chronos: plotlines (the shared ending lives once, in 'trunk')")
     for pid, title, goals, evs, into in [*SOUND_PLOTLINES, witness]:
@@ -501,9 +577,10 @@ def ensure_cartographer(client):
     show(status, "characters/mira-the-cartographer", CARTOGRAPHER["title"])
 
 
-def seed_thread(client, event_specs, plotline):
-    """Upsert a thread's events then its plotline, reporting each one's timing
-    and the plotline's ordering / terminus verdicts."""
+def seed_thread(client, event_specs, plotline, goals=()):
+    """Upsert a thread's scenes, then its goals, then the plotline itself --
+    reporting each scene's timing and the plotline's ordering / terminus
+    verdicts. The order is the API's, not a preference (see ``seed_goals``)."""
     for spec in event_specs:
         eid, payload = event_payload(spec)
         status, body = client.upsert(f"{CHRONOS}/books/{BOOK}/events/{eid}", payload)
@@ -512,8 +589,10 @@ def seed_thread(client, event_specs, plotline):
             when = body.get("start_label") if body.get("scheduled") else "unscheduled"
         show(status, f"event {eid}", when or "")
 
-    pid, title, goals, evs, into = plotline
-    body = {"title": title, "goals": goals, "events": evs}
+    seed_goals(client, goals)
+
+    pid, title, goal_ids, evs, into = plotline
+    body = {"title": title, "goals": goal_ids, "events": evs}
     if into:
         body["continues_into"] = into
     status, result = client.upsert(f"{CHRONOS}/books/{BOOK}/plotlines/{pid}", body)
@@ -528,7 +607,7 @@ def seed_thread(client, event_specs, plotline):
 def seed_experiment(client):
     step("chronos: a mixed-timing thread to experiment with (--mixed)")
     ensure_cartographer(client)
-    seed_thread(client, MIXED_EVENTS, MIXED_PLOTLINE)
+    seed_thread(client, MIXED_EVENTS, MIXED_PLOTLINE, MIXED_GOALS)
 
 
 def ensure_bellfounder(client):
@@ -543,14 +622,14 @@ def ensure_bellfounder(client):
 def seed_solo(client):
     step("chronos: a second thread that meets nobody (--solo)")
     ensure_bellfounder(client)
-    seed_thread(client, SOLO_EVENTS, SOLO_PLOTLINE)
+    seed_thread(client, SOLO_EVENTS, SOLO_PLOTLINE, SOLO_GOALS)
 
 
 def seed_periods(client):
     step("chronos: a multi-period thread for the nested year/month rail (--periods)")
     ensure_cartographer(client)
     # Runs past the terminus by design, so expect ends_at_terminus=conflicted.
-    seed_thread(client, LONG_SURVEY_EVENTS, LONG_SURVEY_PLOTLINE)
+    seed_thread(client, LONG_SURVEY_EVENTS, LONG_SURVEY_PLOTLINE, LONG_SURVEY_GOALS)
 
 
 # -- reporting ---------------------------------------------------------------
@@ -629,6 +708,7 @@ def main():
     seed_calendar(client)
     seed_book_and_events(client)
     demo_hard_rule(client)
+    seed_goals(client, GOALS, "chronos: the goals this book is trying to reach")
     seed_plotlines(client, WITNESS_BROKEN)
 
     if mixed:

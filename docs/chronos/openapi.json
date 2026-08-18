@@ -28,6 +28,10 @@
       "description": "Ordered threads of events within a book"
     },
     {
+      "name": "goals",
+      "description": "What the book is trying to bring about, what rests on what, and the scenes that deliver it."
+    },
+    {
       "name": "events",
       "description": "Individual scenes"
     },
@@ -468,6 +472,174 @@
           }
         },
         "description": "Blocked with `409 PLOTLINE_IN_USE` while other plotlines still continue into this one, unless `inline=true` \u2014 which absorbs this plotline into each dependent first, so their stories survive the deletion."
+      }
+    },
+    "/books/{book}/goals": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/BookId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "goals"
+        ],
+        "summary": "List the book's goals",
+        "description": "Every goal, each read against all the others: its dependencies named, the threads pursuing it, its depth in the graph and what is wrong with it. One call is enough to draw the whole dependency diagram.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CalendarView"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The book's goals.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GoalList"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/books/{book}/goals/{goal}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/BookId"
+        },
+        {
+          "$ref": "#/components/parameters/GoalId"
+        }
+      ],
+      "post": {
+        "tags": [
+          "goals"
+        ],
+        "summary": "Create a goal",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/GoalWrite"
+        },
+        "responses": {
+          "201": {
+            "$ref": "#/components/responses/GoalResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "goals"
+        ],
+        "summary": "Retrieve a goal",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CalendarView"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/GoalResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "goals"
+        ],
+        "summary": "Replace a goal",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/GoalWrite"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/GoalResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "goals"
+        ],
+        "summary": "Delete a goal",
+        "description": "Blocked with `409 GOAL_IN_USE` while threads serve this goal or other goals depend on it, and the evidence names them. `detach=true` unpicks those references first \u2014 the same bargain `EVENT_IN_USE` offers.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          },
+          {
+            "name": "detach",
+            "in": "query",
+            "required": false,
+            "description": "Remove this goal from every thread serving it and every goal depending on it, then delete.",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
       }
     },
     "/books/{book}/events/{event}": {
@@ -1560,6 +1732,15 @@
         },
         "description": "Plotline id (slug), unique within the book."
       },
+      "GoalId": {
+        "name": "goal",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Goal id (slug), unique within the book."
+      },
       "EventId": {
         "name": "event",
         "in": "path",
@@ -1628,6 +1809,16 @@
           }
         }
       },
+      "GoalWrite": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GoalWrite"
+            }
+          }
+        }
+      },
       "EventWrite": {
         "required": true,
         "content": {
@@ -1666,6 +1857,21 @@
           "application/json": {
             "schema": {
               "$ref": "#/components/schemas/Plotline"
+            }
+          }
+        }
+      },
+      "GoalResponse": {
+        "description": "The goal.",
+        "headers": {
+          "ETag": {
+            "$ref": "#/components/headers/ETag"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Goal"
             }
           }
         }
@@ -2182,14 +2388,14 @@
       },
       "Plotline": {
         "type": "object",
-        "description": "One thread of a book: an ordered segment of events plus goals. `events` is what is stored; when `continues_into` is set the thread carries on into another plotline, and `effective_events` is the resolved full path every rule is judged on. `status`, `_links`, `rev` and `effective_events` are server-computed (readOnly).",
+        "description": "One thread of a book: an ordered segment of events plus the goals it serves, named by id. `events` is what is stored; when `continues_into` is set the thread carries on into another plotline, and `effective_events` is the resolved full path every rule is judged on. `status`, `_links`, `rev`, `goal_refs` and `effective_events` are server-computed (readOnly).",
         "required": [
           "kind",
           "id",
           "book",
-          "goals",
           "events",
-          "rev"
+          "rev",
+          "goals"
         ],
         "properties": {
           "kind": {
@@ -2221,11 +2427,10 @@
           },
           "goals": {
             "type": "array",
-            "minItems": 1,
             "items": {
               "type": "string"
             },
-            "description": "Non-empty set of goals."
+            "description": "Ids of the goals this thread pursues. May be empty: a thread drafted before the writer has decided what it is for is reported, not refused. Every id must name a goal in this book."
           },
           "events": {
             "type": "array",
@@ -2276,6 +2481,14 @@
                 }
               ]
             }
+          },
+          "goal_refs": {
+            "type": "array",
+            "readOnly": true,
+            "items": {
+              "$ref": "#/components/schemas/GoalRef"
+            },
+            "description": "The same goals, named, so a reader need not fetch them."
           }
         },
         "example": {
@@ -2285,8 +2498,8 @@
           "overview": "Aldric carries the seal north, and learns what it is for.",
           "book": "ember-pact",
           "goals": [
-            "Deliver the Ember Seal",
-            "Reach the coronation alive"
+            "deliver-the-seal",
+            "reach-the-coronation"
           ],
           "events": [
             "aldric-departs"
@@ -2327,6 +2540,20 @@
             "aldric-departs",
             "meet-at-emberport",
             "the-coronation"
+          ],
+          "goal_refs": [
+            {
+              "id": "deliver-the-seal",
+              "title": "Deliver the Ember Seal",
+              "achieved": true,
+              "missing": false
+            },
+            {
+              "id": "reach-the-coronation",
+              "title": "Reach the coronation alive",
+              "achieved": false,
+              "missing": false
+            }
           ]
         }
       },
@@ -2334,8 +2561,7 @@
         "type": "object",
         "description": "Writable fields of a plotline. The id comes from the URL. Referenced events must exist in the same book.",
         "required": [
-          "events",
-          "goals"
+          "events"
         ],
         "properties": {
           "title": {
@@ -2356,10 +2582,10 @@
           },
           "goals": {
             "type": "array",
-            "minItems": 1,
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Ids of the goals this thread pursues. May be empty: a thread drafted before the writer has decided what it is for is reported, not refused. Every id must name a goal in this book."
           },
           "continues_into": {
             "type": "string",
@@ -2375,7 +2601,7 @@
         "example": {
           "title": "The Knight's Road",
           "goals": [
-            "Deliver the Ember Seal"
+            "deliver-the-seal"
           ],
           "events": [
             "aldric-departs"
@@ -2404,6 +2630,268 @@
           "conflicts": {
             "type": "integer",
             "description": "How many distinct problems this thread has on its effective path (temporal conflicts, ordering violations, scenes with no possible time). A pair problem counts once; informational hints are not counted. Per-scene detail is in `effective_events[].findings` (with `?expand=events`)."
+          }
+        }
+      },
+      "Goal": {
+        "type": "object",
+        "description": "Something the book is trying to bring about. Stored: what it is, the goals it rests on (`depends_on`), and the scene that delivers it (`achieved_at`, optional). Everything else \u2014 `dependencies`, `required_by`, `plotlines`, `depth`, `status` \u2014 is computed from the rest of the book on every read, so there is no stored verdict to fall out of step with the story.",
+        "required": [
+          "kind",
+          "id",
+          "book",
+          "depends_on",
+          "status",
+          "rev"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "goal"
+            ],
+            "readOnly": true
+          },
+          "id": {
+            "type": "string",
+            "description": "Goal id (slug), unique within the book."
+          },
+          "book": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "nullable": true,
+            "description": "Defaults to the id."
+          },
+          "name": {
+            "type": "string",
+            "readOnly": true,
+            "description": "Display name: the title, or the id when untitled."
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 10000,
+            "description": "What this goal is, in the writer's own words. Empty, never null."
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Ids of goals that must be met before this one. Stored \u2014 send these back on a write."
+          },
+          "dependencies": {
+            "type": "array",
+            "readOnly": true,
+            "items": {
+              "$ref": "#/components/schemas/GoalRef"
+            },
+            "description": "The same list, named."
+          },
+          "required_by": {
+            "type": "array",
+            "readOnly": true,
+            "items": {
+              "$ref": "#/components/schemas/GoalRef"
+            },
+            "description": "Goals that rest on this one \u2014 `depends_on` read backwards."
+          },
+          "plotlines": {
+            "type": "array",
+            "readOnly": true,
+            "items": {
+              "$ref": "#/components/schemas/PlotlineRef"
+            },
+            "description": "Threads pursuing this goal."
+          },
+          "achieved_at": {
+            "type": "string",
+            "nullable": true,
+            "description": "The scene that delivers this goal, or null while it has none. Must be a scene in this book. The one place a goal touches the timeline, and what the ordering rule is checked against."
+          },
+          "achieved_scene": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NodeRef"
+              }
+            ],
+            "nullable": true,
+            "readOnly": true,
+            "description": "That scene, named and dated through the chosen calendar."
+          },
+          "depth": {
+            "type": "integer",
+            "readOnly": true,
+            "description": "How deep this goal sits in the dependency graph \u2014 zero when it rests on nothing, otherwise one past the deepest thing it rests on. Lets a client draw the graph in layers without walking it."
+          },
+          "status": {
+            "$ref": "#/components/schemas/GoalStatus"
+          },
+          "rev": {
+            "type": "integer",
+            "readOnly": true
+          },
+          "_links": {
+            "$ref": "#/components/schemas/Links"
+          }
+        }
+      },
+      "GoalWrite": {
+        "type": "object",
+        "description": "Writable fields of a goal. The id comes from the URL. Dependencies must be goals in the same book and must not loop (422 GOAL_CYCLE); `achieved_at` must be a scene in the same book.",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 10000
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Goal ids, no repeats, and never this goal itself."
+          },
+          "achieved_at": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "example": {
+          "title": "Aldric is crowned",
+          "description": "The pact holds only if the crown changes hands in public.",
+          "depends_on": [
+            "claim-proved"
+          ],
+          "achieved_at": "the-coronation"
+        }
+      },
+      "GoalStatus": {
+        "type": "object",
+        "description": "Where this goal stands, computed on every read.",
+        "required": [
+          "state",
+          "findings"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "open",
+              "achieved",
+              "conflicted"
+            ],
+            "description": "`achieved` once a scene in the book delivers it, `conflicted` when the story contradicts it (which outranks the other two), `open` until then."
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GoalFinding"
+            }
+          }
+        }
+      },
+      "GoalRef": {
+        "type": "object",
+        "description": "One goal named by another goal, or by a thread that serves it.",
+        "required": [
+          "id",
+          "title"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "description": "Display name, or the id when untitled."
+          },
+          "achieved": {
+            "type": "boolean",
+            "description": "Whether that goal names a scene that delivers it."
+          },
+          "missing": {
+            "type": "boolean",
+            "description": "True when nothing in this book has that id. Said plainly rather than dressed up with a guessed title \u2014 a finding beside it explains how a book gets into that state."
+          }
+        }
+      },
+      "GoalFinding": {
+        "type": "object",
+        "description": "One thing worth saying about one goal. Same two severities as every other finding: `conflict` is a contradiction, `info` a draft state.",
+        "required": [
+          "code",
+          "severity",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "GOAL_UNSERVED",
+              "GOAL_UNACHIEVED",
+              "GOAL_NOT_REACHED",
+              "GOAL_OUT_OF_ORDER",
+              "GOAL_DEPENDENCY_UNMET",
+              "GOAL_DEPENDENCY_MISSING",
+              "GOAL_CYCLE",
+              "GOAL_UNKNOWN"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "conflict",
+              "info"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Written for the novelist."
+          },
+          "goal": {
+            "type": "string",
+            "nullable": true,
+            "description": "The goal the message is said about. Null for `GOAL_UNKNOWN`, which is said about a thread naming a goal that is not there."
+          },
+          "goals": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "plotlines": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "doc": {
+            "type": "string"
+          }
+        }
+      },
+      "GoalList": {
+        "type": "object",
+        "description": "Every goal in the book, unpaginated: a book keeps goals in the tens, and the dependency graph is only readable whole \u2014 a page of it would draw edges to goals that are not on it.",
+        "required": [
+          "goals"
+        ],
+        "properties": {
+          "goals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Goal"
+            }
           }
         }
       },
@@ -2581,7 +3069,8 @@
           "ordering",
           "convergence",
           "missing_entities",
-          "unscheduled"
+          "unscheduled",
+          "goals"
         ],
         "properties": {
           "status": {
@@ -2628,6 +3117,13 @@
                   "$ref": "#/components/schemas/Window"
                 }
               }
+            }
+          },
+          "goals": {
+            "type": "array",
+            "description": "What the book's goals say about themselves \u2014 notes and faults together, each carrying its own severity. Only the `conflict` ones count towards `status`.",
+            "items": {
+              "$ref": "#/components/schemas/GoalFinding"
             }
           }
         },
@@ -2700,7 +3196,8 @@
                 "impossible": false
               }
             }
-          ]
+          ],
+          "goals": []
         }
       },
       "ConflictFinding": {
@@ -3404,9 +3901,13 @@
               "EVENT_IN_USE",
               "EVENT_NOT_FOUND",
               "FORBIDDEN",
+              "GOAL_CYCLE",
+              "GOAL_IN_USE",
+              "GOAL_NOT_FOUND",
               "INVALID_BOOK",
               "INVALID_CALENDAR",
               "INVALID_EVENT",
+              "INVALID_GOAL",
               "INVALID_PLOTLINE",
               "INVALID_REVISION",
               "INVALID_TIMEFRAME",
@@ -3544,8 +4045,9 @@
           "goals": {
             "type": "array",
             "items": {
-              "type": "string"
-            }
+              "$ref": "#/components/schemas/GoalRef"
+            },
+            "description": "The goals this thread serves, named. Matched by `filter`."
           },
           "conflicts": {
             "type": "integer",
@@ -3594,8 +4096,12 @@
               "book": "ember-pact",
               "name": "The Knight's Road",
               "goals": [
-                "Deliver the Ember Seal",
-                "Reach the coronation alive"
+                {
+                  "id": "deliver-the-seal",
+                  "title": "Deliver the Ember Seal",
+                  "achieved": true,
+                  "missing": false
+                }
               ],
               "conflicts": 0
             }
@@ -3611,11 +4117,11 @@
         "description": "One problem in a book. Folded across every thread that can see it: a pair problem reported on both scenes, and on each thread either scene sits on, is one issue here.",
         "required": [
           "code",
-          "severity",
-          "message",
           "events",
+          "message",
           "plotlines",
-          "refs"
+          "refs",
+          "severity"
         ],
         "properties": {
           "code": {
@@ -3630,7 +4136,15 @@
               "TERMINUS_VIOLATION",
               "EMPTY_PLOTLINE",
               "PLOTLINE_CYCLE",
-              "INVALID_PLOTLINE"
+              "INVALID_PLOTLINE",
+              "GOAL_UNSERVED",
+              "GOAL_UNACHIEVED",
+              "GOAL_NOT_REACHED",
+              "GOAL_OUT_OF_ORDER",
+              "GOAL_DEPENDENCY_UNMET",
+              "GOAL_DEPENDENCY_MISSING",
+              "GOAL_CYCLE",
+              "GOAL_UNKNOWN"
             ]
           },
           "severity": {
@@ -3678,6 +4192,22 @@
           "doc": {
             "type": "string",
             "description": "Where the rule is defined."
+          },
+          "goal": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PlotlineRef"
+              }
+            ],
+            "nullable": true,
+            "description": "The goal the message is said about, for issues phrased from a goal's point of view. Null for every other kind."
+          },
+          "goals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlotlineRef"
+            },
+            "description": "Other goals the message names."
           }
         }
       },
@@ -4055,7 +4585,7 @@
       },
       "PlotlinePreview": {
         "type": "object",
-        "description": "A candidate plotline to judge without saving it. Same fields as PlotlineWrite, plus the id it would be saved under. `goals` may be omitted while drafting -- they feed no rule.",
+        "description": "A candidate plotline to judge without saving it. Same fields as PlotlineWrite, plus the id it would be saved under. Judged by exactly the rules the save will face, goal references included.",
         "required": [
           "events"
         ],
@@ -4079,7 +4609,8 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Ids of the goals this thread pursues. May be empty: a thread drafted before the writer has decided what it is for is reported, not refused. Every id must name a goal in this book."
           },
           "continues_into": {
             "type": "string",
@@ -4098,7 +4629,7 @@
             "harbor-exchange"
           ],
           "goals": [
-            "Deliver the Ember Seal"
+            "deliver-the-seal"
           ],
           "continues_into": null,
           "continues_into_at": null
@@ -4185,10 +4716,10 @@
           "kind",
           "id",
           "book",
-          "goals",
           "events",
           "effective_events",
-          "status"
+          "status",
+          "goals"
         ],
         "properties": {
           "kind": {
@@ -4216,11 +4747,10 @@
           },
           "goals": {
             "type": "array",
-            "minItems": 1,
             "items": {
               "type": "string"
             },
-            "description": "Non-empty set of goals."
+            "description": "Ids of the goals this thread pursues. May be empty: a thread drafted before the writer has decided what it is for is reported, not refused. Every id must name a goal in this book."
           },
           "events": {
             "type": "array",
@@ -4266,6 +4796,14 @@
           },
           "_links": {
             "$ref": "#/components/schemas/Links"
+          },
+          "goal_refs": {
+            "type": "array",
+            "readOnly": true,
+            "items": {
+              "$ref": "#/components/schemas/GoalRef"
+            },
+            "description": "The same goals, named, so a reader need not fetch them."
           }
         }
       },

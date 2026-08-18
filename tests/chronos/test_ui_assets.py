@@ -128,6 +128,7 @@ _NOT_A_HELPER = {
     "clearTimeout", "setTimeout", "clearInterval", "setInterval", "fetch",
     "requestAnimationFrame", "queueMicrotask", "parseInt", "parseFloat", "isNaN",
     "encodeURIComponent", "decodeURIComponent", "structuredClone",
+    "getComputedStyle", "MutationObserver",
     "document", "window", "console",
 }
 # `$` is a legal identifier but not a word character, so `\b` will not do.
@@ -209,6 +210,10 @@ def _body_builder(source: str) -> str:
     ("bookform.js", ("title", "overview", "calendars", "world", "terminus")),
     ("plotedit.js", ("title", "overview", "events", "goals", "continues_into",
                      "continues_into_at")),
+    # A goal's two references are the whole point of it being a record, and both
+    # are easy to drop from a hand-built payload: omitting `depends_on` unpicks
+    # the graph, omitting `achieved_at` un-achieves the goal. Neither raises.
+    ("goalform.js", ("title", "description", "depends_on", "achieved_at")),
 ], ids=lambda v: v if isinstance(v, str) else "")
 def test_the_editors_resend_every_stored_field(module, fields):
     """A PUT replaces the whole document, so a payload that omits a field erases it.

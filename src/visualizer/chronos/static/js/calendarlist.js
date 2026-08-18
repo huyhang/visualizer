@@ -16,7 +16,7 @@
 // unnamed single calendar shows no id box, no era box and no remove button.
 // Everything extra appears only once there is a second reckoning to tell apart.
 
-import { el, clear } from "./dom.js";
+import { clear, el, field } from "./dom.js";
 import { calendarField } from "./calendarfield.js";
 import { slugify } from "./shared/slug.js";
 
@@ -197,12 +197,4 @@ function tickInput(value, placeholder, onInput) {
   input.setAttribute("inputmode", "numeric");
   input.addEventListener("input", () => onInput(input.value));
   return input;
-}
-
-function field(label, control, hint) {
-  return el("div", { class: "field" }, [
-    el("label", { class: "field-label", text: label }),
-    control,
-    hint ? el("p", { class: "field-hint muted", text: hint }) : null,
-  ]);
 }

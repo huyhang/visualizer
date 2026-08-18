@@ -13,6 +13,7 @@ from .errors import (
     InvalidBook,
     InvalidCalendar,
     InvalidEvent,
+    InvalidGoal,
     InvalidPlotline,
     InvalidTimeframe,
 )
@@ -22,6 +23,7 @@ from .models import (
     CalendarAttachment,
     EntityRef,
     Event,
+    Goal,
     LibraryCalendar,
     Plotline,
 )
@@ -40,23 +42,51 @@ def _require_mapping(payload: Any, err) -> dict:
 MAX_OVERVIEW = 10_000
 
 
-def _parse_overview(body: dict, err) -> str:
-    """The writer's free-prose summary of a book or a thread.
+def _parse_prose(body: dict, field: str, err, maximum: int = MAX_OVERVIEW) -> str:
+    """One of the writer's free-prose fields, bounded and never null.
 
     Optional, and absent means empty rather than null -- the model keeps one
     empty value, so nothing downstream has to tell "never written" apart from
-    "cleared". The error class is passed in because books and plotlines each
-    report their own (§8.1).
+    "cleared". The field name and error class are passed in because a book, a
+    thread and a goal each spell theirs differently and report their own (§8.1).
     """
-    overview = body.get("overview", "")
-    if not isinstance(overview, str):
-        raise err("'overview' must be a string.")
-    if len(overview) > MAX_OVERVIEW:
+    text = body.get(field, "")
+    if not isinstance(text, str):
+        raise err(f"'{field}' must be a string.")
+    if len(text) > maximum:
         raise err(
-            f"'overview' must be at most {MAX_OVERVIEW} characters.",
-            evidence={"length": len(overview), "max": MAX_OVERVIEW},
+            f"'{field}' must be at most {maximum} characters.",
+            evidence={"length": len(text), "max": maximum},
         )
-    return overview
+    return text
+
+
+def _parse_overview(body: dict, err) -> str:
+    """The writer's free-prose summary of a book or a thread."""
+    return _parse_prose(body, "overview", err)
+
+
+def _parse_id_list(value: Any, field: str, err) -> list[str]:
+    """A list of ids naming other records -- absent means none.
+
+    Duplicates are refused rather than collapsed. A list of ids is a *set* in
+    everything but spelling, so a repeat says the caller believes it means
+    something; taking the silent union would hide the misunderstanding, and
+    drawing the same chip twice would advertise it.
+    """
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise err(f"'{field}' must be a list of ids.")
+    if not all(isinstance(item, str) and item for item in value):
+        raise err(f"'{field}' must be a list of non-empty id strings.")
+    duplicated = sorted({item for item in value if value.count(item) > 1})
+    if duplicated:
+        raise err(
+            f"'{field}' names the same id more than once.",
+            evidence={field: duplicated},
+        )
+    return list(value)
 
 
 def parse_entity_ref(obj: Any, what: str = "entity") -> EntityRef:
@@ -191,11 +221,11 @@ def validate_plotline_payload(plotline_id: str, payload: Any) -> Plotline:
         raise InvalidPlotline("A plotline needs a non-empty ordered 'events' list.")
     if not all(isinstance(e, str) and e for e in events):
         raise InvalidPlotline("'events' must be a list of event ids.")
-    goals = body.get("goals")
-    if not isinstance(goals, list) or not goals:
-        raise InvalidPlotline("A plotline needs a non-empty set of 'goals'.")
-    if not all(isinstance(g, str) and g for g in goals):
-        raise InvalidPlotline("'goals' must be a list of non-empty strings.")
+    # Goal *ids*, and optional: a thread is often drafted before the writer has
+    # decided what it is for. Whether those goals exist is referential and is
+    # checked where the book's goals can be read (see ``PlotlineService``); that
+    # a thread serves none at all is reported, not refused (see ``goal_rules``).
+    goals = _parse_id_list(body.get("goals"), "goals", InvalidPlotline)
     title = body.get("title")
     if title is not None and not isinstance(title, str):
         raise InvalidPlotline("'title' must be a string.")
@@ -220,6 +250,36 @@ def validate_plotline_payload(plotline_id: str, payload: Any) -> Plotline:
         id=plotline_id, events=list(events), goals=list(goals),
         title=title, continues_into=continues_into, continues_into_at=continues_into_at,
         overview=_parse_overview(body, InvalidPlotline),
+    )
+
+
+def validate_goal_payload(goal_id: str, payload: Any) -> Goal:
+    """Parse a goal body into the model. The id comes from the URL.
+
+    Structure only, as everywhere in this module: whether the dependencies and
+    the achieving scene *exist* is referential, and belongs where the rest of
+    the book can be read (see ``GoalService``). The one relational rule that
+    needs nothing but the payload is settled here -- a goal cannot depend on
+    itself, which is the one-hop case of the loop ``GoalCycle`` refuses.
+    """
+    body = _require_mapping(payload, InvalidGoal)
+    title = body.get("title")
+    if title is not None and not isinstance(title, str):
+        raise InvalidGoal("'title' must be a string.")
+    depends_on = _parse_id_list(body.get("depends_on"), "depends_on", InvalidGoal)
+    if goal_id in depends_on:
+        raise InvalidGoal(
+            "A goal cannot depend on itself.", evidence={"goal": goal_id}
+        )
+    achieved_at = body.get("achieved_at")
+    if achieved_at is not None and not (isinstance(achieved_at, str) and achieved_at):
+        raise InvalidGoal("'achieved_at' must be an event id string.")
+    return Goal(
+        id=goal_id,
+        title=title,
+        description=_parse_prose(body, "description", InvalidGoal),
+        depends_on=depends_on,
+        achieved_at=achieved_at,
     )
 
 

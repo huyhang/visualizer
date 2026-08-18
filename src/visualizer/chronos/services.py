@@ -25,21 +25,28 @@ from .entity_gate import EntityGate
 from .errors import (
     EntityNotFound,
     EventInUse,
+    GoalCycle,
+    GoalInUse,
+    InvalidGoal,
     InvalidPlotline,
     PlotlineCycle,
     PlotlineInUse,
     TerminusInUse,
 )
-from .models import Book, EntityRef, Event, Plotline
+from .goal_rules import dependency_cycle
+from .models import Book, EntityRef, Event, Goal, Plotline
 from .plotline_health import conflict_counts
 from .presenters import (
     as_preview,
     event_when,
+    goal_ref,
+    goal_view,
     present_book,
     present_book_report,
     present_calendar,
     present_dates,
     present_event,
+    present_goal,
     present_graph,
     present_neighborhood,
     present_plotline,
@@ -53,14 +60,14 @@ from .validation import (
     validate_book_payload,
     validate_calendar_payload,
     validate_event_payload,
+    validate_goal_payload,
     validate_plotline_payload,
     validate_timeframe_payload,
 )
 
-# Stand-ins used only while previewing a plotline that has no id or goals yet.
-# They never reach the store -- a preview writes nothing.
+# A stand-in used only while previewing a plotline that has no id yet. It never
+# reaches the store -- a preview writes nothing.
 DRAFT_PLOTLINE_ID = "(new plotline)"
-DRAFT_GOAL = "(unset)"
 
 
 class _Service:
@@ -78,6 +85,9 @@ class _Service:
     def _plotlines(self, book_id: str) -> list[Plotline]:
         return [Plotline.from_storage(p) for p in self.store.list_plotlines(book_id)]
 
+    def _goals(self, book_id: str) -> list[Goal]:
+        return [Goal.from_storage(g) for g in self.store.list_goals(book_id)]
+
     def _events_by_id(self, book_id: str) -> dict[str, Event]:
         return {e.id: e for e in (Event.from_storage(e) for e in self.store.list_events(book_id))}
 
@@ -86,6 +96,7 @@ class _Service:
         return build_report(
             events, self._plotlines(book.id), book.terminus,
             missing_refs=self._missing_refs(events),
+            goals=self._goals(book.id),
         )
 
     def _missing_refs(self, events) -> list:
@@ -114,6 +125,23 @@ class _Service:
             raise InvalidPlotline(
                 "Plotline references events that do not exist in this book.",
                 evidence={"unknown_events": unknown},
+            )
+
+    def _check_goal_refs(self, book_id: str, plotline: Plotline) -> None:
+        """A thread may only serve goals this book has (§3.5).
+
+        The same class of rule as the scene references above, and refused for
+        the same reason: a goal id that names nothing is not a story problem to
+        report but a pointer to nowhere. Serving *no* goals is fine -- that one
+        is reported (``GOAL_UNSERVED``), because a thread without a purpose yet
+        is a draft, not a mistake.
+        """
+        known = {g.id for g in self._goals(book_id)}
+        unknown = [g for g in plotline.goals if g not in known]
+        if unknown:
+            raise InvalidPlotline(
+                "Plotline serves goals that do not exist in this book.",
+                evidence={"unknown_goals": unknown},
             )
 
 
@@ -199,11 +227,13 @@ class BookService(_Service):
         # its story but still present -- a state nobody asked for, and one no
         # error message can undo.
         self.store.check_book_rev(book_id, expected_rev)
-        # Cascade: remove the book's plotlines and events, then the book itself.
+        # Cascade: remove everything the book holds, then the book itself.
         for pl in self.store.list_plotlines(book_id):
             self.store.delete_plotline(book_id, pl["id"], author=author)
         for ev in self.store.list_events(book_id):
             self.store.delete_event(book_id, ev["id"], author=author)
+        for goal in self.store.list_goals(book_id):
+            self.store.delete_goal(book_id, goal["id"], author=author)
         # Re-checked here, not merely trusted from above: nothing stops another
         # writer touching the book while the cascade runs.
         self.store.delete_book(book_id, expected_rev, author)
@@ -294,10 +324,23 @@ class EventService(_Service):
                 evidence={"terminus": event_id},
             )
         referencing = [p for p in self.store.list_plotlines(book_id) if event_id in p["events"]]
-        if referencing and not detach:
+        # A goal that lands on this scene is holding it just as a thread listing
+        # it is: delete the scene and the goal is achieved nowhere, which the
+        # writer would find out from the report rather than from the delete.
+        achieving = [g for g in self._goals(book_id) if g.achieved_at == event_id]
+        if (referencing or achieving) and not detach:
             raise EventInUse(
-                "Event is still used by one or more plotlines.",
-                evidence={"plotlines": [p["id"] for p in referencing]},
+                _event_in_use_message(referencing, achieving),
+                evidence={
+                    "plotlines": [p["id"] for p in referencing],
+                    **({"goals": [g.id for g in achieving]} if achieving else {}),
+                },
+            )
+        for goal in achieving:  # detach=True
+            stored = self.store.get_goal(book_id, goal.id)
+            self.store.update_goal(
+                book_id, goal.id,
+                replace(goal, achieved_at=None).to_storage(), stored["rev"], author,
             )
         for p in referencing:  # detach=True
             # Round-trip the *model* rather than re-listing the stored fields.
@@ -331,6 +374,19 @@ class EventService(_Service):
         if relation == "through":
             return {"event": full["event"], "through": full["through"]}
         return full
+
+
+def _event_in_use_message(plotlines: list, goals: list) -> str:
+    """Why a scene cannot be deleted, naming whichever holds it.
+
+    Two holders, so three sentences rather than one that hedges: a writer told
+    "something still uses this" has to go and find out what.
+    """
+    if plotlines and goals:
+        return "Event is still used by one or more plotlines, and achieves a goal."
+    if goals:
+        return "Event is where one or more goals are achieved."
+    return "Event is still used by one or more plotlines."
 
 
 class PlotlineService(_Service):
@@ -384,12 +440,14 @@ class PlotlineService(_Service):
             public, book, self._plotlines(book.id), events_by_id,
             codec_for(book, calendar_id),
             missing_refs=self._missing_refs(events_by_id.values()),
+            goals=self._goals(book.id),
         )
 
     def create(self, book_id, plotline_id, payload, author=None) -> dict:
         book = self._require_book(book_id)
         plotline = validate_plotline_payload(plotline_id, payload)
         self._check_event_refs(book_id, plotline)
+        self._check_goal_refs(book_id, plotline)
         self._check_continuation(book_id, plotline)
         public = self.store.create_plotline(book_id, plotline_id, plotline.to_storage(), author)
         return self._present(book, public)
@@ -402,12 +460,14 @@ class PlotlineService(_Service):
             public, book, self._plotlines(book_id), events_by_id,
             codec_for(book, calendar_id), expand=expand,
             missing_refs=self._missing_refs(events_by_id.values()),
+            goals=self._goals(book_id),
         )
 
     def update(self, book_id, plotline_id, payload, expected_rev=None, author=None) -> dict:
         book = self._require_book(book_id)
         plotline = validate_plotline_payload(plotline_id, payload)
         self._check_event_refs(book_id, plotline)
+        self._check_goal_refs(book_id, plotline)
         self._check_continuation(book_id, plotline)
         public = self.store.update_plotline(
             book_id, plotline_id, plotline.to_storage(), expected_rev, author
@@ -481,6 +541,134 @@ class PlotlineService(_Service):
         for dependent in dependents:
             self.inline(book_id, dependent.id, author=author)
         self.store.delete_plotline(book_id, plotline_id, expected_rev, author)
+
+
+class GoalService(_Service):
+    """Goals: what the book is trying to bring about (design §3.5).
+
+    Three things are refused here, and everything else about a goal is reported
+    instead. The three are the ones that would leave a record describing
+    nothing: a dependency on a goal this book does not have, a chain of
+    dependencies that loops, and an achieving scene that is not in the book.
+    Whether the story *delivers* a goal -- on time, on a thread that pursues it,
+    at all -- is story logic, so it is computed on every read (``goal_rules``)
+    and never blocks a write (§8.1).
+    """
+
+    def _view(self, book, calendar_id=None):
+        return goal_view(
+            self._goals(book.id), self._plotlines(book.id),
+            self._events_by_id(book.id), codec_for(book, calendar_id),
+        )
+
+    def _check_dependencies(self, book_id: str, goal: Goal) -> None:
+        siblings = [g for g in self._goals(book_id) if g.id != goal.id]
+        known = {g.id for g in siblings}
+        unknown = [d for d in goal.depends_on if d not in known]
+        if unknown:
+            raise InvalidGoal(
+                "This goal depends on goals that do not exist in this book.",
+                evidence={"unknown_goals": unknown},
+            )
+        cycle = dependency_cycle(goal, siblings)
+        if cycle:
+            raise GoalCycle(
+                "These dependencies would make a chain of goals loop.",
+                evidence={"cycle": cycle},
+            )
+
+    def _check_achieved_at(self, book_id: str, goal: Goal) -> None:
+        if goal.achieved_at is None:
+            return
+        if goal.achieved_at not in self._events_by_id(book_id):
+            raise InvalidGoal(
+                f"Achieved at '{goal.achieved_at}', which is not a scene in this book.",
+                evidence={"achieved_at": goal.achieved_at},
+            )
+
+    def create(self, book_id, goal_id, payload, author=None, calendar_id=None) -> dict:
+        book = self._require_book(book_id)
+        goal = validate_goal_payload(goal_id, payload)
+        self._check_dependencies(book_id, goal)
+        self._check_achieved_at(book_id, goal)
+        public = self.store.create_goal(book_id, goal_id, goal.to_storage(), author)
+        return present_goal(public, self._view(book, calendar_id))
+
+    def get(self, book_id, goal_id, calendar_id=None) -> dict:
+        book = self._book(book_id)
+        public = self.store.get_goal(book_id, goal_id)
+        return present_goal(public, self._view(book, calendar_id))
+
+    def update(self, book_id, goal_id, payload, expected_rev=None, author=None,
+               calendar_id=None) -> dict:
+        book = self._require_book(book_id)
+        goal = validate_goal_payload(goal_id, payload)
+        self._check_dependencies(book_id, goal)
+        self._check_achieved_at(book_id, goal)
+        public = self.store.update_goal(
+            book_id, goal_id, goal.to_storage(), expected_rev, author
+        )
+        return present_goal(public, self._view(book, calendar_id))
+
+    def list(self, book_id, calendar_id=None) -> list[dict]:
+        """Every goal in the book, each read against all the others.
+
+        Unpaginated, unlike the scene library: a book has goals in the tens, and
+        the dependency diagram needs the whole graph in one piece -- a page of
+        it would draw edges to goals that are not there.
+        """
+        book = self._book(book_id)
+        view = self._view(book, calendar_id)
+        return [present_goal(g, view) for g in self.store.list_goals(book_id)]
+
+    def delete(self, book_id, goal_id, expected_rev=None, author=None, detach=False) -> None:
+        """Delete a goal, refusing to strand what points at it.
+
+        Threads serve goals and goals rest on goals, and both are ids stored
+        elsewhere -- so deleting one without a word would leave a thread saying
+        it pursues something that no longer exists. Refused by default and named
+        in the evidence; ``detach`` unpicks those references first, which is the
+        same bargain ``EVENT_IN_USE`` offers.
+        """
+        self._require_book(book_id)
+        self.store.get_goal(book_id, goal_id)  # raises GoalNotFound
+        serving = [p for p in self._plotlines(book_id) if goal_id in p.goals]
+        dependents = [g for g in self._goals(book_id) if goal_id in g.depends_on]
+        if (serving or dependents) and not detach:
+            raise GoalInUse(
+                "Threads serve this goal, or other goals depend on it.",
+                evidence={
+                    "plotlines": sorted(p.id for p in serving),
+                    "goals": sorted(g.id for g in dependents),
+                },
+            )
+        for plotline in serving:
+            self._rewrite_plotline(book_id, plotline, goal_id, author)
+        for dependent in dependents:
+            self._rewrite_goal(book_id, dependent, goal_id, author)
+        self.store.delete_goal(book_id, goal_id, expected_rev, author)
+
+    def _rewrite_plotline(self, book_id, plotline: Plotline, goal_id: str, author) -> None:
+        """Drop one goal from a thread, carrying every other field across.
+
+        ``replace`` rather than an enumerated body, for the reason the scene
+        detach gives: a field added later that nobody remembered to list here
+        would be dropped in silence.
+        """
+        stored = self.store.get_plotline(book_id, plotline.id)
+        detached = replace(plotline, goals=[g for g in plotline.goals if g != goal_id])
+        self.store.update_plotline(
+            book_id, plotline.id, detached.to_storage(), stored["rev"], author
+        )
+
+    def _rewrite_goal(self, book_id, goal: Goal, dependency_id: str, author) -> None:
+        stored = self.store.get_goal(book_id, goal.id)
+        detached = replace(
+            goal, depends_on=[d for d in goal.depends_on if d != dependency_id]
+        )
+        self.store.update_goal(
+            book_id, goal.id, detached.to_storage(), stored["rev"], author
+        )
 
 
 class CalendarService:
@@ -561,11 +749,15 @@ class VisualizerService(_Service):
         counts = conflict_counts(
             paths, events_by_id, self._missing_refs(events_by_id.values())
         )
-        rows = [self._row(pl, paths, events_by_id, book_id, counts) for pl in plotlines]
+        goals_by_id = {g.id: g for g in self._goals(book_id)}
+        rows = [
+            self._row(pl, paths, events_by_id, book_id, counts, goals_by_id)
+            for pl in plotlines
+        ]
         return browse_plotlines(rows, query=query, page=page, per_page=per_page)
 
     @staticmethod
-    def _row(pl: Plotline, paths, events_by_id, book_id, counts) -> dict:
+    def _row(pl: Plotline, paths, events_by_id, book_id, counts, goals_by_id) -> dict:
         path = paths.get(pl.id, list(pl.events))
         titles = [events_by_id[eid].display_title for eid in path if eid in events_by_id]
         return {
@@ -573,7 +765,11 @@ class VisualizerService(_Service):
             "book": book_id,
             "name": pl.display_title,
             "overview": pl.overview,
-            "goals": list(pl.goals),
+            # Named, not just listed: the table draws a chip per goal and links
+            # it, and the filter matches what the writer can see -- the title --
+            # rather than the slug it is stored under. The same reference shape
+            # every other response uses, so a client has one thing to render.
+            "goals": [goal_ref(gid, goals_by_id) for gid in pl.goals],
             "event_titles": titles,
             "conflicts": counts.get(pl.id, 0),
         }
@@ -630,14 +826,17 @@ class VisualizerService(_Service):
         book = self._require_book(book_id)
         plotlines = self._plotlines(book_id)
         events_by_id = self._events_by_id(book_id)
+        goals = self._goals(book_id)
         issues = book_issues(
             resolve_all(plotlines),
             events_by_id,
             codec_for(book, calendar_id),
             missing_refs=self._missing_refs(events_by_id.values()),
             terminus=book.terminus,
+            goals=goals,
+            plotlines=plotlines,
         )
-        return present_book_report(issues, events_by_id, plotlines)
+        return present_book_report(issues, events_by_id, plotlines, goals)
 
     # -- preview --------------------------------------------------------------
 
@@ -656,12 +855,9 @@ class VisualizerService(_Service):
         book = self._require_book(book_id)
         body = dict(payload or {})
         plotline_id = body.get("id") or DRAFT_PLOTLINE_ID
-        if not body.get("goals"):
-            # Goals feed no rule; a draft that has not named one yet must still
-            # be able to see its conflicts.
-            body["goals"] = [DRAFT_GOAL]
         candidate = validate_plotline_payload(plotline_id, body)
         self._check_event_refs(book_id, candidate)
+        self._check_goal_refs(book_id, candidate)
         public = {
             **candidate.to_storage(), "id": plotline_id, "book": book_id, "rev": 0,
         }
@@ -670,6 +866,7 @@ class VisualizerService(_Service):
             public, book, self._plotlines(book_id), events_by_id,
             codec_for(book, calendar_id), expand=True,
             missing_refs=self._missing_refs(events_by_id.values()),
+            goals=self._goals(book_id),
         )
         return as_preview(presented, book_id)
 

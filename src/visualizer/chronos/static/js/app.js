@@ -4,6 +4,8 @@
 //   #/~calendars              -> the calendar library (not book-scoped)
 //   #/<book>                  -> that book's filtered, paginated plotline table
 //   #/<book>/~scenes          -> that book's scene library
+//   #/<book>/~goals           -> what the book is trying to bring about
+//   #/<book>/~goals/<goal>    -> the same, with one goal selected
 //   #/<book>/~issues          -> everything wrong across all of its plotlines
 //   #/<book>/~map             -> the story map: every thread, woven
 //   #/<book>/~map/<a,b,c>     -> the same, narrowed to the threads you ticked
@@ -12,7 +14,7 @@
 //
 // Segments are ids, so the library-ish views take names no id can collide with:
 // `slugify` strips a leading `~`, so nothing derived from a title can ever be
-// `~scenes`, `~issues`, `~map` or `~calendars`. The calendar library sits at the
+// `~scenes`, `~goals`, `~issues`, `~map` or `~calendars`. The calendar library sits at the
 // top level rather than under a book because that is the whole point of it — a
 // calendar outlives any one book, and is chosen while a book is being created.
 //
@@ -34,6 +36,7 @@ import { $ } from "./dom.js";
 import { clearPeek, showArticle } from "./peek.js";
 import { mountBooks } from "./books.js";
 import { mountCalendarLibrary } from "./calendarlibrary.js";
+import { mountGoals } from "./goals.js";
 import { mountPlotline } from "./plotline.js";
 import { mountBookReport } from "./report.js";
 import { mountScenes } from "./scenes.js";
@@ -49,6 +52,7 @@ const content = $("#content");
 
 // The book-scoped library routes. Reserved: see the note at the top.
 const SCENES = "~scenes";
+const GOALS = "~goals";
 const ISSUES = "~issues";
 const CALENDARS = "~calendars";
 const MAP = "~map";
@@ -58,6 +62,10 @@ const go = (hash) => { window.location.hash = hash; };
 const toBooks = () => go("#/");
 const toBook = (book) => go(`#/${enc(book)}`);
 const toScenes = (book) => go(`#/${enc(book)}/${SCENES}`);
+// One goal is a link, not a mode: "the goal the ending rests on" is worth
+// sending to someone, and a chip on a thread points straight at it.
+const toGoals = (book, goal) =>
+  go(`#/${enc(book)}/${GOALS}` + (goal ? `/${enc(goal)}` : ""));
 const toIssues = (book) => go(`#/${enc(book)}/${ISSUES}`);
 const toCalendars = () => go(`#/${CALENDARS}`);
 const toPlotline = (book, pl) => go(`#/${enc(book)}/${enc(pl)}`);
@@ -104,8 +112,17 @@ function route() {
       onOpen: (pl) => toPlotline(parts[0], pl),
       onBooks: toBooks,
       onScenes: () => toScenes(parts[0]),
+      onGoals: (goal) => toGoals(parts[0], goal),
       onIssues: () => toIssues(parts[0]),
       onMap: () => toMap(parts[0]),
+    });
+  } else if (parts[1] === GOALS) {
+    mountGoals(content, parts[0], {
+      goal: parts[2] || null,
+      onBooks: toBooks,
+      onBook: () => toBook(parts[0]),
+      onSelect: (goal) => toGoals(parts[0], goal),
+      onPlotline: (pl) => toPlotline(parts[0], pl),
     });
   } else if (parts[1] === SCENES) {
     mountScenes(content, parts[0], {
@@ -117,6 +134,9 @@ function route() {
       onBooks: toBooks,
       onBook: () => toBook(parts[0]),
       onScene: (pl, ev) => toPlotlineAt(parts[0], pl, ev),
+      // A goal finding is said about a goal, so the report can send the writer
+      // to it the same way it sends them to a scene.
+      onGoal: (goal) => toGoals(parts[0], goal),
     });
   } else if (parts[1] === MAP) {
     mountStoryMap(content, parts[0], {
@@ -146,6 +166,7 @@ function route() {
       // `#/<book>/<pl>/at/<event>`: the same timeline, arriving at one scene.
       focusEvent: parts[2] === "at" ? parts[3] || null : null,
       showEntity, onBooks: toBooks, onBook: () => toBook(parts[0]),
+      onGoal: (goal) => toGoals(parts[0], goal),
       onConnected: () => toConnected(parts[0], parts[1]),
       onConnectedAt: (ev) => toConnectedAt(parts[0], parts[1], ev),
       // The editor is a modal; when it saves under a new id or deletes the

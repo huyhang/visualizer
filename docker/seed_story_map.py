@@ -233,9 +233,21 @@ def seed_threads(client):
         after = [e[0] for e in solo if "-c-" in e[0]]
         events = [*before, first, *between, second, *after, TERMINUS]
 
+        # One goal per thread, created before the thread that serves it: a
+        # plotline may only name goals the book has. Each is achieved at the
+        # terminus every thread reaches, so the map's ten threads add ten
+        # sound goals rather than ten findings.
+        goal_id = f"{pid}-arrives"
+        who = CHARACTERS[char][0].split()[0]
+        status, _ = client.upsert(f"{CHRONOS}/books/{BOOK}/goals/{goal_id}", {
+            "title": f"Get {who} to Tessel",
+            "achieved_at": TERMINUS,
+        })
+        show(status, f"goal {goal_id}")
+
         status, result = client.upsert(f"{CHRONOS}/books/{BOOK}/plotlines/{pid}", {
             "title": title,
-            "goals": [f"Get {CHARACTERS[char][0].split()[0]} to Tessel"],
+            "goals": [goal_id],
             "events": events,
         })
         detail = ""

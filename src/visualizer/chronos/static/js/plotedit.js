@@ -23,6 +23,7 @@ import { eventTimeframe } from "./cards.js";
 import { clear, el, toast } from "./dom.js";
 import { findingList, markerClass, problemBanner, verdictNotes } from "./findings.js";
 import { focusToggle } from "./focus.js";
+import { openGoalForm } from "./goalform.js";
 import { showScene } from "./peek.js";
 import { confirmModal, modal, suggestBox } from "./picker.js";
 import { slugify } from "./shared/slug.js";
@@ -108,6 +109,12 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
       return;
     }
   }
+
+  // The book's goals, for the picker below. Fetched once, up front, so the
+  // field is never briefly empty; a book whose goals could not be read offers
+  // none, and the writer can still write one.
+  let goals = [];
+  try { goals = (await api.listGoals(book)).goals; } catch (e) { /* offer none */ }
 
   const scope = await loadScope(book, bookMeta);
   const view = el("div", { class: "editor-view" });
@@ -227,7 +234,7 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
     view.appendChild(actions());
     if (focusGoal) {
       focusGoal = false;
-      const input = view.querySelector(".goal-editor input");
+      const input = view.querySelector(".goal-editor .suggest input");
       if (input) input.focus();
     }
     if (refocus) {
@@ -261,7 +268,9 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
         : "A plotline's id is permanent."),
       labelled("Overview", overview,
         "A note to yourself about this thread. No rule reads it, so it changes no verdict."),
-      labelled("Goals", goalEditor(), "What this thread is trying to achieve. At least one is required."),
+      labelled("Goals", goalEditor(),
+        "What this thread is for. Optional while drafting -- the book's report "
+        + "says which threads still serve none."),
       labelled("Continues into", continuationField(), "Carry on into another thread instead of repeating its scenes."),
       state.continuesInto
         ? labelled("Joins at", joinField(),
@@ -270,34 +279,61 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
     ]);
   }
 
+  // Goals are records in the book, so this picks from them rather than taking
+  // free text: the save would refuse an id that names nothing, and a field that
+  // accepts anything and then fails is a worse field. Writing a goal without
+  // leaving the editor stays possible -- the goal form opens over this one --
+  // because deciding what a thread is *for* is exactly what a writer is doing
+  // here, and being sent to another screen to say it would break the thought.
   function goalEditor() {
-    const chips = el("div", { class: "chip-row goal-chips" }, state.goals.map((goal, i) =>
+    const chips = el("div", { class: "chip-row goal-chips" }, state.goals.map((id, i) =>
       el("span", { class: "chip goal removable" }, [
-        el("span", { text: goal }),
+        el("span", { text: goalName(id) }),
         el("button", { class: "ref-remove", type: "button", text: "✕", title: "Remove goal",
           onclick: () => { state.goals.splice(i, 1); render(); } }),
       ])));
-    const input = el("input", { type: "text", placeholder: "Add a goal and press Enter" });
-    const commit = (keepFocus) => {
-      const goal = input.value.trim();
-      if (!goal) return;
-      // Emptied before the re-render, not after: `render` discards this very
-      // input, and dropping a focused element blurs it -- so the blur handler
-      // below fires on a node that still holds the text it was just given, and
-      // the goal lands twice. Clearing first makes that second commit a no-op.
-      input.value = "";
-      state.goals.push(goal);
-      focusGoal = keepFocus; // keep typing: goals usually come in twos and threes
-      render();
-    };
-    input.addEventListener("keydown", (e) => {
-      if (e.key !== "Enter") return;
-      e.preventDefault();
-      commit(true);
+
+    const picker = suggestBox({
+      placeholder: "Add a goal this thread serves…",
+      // Filtered here rather than server-side: the book's goals are already in
+      // hand, and there are tens of them, not thousands.
+      search: (query) => {
+        const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+        return goals.filter((g) =>
+          !state.goals.includes(g.id)
+          && words.every((w) => `${g.name} ${g.id}`.toLowerCase().includes(w))
+        );
+      },
+      renderItem: (g) => [
+        el("span", { class: "suggest-name", text: g.name }),
+        el("span", { class: "suggest-meta muted", text: g.id }),
+      ],
+      onPick: (g) => { state.goals.push(g.id); focusGoal = true; render(); },
+      empty: "No goals left to add.",
     });
-    // Take a half-typed goal rather than losing it when the writer clicks away.
-    input.addEventListener("blur", () => commit(false));
-    return el("div", { class: "goal-editor" }, [chips, input]);
+
+    return el("div", { class: "goal-editor" }, [
+      chips,
+      picker.el,
+      el("button", {
+        class: "btn secondary sm", type: "button", text: "+ New goal",
+        onclick: () => openGoalForm(book, null, {
+          goals,
+          onDone: (created) => {
+            goals.push(created);
+            state.goals.push(created.id);
+            render();
+          },
+        }),
+      }),
+    ]);
+  }
+
+  // What a goal id is called, for a chip. Falls back to the id for a goal that
+  // is not in the list -- which the book report reports rather than hiding.
+  function goalName(id) {
+    const found = goals.find((g) => g.id === id);
+    return found ? found.name : id;
   }
 
   // The target as the writer named it, falling back to the id — which is also
@@ -624,7 +660,6 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
     const problems = [];
     if (!state.id) problems.push("Give the plotline an id.");
     if (!state.events.length) problems.push("A plotline needs at least one of its own scenes.");
-    if (!state.goals.length) problems.push("Name at least one goal.");
 
     return el("div", { class: "editor-actions" }, [
       problems.length ? el("ul", { class: "form-error list" }, problems.map((p) => el("li", { text: p }))) : null,

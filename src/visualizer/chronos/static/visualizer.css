@@ -542,6 +542,14 @@ body:not(.focus-mode) .tl-dot.has-hint { background: var(--warn); box-shadow: 0 
   color: var(--text); text-align: left;
 }
 .issue-scene:hover { color: var(--accent-strong); text-decoration: underline; }
+/* The goal a message is said about, named the way the scene is: a finding
+   phrased "this goal…" is only legible beside the goal it means. */
+.issue-goal {
+  background: none; border: 0; padding: 0; font: inherit; font-weight: 700;
+  color: var(--text); text-align: left;
+}
+.issue-goal::before { content: "◆ "; color: var(--muted); font-weight: 400; }
+.issue-goal:hover { color: var(--accent-strong); text-decoration: underline; }
 .thread-chip { border: 0; font-size: .74rem; }
 .thread-chip:hover { filter: brightness(.95); text-decoration: underline; }
 .issue-text { margin: .25rem 0 0; font-size: .88rem; line-height: 1.5; color: var(--text); }
@@ -865,3 +873,99 @@ body:not(.focus-mode) .scene-row.has-hint { border-color: color-mix(in srgb, var
 .twisty-btn { background: none; border: 0; padding: 0; display: inline-flex; }
 .sg-row-head:hover .twisty, .twisty-btn:hover .twisty { color: var(--accent); }
 /* the way back out of an opened moment, in the margin beside its first row */
+
+/* -- goals --------------------------------------------------------------- */
+/* The dependency diagram and the cards under it. Both read the same payload,
+   so a goal's state has one colour wherever it appears: green once a scene
+   delivers it, red where the story contradicts it, plain while it is open. */
+
+.chip.link { border: 0; cursor: pointer; font: inherit; font-size: .78rem; }
+.chip.link:hover { background: var(--accent); color: var(--surface); }
+/* an id that names nothing -- drawn plainly, because there is nothing to open */
+.chip.missing { background: var(--danger-soft); color: var(--danger); }
+.chip.state { text-transform: uppercase; letter-spacing: .04em; font-size: .68rem; font-weight: 700; }
+.chip.state.achieved { background: var(--ok-soft); color: var(--ok); }
+.chip.state.conflicted { background: var(--danger-soft); color: var(--danger); }
+.chip.state.open { background: var(--surface-3); color: var(--muted); }
+
+.goal-diagram {
+  overflow-x: auto; padding: .4rem 0 1rem;
+  border-bottom: 1px solid var(--border); margin-bottom: 1rem;
+}
+/* the two layers: edges underneath, boxes on top (see goalgraph.js) */
+.goal-canvas { position: relative; margin: 0 auto; }
+.goal-edges { position: absolute; top: 0; left: 0; overflow: visible; }
+
+.goal-node {
+  position: absolute; display: flex; flex-direction: column; justify-content: center;
+  gap: .1rem; padding: .3rem .5rem; overflow: hidden; text-align: center;
+  border: 1.5px solid var(--border); border-radius: 10px;
+  background: var(--surface); color: var(--text); cursor: pointer;
+  font: inherit; box-shadow: var(--shadow);
+}
+.goal-node:hover, .goal-node:focus-visible { border-color: var(--accent); }
+.goal-node.is-achieved { background: var(--ok-soft); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+.goal-node.is-conflicted { background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
+.goal-node.is-selected { border-color: var(--accent); border-width: 2.5px; }
+/* Clipped by the box, not by a guess at how many characters fit: the name gets
+   two lines and the scene under it one, and anything longer ends in an ellipsis
+   at whatever font size the reader is using. The full name is on the title. */
+.goal-label {
+  font-size: .82rem; font-weight: 600; line-height: 1.2;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; overflow-wrap: anywhere;
+}
+.goal-sub {
+  font-size: .7rem; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.goal-edge { fill: none; stroke: var(--muted); stroke-width: 1.75; opacity: .75; }
+/* A sibling polygon rather than a marker, so the head takes the same class as
+   its line and the two cannot be styled apart (see goalgraph.js). */
+.goal-arrowhead { fill: var(--muted); stroke: none; opacity: .75; }
+/* the edges touching the selected goal -- what it rests on, and what needs it */
+.goal-edge.is-lit { stroke: var(--accent); stroke-width: 2.25; opacity: 1; }
+.goal-arrowhead.is-lit { fill: var(--accent); opacity: 1; }
+
+.goal-list { display: flex; flex-direction: column; gap: .45rem; }
+.goal-card {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); box-shadow: var(--shadow);
+}
+/* Closed, a card is one row; open, it is everything the book knows about the
+   goal. Open is the same thing as selected, which is the thing in the URL. */
+.goal-card.is-expanded { padding: 0 1rem .8rem; gap: .45rem; }
+.goal-card.is-selected { border-color: var(--accent); }
+.goal-head-row { display: flex; align-items: center; gap: .5rem; }
+.goal-head-row .goal-head { flex: 1; }
+.goal-head {
+  display: flex; align-items: center; gap: .5rem; width: 100%;
+  background: none; border: 0; padding: .6rem 1rem; cursor: pointer;
+  font: inherit; color: var(--text); text-align: left;
+}
+.goal-card.is-expanded .goal-head { padding-left: 0; padding-right: 0; }
+.goal-head:hover .card-title { color: var(--accent); }
+/* Bigger than the tree twisties elsewhere: this one is the row's only control,
+   and the whole row is the hit target, so the glyph should look like something
+   worth aiming at rather than a bullet point. */
+.goal-card .twisty {
+  width: 1.4rem; flex: none; color: var(--muted);
+  font-size: 1.25rem; line-height: 1; text-align: center;
+}
+.goal-head:hover .twisty { color: var(--accent); }
+.goal-card .card-title { font-size: 1.02rem; font-weight: 700; }
+/* Where the goal lands, standing in for the rows inside while it is closed. */
+.goal-summary {
+  margin-left: auto; font-size: .82rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%;
+}
+.goal-card.is-expanded .goal-summary { display: none; }
+.goal-description { margin: .3rem 0 .5rem; color: var(--muted); }
+.goal-facts {
+  display: grid; grid-template-columns: max-content 1fr; gap: .25rem .8rem;
+  margin: .4rem 0 .2rem; font-size: .85rem;
+}
+.goal-facts dt { color: var(--muted); font-weight: 600; }
+.goal-facts dd { margin: 0; }
+.plain-list { margin: .3rem 0 .6rem; padding-left: 1.1rem; }

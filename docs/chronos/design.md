@@ -114,11 +114,13 @@ These mirror `docs/akasha/editor-design.md` on purpose — a reader who knows
 Book
  ├── has many ──► Plotline ──── ordered list of ──► Event (shared across plotlines)
  │                   │                                 │
- │                   ├── set of Goals                  ├── characters: [EntityRef]
+ │                   ├── serves ──► Goal               ├── characters: [EntityRef]
  │                   └── ends at ──────────────────►   ├── items:      [EntityRef]
- │                                                      ├── location:    EntityRef
- └── designates one Terminus (an Event) ───────────►   ├── start_tick, end_tick
-    all plotlines must end at it                        └── description (long text)
+ │                              │                       ├── location:    EntityRef
+ ├── has many ──► Goal ─────────┘ achieved_at           ├── start_tick, end_tick
+ │                   └── depends_on ──► Goal            └── description (long text)
+ │
+ └── designates one Terminus (an Event) ───────────►   all plotlines must end at it
 ```
 
 ### 3.1 EntityRef — the link to Akasha
@@ -163,7 +165,7 @@ An **ordered list of event ids**, plus a set of **goals**.
 | `id`             | slug              | unique within its book                                    |
 | `title`          | string            | optional short display name; defaults to `id`             |
 | `events`         | ordered `[id]`    | this plotline's **own segment**; order is meaningful      |
-| `goals`          | set of strings    | required to be non-empty                                  |
+| `goals`          | set of goal `id`  | the goals this thread serves (§3.5); may be empty         |
 | `continues_into` | plotline `id`     | optional; the thread carries on into that plotline        |
 | `continues_into_at`   | event `id`        | optional; **where** in that plotline it joins; null = its start |
 
@@ -259,6 +261,68 @@ The **Terminus** is just an Event that is designated as the book's convergence
 point. The book-level invariant (§5.3) is: **every plotline's last event is the
 terminus.** Convergence *elsewhere* and divergence are allowed and surfaced
 descriptively (§7.4) — only convergence *at the terminus* is required.
+
+### 3.5 Goals
+
+A **Goal** is something the book is trying to bring about. Goals began as free
+text on a plotline — a label, which nothing could read and no two threads could
+share except by typing the same words. They are records now, and a plotline
+names them by id.
+
+| Field         | Type            | Notes                                                     |
+| ------------- | --------------- | --------------------------------------------------------- |
+| `id`          | slug            | unique within its book                                    |
+| `title`       | string          | optional display name; defaults to `id`                   |
+| `description` | string          | free prose; no rule reads it                              |
+| `depends_on`  | set of goal `id`| goals that must be met before this one; same book         |
+| `achieved_at` | event `id`      | optional; the scene that delivers it                      |
+
+Goals are **book-scoped**, like events and plotlines and for the same reason
+(§12): a dependency, a serving thread and an achieving scene all live inside one
+book, so a goal outside one would name things it could not reach.
+
+**The third graph.** Scenes form one graph, ordered by tick; plotline
+continuations form another, ordered by structure; goals form a third, ordered by
+*dependency*. The first two are about what happens and in what order — this one
+is about what the book is *for*, which no amount of scene data can state.
+
+**One anchor into time.** `achieved_at` is the only place a goal touches the
+timeline, and it is what turns an intention into something checkable: with it,
+"this goal is met before the goal it rests on" becomes the ordering rule (§5.2)
+run over dependency edges instead of list order. It is optional, because a goal
+is named long before the scene that pays it off is written.
+
+**Everything else is computed.** Whether a goal is met, which threads pursue it,
+what rests on it, how deep it sits in the graph — all derived on read
+(`goal_rules.py`), never stored. A stored verdict is a second copy of a fact,
+and the two drift.
+
+Three rules are **hard**, for the same reason the continuation rules are — each
+would otherwise leave a record describing nothing:
+
+- `depends_on` must name goals in the same book → `400 INVALID_GOAL`
+- the dependency chain must not loop → `422 GOAL_CYCLE`
+- `achieved_at` must name a scene in the same book → `400 INVALID_GOAL`
+- and a thread may only serve goals the book has → `400 INVALID_PLOTLINE`
+  (serving *none* is fine — that is reported, not refused)
+
+Deleting a goal threads serve, or other goals rest on, is `409 GOAL_IN_USE`
+naming them, unless `?detach=true` unpicks those references first — the same
+shape as `EVENT_IN_USE` (§7.2). Deleting a scene a goal is achieved at is
+refused the same way, and `?detach=true` clears the anchor.
+
+Everything else about a goal is **reported** (§8.1), in the two severities the
+rest of Chronos uses. Contradictions: a goal whose achieving scene no thread
+pursuing it passes through (`GOAL_NOT_REACHED`), and a goal achieved before
+something it depends on (`GOAL_OUT_OF_ORDER`). Notes: a goal nobody pursues yet,
+one with no scene yet, one whose prerequisite has not been placed. A book three
+chapters in is full of the second kind and has nothing wrong with it, which is
+why they are graded apart — a report that called them faults would be ignored.
+
+Two further codes describe states no write can produce — a dangling dependency
+and a loop — because a record can still reach them sideways, and a reader that
+cannot describe the state it is in is worse than one that can. That is the same
+posture as a broken continuation chain.
 
 ---
 
@@ -490,6 +554,27 @@ def validate_convergence(plotlines: list[Plotline], terminus_id: str) -> Converg
   graph — can never contain a cycle. Time only moves forward, so the graph is a
   DAG by construction; no separate cycle check is needed.
 
+### 5.4 Goals — `goal_rules.py`
+
+> A goal is met after everything it rests on, on a thread that pursues it.
+
+The fourth family of checks, and the only one about *intent* rather than about
+what happens. It is stated in full in §3.5, alongside the record it reads, and
+it is written in the same finding vocabulary as the per-scene rules — so the
+book report gains a section rather than a second way of talking, and the two
+severities keep the meaning `reports.BookReport.ok` gives them.
+
+Two of its findings are contradictions: a goal achieved at a scene no thread
+pursuing it passes through, and one achieved before a goal it depends on. The
+second is the ordering rule of §5.2 run over dependency edges instead of over a
+list, half-open comparison and all — a dependency that ends exactly when the
+goal's scene begins is in time.
+
+The one structural rule here is a cycle guard, and it exists for the same reason
+the plotline one does: the acyclicity argument above covers *event* edges, which
+are ordered by tick. Dependency edges are not, so a loop is possible and is
+refused at the write.
+
 ### Where each invariant is enforced
 
 | Write                              | Temporal (5.1) | Ordering (5.2) | Convergence (5.3) | EntityRef exists |
@@ -635,10 +720,10 @@ The read includes a computed `status: "consistent" | "conflicted"` — the
 one-glance answer to "does my book currently satisfy the story-logic invariants?"
 (the full breakdown is `/validate`). See §8 for how it is maintained.
 
-### 7.2 Plotlines & Events (scoped to a book)
+### 7.2 Plotlines, Events & Goals (scoped to a book)
 
 ```
-POST   /books/<book>/plotlines/<plotline>   create (goals + ordered events; §5.2, §5.3)
+POST   /books/<book>/plotlines/<plotline>   create (goal ids + ordered events; §5.2, §5.3)
 GET    /books/<book>/plotlines/<plotline>
 PUT    /books/<book>/plotlines/<plotline>   replace (reorder / edit goals)
 DELETE /books/<book>/plotlines/<plotline>
@@ -647,7 +732,18 @@ POST   /books/<book>/events/<event>         create (§5.1 + EntityRefs exist)
 GET    /books/<book>/events/<event>
 PUT    /books/<book>/events/<event>         update (§5.1 + re-check dependent plotlines)
 DELETE /books/<book>/events/<event>[?detach=true]   block if referenced, unless detaching
+
+GET    /books/<book>/goals                  every goal, read against the rest of the book
+POST   /books/<book>/goals/<goal>           create (§3.5: dependencies + achieving scene)
+GET    /books/<book>/goals/<goal>
+PUT    /books/<book>/goals/<goal>
+DELETE /books/<book>/goals/<goal>[?detach=true]     block if pointed at, unless detaching
 ```
+
+The goal listing is deliberately **unpaginated**: a book keeps goals in the tens,
+each read carries its resolved dependencies, serving threads, achieving scene,
+depth and verdict, and the dependency graph is only legible whole — a page of it
+would draw edges to goals that are not on it. One call answers the whole view.
 
 **Deleting a referenced event.** Referential integrity is a *hard* rule (§8.1),
 so a delete is **blocked by default** when any plotline still lists the event —
@@ -1058,7 +1154,11 @@ one error handler serializes everything. Subclasses:
 | Error                | Status | Raised when                                                        |
 | -------------------- | :----: | ------------------------------------------------------------------ |
 | `InvalidTimeframe`   |  400   | `start_tick > end_tick`, or a tick isn't an integer                |
-| `InvalidPlotline`    |  400   | empty event list, empty goals, unknown event id referenced         |
+| `InvalidPlotline`    |  400   | empty event list, unknown event or goal id referenced              |
+| `InvalidGoal`        |  400   | malformed goal, or one naming a dependency/scene not in the book (§3.5) |
+| `GoalCycle`          |  422   | `depends_on` would make a chain of goals loop (§3.5)               |
+| `GoalInUse`          |  409   | deleting a goal threads serve or goals rest on, without `?detach=true` |
+| `GoalNotFound`       |  404   | addressing a goal that is not there                                |
 | `EntityNotFound`     |  422   | an EntityRef doesn't exist (or isn't readable) in `akasha` |
 | `TemporalConflict`   |  409   | a write would put a character in two places at once (§5.1)         |
 | `OrderingViolation`  |  422   | a plotline's events aren't strictly, non-overlappingly ordered (§5.2)|

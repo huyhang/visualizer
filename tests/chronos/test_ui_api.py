@@ -29,11 +29,15 @@ def _event(client, eid, location="highkeep", start=0, end=10, characters=("aldri
     return client.post(f"/books/{BOOK}/events/{eid}", json=body)
 
 
-def _plotline(client, pid, events, goals=("Win",), title=None):
+def _plotline(client, pid, events, goals=(), title=None):
     body = {"events": list(events), "goals": list(goals)}
     if title:
         body["title"] = title
     return client.post(f"/books/{BOOK}/plotlines/{pid}", json=body)
+
+
+def _goal(client, gid, title, **body):
+    return client.post(f"/books/{BOOK}/goals/{gid}", json={"title": title, **body})
 
 
 @pytest.fixture
@@ -42,10 +46,16 @@ def book_with_plotlines(seeded, client, auth_store):
     _event(client, "aldric-departs", "highkeep", 0, 10, title="Aldric Departs")
     _event(client, "harbor-exchange", "emberport", 20, 30, title="The Harbor Exchange")
     _event(client, "coronation", "throne-hall", 40, 50, title="The Coronation")
+    # Two goals, each pursued by a thread and neither anchored to a scene --
+    # which is what a book in progress looks like, and leaves these threads with
+    # nothing said about them beyond "no scene achieves this yet".
+    _goal(client, "seal", "Deliver the Seal")
+    _goal(client, "set-out", "Set out")
+    _goal(client, "infiltrate", "Infiltrate")
     _plotline(client, "knights-road", ["aldric-departs", "coronation"],
-              goals=["Deliver the Seal"], title="The Knight's Road")
+              goals=["seal"], title="The Knight's Road")
     _plotline(client, "spys-shadow", ["harbor-exchange", "coronation"],
-              goals=["Infiltrate"], title="The Spy's Shadow")
+              goals=["infiltrate"], title="The Spy's Shadow")
     # Give the writer Akasha read on the *character* articles (collection scope,
     # so it also covers a not-yet-created 'ghost'), but deliberately NOT on
     # 'locations' -- so we can exercise both the allowed and forbidden paths.
@@ -259,7 +269,7 @@ def test_the_table_flags_threads_that_have_problems(book_with_plotlines):
     # Put the knight's two scenes in the wrong order: one problem, one thread.
     book_with_plotlines.put(
         f"/books/{BOOK}/plotlines/knights-road",
-        json={"events": ["coronation", "aldric-departs"], "goals": ["Deliver the Seal"]},
+        json={"events": ["coronation", "aldric-departs"], "goals": ["seal"]},
     )
     rows = book_with_plotlines.get(f"/books/{BOOK}/ui/plotlines").get_json()["plotlines"]
     assert {r["id"]: r["conflicts"] for r in rows} == {"knights-road": 1, "spys-shadow": 0}
@@ -314,7 +324,7 @@ def test_preview_marks_an_out_of_order_pair_without_saving_it(book_with_plotline
         book_with_plotlines,
         id="knights-road",
         events=["coronation", "aldric-departs"],
-        goals=["Deliver the Seal"],
+        goals=["seal"],
     )
     assert resp.status_code == 200
     body = resp.get_json()
@@ -332,7 +342,7 @@ def test_preview_marks_an_out_of_order_pair_without_saving_it(book_with_plotline
 def test_preview_of_a_sound_order_reports_nothing(book_with_plotlines):
     body = _preview(
         book_with_plotlines, id="knights-road",
-        events=["aldric-departs", "coronation"], goals=["Deliver the Seal"],
+        events=["aldric-departs", "coronation"], goals=["seal"],
     ).get_json()
     assert all(e["findings"] == [] for e in body["effective_events"])
     assert body["status"]["ordering"]["state"] == "ok"
@@ -429,13 +439,13 @@ def test_entity_search_requires_book_read_permission(book_with_plotlines, app):
 def test_a_thread_can_be_reordered_and_the_problem_goes_away(book_with_plotlines):
     broken = book_with_plotlines.put(
         f"/books/{BOOK}/plotlines/knights-road",
-        json={"events": ["coronation", "aldric-departs"], "goals": ["Deliver the Seal"]},
+        json={"events": ["coronation", "aldric-departs"], "goals": ["seal"]},
     ).get_json()
     assert broken["status"]["ordering"]["state"] == "conflicted"
 
     fixed = book_with_plotlines.put(
         f"/books/{BOOK}/plotlines/knights-road",
-        json={"events": ["aldric-departs", "coronation"], "goals": ["Deliver the Seal"]},
+        json={"events": ["aldric-departs", "coronation"], "goals": ["seal"]},
         headers={"If-Match": str(broken["rev"])},
     )
     assert fixed.status_code == 200
@@ -445,11 +455,11 @@ def test_a_thread_can_be_reordered_and_the_problem_goes_away(book_with_plotlines
 def test_a_stale_edit_is_refused_rather_than_overwriting(book_with_plotlines):
     book_with_plotlines.put(
         f"/books/{BOOK}/plotlines/knights-road",
-        json={"events": ["coronation"], "goals": ["Deliver the Seal"]},
+        json={"events": ["coronation"], "goals": ["seal"]},
     )
     stale = book_with_plotlines.put(
         f"/books/{BOOK}/plotlines/knights-road",
-        json={"events": ["aldric-departs"], "goals": ["Deliver the Seal"]},
+        json={"events": ["aldric-departs"], "goals": ["seal"]},
         headers={"If-Match": "1"},
     )
     assert stale.status_code == 409
@@ -461,7 +471,7 @@ def test_expanded_events_mark_which_scenes_this_thread_owns(book_with_plotlines)
         f"/books/{BOOK}/plotlines/prelude",
         json={
             "events": ["aldric-departs"],
-            "goals": ["Set out"],
+            "goals": ["set-out"],
             "continues_into": "spys-shadow",
         },
     )
@@ -479,7 +489,7 @@ def test_plotline_status_counts_its_problems(book_with_plotlines):
 
     broken = book_with_plotlines.put(
         f"/books/{BOOK}/plotlines/knights-road",
-        json={"events": ["coronation", "aldric-departs"], "goals": ["Deliver the Seal"]},
+        json={"events": ["coronation", "aldric-departs"], "goals": ["seal"]},
     ).get_json()
     # One problem the writer would recognise as one, though both scenes are marked.
     assert broken["status"]["conflicts"] == 1
@@ -558,7 +568,7 @@ def test_findings_hand_over_the_articles_they_name(book_with_plotlines):
     book_with_plotlines.put(
         f"/books/{BOOK}/plotlines/knights-road",
         json={"events": ["aldric-departs", "quay-sighting", "coronation"],
-              "goals": ["Deliver the Seal"]},
+              "goals": ["seal"]},
     )
     body = book_with_plotlines.get(
         f"/books/{BOOK}/plotlines/knights-road?expand=events"
@@ -580,7 +590,7 @@ def test_the_scene_a_finding_names_uses_its_own_title_not_its_id(book_with_plotl
     # only Akasha articles are left as ids for the client to look up.
     book_with_plotlines.put(
         f"/books/{BOOK}/plotlines/knights-road",
-        json={"events": ["coronation", "aldric-departs"], "goals": ["Deliver the Seal"]},
+        json={"events": ["coronation", "aldric-departs"], "goals": ["seal"]},
     )
     body = book_with_plotlines.get(
         f"/books/{BOOK}/plotlines/knights-road?expand=events"
@@ -595,7 +605,7 @@ def test_the_table_and_the_plotline_view_agree_about_a_thread(book_with_plotline
     # table say 1 and the thread itself say 2.
     book_with_plotlines.put(
         f"/books/{BOOK}/plotlines/knights-road",
-        json={"events": ["coronation", "aldric-departs"], "goals": ["Deliver the Seal"]},
+        json={"events": ["coronation", "aldric-departs"], "goals": ["seal"]},
     )
     _event(book_with_plotlines, "quay-sighting", "emberport", 5, 15, title="The Quay Sighting")
     rows = book_with_plotlines.get(f"/books/{BOOK}/ui/plotlines").get_json()["plotlines"]
@@ -623,7 +633,7 @@ def test_the_report_gathers_problems_from_every_thread(book_with_plotlines):
     # spy is put in two places at once.
     book_with_plotlines.put(
         f"/books/{BOOK}/plotlines/knights-road",
-        json={"events": ["coronation", "aldric-departs"], "goals": ["Deliver the Seal"]},
+        json={"events": ["coronation", "aldric-departs"], "goals": ["seal"]},
     )
     # The harbour exchange puts aldric at emberport 20-30; this puts him at
     # highkeep over the same hours.
@@ -631,7 +641,7 @@ def test_the_report_gathers_problems_from_every_thread(book_with_plotlines):
     book_with_plotlines.put(
         f"/books/{BOOK}/plotlines/spys-shadow",
         json={"events": ["harbor-exchange", "quay-sighting", "coronation"],
-              "goals": ["Infiltrate"]},
+              "goals": ["infiltrate"]},
     )
     body = _issues(book_with_plotlines)
     assert "ORDERING_VIOLATION" in _codes(body["problems"])
@@ -645,7 +655,7 @@ def test_the_report_says_which_threads_a_problem_lands_on(book_with_plotlines):
     _event(book_with_plotlines, "quay-sighting", "emberport", 45, 55, title="The Quay Sighting")
     book_with_plotlines.put(
         f"/books/{BOOK}/plotlines/knights-road",
-        json={"title": "The Knight's Road", "goals": ["Deliver the Seal"],
+        json={"title": "The Knight's Road", "goals": ["seal"],
               "events": ["aldric-departs", "quay-sighting", "coronation"]},
     )
     body = _issues(book_with_plotlines)
@@ -662,7 +672,7 @@ def test_the_report_says_which_threads_a_problem_lands_on(book_with_plotlines):
 def test_the_report_names_the_scene_a_message_is_about(book_with_plotlines):
     book_with_plotlines.put(
         f"/books/{BOOK}/plotlines/knights-road",
-        json={"events": ["coronation", "aldric-departs"], "goals": ["Deliver the Seal"]},
+        json={"events": ["coronation", "aldric-departs"], "goals": ["seal"]},
     )
     issue = next(
         i for g in _issues(book_with_plotlines)["problems"] for i in g["issues"]
@@ -700,7 +710,7 @@ def _undated(client, event_id, title):
 
 def _thread(client, events):
     return client.put(f"/books/{BOOK}/plotlines/knights-road", json={
-        "title": "The Knight's Road", "goals": ["Deliver the Seal"], "events": events,
+        "title": "The Knight's Road", "goals": ["seal"], "events": events,
     })
 
 
@@ -790,11 +800,17 @@ def test_an_undated_scene_is_a_note_rather_than_a_problem(book_with_plotlines):
     book_with_plotlines.put(
         f"/books/{BOOK}/plotlines/knights-road",
         json={"events": ["aldric-departs", "the-vigil", "coronation"],
-              "goals": ["Deliver the Seal"]},
+              "goals": ["seal"]},
     )
     body = _issues(book_with_plotlines)
     assert _codes(body["problems"]) == []
-    assert _codes(body["notes"]) == ["UNSCHEDULED"]
+    # The goal notes come from the fixture's three goals -- none of them anchored
+    # to a scene yet, one of them pursued by nobody. Notes, all of them: the
+    # point of this test is that a book mid-draft has plenty to say and nothing
+    # wrong with it.
+    assert _codes(body["notes"]) == [
+        "UNSCHEDULED", "GOAL_UNSERVED", *["GOAL_UNACHIEVED"] * 3,
+    ]
     assert body["summary"]["unscheduled"] == 1
 
 
@@ -810,7 +826,7 @@ def test_the_report_names_a_thread_that_stops_short_of_the_ending(book_with_plot
     book_with_plotlines.post(f"/books/{BOOK}/terminus/coronation")
     book_with_plotlines.put(
         f"/books/{BOOK}/plotlines/knights-road",
-        json={"events": ["aldric-departs"], "goals": ["Deliver the Seal"]},
+        json={"events": ["aldric-departs"], "goals": ["seal"]},
     )
     issue = next(
         i for g in _issues(book_with_plotlines)["problems"] for i in g["issues"]
@@ -838,7 +854,7 @@ def test_the_rollup_agrees_with_the_issues_on_the_page(book_with_plotlines):
     book_with_plotlines.post(f"/books/{BOOK}/terminus/coronation")
     book_with_plotlines.put(
         f"/books/{BOOK}/plotlines/knights-road",
-        json={"events": ["coronation", "aldric-departs"], "goals": ["Deliver the Seal"]},
+        json={"events": ["coronation", "aldric-departs"], "goals": ["seal"]},
     )
     body = _issues(book_with_plotlines)
     named = {}
@@ -862,7 +878,7 @@ def test_the_report_and_the_table_agree_about_a_thread(book_with_plotlines):
     book_with_plotlines.put(
         f"/books/{BOOK}/plotlines/knights-road",
         json={"events": ["coronation", "aldric-departs", "quay-sighting"],
-              "goals": ["Deliver the Seal"]},
+              "goals": ["seal"]},
     )
     body = _issues(book_with_plotlines)
     whole_thread = {"TERMINUS_VIOLATION", "EMPTY_PLOTLINE", "NO_TERMINUS"}
@@ -885,7 +901,7 @@ def test_the_report_is_read_through_the_books_calendar(calendared):
     calendared.put(
         f"/books/{BOOK}/plotlines/knights-road",
         json={"events": ["aldric-departs", "the-vigil", "coronation"],
-              "goals": ["Deliver the Seal"]},
+              "goals": ["seal"]},
     )
     note = next(
         i for g in _issues(calendared)["notes"] for i in g["issues"]

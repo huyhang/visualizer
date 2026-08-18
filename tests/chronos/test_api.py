@@ -199,7 +199,7 @@ def test_a_plotlines_overview_is_stored_and_read_back(seeded, client):
     client.post(f"/books/{BOOK}/events/a", json=_event())
     resp = client.post(
         f"/books/{BOOK}/plotlines/knights",
-        json={"events": ["a"], "goals": ["g"], "overview": prose},
+        json={"events": ["a"], "goals": [], "overview": prose},
     )
     assert resp.status_code == 201
     assert client.get(f"/books/{BOOK}/plotlines/knights").get_json()["overview"] == prose
@@ -225,7 +225,7 @@ def test_a_partial_put_erases_the_overview(seeded, client, kind):
     if kind == "book":
         url, keep = f"/books/{BOOK}", {"title": "T"}
     else:
-        url, keep = f"/books/{BOOK}/plotlines/p", {"events": ["a"], "goals": ["g"]}
+        url, keep = f"/books/{BOOK}/plotlines/p", {"events": ["a"], "goals": []}
         client.post(url, json=keep)
     client.put(url, json={**keep, "overview": "Worth keeping."})
 
@@ -312,9 +312,9 @@ def _build_converging_story(client):
     for eid, s, e in [("a", 0, 10), ("b", 0, 10), ("m", 20, 30), ("t", 40, 50)]:
         client.post(f"/books/{BOOK}/events/{eid}", json=_event("highkeep", s, e))
     client.post(f"/books/{BOOK}/plotlines/knights",
-                json={"events": ["a", "m", "t"], "goals": ["g"]})
+                json={"events": ["a", "m", "t"], "goals": []})
     client.post(f"/books/{BOOK}/plotlines/spies",
-                json={"events": ["b", "m", "t"], "goals": ["g"]})
+                json={"events": ["b", "m", "t"], "goals": []})
     client.post(f"/books/{BOOK}/terminus/t")
 
 
@@ -340,7 +340,7 @@ def test_expanded_summary_carries_structured_label_parts(seeded, client):
     })
     client.post(f"/books/{BOOK}/events/meet", json=_event("emberport", 200, 210))
     client.post(f"/books/{BOOK}/events/soon", json={"location": ref("emberport", "locations").to_dict()})
-    client.post(f"/books/{BOOK}/plotlines/pl", json={"events": ["meet", "soon"], "goals": ["g"]})
+    client.post(f"/books/{BOOK}/plotlines/pl", json={"events": ["meet", "soon"], "goals": []})
     events = {e["id"]: e for e in
               client.get(f"/books/{BOOK}/plotlines/pl?expand=events").get_json()["effective_events"]}
     # Scheduled event: coarse-to-fine components straight from the codec.
@@ -375,9 +375,9 @@ def test_graph_lanes_record_stored_and_resolved_paths(seeded, client):
     _make_book(client)
     for eid, s, e in [("a", 0, 10), ("m", 20, 30), ("t", 40, 50)]:
         client.post(f"/books/{BOOK}/events/{eid}", json=_event("highkeep", s, e))
-    client.post(f"/books/{BOOK}/plotlines/trunk", json={"events": ["m", "t"], "goals": ["g"]})
+    client.post(f"/books/{BOOK}/plotlines/trunk", json={"events": ["m", "t"], "goals": []})
     client.post(f"/books/{BOOK}/plotlines/knights",
-                json={"title": "The Knight's Road", "events": ["a"], "goals": ["g"],
+                json={"title": "The Knight's Road", "events": ["a"], "goals": [],
                       "continues_into": "trunk"})
     client.post(f"/books/{BOOK}/terminus/t")
     lanes = {p["id"]: p for p in client.get(f"/books/{BOOK}/graph").get_json()["plotlines"]}
@@ -392,9 +392,9 @@ def test_a_thread_may_join_its_continuation_partway_down(seeded, client):
     _make_book(client)
     for eid, s, e in [("a", 0, 10), ("m", 20, 30), ("t", 40, 50)]:
         client.post(f"/books/{BOOK}/events/{eid}", json=_event("highkeep", s, e))
-    client.post(f"/books/{BOOK}/plotlines/trunk", json={"events": ["m", "t"], "goals": ["g"]})
+    client.post(f"/books/{BOOK}/plotlines/trunk", json={"events": ["m", "t"], "goals": []})
     resp = client.post(f"/books/{BOOK}/plotlines/late",
-                       json={"events": ["a"], "goals": ["g"],
+                       json={"events": ["a"], "goals": [],
                              "continues_into": "trunk", "continues_into_at": "t"})
     assert resp.status_code == 201
     body = resp.get_json()
@@ -416,9 +416,9 @@ def test_joining_at_a_scene_off_the_targets_path_is_refused(seeded, client):
     _make_book(client)
     for eid, s, e in [("a", 0, 10), ("m", 20, 30), ("t", 40, 50)]:
         client.post(f"/books/{BOOK}/events/{eid}", json=_event("highkeep", s, e))
-    client.post(f"/books/{BOOK}/plotlines/trunk", json={"events": ["t"], "goals": ["g"]})
+    client.post(f"/books/{BOOK}/plotlines/trunk", json={"events": ["t"], "goals": []})
     resp = client.post(f"/books/{BOOK}/plotlines/late",
-                       json={"events": ["a"], "goals": ["g"],
+                       json={"events": ["a"], "goals": [],
                              "continues_into": "trunk", "continues_into_at": "m"})
     assert resp.status_code == 400
     assert resp.get_json()["code"] == "INVALID_PLOTLINE"
@@ -429,8 +429,8 @@ def test_expanded_summary_marks_divergence(seeded, client):
     _make_book(client)
     for eid, s, e in [("start", 0, 10), ("x", 20, 30), ("y", 20, 30), ("t", 40, 50)]:
         client.post(f"/books/{BOOK}/events/{eid}", json=_event("highkeep", s, e))
-    client.post(f"/books/{BOOK}/plotlines/one", json={"events": ["start", "x", "t"], "goals": ["g"]})
-    client.post(f"/books/{BOOK}/plotlines/two", json={"events": ["start", "y", "t"], "goals": ["g"]})
+    client.post(f"/books/{BOOK}/plotlines/one", json={"events": ["start", "x", "t"], "goals": []})
+    client.post(f"/books/{BOOK}/plotlines/two", json={"events": ["start", "y", "t"], "goals": []})
     client.post(f"/books/{BOOK}/terminus/t")
     body = client.get(f"/books/{BOOK}/plotlines/one?expand=events").get_json()
     start = next(e for e in body["effective_events"] if e["id"] == "start")

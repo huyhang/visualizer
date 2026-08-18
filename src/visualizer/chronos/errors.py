@@ -70,6 +70,30 @@ class InvalidCalendar(ChronosError):
     code = "INVALID_CALENDAR"
 
 
+class InvalidGoal(ChronosError):
+    """Raised when a goal payload is malformed, or names something absent.
+
+    Covers the referential half too -- a dependency, or an achieving scene, that
+    is not in this book -- for the same reason ``InvalidPlotline`` covers an
+    unknown event: the payload describes a thing that cannot exist.
+    """
+
+    status_code = 400
+    code = "INVALID_GOAL"
+
+
+class GoalCycle(ChronosError):
+    """Raised when ``depends_on`` would make a chain of goals loop.
+
+    Structural, like ``PlotlineCycle``: a goal that must be met before itself
+    can never be met, and every later read would have to describe that instead
+    of the story.
+    """
+
+    status_code = 422
+    code = "GOAL_CYCLE"
+
+
 class PlotlineCycle(ChronosError):
     """Raised when ``continues_into`` would make a plotline chain loop.
 
@@ -106,6 +130,11 @@ class EventNotFound(ChronosError):
     code = "EVENT_NOT_FOUND"
 
 
+class GoalNotFound(ChronosError):
+    status_code = 404
+    code = "GOAL_NOT_FOUND"
+
+
 class CalendarNotFound(ChronosError):
     """Raised for a library calendar that does not exist, and for a read asking
     to be shown through a calendar the book has not attached."""
@@ -136,6 +165,13 @@ class PlotlineInUse(ChronosError):
 
     status_code = 409
     code = "PLOTLINE_IN_USE"
+
+
+class GoalInUse(ChronosError):
+    """Raised when deleting a goal that threads serve or goals depend on."""
+
+    status_code = 409
+    code = "GOAL_IN_USE"
 
 
 class TerminusInUse(ChronosError):

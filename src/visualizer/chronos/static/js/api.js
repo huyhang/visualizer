@@ -46,6 +46,7 @@ async function request(method, url, { body, ifMatch } = {}) {
 const bookPath = (b) => `/books/${enc(b)}`;
 const plPath = (b, p) => `${bookPath(b)}/plotlines/${enc(p)}`;
 const evPath = (b, e) => `${bookPath(b)}/events/${enc(e)}`;
+const goalPath = (b, g) => `${bookPath(b)}/goals/${enc(g)}`;
 
 const calPath = (o, c) => `/calendars/${enc(o)}/${enc(c)}`;
 
@@ -137,6 +138,32 @@ export const api = {
   // (TERMINUS_IN_USE) — designate a new ending first.
   deleteEvent: (book, id, rev, { detach } = {}) =>
     request("DELETE", evPath(book, id) + (detach ? "?detach=true" : ""), { ifMatch: rev }),
+
+  // -- goals -------------------------------------------------------------
+  //
+  // What the book is trying to bring about. Book-scoped, like scenes and
+  // threads: a goal's dependencies, the threads pursuing it and the scene that
+  // delivers it are all inside one book.
+
+  // Every goal at once, unpaginated — the dependency diagram is only readable
+  // whole, and each goal comes back already read against the others (its
+  // dependencies named, its depth in the graph, what is wrong with it). So the
+  // list and the diagram are one request, and cannot disagree.
+  listGoals: (book, { calendar } = {}) =>
+    request("GET", `${bookPath(book)}/goals${viewQuery(calendar)}`),
+
+  // No `getGoal` here on purpose: the listing above already returns each goal
+  // in full, read against the rest of the book, so a second call for one of
+  // them would ask the server to do the same work again for less. The route
+  // exists for scripts (see ui-api-gaps.md).
+  createGoal: (book, id, body) => request("POST", goalPath(book, id), { body }),
+  updateGoal: (book, id, body, rev) =>
+    request("PUT", goalPath(book, id), { body, ifMatch: rev }),
+  // `detach` first removes the goal from every thread serving it and every goal
+  // depending on it; without it the API refuses with GOAL_IN_USE and names
+  // them, which is what the caller shows before asking again.
+  deleteGoal: (book, id, rev, { detach } = {}) =>
+    request("DELETE", goalPath(book, id) + (detach ? "?detach=true" : ""), { ifMatch: rev }),
 
   // The whole book's story graph: nodes (with timing + role flags), plotline
   // lanes, and precedence edges tagged by plotline. Drives the connected-plots

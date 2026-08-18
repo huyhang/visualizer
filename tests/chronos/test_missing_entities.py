@@ -152,8 +152,9 @@ def linked_client(linked_app, doc_store):
         "characters": [{"database": "ember-pact", "collection": "characters", "id": "aldric"}],
         "start_tick": 0, "end_tick": 10,
     })
+    c.post("/books/ember-pact/goals/the-pact", json={"title": "Reach the pact"})
     c.post("/books/ember-pact/plotlines/main", json={
-        "goals": ["reach the pact"], "events": ["the-meeting"],
+        "goals": ["the-pact"], "events": ["the-meeting"],
     })
     # Without a terminus every thread fails convergence, and the book would be
     # conflicted before this check had anything to say.

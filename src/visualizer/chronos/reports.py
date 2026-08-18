@@ -20,9 +20,11 @@ from dataclasses import dataclass, field
 from .book_rules import ConvergenceReport, validate_convergence
 from .conflicts import Conflict, all_conflicts
 from .continuation import effective_paths
-from .models import EntityRef, Event, Plotline
+from .goal_rules import goal_findings
+from .models import EntityRef, Event, Goal, Plotline
 from .ordering import Violation, validate_order
 from .scheduling import Window, unscheduled_windows
+from .severity import CONFLICT
 
 
 @dataclass
@@ -86,11 +88,25 @@ class BookReport:
     convergence: ConvergenceReport | None = None
     unscheduled: dict[str, Window] = field(default_factory=dict)
     missing_entities: list[MissingEntity] = field(default_factory=list)
+    # Everything ``goal_rules`` has to say about the book's goals, notes
+    # included. Kept whole rather than filtered to the faults so ``/validate``
+    # can list them all, exactly as it lists unscheduled scenes.
+    goal_findings: list = field(default_factory=list)
 
     @property
     def impossible_windows(self) -> dict[str, Window]:
         """Unscheduled scenes their neighbours leave no room for."""
         return {eid: w for eid, w in self.unscheduled.items() if w.impossible}
+
+    @property
+    def goal_conflicts(self) -> list:
+        """The goal findings that are contradictions rather than draft states.
+
+        Most goal findings are notes -- nobody is pursuing it yet, no scene
+        delivers it yet -- and counting those would leave every book in progress
+        red, the same trap an unscheduled scene would spring.
+        """
+        return [f for f in self.goal_findings if f.severity == CONFLICT]
 
     @property
     def ok(self) -> bool:
@@ -106,6 +122,7 @@ class BookReport:
             and not self.ordering
             and not self.impossible_windows
             and not self.missing_entities
+            and not self.goal_conflicts
             and (self.convergence is None or self.convergence.ok)
         )
 
@@ -127,6 +144,7 @@ def build_report(
     plotlines: list[Plotline],
     terminus: str | None,
     missing_refs: Iterable[EntityRef] = (),
+    goals: Iterable[Goal] = (),
 ) -> BookReport:
     """Compose every whole-book check.
 
@@ -134,6 +152,11 @@ def build_report(
     whether an Akasha article still exists is I/O — so the caller resolves it and
     passes the answer in. Defaulting to "none reported" keeps the pure checks
     callable on their own, which is how they are unit tested.
+
+    ``goals`` defaults to none for the same reason, and is judged here rather
+    than only in the reader's report so that one thing decides a book's verdict.
+    A goal contradiction that reached the report but not this function would
+    give a book a card saying ``consistent`` above a page listing its faults.
     """
     by_id = {e.id: e for e in events}
     paths = effective_paths(plotlines)
@@ -148,4 +171,5 @@ def build_report(
         convergence=validate_convergence(paths, terminus),
         unscheduled=unscheduled_windows(events, paths),
         missing_entities=dangling_references(events, missing_refs),
+        goal_findings=goal_findings(goals, plotlines, by_id, paths),
     )
