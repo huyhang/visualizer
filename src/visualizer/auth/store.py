@@ -211,6 +211,15 @@ class AuthStore:
         """Return every grant held by ``username`` in the public shape."""
         return [self._public_grant(g) for g in self._grants.find({"username": username})]
 
+    def all_grants(self) -> list[dict]:
+        """Every grant in the store, in the public shape.
+
+        One query for the whole graph. Used by the storage accounting sweep,
+        which needs to know who owns what across every resource at once and
+        would otherwise ask per user.
+        """
+        return [self._public_grant(g) for g in self._grants.find()]
+
     def grants_on(
         self,
         database: str | None,

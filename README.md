@@ -70,10 +70,39 @@ docker compose -f docker/docker-compose.nas.yml up --build -d
   threads, see where they contradict each other, and reorder them.
 - **http://localhost:5002/health** — akasha liveness;
   **/timeline/health** — chronos liveness.
+- **http://localhost:5002/admin/observability** — administrators only: NAS
+  capacity, per-writer usage and API health. See **Observability** below.
 
 Each service's README documents its own configuration and API. For a NAS
 install — including HTTPS, updating to a new commit, and backups — see
 [Deploy on a Synology NAS](docs/synology-deployment.md).
+
+### Observability
+
+Because the stack runs on a NAS, the admin console answers one question up
+front: **how long until the volume fills, and who is filling it.** No extra
+containers and no new dependencies — the data lives in a reserved `_ops`
+database beside `_auth` and `_chronos`.
+
+- **Capacity** — free disk, memory and MongoDB's own footprint, plus a
+  projected fill date from the observed growth rate. A banner appears in the
+  admin console when a threshold is crossed.
+- **Per-writer usage** — storage is charged to the owner for the current
+  document and to each author for the version snapshots they wrote, so the two
+  columns add up to exactly what is on disk. Shown alongside request counts,
+  p95 latency and server errors.
+- **API health** — hourly p50–p95 latency and errors per hour, per route, with
+  a table view of every plotted value and a log of recent slow or failed
+  requests.
+
+Nothing is measured inside a request: handlers only increment counters in
+memory, and a background thread writes hourly totals every few minutes.
+Requests are labelled with Flask *route templates*, never real paths, so
+document ids never reach telemetry.
+
+Pause it from the page itself — that stops recording, the storage sweep and the
+capacity sample; history already collected is kept and expires on its own.
+`MONITORING_ENABLED=false` in `docker/.env` disables it at boot instead.
 
 > Before exposing any of this beyond localhost, read [`SECURITY.md`](SECURITY.md)
 > — it lists what protections exist and what hardening is still required.

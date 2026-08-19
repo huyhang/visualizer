@@ -146,6 +146,26 @@ this doc and the code disagree, trust the code and fix the doc.
 - **Soft deletes** keep an auditable tombstone + history rather than destroying
   data.
 
+### Observability
+
+- **Administrators only.** `/admin/observability` and its pause switch use the
+  same `@admin_required` guard and CSRF-protected forms as the rest of the admin
+  console. Nothing is exempted and there is no second authorization path.
+- **Route templates, never paths.** Requests are labelled
+  `/databases/<database>/…/<doc_id>`, so document ids, article names and query
+  strings never enter telemetry. An unmatched request is recorded as
+  `<unmatched>` rather than its URL.
+- **No bodies, no credentials.** Only counts, latency buckets, byte totals,
+  status classes and the acting username are stored. Failed-login usernames are
+  not recorded.
+- **Bounded by construction.** Hourly rows and daily storage rows carry a TTL;
+  problem detail is trimmed to the newest 500 rows; distinct-route tracking is
+  capped in memory and the excess is visibly grouped as `<overflow>` rather
+  than silently dropped.
+- **Cannot break a request.** Observability performs no I/O on the request
+  path, and a failure to read the durable switch holds the last known value
+  instead of propagating.
+
 ---
 
 ## Required hardening for non-local deployment

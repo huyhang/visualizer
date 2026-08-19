@@ -59,6 +59,10 @@ the admin grants access.
 | `MONGO_URI` | MongoDB connection string | `mongodb://mongo:27017` |
 | `VERSIONS_KEEP` | max version snapshots kept per article (older pruned) | `20` |
 | `SESSION_COOKIE_SECURE` | mark the session cookie HTTPS-only (enable behind an HTTPS reverse proxy) | `false` |
+| `MONITORING_ENABLED` | record per-writer usage, latency and errors at boot (the admin page can pause it at runtime) | `true` |
+| `MONITORING_DATA_PATH` | path whose free space represents the NAS data volume | `/data` |
+| `MONITORING_FLUSH_SECONDS` | how often accumulated telemetry is written out (minimum 10) | `300` |
+| `MONITORING_SCAN_SECONDS` | how often storage attribution and host capacity are re-measured (minimum 60) | `3600` |
 
 Useful commands: `docker compose -f docker/docker-compose.nas.yml logs -f
 Akasha` (logs) and `... down` (stop; add `-v` to also wipe the data
@@ -463,6 +467,55 @@ authenticated session (except `/health`).
 
 Writes accept an optional `If-Match: "<rev>"` header (or `?_rev=<rev>`) for
 optimistic concurrency; a stale value returns `409`.
+
+---
+
+## Observability
+
+`/admin/observability` (administrators only) answers three questions: how long
+the NAS volume lasts, who is filling it, and whether the API is healthy. There
+is no extra container and no new dependency — the data lives in a reserved
+`_ops` database beside `_auth` and `_chronos`, and expires on its own.
+
+**Storage is charged twice over, and the halves reconcile.** The owner of a
+document is charged for its current body; each author is charged for the version
+snapshots they wrote. With twenty snapshots retained per article, history is
+usually most of the bytes, so charging all of it to the owner would credit the
+growth to the wrong person. Owns plus authored always equals what is on disk.
+
+Ownership means holding `delete`. Where several people do, a self-granted
+delete wins — that is the auto-grant a creator receives — and remaining ties
+break alphabetically so the answer is stable between runs. Failing that the
+charge falls to `created_by`, then to the first author, then to
+`(unattributed)`.
+
+**Nothing is measured inside a request.** Handlers increment counters in
+process memory behind a lock; a background thread writes hourly totals every
+`MONITORING_FLUSH_SECONDS` and re-measures storage and host capacity every
+`MONITORING_SCAN_SECONDS`. Requests are labelled with Flask route templates,
+never real paths, so document ids never reach telemetry. `/health` and static
+assets are excluded.
+
+| What | Kept |
+| --- | --- |
+| Hourly request totals — count, latency histogram, bytes, per route and writer | ~400 days, expired by a TTL index |
+| Daily storage attribution per writer | ~400 days, expired by a TTL index |
+| Slow (>1s) and failed requests, with route, writer, duration and error | newest 500 rows |
+| Host capacity — disk, memory, MongoDB size | latest sample only |
+
+Latency is stored as bucket counts rather than retained samples, so a
+percentile resolves to a bucket bound (`≤ 250 ms`) rather than an exact value.
+That is what makes the write a single atomic increment MongoDB can merge, so
+concurrent workers cannot lose each other's counts.
+
+Pausing from the page stops recording, the storage sweep and the capacity
+sample; collected history is kept and ages out normally. The switch is durable
+(`_ops.settings`), cached for thirty seconds so it costs no round trip per
+request, and fails safe — if it cannot be read, the last known value stands
+rather than an error reaching the request.
+
+The page has no client-side code and does not refresh itself. Reload it to
+update.
 
 ---
 

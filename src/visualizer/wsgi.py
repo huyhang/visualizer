@@ -24,6 +24,7 @@ from visualizer.auth import AuthStore
 from visualizer.chronos.app import create_app as create_chronos_app
 from visualizer.chronos.entity_gate import InProcessEntityGate
 from visualizer.chronos.store import CalendarStore, StoryStore
+from visualizer.observability import runtime as observability_runtime
 
 from .gateway import DEFAULT_CHRONOS_PREFIX, combine
 
@@ -33,6 +34,9 @@ _doc_store = DocumentStore(_client, versions_keep=get_versions_keep())
 _secret = get_secret_key()
 _secure = get_secure_cookies()
 _ratelimit = get_rate_limit_storage_uri()
+# Both halves share one recorder and one background flusher: they are the
+# same process, and the service label on each sample keeps them apart.
+_observability = observability_runtime.start(_client, _auth_store)
 
 # Behind one origin the header switcher's links are relative paths, not
 # cross-origin URLs. Overridable, but these are the right defaults here.
@@ -47,6 +51,7 @@ _akasha_app = create_akasha_app(
     rate_limit_storage_uri=_ratelimit,
     akasha_url=_akasha_url,
     chronos_url=_chronos_url,
+    observability=_observability,
 )
 _chronos_app = create_chronos_app(
     StoryStore(_client),
@@ -58,6 +63,7 @@ _chronos_app = create_chronos_app(
     rate_limit_storage_uri=_ratelimit,
     akasha_url=_akasha_url,
     chronos_url=_chronos_url,
+    observability=_observability,
 )
 
 # One WSGI callable for gunicorn: akasha at "/", chronos at "/timeline".

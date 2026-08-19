@@ -1,0 +1,365 @@
+{% extends "base.html" %}
+{% block title %}Observability — Akasha{% endblock %}
+{% block content %}
+<style>
+  /* Two chart steps from the indigo ramp base.html already defines. Dark is
+     selected, not flipped: on a dark surface the *lighter* step is the primary
+     one. Both pairs were checked with the palette validator -- single hue,
+     monotone lightness, and the lighter end clears the surface. */
+  :root, [data-theme="light"] { --series-1: #4f46e5; --series-2: #818cf8; }
+  [data-theme="dark"]         { --series-1: #a5b4fc; --series-2: #4338ca; }
+
+  .filter-row { display: flex; gap: .35rem; align-items: center; margin: 0 0 1.5rem; }
+  .filter-row a {
+    padding: .35rem .8rem; border-radius: 999px; font-size: .85rem; font-weight: 600;
+    color: var(--muted); border: 1px solid var(--border);
+  }
+  .filter-row a:hover { background: var(--surface-2); text-decoration: none; }
+  .filter-row a.active { background: var(--accent-soft); color: var(--accent-strong); border-color: transparent; }
+
+  .hero { margin: 0 0 1.4rem; }
+  .hero .value { font-size: 3rem; font-weight: 700; letter-spacing: -.03em; line-height: 1.1; }
+  .hero .caption { color: var(--muted); font-size: .9rem; }
+
+  .meter { margin-bottom: .85rem; }
+  .meter:last-child { margin-bottom: 0; }
+  .meter-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; font-size: .88rem; }
+  .meter-head .label { font-weight: 600; }
+  .meter-head .detail { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .meter-track { height: 8px; border-radius: 999px; margin-top: .3rem; background: var(--accent-soft); }
+  .meter-track.warn { background: var(--warn-soft); }
+  .meter-track.danger { background: var(--danger-soft); }
+  .meter-fill { height: 100%; border-radius: 999px; background: var(--accent); }
+  .meter-fill.warn { background: var(--warn); }
+  .meter-fill.danger { background: var(--danger); }
+
+  .legend { display: inline-flex; align-items: center; gap: .9rem; font-size: .8rem; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: .35rem; }
+  .legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .key-1 { background: var(--series-1); }
+  .key-2 { background: var(--series-2); }
+  .key-server { background: var(--danger); }
+  .key-client { background: var(--muted); }
+
+  /* A 2px gap in the surface colour separates the segments -- not a border. */
+  .stack { display: flex; height: 10px; border-radius: 3px; overflow: hidden; min-width: 3rem; }
+  .stack i { display: block; height: 100%; }
+  .stack i.owns { background: var(--series-1); }
+  .stack i.authored { background: var(--series-2); margin-left: 2px; }
+
+  .chart { margin-bottom: 1.6rem; }
+  .chart:last-child { margin-bottom: 0; }
+  .chart h3 { font-size: .95rem; margin: 0 0 .1rem; }
+  .chart-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin-bottom: .5rem; }
+  .chart svg { display: block; width: 100%; height: auto; }
+  .grid, .axis { stroke: var(--border); stroke-width: 1; }
+  .tick { fill: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+  .tick.end { fill: var(--text); font-weight: 600; }
+  .band { fill: var(--accent); opacity: .1; }
+  .series { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .dot { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+  .col-server { fill: var(--danger); }
+  .col-client { fill: var(--muted); }
+  .empty-plot { color: var(--muted); font-size: .88rem; padding: 1.5rem 0; }
+
+  details.twin { margin-top: .5rem; }
+  details.twin > summary { cursor: pointer; color: var(--accent); font-size: .82rem; font-weight: 600; }
+  details.twin > summary:hover { text-decoration: underline; }
+  details.twin .table-wrap { margin-top: .6rem; max-height: 18rem; overflow: auto; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+</style>
+
+<div class="page-header">
+  <h1>Observability</h1>
+  <p>Capacity, per-writer usage and API health. Administrators only.</p>
+</div>
+
+<div class="filter-row" role="navigation" aria-label="Time range">
+  {% for name in windows %}
+  <a href="{{ url_for('observability_page', window=name) }}"
+     {% if name == overview.window %}class="active" aria-current="true"{% endif %}>{{ name }}</a>
+  {% endfor %}
+  <span class="muted" style="margin-left:auto">{{ "{:,}".format(overview.total_requests) }} requests in range</span>
+</div>
+
+{% for warning in overview.banners %}
+<div class="error" role="status">⚠ {{ warning }}</div>
+{% endfor %}
+
+{% if overview.truncated %}
+<div class="error" role="status">
+  ⚠ Distinct-route tracking hit its cap this period; the excess is grouped under
+  <code>&lt;overflow&gt;</code>.
+</div>
+{% endif %}
+
+{% if not monitoring_enabled %}
+<div class="notice" role="status">
+  Monitoring is paused. Existing history is kept and still shown below; nothing new is being recorded.
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-head">
+    <h2>Capacity</h2>
+    <p>When the volume runs out, at the growth observed so far.</p>
+  </div>
+  <div class="hero">
+    <div class="value">{{ overview.hero }}</div>
+    <div class="caption">{{ overview.hero_detail }}</div>
+  </div>
+  {% for meter in overview.meters %}
+  <div class="meter">
+    <div class="meter-head">
+      <span class="label">{{ meter.label }}</span>
+      <span class="detail">{{ meter.detail }} · {{ meter.percent }}%</span>
+    </div>
+    <div class="meter-track {{ meter.severity }}"
+         role="img" aria-label="{{ meter.label }} {{ meter.percent }} percent used">
+      <div class="meter-fill {{ meter.severity }}" style="width: {{ meter.percent }}%"></div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Writers</h2>
+    <p>
+      Storage is charged to the owner for the current document and to each author
+      for the versions they wrote, so the two columns add up to what is on disk.
+    </p>
+    <p class="legend" style="margin-top:.5rem">
+      <span><i class="key-1"></i> owns</span>
+      <span><i class="key-2"></i> authored</span>
+    </p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Writer</th><th>Storage</th>
+          <th class="num">Owns</th><th class="num">Authored</th><th class="num">Total</th>
+          <th class="num">Requests</th><th class="num">p95</th><th class="num">5xx</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in overview.writers %}
+        <tr>
+          <td><strong>{{ row.writer }}</strong></td>
+          <td style="min-width:9rem">
+            {% set scale = overview.max_writer_total or 1 %}
+            <div class="stack" aria-hidden="true">
+              <i class="owns" style="width: {{ (100.0 * row.owns / scale) | round(1) }}%"></i>
+              <i class="authored" style="width: {{ (100.0 * row.authored / scale) | round(1) }}%"></i>
+            </div>
+          </td>
+          <td class="num">{{ row.owns_label }}</td>
+          <td class="num">{{ row.authored_label }}</td>
+          <td class="num"><strong>{{ row.total_label }}</strong></td>
+          <td class="num">{{ "{:,}".format(row.requests) }}</td>
+          <td class="num">{% if row.p95_ms %}≤ {{ row.p95_ms }} ms{% else %}—{% endif %}</td>
+          <td class="num">{{ row.errors or "—" }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="muted">No usage recorded yet. The first scan runs shortly after startup.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Routes</h2>
+    <p>Busiest endpoints in range, at most {{ route_limit }}. Paths are rule
+       templates, never real document ids.</p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Service</th><th>Route</th><th>Method</th>
+          <th class="num">Requests</th><th class="num">p95</th>
+          <th class="num">4xx</th><th class="num">5xx</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in overview.routes %}
+        <tr>
+          <td>{{ row.service }}</td>
+          <td><code>{{ row.route }}</code></td>
+          <td>{{ row.method }}</td>
+          <td class="num">{{ "{:,}".format(row.requests) }}</td>
+          <td class="num">{% if row.p95_ms %}≤ {{ row.p95_ms }} ms{% else %}—{% endif %}</td>
+          <td class="num">{{ row.client_errors or "—" }}</td>
+          <td class="num">{{ row.server_errors or "—" }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="muted">No requests recorded in this range.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>API health</h2>
+    <p>Hourly, across both services.</p>
+  </div>
+
+  {% set lat = overview.latency %}
+  <div class="chart">
+    <div class="chart-head">
+      <h3>Latency — p50 to p95 spread</h3>
+    </div>
+    {% if lat.empty %}
+    <p class="empty-plot">No requests recorded in this range.</p>
+    {% else %}
+    <svg viewBox="0 0 {{ lat.plot.width }} {{ lat.plot.height }}"
+         role="img" aria-label="Hourly request latency. Latest 95th percentile {{ lat.end.label if lat.end }}.">
+      {% for value, y in lat.gridlines %}
+      <line class="grid" x1="{{ lat.plot.pad_left }}" x2="{{ lat.plot.width - lat.plot.pad_right }}" y1="{{ y }}" y2="{{ y }}"/>
+      <text class="tick" x="{{ lat.plot.pad_left - 6 }}" y="{{ y + 3 }}" text-anchor="end">{{ value | round | int }}ms</text>
+      {% endfor %}
+      <line class="axis" x1="{{ lat.plot.pad_left }}" x2="{{ lat.plot.width - lat.plot.pad_right }}"
+            y1="{{ lat.plot.baseline }}" y2="{{ lat.plot.baseline }}"/>
+      <path class="band" d="{{ lat.band }}"/>
+      <path class="series" d="{{ lat.line }}"/>
+      {% if lat.end %}
+      <circle class="dot" cx="{{ lat.end.x }}" cy="{{ lat.end.y }}" r="4"/>
+      <text class="tick end" x="{{ lat.end.label_x }}" y="{{ lat.end.y + 3 }}">{{ lat.end.label }}</text>
+      {% endif %}
+      {% for tick in lat.ticks %}
+      <text class="tick" x="{{ tick.x }}" y="{{ lat.plot.height - 6 }}" text-anchor="middle">{{ tick.label }}</text>
+      {% endfor %}
+    </svg>
+    <details class="twin">
+      <summary>Show as table</summary>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Hour (UTC)</th><th class="num">p50</th><th class="num">p95</th></tr></thead>
+          <tbody>
+            {% for row in lat.rows %}
+            <tr>
+              <td>{{ row.hour.strftime("%Y-%m-%d %H:00") }}</td>
+              <td class="num">{% if row.p50 %}≤ {{ row.p50 }} ms{% else %}—{% endif %}</td>
+              <td class="num">≤ {{ row.p95 }} ms</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+    {% endif %}
+  </div>
+
+  {% set err = overview.errors %}
+  <div class="chart">
+    <div class="chart-head">
+      <h3>Errors per hour</h3>
+      <span class="legend">
+        <span><i class="key-server"></i> 5xx server</span>
+        <span><i class="key-client"></i> 4xx client</span>
+      </span>
+    </div>
+    {% if err.empty %}
+    <p class="empty-plot">No errors recorded in this range.</p>
+    {% else %}
+    <svg viewBox="0 0 {{ err.plot.width }} {{ err.plot.height }}"
+         role="img" aria-label="Client and server errors per hour.">
+      {% for value, y in err.gridlines %}
+      <line class="grid" x1="{{ err.plot.pad_left }}" x2="{{ err.plot.width - err.plot.pad_right }}" y1="{{ y }}" y2="{{ y }}"/>
+      <text class="tick" x="{{ err.plot.pad_left - 6 }}" y="{{ y + 3 }}" text-anchor="end">{{ value | round | int }}</text>
+      {% endfor %}
+      <line class="axis" x1="{{ err.plot.pad_left }}" x2="{{ err.plot.width - err.plot.pad_right }}"
+            y1="{{ err.plot.baseline }}" y2="{{ err.plot.baseline }}"/>
+      {% for col in err.client %}
+      <rect class="col-client" x="{{ col.x }}" y="{{ col.y }}" width="{{ col.width }}" height="{{ col.height }}" rx="2"/>
+      {% endfor %}
+      {% for col in err.server %}
+      <rect class="col-server" x="{{ col.x }}" y="{{ col.y }}" width="{{ col.width }}" height="{{ col.height }}" rx="2"/>
+      {% endfor %}
+      {% for tick in err.ticks %}
+      <text class="tick" x="{{ tick.x }}" y="{{ err.plot.height - 6 }}" text-anchor="middle">{{ tick.label }}</text>
+      {% endfor %}
+    </svg>
+    <details class="twin">
+      <summary>Show as table</summary>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Hour (UTC)</th><th class="num">4xx</th><th class="num">5xx</th></tr></thead>
+          <tbody>
+            {% for row in err.rows %}
+            <tr>
+              <td>{{ row.hour.strftime("%Y-%m-%d %H:00") }}</td>
+              <td class="num">{{ row.client or "—" }}</td>
+              <td class="num">{{ row.server or "—" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Recent problems</h2>
+    <p>Server errors and requests slower than a second, newest first.</p>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>When (UTC)</th><th>Service</th><th>Route</th>
+          <th>Writer</th><th class="num">Status</th><th class="num">Duration</th><th>Error</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in overview.problems %}
+        <tr>
+          <td>{{ row.at.strftime("%m-%d %H:%M:%S") }}</td>
+          <td>{{ row.service }}</td>
+          <td><code>{{ row.method }} {{ row.route }}</code></td>
+          <td>{{ row.writer }}</td>
+          <td class="num">{{ row.status }}</td>
+          <td class="num">{{ row.duration_ms | round | int }} ms</td>
+          <td>{{ row.error or "—" }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="muted">Nothing to report.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Monitoring</h2>
+    <p>
+      Pausing stops recording, the storage sweep and the capacity sample. History
+      already collected is kept and expires on its own.
+    </p>
+  </div>
+  <p>
+    Status:
+    {% if monitoring_enabled %}
+    <span class="tag on">running</span>
+    {% else %}
+    <span class="tag off">paused</span>
+    {% endif %}
+  </p>
+  <form method="post" action="{{ url_for('set_monitoring') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="enabled" value="{{ 'false' if monitoring_enabled else 'true' }}">
+    <button type="submit" class="secondary">
+      {{ 'Pause monitoring' if monitoring_enabled else 'Resume monitoring' }}
+    </button>
+  </form>
+</div>
+{% endblock %}

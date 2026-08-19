@@ -29,6 +29,18 @@
 </script>
 {% endif %}
 
+{% if observability_enabled %}
+<div class="card">
+  <div class="card-head">
+    <h2>Observability</h2>
+    <p>Capacity, per-writer usage and API health — and where to pause monitoring.</p>
+  </div>
+  <div class="btn-row">
+    <a class="btn secondary" href="{{ url_for('observability_page') }}">Open observability</a>
+  </div>
+</div>
+{% endif %}
+
 <div class="card">
   <div class="card-head">
     <h2>Registration</h2>

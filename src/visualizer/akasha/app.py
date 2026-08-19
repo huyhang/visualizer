@@ -50,6 +50,8 @@ from visualizer.auth import (
     validate_email,
     validate_password_strength,
 )
+from visualizer.observability import Observability
+from visualizer.observability.page import register_observability_page
 from visualizer.shared_assets import register_shared_assets
 
 from .browsing import (
@@ -94,6 +96,7 @@ def create_app(
     rate_limit_storage_uri: str = "memory://",
     akasha_url: str = "http://localhost:5002",
     chronos_url: str = "http://localhost:5003",
+    observability: Observability | None = None,
 ) -> Flask:
     app = Flask(__name__)
     # A secret key is required to sign session cookies. It must be supplied
@@ -131,6 +134,11 @@ def create_app(
     sharing.register_account_sharing_routes(app, auth_store, csrf, ACCOUNT_KINDS)
     _register_account_routes(app, auth_store, csrf, limiter)
     _register_admin_routes(app, auth_store)
+    if observability is not None:
+        observability.install(app, "akasha")
+        # Only this service renders the console, so only it needs the store.
+        if observability.store is not None:
+            register_observability_page(app, observability)
     _register_error_handlers(app)
     return app
 

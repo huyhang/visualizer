@@ -153,6 +153,35 @@ backups.
 
 ---
 
+## Observability
+
+`http://<nas>:5002/admin/observability` (administrators only) is where you find
+out whether the NAS needs more room. It leads with a projected fill date derived
+from observed growth, then breaks the usage down by writer, by route and by
+hour. No extra containers: the data sits in a reserved `_ops` database in the
+MongoDB you already run, and expires on its own.
+
+Free space is read from `MONITORING_DATA_PATH`, which the compose file points at
+`/data/mongo` — the `mongo-data` volume, mounted read-only into the app
+container purely so it can be measured. Pointing it anywhere else measures the
+wrong disk.
+
+Expect it to cost a few tens of megabytes a year. Requests are not measured
+individually: handlers only touch memory, and a background thread writes hourly
+totals every five minutes, so a busy hour is a handful of writes rather than one
+per request.
+
+**Pausing.** Use the button on the page. It stops recording, the hourly storage
+sweep and the capacity sample; history already collected is kept and ages out on
+its own. The setting is durable, so it survives a restart. To disable it before
+the first boot instead, set `MONITORING_ENABLED=false` in `docker/.env`.
+
+**Memory readings need Linux.** Disk, MongoDB size and everything else work
+anywhere; the memory meter reads `/proc/meminfo` and shows an em dash where that
+does not exist. On the NAS it does.
+
+---
+
 ## Where things live
 
 | What | Where |
@@ -163,3 +192,4 @@ backups.
 | Backups | wherever `VISUALIZER_BACKUP_DIR` points, default `/volume1/backups/visualizer` |
 | Containers | `visualizer-app-1`, `visualizer-mongo-1` |
 | Published port | `5002` → both services (akasha at `/`, chronos at `/timeline`) |
+| Observability data | Mongo `_ops` (`request_hours`, `storage_days`, `problems`, `capacity`, `settings`) |

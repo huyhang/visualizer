@@ -41,6 +41,17 @@ services:
       # only if a reverse proxy serves the services on different hosts/paths.
       AKASHA_URL: ${AKASHA_URL:-/}
       CHRONOS_URL: ${CHRONOS_URL:-/timeline}
+      # Observability: per-writer storage/latency/errors in the reserved `_ops`
+      # database, plus NAS capacity. Admin-only page at /admin/observability,
+      # pausable from there at runtime. `false` here disables it at boot.
+      MONITORING_ENABLED: ${MONITORING_ENABLED:-true}
+      # Free space is read from this path. It must be the volume MongoDB writes
+      # to, which is why mongo-data is mounted read-only below -- measuring the
+      # container's own filesystem would report the wrong disk entirely.
+      MONITORING_DATA_PATH: /data/mongo
+    volumes:
+      # Read-only, and only so the capacity sampler can call statvfs on it.
+      - mongo-data:/data/mongo:ro
     depends_on:
       mongo:
         condition: service_healthy

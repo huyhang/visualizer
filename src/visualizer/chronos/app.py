@@ -22,6 +22,7 @@ from visualizer.auth import (
 )
 from visualizer.auth.authz import ALL_PERMS, is_allowed, perm_for_method
 from visualizer.auth.errors import AuthError
+from visualizer.observability import Observability
 from visualizer.shared_assets import register_shared_assets
 
 from .entity_gate import EntityGate
@@ -69,6 +70,7 @@ def create_app(
     rate_limit_storage_uri: str = "memory://",
     akasha_url: str = "http://localhost:5002",
     chronos_url: str = "http://localhost:5003",
+    observability: Observability | None = None,
 ) -> Flask:
     if not secret_key:
         raise ValueError("create_app requires a non-empty secret_key.")
@@ -98,6 +100,8 @@ def create_app(
     _register_goal_routes(app, csrf, auth_store, goals)
     _register_calendar_routes(app, csrf, auth_store, calendars)
     _register_ui_routes(app, csrf, auth_store, visualizer)
+    if observability is not None:
+        observability.install(app, "chronos")
     _register_error_handler(app)
     return app
 

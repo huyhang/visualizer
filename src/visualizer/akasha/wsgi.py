@@ -8,6 +8,7 @@ becomes the administrator, and every account after it is a plain user.
 """
 
 from visualizer.auth import AuthStore
+from visualizer.observability import runtime as observability_runtime
 
 from .app import create_app
 from .config import (
@@ -23,6 +24,7 @@ from .store import DocumentStore
 
 _client = get_mongo_client()
 _auth_store = AuthStore(_client)
+_observability = observability_runtime.start(_client, _auth_store)
 
 app = create_app(
     DocumentStore(_client, versions_keep=get_versions_keep()),
@@ -32,6 +34,7 @@ app = create_app(
     rate_limit_storage_uri=get_rate_limit_storage_uri(),
     akasha_url=get_akasha_url(),
     chronos_url=get_chronos_url(),
+    observability=_observability,
 )
 
 
