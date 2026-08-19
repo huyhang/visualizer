@@ -98,12 +98,11 @@ def test_goals_are_listed_whole_for_the_diagram(book):
     # Each read against the others: depth for the layout, the reverse edge that
     # nothing stores, and the verdict.
     assert [g["depth"] for g in body["goals"]] == [0, 1]
+    # A name and whether it is met -- and no date. `required_by` is drawn as a
+    # bare chip, so dating every edge in the graph would put a formatted scene
+    # on the wire that no client reads (see `goal_ref` vs `dated_goal_ref`).
     assert body["goals"][0]["required_by"] == [
-        {
-            "id": "crown", "title": "crown", "achieved": False, "missing": False,
-            # Where it lands, so a chip can be dated wherever it is drawn.
-            "achieved_at": None, "achieved_scene": None,
-        }
+        {"id": "crown", "title": "crown", "achieved": False, "missing": False}
     ]
 
 
@@ -254,6 +253,17 @@ def test_a_goal_with_no_scene_says_so_on_the_chip_rather_than_going_quiet(book):
     _thread(book, "road", ["the-claim"], goals=["crown"])
     ref = book.get(f"/books/{BOOK}/plotlines/road").get_json()["goal_refs"][0]
     assert ref["achieved_at"] is None and ref["achieved_scene"] is None
+
+
+def test_the_lean_plotline_shape_stays_lean(book):
+    """Only `?expand=events` carries the scene summaries a goal badge rides on.
+    A field added to the expanded shape must not leak into the lean one, which
+    is what the table and the editor read -- they want ids, not a book."""
+    _goal(book, "crown", achieved_at="the-coronation")
+    _thread(book, "road", ["the-claim", "the-coronation"], goals=["crown"])
+    lean = book.get(f"/books/{BOOK}/plotlines/road").get_json()
+    assert lean["effective_events"] == ["the-claim", "the-coronation"]
+    assert all(isinstance(e, str) for e in lean["effective_events"])
 
 
 def test_the_graph_carries_the_books_goals_and_which_thread_pursues_each(book):

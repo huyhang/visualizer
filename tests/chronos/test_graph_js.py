@@ -1367,7 +1367,7 @@ def _with_goals(graph, lane_goals):
     }
 
 
-def _mapped(run_js, graph, selection, body):
+def _mapped(run_js, graph, selection, body, open_marks=()):
     """Draw the map the way storymap.js does, goals and all."""
     return run_js("""
       const slice = restrictTo(INPUT, SELECTION);
@@ -1376,16 +1376,22 @@ def _mapped(run_js, graph, selection, body):
       const model = applyPeriodGrouping(layoutGraph(dense, {}), {});
       const clicked = [];   // goals opened
       const toggles = [];   // rows opened
+      const folds = [];     // rows whose folded marks were asked to open
+      // `openMarks` is storymap.js's, not the renderer's -- the map rebuilds its
+      // rows, so the fold has to survive outside them.
+      const openMarks = new Set(OPEN_MARKS);
       const pane = diagram(model, {
         expanded: new Set(), cardFor: () => null, focusEvent: null,
         onToggleEvent: (n) => toggles.push(n.id), onToggleBand: (n) => toggles.push(n.id),
         goalsAt: placed.marks, onGoal: (id) => clicked.push(id),
+        openMarks, onToggleMarks: (id) => folds.push(id),
       });
       const strip = stripFor(placed, slice.plotlines);
       const marked = () => find(pane, "sg-row")
         .filter((r) => find(r, "sg-goal").length)
         .map((r) => ({ row: text(r), goals: find(r, "sg-goal").map(text) }));
-    """.replace("SELECTION", json.dumps(selection)) + body, graph, dom=True)
+    """.replace("SELECTION", json.dumps(selection))
+       .replace("OPEN_MARKS", json.dumps(list(open_marks))) + body, graph, dom=True)
 
 
 def test_a_goal_is_drawn_on_the_row_that_delivers_it(run_js, graph):
@@ -1551,3 +1557,74 @@ def test_a_mark_opens_its_goal_without_opening_the_row(run_js, graph):
 
     assert got["goals"] == ["crown"]
     assert got["rows"] == [], "opening a goal also toggled the scene under it"
+
+
+# -- the long tail folds ------------------------------------------------------
+#
+# Wrapping is right for two marks and wrong for eight: a scene that pays off
+# half the book turns its row into a paragraph, and on the map that paragraph is
+# height the layout has to reserve. The rest goes behind a "+N more".
+
+_CROWDED = [
+    {"id": f"g{i}", "title": f"Goal {i}", "missing": False, "achieved": True,
+     "achieved_at": "j1", "achieved_scene": {"id": "j1", "title": "J1", "when": "40"}}
+    for i in range(1, 5)
+]
+
+
+def _crowded(graph):
+    return {
+        **graph, "goals": _CROWDED,
+        "plotlines": [{**p, "goals": [g["id"] for g in _CROWDED]} for p in graph["plotlines"]],
+    }
+
+
+def test_a_map_row_draws_two_marks_and_folds_the_rest(run_js, graph):
+    got = _mapped(run_js, _crowded(graph), ["alpha", "beta"], """
+      const row = find(pane, "sg-row").filter((r) => find(r, "sg-goal").length)[0];
+      emit({
+        marks: find(row, "sg-goal").length,
+        hidden: find(row, "sg-goal").filter((c) => c.hidden === true).length,
+        more: find(row, "more").map(text),
+      });
+    """)
+
+    assert got["marks"] == 4          # all four are built...
+    assert got["hidden"] == 2         # ...but two start folded away
+    assert got["more"] == ["+2 more"]
+
+
+def test_the_fold_reports_out_rather_than_opening_itself(run_js, graph):
+    """The map rebuilds its rows, and revealing a mark can be what triggers the
+    rebuild -- so a fold that opened itself in the markup would be closed again
+    a frame later. It asks storymap.js, which owns the state across redraws."""
+    got = _mapped(run_js, _crowded(graph), ["alpha", "beta"], """
+      const row = find(pane, "sg-row").filter((r) => find(r, "sg-goal").length)[0];
+      const hiddenNow = () => find(row, "sg-goal").filter((c) => c.hidden === true).length;
+      click(find(row, "more")[0]);
+      emit({ folds, hiddenAfterClick: hiddenNow(), rows: toggles });
+    """)
+
+    assert got["folds"] == ["j1"], "the fold did not reach the state that owns it"
+    assert got["hiddenAfterClick"] == 2, "it opened itself instead of asking"
+    assert got["rows"] == [], "opening the fold also toggled the scene under it"
+
+
+def test_a_row_named_in_open_marks_is_drawn_open(run_js, graph):
+    """The other half: once storymap.js remembers the fold, the redraw it
+    triggers has to come back open."""
+    got = _mapped(run_js, _crowded(graph), ["alpha", "beta"], """
+      const row = find(pane, "sg-row").filter((r) => find(r, "sg-goal").length)[0];
+      emit({ hidden: find(row, "sg-goal").filter((c) => c.hidden === true).length,
+             label: text(find(row, "more")[0]) });
+    """, open_marks=["j1"])
+
+    assert got == {"hidden": 0, "label": "Show fewer"}
+
+
+def test_a_scene_within_the_limit_grows_no_control(run_js, graph):
+    """Two marks is the common row; it must not gain a button that says '+0'."""
+    got = _mapped(run_js, _with_goals(graph, {"alpha": ["crown"]}), ["alpha", "beta"],
+                  'emit({ more: find(pane, "more").length, marks: find(pane, "sg-goal").length });')
+
+    assert got == {"more": 0, "marks": 2}

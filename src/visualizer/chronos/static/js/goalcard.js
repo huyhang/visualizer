@@ -12,7 +12,7 @@
 // callers pass in what a chip should do.
 
 import { el, expandableText } from "./dom.js";
-import { MISSING } from "./goalplacing.js";
+import { ELSEWHERE, MISSING } from "./goalplacing.js";
 
 const isConflict = (f) => f.severity === "conflict";
 
@@ -130,6 +130,59 @@ export function description(goal) {
     : null;
 }
 
+// The first few of something, and the rest behind a "+N more" that opens them
+// in place.
+//
+// Wrapping is the right default for two or three marks and the wrong one for
+// eight: a scene that pays off half the book turns its row into a paragraph,
+// and on the map that paragraph is height the layout has to reserve. Revealing
+// on demand keeps the common row short without hiding anything permanently --
+// the count says how much is behind it, and one click is the whole cost.
+//
+// `renderItem` belongs to the caller: the thread's marks and the map's are the
+// same idea in different markup, and only the overflow behaviour is shared.
+//
+// Two modes, because the two callers differ in one way that matters. A thread's
+// timeline is built once and left alone, so it can keep "is this open?" in the
+// DOM. The story map rebuilds its rows on every redraw -- and revealing a mark
+// can *cause* a redraw, by making the row taller than the layout reserved --
+// so state kept in the DOM there is state thrown away a frame later: the row
+// grew, the map redrew, and the fold came back closed. Which is a flicker and
+// nothing else happening.
+//
+// So when a caller passes `onToggle`, this is a **controlled** component: `open`
+// decides what is shown and the caller owns the state, the way `openEvents` and
+// `collapsedMoments` are owned in `storymap.js`. Without it, self-managed.
+export function overflowRow(items, renderItem, { className, max = 3, open, onToggle } = {}) {
+  const row = el("div", { class: className });
+  items.slice(0, max).forEach((item) => row.appendChild(renderItem(item)));
+
+  const extra = items.slice(max);
+  if (!extra.length) return row;
+
+  const controlled = typeof onToggle === "function";
+  const label = `+${extra.length} more`;
+  const rest = extra.map(renderItem);
+  let shown = controlled ? Boolean(open) : false;
+
+  const more = el("button", {
+    class: "chip more", type: "button", text: shown ? "Show fewer" : label,
+    title: `${extra.length} more delivered by this scene`,
+    "aria-expanded": shown ? "true" : "false",
+    onclick: (e) => {
+      e.stopPropagation();
+      if (controlled) { onToggle(); return; }
+      shown = !shown;
+      more.textContent = shown ? "Show fewer" : label;
+      more.setAttribute("aria-expanded", shown ? "true" : "false");
+      rest.forEach((node) => { node.hidden = !shown; });
+    },
+  });
+  rest.forEach((node) => { node.hidden = !shown; row.appendChild(node); });
+  row.appendChild(more);
+  return row;
+}
+
 // The goals a graph pursues that are not drawn on it, and why not.
 //
 // Without this a thread serving four goals and marking one reads as a thread
@@ -152,7 +205,14 @@ export function unplacedStrip(unplaced, onGoal, { label = "Not landed on this th
       g.reason === MISSING
         ? el("span", { class: "chip goal missing", text: g.title })
         : el("button", {
-            class: "chip goal link", type: "button", text: `${TODO} ${g.title}`,
+            // The goal's own mark, not the strip's. A goal delivered on another
+            // thread *is* delivered, so it ticks here exactly as it ticks in the
+            // header two lines above; only "no scene yet" is still open. Marking
+            // everything in this strip as open put one goal on screen twice
+            // under two different glyphs, which reads as a contradiction rather
+            // than as the two facts it actually is.
+            class: "chip goal link", type: "button",
+            text: `${g.reason === ELSEWHERE ? DONE : TODO} ${g.title}`,
             title: "Open this goal", onclick: () => onGoal(g.id),
           }),
       el("span", { class: "muted sm goal-strip-note", text: g.note }),

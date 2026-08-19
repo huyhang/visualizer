@@ -370,7 +370,7 @@ def present_plotline(
         # fetching the book's goals to look each id up.
         "goals": this.goals,
         "goal_refs": [
-            goal_ref(g, {goal.id: goal for goal in goals}, events_by_id, codec)
+            dated_goal_ref(g, {goal.id: goal for goal in goals}, events_by_id, codec)
             for g in this.goals
         ],
         "events": list(this.events),
@@ -512,21 +512,16 @@ def achieved_scene(goal: Goal, events_by_id: dict[str, Event], codec: TimeCodec)
     return None if scene is None else _node_ref(scene, codec, span=True)
 
 
-def goal_ref(
-    goal_id: str,
-    by_id: dict[str, Goal],
-    events_by_id: dict[str, Event],
-    codec: TimeCodec,
-) -> dict:
-    """One goal named by another, or by a thread.
+def goal_ref(goal_id: str, by_id: dict[str, Goal]) -> dict:
+    """One goal named by another goal.
 
     ``missing`` rather than a guessed title: a dangling id is already reported
     as a finding, and dressing it up as a working link would hide it.
 
-    The landing scene rides along because every caller draws this ref somewhere
-    a date belongs -- a chip on a thread, a row in the table -- and fetching the
-    book's goals again to date a chip would be a second answer to a question the
-    server has already answered.
+    Deliberately undated. A dependency chip renders a name and nothing else, so
+    dating it would put a formatted scene on the wire for every edge in the
+    graph that no client reads. Where a date *is* drawn, callers ask for
+    ``dated_goal_ref`` and say so.
     """
     goal = by_id.get(goal_id)
     if goal is None:
@@ -536,14 +531,37 @@ def goal_ref(
         "title": goal.display_title,
         "achieved": goal.achieved_at is not None,
         "missing": False,
+    }
+
+
+def dated_goal_ref(
+    goal_id: str,
+    by_id: dict[str, Goal],
+    events_by_id: dict[str, Event],
+    codec: TimeCodec,
+) -> dict:
+    """A goal ref for somewhere the landing scene is shown.
+
+    Three surfaces draw one: a thread's chips and the strip above its rail, the
+    plotline table, and the story map's strip. Each needs to say *where* a goal
+    lands and *when* -- so the scene rides along rather than each of them
+    fetching the book's goals again to date a chip.
+    """
+    ref = goal_ref(goal_id, by_id)
+    if ref.get("missing"):
+        return ref
+    goal = by_id[goal_id]
+    return {
+        **ref,
         "achieved_at": goal.achieved_at,
         "achieved_scene": achieved_scene(goal, events_by_id, codec),
     }
 
 
 def _view_ref(goal_id: str, view: "GoalView") -> dict:
-    """``goal_ref`` against a gathered book -- the form every goal response uses."""
-    return goal_ref(goal_id, view.by_id, view.events_by_id, view.codec)
+    """A goal named by another goal: `dependencies` and `required_by`, both of
+    which the client draws as bare chips. Undated on purpose (see `goal_ref`)."""
+    return goal_ref(goal_id, view.by_id)
 
 
 def _goal_finding(finding: GoalFinding) -> dict:
@@ -1100,7 +1118,7 @@ def present_graph(
         "terminus": terminus,
         "plotlines": [lane(pid, view["paths"][pid]) for pid in sorted(view["paths"])],
         "goals": [
-            goal_ref(goal.id, by_id, events_by_id, codec)
+            dated_goal_ref(goal.id, by_id, events_by_id, codec)
             for goal in sorted(goals, key=lambda g: g.id)
         ],
     }

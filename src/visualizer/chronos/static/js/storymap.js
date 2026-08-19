@@ -35,6 +35,12 @@ const CARD_GAP = 14;
 // line of marks is not a card: it wants separating from the next row, not
 // setting apart from it.
 const GOAL_GAP = 7;
+// Room under a row that carries nothing extra. Deliberately tiny: at the
+// default font a row's content is 28px and compact reserves 32, so 28+4 is
+// exactly what compact already gave and the density is unchanged. It only
+// starts to matter at larger font scales, which is the point -- a constant
+// row height cannot grow with the reader's text and a measured one can.
+const PLAIN_GAP = 4;
 // What one line of marks is worth before anything has been measured. Only the
 // opening estimate — `measure` replaces it with the height the browser actually
 // produced, which is the only way to know how many lines the marks wrapped to.
@@ -165,6 +171,16 @@ export async function mountStoryMap(container, book, deps) {
   // cannot read is not much of a map.
   const collapsedMoments = new Set();
   const heights = new Map(); // event id -> measured height of its expanded row
+  // Whether the map is drawing goal marks at all. Marks answer "where does this
+  // book pay off?", which is one question a map is read for and not the only
+  // one -- when the writer is following how threads weave, they are noise. A
+  // switch is a better answer to that than any amount of restyling.
+  let showGoals = true;
+  // Rows whose folded goal marks the writer has opened. Held here, not in the
+  // DOM: revealing a mark can make the row taller than the layout reserved,
+  // which triggers a redraw, which rebuilds the row -- so a fold remembered in
+  // the markup is one that closes itself a frame after you open it.
+  const openMarks = new Set();
   // Where this draw's goals landed, node id -> the goals on it. Held here
   // rather than inside `redraw` because `heightOf` has to consult it, and the
   // layout calls that back before the drawing exists.
@@ -193,8 +209,14 @@ export async function mountStoryMap(container, book, deps) {
   //
   // `heightOf` is called with a slot (which has `nodes`) and with a bare node
   // (which does not), so both shapes are accepted here.
-  const goalRoom = (slot) => (slot.nodes || [slot]).reduce(
-    (room, node) => room + ((goalsAt.get(node.id) || []).length ? GOAL_LINE : 0), 0);
+  const goalRoom = (slot) => (slot.nodes || [slot]).reduce((room, node) => {
+    const marks = (goalsAt.get(node.id) || []).length;
+    if (!marks) return room;
+    // One line, or two once a fold is opened -- an estimate only, so the first
+    // paint lands close; `measure` replaces it with what the browser produced.
+    return room + GOAL_LINE * (openMarks.has(node.id) ? 2 : 1);
+  }, 0);
+  // `goalsAt` is emptied when the marks are off, so this needs no second test.
 
   const heightOf = (slot) => {
     const measured = heights.get(slot.id);
@@ -229,6 +251,19 @@ export async function mountStoryMap(container, book, deps) {
       // Measured heights are floored at the row height of the density they were
       // taken in, so they have to be dropped when that changes — otherwise
       // Compact would leave every row it had already measured at its roomy size.
+      heights.clear();
+      redraw();
+    },
+  });
+
+  const goalsBtn = el("button", {
+    class: "btn secondary sm", type: "button", text: "Hide goals",
+    title: "Show or hide where each goal lands",
+    onclick: () => {
+      showGoals = !showGoals;
+      goalsBtn.textContent = showGoals ? "Hide goals" : "Show goals";
+      goalsBtn.setAttribute("aria-pressed", showGoals ? "false" : "true");
+      // Heights measured with marks on say nothing about a map without them.
       heights.clear();
       redraw();
     },
@@ -311,7 +346,14 @@ export async function mountStoryMap(container, book, deps) {
   // is held until the measuring settles, then dropped, so an unrelated redraw
   // (typing in the filter box) never steals the cursor.
   let toggled = null;
+  let toggledMarks = null;
   function restoreFocus() {
+    if (toggledMarks) {
+      const more = canvas.querySelector(`[data-event="${CSS.escape(toggledMarks)}"] .chip.more`);
+      if (more) more.focus();
+      toggledMarks = null;
+      return;
+    }
     if (!toggled) return;
     const head = canvas.querySelector(`[data-event="${CSS.escape(toggled)}"] .sg-row-head`);
     if (head) head.focus();
@@ -330,6 +372,15 @@ export async function mountStoryMap(container, book, deps) {
     redraw();
   };
 
+  // Show the marks a crowded row folded away, or fold them back.
+  const onToggleMarks = (nodeId) => {
+    if (openMarks.has(nodeId)) openMarks.delete(nodeId);
+    else openMarks.add(nodeId);
+    heights.delete(nodeId); // its height is about to change
+    toggledMarks = nodeId;
+    redraw();
+  };
+
   // Hide a moment's scenes behind their count, or show them again.
   const onToggleGroup = (id) => {
     if (collapsedMoments.has(id)) collapsedMoments.delete(id);
@@ -341,11 +392,16 @@ export async function mountStoryMap(container, book, deps) {
   // An expanded row's height is whatever the browser made it, so it can only be
   // known after a paint. Measure, and if anything moved, lay out again with the
   // real numbers.
-  // A row's marks wrap, so its height is a function of the window's width and
-  // the reader's font size -- neither of which a redraw is triggered by. Without
-  // this, narrowing the window re-wraps the marks and the layout keeps the old
-  // heights: the rows grow into each other, which is the exact bug the
-  // measuring exists to prevent, arriving a second time by a different door.
+  // A row's height is a function of the window's width and the reader's font
+  // size -- neither of which a redraw is triggered by. Without this, narrowing
+  // the window re-wraps a row's marks, or raising the font grows every line,
+  // and the layout keeps the old heights: the rows grow into each other.
+  //
+  // *Every* row is watched, not only the ones goal marks made taller. A bare
+  // row is 28px at the default font and 38px three steps up, against a compact
+  // slot of 32 -- so the plainest map in the app overlaps at a large text size,
+  // and did so long before goals existed. Measuring what is actually there is
+  // the only answer that survives a setting nobody thought to test.
   //
   // One observer, re-pointed at each draw's rows. Watching the rows rather than
   // the window catches the font-scale toggle too, which no resize event fires
@@ -354,10 +410,10 @@ export async function mountStoryMap(container, book, deps) {
   const rowSizes = typeof ResizeObserver === "function"
     ? new ResizeObserver(() => measure()) : null;
 
-  function watchMarkedRows() {
+  function watchRows() {
     if (!rowSizes) return;
     rowSizes.disconnect();
-    for (const row of canvas.querySelectorAll(".sg-row.has-goals")) rowSizes.observe(row);
+    for (const row of canvas.querySelectorAll(".sg-row")) rowSizes.observe(row);
   }
 
   let passes = 0;
@@ -372,15 +428,13 @@ export async function mountStoryMap(container, book, deps) {
       // take depends on the window, the font scale and the length of the names,
       // none of which an estimate can know. Measuring is the only honest answer,
       // and an unmeasured row is one drawn over the row below it.
-      const grown = ".sg-row.expanded, .sg-row.is-group:not(.collapsed), .sg-row.has-goals";
-      for (const row of canvas.querySelectorAll(grown)) {
+      for (const row of canvas.querySelectorAll(".sg-row")) {
         const id = row.dataset.event || row.dataset.slot;
         if (!id) continue;
         // A card wants setting apart from what follows; a line of marks only
-        // wants separating from it.
-        const gap = row.classList.contains("has-goals")
-          && !row.classList.contains("expanded")
-          && !row.classList.contains("is-group") ? GOAL_GAP : CARD_GAP;
+        // wants separating from it; a bare row wants almost nothing.
+        const big = row.classList.contains("expanded") || row.classList.contains("is-group");
+        const gap = big ? CARD_GAP : (row.classList.contains("has-goals") ? GOAL_GAP : PLAIN_GAP);
         const h = Math.max(rowHeight(), row.offsetHeight + gap);
         if (Math.abs((heights.get(id) || 0) - h) > 1) { heights.set(id, h); changed = true; }
       }
@@ -410,21 +464,26 @@ export async function mountStoryMap(container, book, deps) {
     // delivering a goal is worth marking whoever pursues it) while the strip
     // below narrows to what the shown threads are pursuing.
     const placed = placeGoals(graph.goals || [], coverageOf(dense.nodes));
-    goalsAt = placed.marks;
+    // Switched off, the marks are not merely hidden: they are not placed, so
+    // nothing reserves room for them and the rows are the height they were
+    // before goals existed.
+    goalsAt = showGoals ? placed.marks : new Map();
 
     const layout = layoutGraph(dense, { colorOf, dashOf, heightOf });
     const model = applyPeriodGrouping(layout, { heightOf, collapsedMoments });
 
     clear(canvas);
-    const strip = unplacedStrip(stripFor(placed, slice.plotlines), peekGoal, {
-      label: "Not landed on the shown threads",
-    });
+    const strip = showGoals
+      ? unplacedStrip(stripFor(placed, slice.plotlines), peekGoal, {
+          label: "Not landed on the shown threads",
+        })
+      : null;
     if (strip) canvas.appendChild(strip);
     canvas.appendChild(diagram(model, {
       expanded: openEvents, cardFor, onToggleEvent, onToggleBand, onToggleGroup,
-      focusEvent, goalsAt: placed.marks, onGoal: peekGoal,
+      focusEvent, goalsAt, onGoal: peekGoal, openMarks, onToggleMarks,
     }));
-    watchMarkedRows();
+    watchRows();
 
     const folded = lastBands.filter((b) => !openBands.has(b.id));
     const hidden = folded.reduce((n, b) => n + b.events.length, 0);
@@ -500,6 +559,7 @@ export async function mountStoryMap(container, book, deps) {
     el("button", { class: "btn secondary sm", type: "button", text: "Invert",
       title: "Swap which threads are shown for which are not", onclick: invert }),
     densityBtn,
+    goalsBtn,
     foldBtn,
   ]));
   view.appendChild(picker);

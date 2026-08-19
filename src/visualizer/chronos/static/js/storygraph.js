@@ -14,7 +14,7 @@
 // -- the pane scrolls instead.
 
 import { el, svgEl } from "./dom.js";
-import { goalMark } from "./goalcard.js";
+import { goalMark, overflowRow } from "./goalcard.js";
 import { geometry } from "./layout.js";
 
 // Hue runs out before threads do, so identity rides on colour *and* stroke (see
@@ -156,17 +156,28 @@ function whenLabel(slot) {
 //
 // A sibling of the row head, never inside it: the head is a `<button>`, and a
 // button inside a button is not a thing a browser will honour.
-function goalChips(n, { goalsAt, onGoal }) {
+// Two before the rest folds away, one fewer than a thread allows: a map row is
+// a line in a dense list, and a map is read for where things sit rather than
+// for what each of them is called.
+const MARKS_ON_A_MAP_ROW = 2;
+
+function goalChips(n, { goalsAt, onGoal, openMarks, onToggleMarks }) {
   const goals = (goalsAt && goalsAt.get(n.id)) || [];
   if (!goals.length) return null;
-  return el("div", { class: "sg-row-goals" }, goals.map((ref) => el("button", {
+  return overflowRow(goals, (ref) => el("button", {
     class: "sg-goal", type: "button",
     title: `${ref.title} \u2014 this scene delivers it`,
     onclick: (e) => { e.stopPropagation(); onGoal(ref.id); },
   }, [
     el("span", { class: "sg-goal-mark", text: goalMark(ref), "aria-hidden": "true" }),
     el("span", { class: "sg-goal-name", text: ref.title }),
-  ])));
+  ]), {
+    className: "sg-row-goals", max: MARKS_ON_A_MAP_ROW,
+    // Controlled: the map rebuilds its rows, so the fold is storymap.js's to
+    // remember (see `overflowRow`).
+    open: Boolean(openMarks && openMarks.has(n.id)),
+    onToggle: onToggleMarks ? () => onToggleMarks(n.id) : undefined,
+  });
 }
 
 // `.has-goals` on a row that carries marks: the stylesheet indents them by it,

@@ -75,6 +75,29 @@ def served_by(goals: Iterable[Goal], plotlines: Iterable[Plotline]) -> dict[str,
     return out
 
 
+def goals_by_event(goals: Iterable[Goal]) -> dict[str, list[Goal]]:
+    """Which goals each scene delivers -- ``achieved_at`` read backwards.
+
+    A goal touches time at exactly one point, so "what does this scene pay
+    off?" is that one field inverted, and it belongs here beside the other
+    questions asked of goals rather than being re-derived by each caller.
+
+    Goals with no scene are absent rather than bucketed under ``None``: they
+    have no place on a timeline, and the callers that care about them (the
+    strip above a thread, the book report) want them named separately, not
+    found under a key that means "nowhere".
+
+    Sorted by id within each bucket, so two reads of one book put the same
+    goal first -- an order that wobbles between requests is one a reader
+    notices and a test cannot pin.
+    """
+    out: dict[str, list[Goal]] = {}
+    for goal in sorted(goals, key=lambda g: g.id):
+        if goal.achieved_at:
+            out.setdefault(goal.achieved_at, []).append(goal)
+    return out
+
+
 def dependency_cycle(candidate: Goal, goals: Iterable[Goal]) -> list[str] | None:
     """The loop saving ``candidate`` would create, or None if it is safe.
 

@@ -2811,16 +2811,19 @@
           },
           "achieved": {
             "type": "boolean",
-            "description": "Whether that goal names a scene that delivers it."
+            "description": "Whether that goal names a scene that delivers it.",
+            "readOnly": true
           },
           "missing": {
             "type": "boolean",
-            "description": "True when nothing in this book has that id. Said plainly rather than dressed up with a guessed title \u2014 a finding beside it explains how a book gets into that state."
+            "description": "True when nothing in this book has that id. Said plainly rather than dressed up with a guessed title \u2014 a finding beside it explains how a book gets into that state.",
+            "readOnly": true
           },
           "achieved_at": {
             "type": "string",
             "nullable": true,
-            "description": "The id of the scene that delivers this goal, or null while none does."
+            "description": "The id of the scene that delivers this goal, or null while none does. Present only where a client draws the landing scene \u2014 a thread's goal_refs, the plotline table, the graph's goals. A goal named by another goal (dependencies, required_by) is a bare chip and is sent undated.",
+            "readOnly": true
           },
           "achieved_scene": {
             "allOf": [
@@ -2829,7 +2832,8 @@
               }
             ],
             "nullable": true,
-            "description": "That scene, dated through the calendar being read. Null both when no scene is named and when the named one is no longer in the book \u2014 `achieved_at` beside it tells the two apart. Carried on the ref, not just on the goal itself, so a chip drawn on a thread or in the table can be dated without a second request."
+            "description": "That scene, dated through the calendar being read. Null both when no scene is named and when the named one is no longer in the book \u2014 `achieved_at` beside it tells the two apart. Present on the same refs as `achieved_at`.",
+            "readOnly": true
           }
         }
       },
@@ -3385,7 +3389,8 @@
             "description": "Every goal in the book, id-ordered. A goal names the scene it lands on, so \"which goals land on this node\" is this list read backwards \u2014 and the goals that land on no shown scene are the ones a map has to name separately. One list rather than a copy on each node, so the two readings cannot disagree.",
             "items": {
               "$ref": "#/components/schemas/GoalRef"
-            }
+            },
+            "readOnly": true
           }
         },
         "example": {
@@ -3558,7 +3563,8 @@
             "description": "The ids of the goals this thread pursues, as stored.",
             "items": {
               "type": "string"
-            }
+            },
+            "readOnly": true
           }
         }
       },

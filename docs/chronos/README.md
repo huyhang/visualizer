@@ -534,6 +534,15 @@ scene on a thread this view is not showing — are named in a strip above it, ea
 saying which. A thread pursuing four goals and marking one would otherwise read
 as a thread with one goal.
 
+Two controls keep a dense book readable. A scene that delivers more than a
+couple of goals shows the first few and folds the rest behind **+N more**, which
+opens them in place — three on a thread, two on a map row, where space is
+tighter. And the story map has a **Hide goals** switch: marks answer "where does
+this book pay off?", which is one of the questions a map is read for and not the
+only one, so following how threads weave is a click away from an uncluttered
+drawing. Switched off, the marks are not merely hidden — nothing is placed, and
+the rows are the height they were before goals existed.
+
 **Goals are calendar-aware**, in the only way a goal can be: it has no date of
 its own and borrows the one belonging to the scene that delivers it. Every
 surface that dates a goal reads it through the book's chosen reckoning — the

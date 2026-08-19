@@ -33,13 +33,13 @@ from .errors import (
     PlotlineInUse,
     TerminusInUse,
 )
-from .goal_rules import dependency_cycle
+from .goal_rules import dependency_cycle, goals_by_event
 from .models import Book, EntityRef, Event, Goal, Plotline
 from .plotline_health import conflict_counts
 from .presenters import (
     as_preview,
+    dated_goal_ref,
     event_when,
-    goal_ref,
     goal_view,
     present_book,
     present_book_report,
@@ -328,7 +328,7 @@ class EventService(_Service):
         # A goal that lands on this scene is holding it just as a thread listing
         # it is: delete the scene and the goal is achieved nowhere, which the
         # writer would find out from the report rather than from the delete.
-        achieving = [g for g in self._goals(book_id) if g.achieved_at == event_id]
+        achieving = goals_by_event(self._goals(book_id)).get(event_id, [])
         if (referencing or achieving) and not detach:
             raise EventInUse(
                 _event_in_use_message(referencing, achieving),
@@ -772,7 +772,7 @@ class VisualizerService(_Service):
             # rather than the slug it is stored under. The same reference shape
             # every other response uses, so a client has one thing to render.
             "goals": [
-                goal_ref(gid, goals_by_id, events_by_id, codec) for gid in pl.goals
+                dated_goal_ref(gid, goals_by_id, events_by_id, codec) for gid in pl.goals
             ],
             "event_titles": titles,
             "conflicts": counts.get(pl.id, 0),

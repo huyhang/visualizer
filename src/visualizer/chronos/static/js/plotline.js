@@ -9,8 +9,8 @@ import { eventCard } from "./cards.js";
 import { clear, el } from "./dom.js";
 import { findingList, markerClass, problemBanner, verdictNotes } from "./findings.js";
 import { focusToggle } from "./focus.js";
-import { goalMark, unplacedStrip } from "./goalcard.js";
-import { eachAlone, placeGoals } from "./goalplacing.js";
+import { goalMark, overflowRow, unplacedStrip } from "./goalcard.js";
+import { ELSEWHERE, eachAlone, placeGoals } from "./goalplacing.js";
 import { openPlotlineEditor } from "./plotedit.js";
 import { showGoal, showScene } from "./peek.js";
 import { allScheduled, groupByPeriod } from "./timeaxis.js";
@@ -52,13 +52,17 @@ function dotClass(ev) {
 // The goals a scene delivers, drawn under the card's marks. A chip opens the
 // goal in the peek panel: the writer asked what this thread is paying off, not
 // to be taken to a different page.
+// Three before the rest folds away: a thread's rows have room to wrap, and
+// three names is about as much as one is worth reading in passing.
+const MARKS_ON_A_THREAD = 3;
+
 function goalMarks(goals, onGoal) {
   if (!goals.length) return null;
-  return el("div", { class: "chip-row tl-goals" }, goals.map((ref) => el("button", {
+  return overflowRow(goals, (ref) => el("button", {
     class: "chip goal link", type: "button", text: `${goalMark(ref)} ${ref.title}`,
     title: "This scene delivers the goal — open it",
     onclick: () => onGoal(ref.id),
-  })));
+  }), { className: "chip-row tl-goals", max: MARKS_ON_A_THREAD });
 }
 
 // Small, clickable "another thread meets here" hints on an event. Each opens the
@@ -217,6 +221,13 @@ export async function mountPlotline(container, book, plotlineId,
     if (onSaved) onSaved();
   };
 
+  // Which of this thread's goals are delivered, but not here. The tick is still
+  // the right mark for them -- they are done -- so the difference rides on the
+  // tooltip and on the strip below, rather than on a third glyph nobody asked
+  // the map to carry.
+  const elsewhere = new Set(placed.unplaced
+    .filter((g) => g.reason === ELSEWHERE).map((g) => g.id));
+
   // Ticked or not, the same two glyphs the rail and the strip use — so the
   // header answers "how much of what this thread is for is done?" at a glance,
   // rather than only listing what it is for.
@@ -226,7 +237,10 @@ export async function mountPlotline(container, book, plotlineId,
     : el("button", {
         class: "chip goal link", type: "button",
         text: `${goalMark(ref)} ${ref.title}`,
-        title: "Open this goal", onclick: () => peekGoal(ref.id),
+        title: elsewhere.has(ref.id)
+          ? "Delivered on another thread — see “Not landed on this thread” below"
+          : "Open this goal",
+        onclick: () => peekGoal(ref.id),
       }));
 
   const meets = meetCount(events);

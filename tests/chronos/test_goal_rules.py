@@ -13,6 +13,7 @@ from visualizer.chronos.goal_rules import (
     dependency_cycles,
     depths,
     goal_findings,
+    goals_by_event,
     served_by,
 )
 from visualizer.chronos.models import EntityRef, Event, Goal, Plotline
@@ -251,3 +252,38 @@ def test_findings_come_back_in_goal_order_whatever_order_they_went_in(order):
     """Two reads of one book say the same thing in the same order."""
     goals = [goal(gid) for gid in order]
     assert [f.goal for f in goal_findings(goals, [], {}, {})] == ["a", "a", "b", "b"]
+
+
+# -- which scene delivers what ------------------------------------------------
+
+
+def test_goals_by_event_is_achieved_at_read_backwards():
+    goals = [goal("crown", achieved_at="coronation"), goal("seal", achieved_at="harbour")]
+    assert {k: [g.id for g in v] for k, v in goals_by_event(goals).items()} == {
+        "coronation": ["crown"], "harbour": ["seal"],
+    }
+
+
+def test_a_scene_can_deliver_several_goals():
+    goals = [goal("b", achieved_at="e1"), goal("a", achieved_at="e1")]
+    assert [g.id for g in goals_by_event(goals)["e1"]] == ["a", "b"]
+
+
+def test_a_goal_with_no_scene_is_absent_rather_than_bucketed_under_none():
+    """It has no place on a timeline, and the surfaces that care about it want
+    it named separately -- not found under a key meaning "nowhere"."""
+    assert goals_by_event([goal("someday")]) == {}
+
+
+def test_the_order_within_a_scene_does_not_wobble_between_reads():
+    """Two reads of one book must put the same goal first: an order that moves
+    is one a reader notices and a test cannot pin."""
+    forward = [goal("c", achieved_at="e1"), goal("a", achieved_at="e1"),
+               goal("b", achieved_at="e1")]
+    assert ([g.id for g in goals_by_event(forward)["e1"]]
+            == [g.id for g in goals_by_event(list(reversed(forward)))["e1"]]
+            == ["a", "b", "c"])
+
+
+def test_no_goals_is_no_buckets():
+    assert goals_by_event([]) == {}

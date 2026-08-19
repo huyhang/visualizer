@@ -65,6 +65,25 @@ goal has a scene, Chronos can tell you if your book never actually reaches it, o
 if it happens *before* the thing it was supposed to rest on. Until then it simply
 notes that the goal is still open, which is what a book in progress looks like.
 
+**Reading a goal without losing your place.** A goal's name appears wherever it
+matters — on the thread that pursues it, in the plotline table, on the map — and
+clicking it opens a small card beside what you were reading rather than taking
+you to another page. The card's own links behave the same way, so you can follow
+a goal to the thing it rests on, and to the thing *that* rests on, without ever
+leaving the thread you are reading. One link at the foot goes to the Goals page
+when you actually want it.
+
+**Seeing where the goals land.** A goal touches the story at one point — the
+scene that delivers it — so that is where it is drawn. On a thread's timeline and
+on the story map, the delivering scene is ticked with the goal's name. Because
+the map lays threads side by side, this is also how you notice that a goal one
+thread is *for* is actually paid off by another.
+
+Goals that are not on the graph in front of you are named above it rather than
+quietly left out: the ones with no scene yet, and the ones delivered somewhere
+you are not currently looking — with where and when they land, so you can go
+and find them.
+
 ### 4. A Book — all the threads together
 
 A **Book** holds all the plotlines of one story. A book might have the knight's
@@ -159,8 +178,8 @@ so flashbacks and ancient history need no special handling.
 
 **More than one calendar.** Worlds rarely agree on how to count. A book can keep
 several reckonings side by side — the Imperial one, the elves' — and you read
-the same scenes through whichever you like; the story never changes, only the
-dates on it. A calendar can also have a *beginning and an end*, which is what a
+the same scenes, and the goals that land on them, through whichever you like;
+the story never changes, only the dates on it. A calendar can also have a *beginning and an end*, which is what a
 destroyed culture's calendar needs: past the year its keepers died out, it stops
 dating things and says so, rather than inventing years no one was counting.
 
