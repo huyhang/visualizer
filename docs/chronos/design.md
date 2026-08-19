@@ -292,6 +292,25 @@ timeline, and it is what turns an intention into something checkable: with it,
 run over dependency edges instead of list order. It is optional, because a goal
 is named long before the scene that pays it off is written.
 
+That single anchor is also the whole of a goal's relationship with the calendar.
+A goal has **no date of its own** — no target, no deadline, no window — and
+borrows the one belonging to the scene that delivers it. So "calendar-aware
+goals" needs no field and no new rule: `achieved_scene.when` is codec-formatted
+like every other date (§4.4), and a goal read through a different reckoning says
+something different and *is* something identical. A stored target date was
+considered and rejected on the usual grounds: it would be a second thing that
+can disagree with the story, and the disagreement it would report — "this landed
+later than you meant it to" — is a judgement about the draft rather than a
+contradiction inside it.
+
+Because that anchor is one point, a goal draws as one mark: on the scene that
+delivers it, wherever that scene is drawn. The placement is a pure function
+(`static/js/goalplacing.js`) shared by the thread timeline and the story map,
+and it returns two things — the marks *and* the goals it could not place, each
+with why. Returning only the marks is what would make a graph lie: a thread
+pursuing four goals and marking one reads as a thread with one goal, and the
+absence looks exactly like nothing being wrong.
+
 **Everything else is computed.** Whether a goal is met, which threads pursue it,
 what rests on it, how deep it sits in the graph — all derived on read
 (`goal_rules.py`), never stored. A stored verdict is a second copy of a fact,

@@ -77,9 +77,10 @@ def test_an_unattached_calendar_is_a_404_not_a_silent_fallback(two_calendars):
     assert resp.get_json()["code"] == "CALENDAR_NOT_FOUND"
 
 
-def test_the_choice_is_refused_on_reads_that_show_no_labels_either(two_calendars):
+def test_the_choice_is_refused_on_every_book_scoped_read(two_calendars):
     """So a stale bookmark fails the same way everywhere, rather than only on
     the pages that happen to format a tick."""
+    assert two_calendars.get(f"/books/{BOOK}/plotlines?calendar=nope").status_code == 404
     assert two_calendars.get(f"/books/{BOOK}/ui/plotlines?calendar=nope").status_code == 404
 
 
@@ -129,6 +130,63 @@ def test_a_span_entirely_outside_the_era_reads_once_not_twice(two_calendars):
 def test_an_era_counts_from_its_own_founding(two_calendars):
     """Tick 120 is 20 bells into a count that began at 100 -- Moon 3, not Moon 13."""
     assert _event(two_calendars, "elvish")["start_label"] == "Moon 3, 00:00 SR"
+
+
+# -- goals read through the same reckoning ------------------------------------
+
+
+def _with_a_goal(client):
+    client.post(f"/books/{BOOK}/goals/crown",
+                json={"title": "Aldric is crowned", "achieved_at": "dawn"})
+    client.post(f"/books/{BOOK}/plotlines/road",
+                json={"events": ["dawn"], "goals": ["crown"]})
+    return client
+
+
+def test_a_goal_is_dated_through_the_chosen_calendar(two_calendars):
+    """A goal has no date of its own -- it borrows the one belonging to the
+    scene that delivers it, which means it changes with the reckoning like
+    everything else on the page."""
+    book = _with_a_goal(two_calendars)
+    imperial = book.get(f"/books/{BOOK}/goals/crown?calendar=imperial").get_json()
+    elvish = book.get(f"/books/{BOOK}/goals/crown?calendar=elvish").get_json()
+    assert imperial["achieved_scene"]["when"] == "Month 1, Day 6, 00:00 AF → Month 1, Day 6, 20:00 AF"
+    assert elvish["achieved_scene"]["when"] == "Moon 3, 00:00 SR → Moon 5, 00:00 SR"
+    # Same scene, same ticks: only the reading moved.
+    assert imperial["achieved_at"] == elvish["achieved_at"] == "dawn"
+
+
+@pytest.mark.parametrize("path", [
+    "/books/{b}/goals",
+    "/books/{b}/goals/crown",
+    "/books/{b}/plotlines/road",
+    "/books/{b}/graph",
+    "/books/{b}/ui/plotlines",
+])
+def test_every_surface_that_draws_a_goal_chip_dates_it_the_same_way(two_calendars, path):
+    """The chip is drawn in five places. A date that differed between two of
+    them would be the writer's problem to reconcile, so none of them formats
+    anything itself -- they all read the one ``when`` the codec produced."""
+    book = _with_a_goal(two_calendars)
+    body = book.get(f"{path.format(b=BOOK)}?calendar=elvish").get_json()
+    whens = {
+        scene["when"]
+        for scene in _scenes_under(body)
+        if scene is not None
+    }
+    assert whens == {"Moon 3, 00:00 SR → Moon 5, 00:00 SR"}
+
+
+def _scenes_under(body):
+    """Every ``achieved_scene`` anywhere in a response, however it is nested."""
+    if isinstance(body, dict):
+        if "achieved_scene" in body:
+            yield body["achieved_scene"]
+        for value in body.values():
+            yield from _scenes_under(value)
+    elif isinstance(body, list):
+        for item in body:
+            yield from _scenes_under(item)
 
 
 # -- what must not change -----------------------------------------------------

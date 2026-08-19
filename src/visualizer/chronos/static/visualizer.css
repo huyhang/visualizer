@@ -300,6 +300,26 @@ button.status-pill.conflicted:hover { filter: brightness(.94); text-decoration: 
 .tl-card .event-card { width: 100%; max-width: 620px; }
 /* "another thread meets here" hints above an event card */
 .tl-marks { margin: .1rem 0 .4rem; }
+/* what this scene pays off, between the meeting hints and the findings */
+.tl-goals { margin: .1rem 0 .4rem; }
+.tl-goals .chip.goal { background: var(--ok-soft); color: var(--ok); }
+.tl-goals .chip.goal:hover { background: var(--ok); color: var(--surface); }
+
+/* The goals a thread pursues that are not on its rail, and why not. Sits under
+   the header, above the timeline: it is part of reading the thread's purpose,
+   not a footnote to its scenes. */
+.goal-strip {
+  margin: .5rem 0 .2rem; padding: .5rem .7rem;
+  border: 1px dashed var(--border); border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.goal-strip-label {
+  display: block; font-size: .74rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .04em; margin-bottom: .35rem;
+}
+.goal-strip-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .3rem; }
+.goal-strip-list li { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.goal-strip-note { font-size: .8rem; }
 .mark-chip {
   font-size: .72rem; font-weight: 600; cursor: pointer;
   padding: .12rem .5rem; border-radius: 999px;
@@ -336,6 +356,28 @@ button.status-pill.conflicted:hover { filter: brightness(.94); text-decoration: 
 /* the peek is always expanded, so reveal its detail (the base .ev-detail is
    hidden until an inline card is expanded) */
 .event-peek .ev-detail { display: block; padding: .6rem .9rem .9rem; margin-top: 0; border-top: 0; }
+
+/* the goal peek: the same facts the goals page shows, in a 360px column. The
+   two-column facts grid there would leave nothing for the values here, so the
+   labels sit above them instead — same content, same words, narrower. */
+.goal-peek .goal-facts { display: block; margin: .6rem 0 .2rem; }
+.goal-peek .goal-facts dt {
+  font-size: .68rem; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--muted); margin-top: .55rem;
+}
+.goal-peek .goal-facts dd { margin: .15rem 0 0; }
+/* The landing scene is a name and a date, which is a sentence rather than a
+   tag — as a pill it wrapped to two centred lines in a 360px column. Same
+   control, read as a line. */
+.goal-peek .goal-facts dd > .chip.link {
+  display: block; width: 100%; text-align: left;
+  border-radius: 8px; padding: .3rem .45rem; font-size: .85rem;
+}
+.goal-peek .findings { margin-top: .6rem; }
+.goal-peek .link-btn { margin-top: .6rem; padding-left: 0; }
+/* the state a goal is in, echoed on the panel's edge the way the cards do it */
+.goal-peek.is-achieved { border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+.goal-peek.is-conflicted { border-color: color-mix(in srgb, var(--danger) 50%, transparent); }
 
 /* the story map (and the connected-plots preset that shares it) */
 
@@ -402,6 +444,40 @@ button.status-pill.conflicted:hover { filter: brightness(.94); text-decoration: 
 .sg-row-when { color: var(--muted); font-size: .76rem; }
 .sg-row-badges { gap: .25rem; }
 .sg-row.is-band .sg-row-title { font-weight: 600; color: var(--muted); font-style: italic; }
+/* What a scene pays off, under its head and indented to line up with the
+   title (head padding + twisty + dot + the gaps between them = 3rem).
+   Wrapping, because a scene can deliver three goals whose names are
+   sentences: on one line they clip each other and the title too, and on
+   their own they simply flow onto a second row.
+
+   The height this takes is not free. A row is absolutely positioned at a y
+   the layout computed, so a row that grows without the layout being told
+   lands on the row beneath it — which is exactly what happened when these
+   marks first landed. `storymap.js` measures every `.has-goals` row and
+   feeds the real height back into the layout; this rule is only safe
+   because of that. */
+.sg-row-goals {
+  display: flex; flex-wrap: wrap; gap: .25rem .3rem;
+  margin: .15rem 0 0 3rem;
+}
+.sg-group-scene .sg-row-goals { margin-left: 2.35rem; }
+/* Text, not a pill. On a dense map a column of filled badges reads as louder
+   than the scene names they hang off, which is backwards — the fill arrives
+   on hover, when it is a target rather than decoration. */
+.sg-goal {
+  display: inline-flex; align-items: baseline; gap: .25rem; min-width: 0;
+  font: inherit; font-size: .74rem; font-weight: 600; cursor: pointer;
+  padding: .05rem .35rem; border-radius: 999px;
+  background: none; color: var(--ok); border: 1px solid transparent;
+}
+.sg-goal:hover, .sg-goal:focus-visible { background: var(--ok-soft); border-color: var(--ok); }
+.sg-goal-mark { flex: none; font-size: .62rem; opacity: .9; }
+/* Names show in full — wrapping is what makes room for them. The clamp is a
+   backstop for a title written as a paragraph, not the normal case. */
+.sg-goal-name {
+  min-width: 0; max-width: 34rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 .sg-row.expanded { z-index: 2; }
 .sg-row.expanded .sg-row-head { background: var(--accent-soft); }
@@ -917,6 +993,13 @@ body:not(.focus-mode) .scene-row.has-hint { border-color: color-mix(in srgb, var
 }
 .goal-sub {
   font-size: .7rem; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* When the goal lands, borrowed from the scene that delivers it. Dimmer than
+   the scene name above it: it is the second question, not the first. Kept in
+   the box even when empty so every node is the same height. */
+.goal-when {
+  font-size: .68rem; color: var(--muted); opacity: .8; min-height: .85rem;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 

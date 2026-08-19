@@ -501,9 +501,44 @@ diagram is drawn top-down — a goal sits below everything it rests on, so readi
 downward is reading the order things have to happen in — over a card per goal
 saying what rests on it, which threads pursue it, where it lands, and what is
 wrong. Selecting one is a URL (`#/<book>/~goals/<goal>`), so a particular goal is
-a link; the goal chips on a thread and in the plotline table link straight to it.
-The plotline editor picks goals from this list rather than taking free text, and
-can write a new one without leaving the thread you were editing.
+a link. The plotline editor picks goals from this list rather than taking free
+text, and can write a new one without leaving the thread you were editing.
+
+**Reading a goal without leaving.** A goal chip — on a thread, in the plotline
+table, in the report, on the story map — opens the goal in the **peek panel**
+beside what you were reading, the same slot a referenced article or a scene from
+another thread opens in. The chips *inside* the panel open the goals they name
+in the same slot, so following a chain of prerequisites never navigates; the
+`See in Goals →` link at the foot is the one deliberate way out, to the diagram
+the panel cannot draw. Losing your place in a thread — or a filter, a selection,
+a scroll position — to find out what a goal is was a steep price for an answer
+that fits in a panel.
+
+**Where the goals are.** A goal touches the timeline at exactly one point: the
+scene that delivers it. So it draws as one mark, on that scene:
+
+- **On a thread's timeline**, the delivering scene's rail dot is ringed and its
+  row carries a goal chip.
+- **On the story map**, the same — and because the map puts threads on one axis
+  and time on the other, a goal lands in the column of whichever thread owns the
+  scene. That is how you see a goal one thread pursues being paid off by
+  another. A goal landing inside a folded run is marked on the band standing in
+  for it, rather than disappearing with the rows the fold hid.
+- **On the dependency diagram**, each goal box carries the date under the scene
+  it lands on. The diagram is laid out by dependency, not by time, so a
+  prerequisite dated *later* than the goal below it is a story that cannot
+  happen — visible at a glance, and reported as `GOAL_OUT_OF_ORDER` besides.
+
+Goals that are *not* on the graph you are looking at — no scene named yet, or a
+scene on a thread this view is not showing — are named in a strip above it, each
+saying which. A thread pursuing four goals and marking one would otherwise read
+as a thread with one goal.
+
+**Goals are calendar-aware**, in the only way a goal can be: it has no date of
+its own and borrows the one belonging to the scene that delivers it. Every
+surface that dates a goal reads it through the book's chosen reckoning — the
+goals page and the plotline table have the calendar switcher for that — and no
+date is ever computed in the browser.
 
 ### Where threads meet
 

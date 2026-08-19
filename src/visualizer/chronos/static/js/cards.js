@@ -6,6 +6,7 @@
 import { api } from "./api.js";
 import { el } from "./dom.js";
 import { entityTitle, plainBody, resolveEntity } from "./entities.js";
+import { description, findingLines, goalFacts, stateChip, stateClass } from "./goalcard.js";
 
 // The human-readable timeframe for an event summary (also used by the timeline
 // rail, so it is exported).
@@ -165,6 +166,55 @@ function roleBadges(node) {
   else if (node.isConvergence) out.push(el("span", { class: "badge merge", text: "convergence" }));
   if (node.isDivergence) out.push(el("span", { class: "badge split", text: "divergence" }));
   return out;
+}
+
+// The peek card a goal chip opens: everything the book knows about one goal,
+// beside whatever you were reading rather than instead of it.
+//
+// Clicking a goal used to leave the page, which is a poor trade -- you lose the
+// thread you were reading to learn what its purpose was. So the chips *inside*
+// this card open the goal they name in this same slot (`onGoal`), and following
+// a chain of prerequisites never navigates. The one deliberate way out is the
+// link at the foot, which goes to the diagram this panel cannot draw.
+//
+// `calendar` is the reckoning the page around it is being read in, so the date
+// on the card matches the dates on the page it opened over.
+export function goalPeekCard(book, goalId, {
+  calendar = null, onClose, onGoal, onPlotline, onScene, onOpenInGoals,
+} = {}) {
+  const title = el("span", { class: "peek-title", text: goalId });
+  const body = el("div", { class: "peek-body" }, el("p", { class: "muted", text: "Loading…" }));
+  const card = el("article", { class: "peek-card goal-peek" }, [
+    el("div", { class: "peek-head" }, [
+      title,
+      el("button", { class: "icon-btn sm", text: "✕", title: "Close", onclick: onClose }),
+    ]),
+    body,
+  ]);
+
+  api.getGoal(book, goalId, { calendar })
+    .then((goal) => {
+      title.textContent = goal.name;
+      card.classList.add(stateClass(goal));
+      body.replaceChildren(...[
+        el("div", { class: "chip-row" }, stateChip(goal)),
+        description(goal),
+        goalFacts(goal, { onGoal, onPlotline, onScene }),
+        findingLines(goal),
+        onOpenInGoals ? el("button", {
+          class: "link-btn sm", type: "button", text: "See in Goals →",
+          title: "Open the goal diagram for this book",
+          onclick: () => onOpenInGoals(goalId),
+        }) : null,
+      ].filter(Boolean));
+    })
+    .catch((e) => {
+      body.replaceChildren(el("p", { class: "muted", text: e.isNotFound
+        ? "This goal is no longer in the book."
+        : "Could not load this goal." }));
+    });
+
+  return card;
 }
 
 function factValue(value) {

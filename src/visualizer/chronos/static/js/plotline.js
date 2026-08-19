@@ -9,8 +9,10 @@ import { eventCard } from "./cards.js";
 import { clear, el } from "./dom.js";
 import { findingList, markerClass, problemBanner, verdictNotes } from "./findings.js";
 import { focusToggle } from "./focus.js";
+import { goalMark, unplacedStrip } from "./goalcard.js";
+import { eachAlone, placeGoals } from "./goalplacing.js";
 import { openPlotlineEditor } from "./plotedit.js";
-import { showScene } from "./peek.js";
+import { showGoal, showScene } from "./peek.js";
 import { allScheduled, groupByPeriod } from "./timeaxis.js";
 
 function breadcrumb(bookTitle, book, plName, onBooks, onBook) {
@@ -40,7 +42,23 @@ function dotClass(ev) {
   const role = ev.is_terminus ? " is-terminus"
     : ev.is_convergence ? " is-merge"
       : ev.is_divergence ? " is-split" : "";
+  // No goal marking here. The dot already carries two things -- what this scene
+  // is in the weave, and whether it is in trouble -- and ringing it for a third
+  // turned the rail into a row of targets. The ticked chip under the row says
+  // it in words instead, which is why the story map's nodes lost theirs too.
   return role + markerClass(ev);
+}
+
+// The goals a scene delivers, drawn under the card's marks. A chip opens the
+// goal in the peek panel: the writer asked what this thread is paying off, not
+// to be taken to a different page.
+function goalMarks(goals, onGoal) {
+  if (!goals.length) return null;
+  return el("div", { class: "chip-row tl-goals" }, goals.map((ref) => el("button", {
+    class: "chip goal link", type: "button", text: `${goalMark(ref)} ${ref.title}`,
+    title: "This scene delivers the goal — open it",
+    onclick: () => onGoal(ref.id),
+  })));
 }
 
 // Small, clickable "another thread meets here" hints on an event. Each opens the
@@ -70,11 +88,13 @@ function markChip(text, eventId, onConnectedAt) {
 // its right and expands in place on click, pushing later rows down.
 function timelineRow(book, ev, timeLabel, deps) {
   const marks = eventMarks(ev, deps.onConnectedAt);
+  const goals = deps.goalsAt.get(ev.id) || [];
   return el("div", { class: "tl-row", dataset: { event: ev.id } }, [
     el("div", { class: "tl-time", text: timeLabel }),
     el("div", { class: "tl-rail" }, el("span", { class: "tl-dot" + dotClass(ev) })),
     el("div", { class: "tl-card" }, [
       marks,
+      goalMarks(goals, deps.onGoal),
       // What is wrong with this scene, above the card so it is read first.
       findingList(book, ev, { onJump: deps.onJump }),
       eventCard(book, ev, { ...deps, showTime: false }),
@@ -167,9 +187,25 @@ export async function mountPlotline(container, book, plotlineId,
   }
 
   const events = pl.effective_events || [];
+
+  // A goal chip opens the goal beside the thread rather than instead of it.
+  // Leaving the page to read what a thread is *for* is the disruption this
+  // replaces; `onGoal` is still here, as the one deliberate way out.
+  const peekGoal = (id) => showGoal(book, id, {
+    calendar,
+    onPlotline: (pid) => { if (pid !== plotlineId) window.location.hash = `#/${book}/${pid}`; },
+    onOpenInGoals: onGoal,
+  });
+
+  // Which of this thread's goals land on it, and which do not. One pass over
+  // the refs the plotline already carries -- the server dated each one, so no
+  // second request is needed to put a goal on the rail.
+  const placed = placeGoals(pl.goal_refs || [], eachAlone(events.map((e) => e.id)));
+
   const deps = {
     getFullEvent: eventFetcher(book), showEntity, onConnectedAt,
     onJump: (id) => jumpTo(container, book, id),
+    goalsAt: placed.marks, onGoal: peekGoal,
   };
 
   // Where to land when the editor closes: the thread is gone, it moved, or it
@@ -181,10 +217,17 @@ export async function mountPlotline(container, book, plotlineId,
     if (onSaved) onSaved();
   };
 
-  const goalChip = (ref) => (onGoal && !ref.missing
-    ? el("button", { class: "chip goal link", type: "button", text: ref.title,
-        title: "Open this goal", onclick: () => onGoal(ref.id) })
-    : el("span", { class: "chip goal" + (ref.missing ? " missing" : ""), text: ref.title }));
+  // Ticked or not, the same two glyphs the rail and the strip use — so the
+  // header answers "how much of what this thread is for is done?" at a glance,
+  // rather than only listing what it is for.
+  const goalChip = (ref) => (ref.missing
+    ? el("span", { class: "chip goal missing", text: ref.title,
+        title: "No longer in this book" })
+    : el("button", {
+        class: "chip goal link", type: "button",
+        text: `${goalMark(ref)} ${ref.title}`,
+        title: "Open this goal", onclick: () => peekGoal(ref.id),
+      }));
 
   const meets = meetCount(events);
   const canEdit = (bookMeta.permissions || {}).write;
@@ -225,6 +268,7 @@ export async function mountPlotline(container, book, plotlineId,
     el("p", { class: "muted axis-note", text: allScheduled(events)
       ? "Scenes top to bottom in story order — all are scheduled."
       : "Scenes top to bottom in story order — some have no timing yet." }),
+    unplacedStrip(placed.unplaced, peekGoal),
   ]);
 
   clear(container);

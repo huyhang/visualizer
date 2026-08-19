@@ -22,12 +22,23 @@ import { eventPeekCard } from "./cards.js";
 import { calendarSwitcher, currentFor } from "./calendarview.js";
 import { clear, el } from "./dom.js";
 import { collapseRuns } from "./collapse.js";
+import { unplacedStrip } from "./goalcard.js";
+import { coverageOf, placeGoals, stripFor } from "./goalplacing.js";
 import { applyPeriodGrouping, geometry, layoutGraph, paletteColor, paletteDash } from "./layout.js";
+import { showGoal } from "./peek.js";
 import { connectedIds, restrictTo } from "./subgraph.js";
 import { diagram, swatch } from "./storygraph.js";
 
 // Room under an expanded card before the next row starts.
 const CARD_GAP = 14;
+// ...and under a row whose goal marks sit beneath its head. Smaller, because a
+// line of marks is not a card: it wants separating from the next row, not
+// setting apart from it.
+const GOAL_GAP = 7;
+// What one line of marks is worth before anything has been measured. Only the
+// opening estimate — `measure` replaces it with the height the browser actually
+// produced, which is the only way to know how many lines the marks wrapped to.
+const GOAL_LINE = 22;
 // A redraw can change a measured height, which asks for another redraw. Two
 // passes settle every real case (measure, then re-measure after the reflow);
 // the cap is only there so a pathological layout cannot spin.
@@ -99,9 +110,10 @@ export async function mountStoryMap(container, book, deps) {
   let bookMeta = { title: book };
   try { bookMeta = await api.getBook(book); } catch (e) { /* fall back to the id */ }
 
+  const calendar = currentFor(book, bookMeta.calendars);
   let graph;
   try {
-    graph = await api.getGraph(book, { calendar: currentFor(book, bookMeta.calendars) });
+    graph = await api.getGraph(book, { calendar });
   } catch (e) {
     clear(container);
     container.appendChild(el("div", { class: "view" },
@@ -153,22 +165,46 @@ export async function mountStoryMap(container, book, deps) {
   // cannot read is not much of a map.
   const collapsedMoments = new Set();
   const heights = new Map(); // event id -> measured height of its expanded row
+  // Where this draw's goals landed, node id -> the goals on it. Held here
+  // rather than inside `redraw` because `heightOf` has to consult it, and the
+  // layout calls that back before the drawing exists.
+  let goalsAt = new Map();
   const cards = new Map();   // event id -> its card, so unfolding twice fetches once
   let compact = false;
+
+  // A goal mark opens the goal beside the map. The map is a place a writer
+  // arranges and re-arranges — leaving it to read one goal would throw away the
+  // selection, the open scenes and the scroll position.
+  const peekGoal = (id) => showGoal(book, id, {
+    calendar,
+    onPlotline: (pid) => { window.location.hash = `#/${book}/${pid}`; },
+    onOpenInGoals: (gid) => { window.location.hash = `#/${book}/~goals/${gid}`; },
+  });
 
   const rowHeight = () => (compact ? geometry.ROW_COMPACT : geometry.ROW_H);
   // A slot's height. Measured once it is on screen (heights, keyed by the same id
   // the row carries); until then an estimate good enough not to jump visibly --
   // a merged group needs a line per scene, an open card rather more.
+  // The marks a row carries, as room to reserve for it. A row is drawn at a y
+  // this function decides, and only as tall as it says — so a row that grows
+  // marks without saying so is drawn on top of the row beneath it. That is not
+  // hypothetical: it is what shipped, and in compact density four rows in five
+  // overlapped. One line is the estimate; `measure` corrects it to the truth.
+  //
+  // `heightOf` is called with a slot (which has `nodes`) and with a bare node
+  // (which does not), so both shapes are accepted here.
+  const goalRoom = (slot) => (slot.nodes || [slot]).reduce(
+    (room, node) => room + ((goalsAt.get(node.id) || []).length ? GOAL_LINE : 0), 0);
+
   const heightOf = (slot) => {
     const measured = heights.get(slot.id);
     if (measured) return measured;
     if (slot.isGroup) {
-      return slot.collapsed
+      return (slot.collapsed
         ? rowHeight()
-        : rowHeight() + (slot.count - 1) * (rowHeight() * 0.55);
+        : rowHeight() + (slot.count - 1) * (rowHeight() * 0.55) + goalRoom(slot));
     }
-    return openEvents.has(slot.id) ? rowHeight() * 3 : rowHeight();
+    return (openEvents.has(slot.id) ? rowHeight() * 3 : rowHeight()) + goalRoom(slot);
   };
 
   // -- chrome ----------------------------------------------------------------
@@ -190,6 +226,10 @@ export async function mountStoryMap(container, book, deps) {
     onclick: () => {
       compact = !compact;
       densityBtn.textContent = compact ? "Roomy" : "Compact";
+      // Measured heights are floored at the row height of the density they were
+      // taken in, so they have to be dropped when that changes — otherwise
+      // Compact would leave every row it had already measured at its roomy size.
+      heights.clear();
       redraw();
     },
   });
@@ -301,6 +341,25 @@ export async function mountStoryMap(container, book, deps) {
   // An expanded row's height is whatever the browser made it, so it can only be
   // known after a paint. Measure, and if anything moved, lay out again with the
   // real numbers.
+  // A row's marks wrap, so its height is a function of the window's width and
+  // the reader's font size -- neither of which a redraw is triggered by. Without
+  // this, narrowing the window re-wraps the marks and the layout keeps the old
+  // heights: the rows grow into each other, which is the exact bug the
+  // measuring exists to prevent, arriving a second time by a different door.
+  //
+  // One observer, re-pointed at each draw's rows. Watching the rows rather than
+  // the window catches the font-scale toggle too, which no resize event fires
+  // for. The measure pass is idempotent and capped, so the initial callback
+  // every `observe` produces costs a comparison and stops.
+  const rowSizes = typeof ResizeObserver === "function"
+    ? new ResizeObserver(() => measure()) : null;
+
+  function watchMarkedRows() {
+    if (!rowSizes) return;
+    rowSizes.disconnect();
+    for (const row of canvas.querySelectorAll(".sg-row.has-goals")) rowSizes.observe(row);
+  }
+
   let passes = 0;
   let pending = false;
   function measure() {
@@ -309,9 +368,20 @@ export async function mountStoryMap(container, book, deps) {
     requestAnimationFrame(() => {
       pending = false;
       let changed = false;
-      for (const row of canvas.querySelectorAll(".sg-row.expanded, .sg-row.is-group:not(.collapsed)")) {
+      // `.has-goals` joins the list because marks wrap: how many lines they
+      // take depends on the window, the font scale and the length of the names,
+      // none of which an estimate can know. Measuring is the only honest answer,
+      // and an unmeasured row is one drawn over the row below it.
+      const grown = ".sg-row.expanded, .sg-row.is-group:not(.collapsed), .sg-row.has-goals";
+      for (const row of canvas.querySelectorAll(grown)) {
         const id = row.dataset.event || row.dataset.slot;
-        const h = row.offsetHeight + CARD_GAP;
+        if (!id) continue;
+        // A card wants setting apart from what follows; a line of marks only
+        // wants separating from it.
+        const gap = row.classList.contains("has-goals")
+          && !row.classList.contains("expanded")
+          && !row.classList.contains("is-group") ? GOAL_GAP : CARD_GAP;
+        const h = Math.max(rowHeight(), row.offsetHeight + gap);
         if (Math.abs((heights.get(id) || 0) - h) > 1) { heights.set(id, h); changed = true; }
       }
       if (changed && passes < MEASURE_PASSES) { passes++; redraw(); }
@@ -332,14 +402,29 @@ export async function mountStoryMap(container, book, deps) {
     const slice = restrictTo(graph, selected, focusPl);
     const dense = collapseRuns(slice, { expanded: openBands });
     lastBands = dense.bands || [];
+    // Where the book's goals land on *this* slice. After the fold, so a goal
+    // inside a collapsed run is marked on the band standing in for it rather
+    // than lost with the rows it hid — and *before* the layout, because
+    // `heightOf` reserves room for a row's marks and would otherwise reserve it
+    // by the last draw's. The goals come from the whole book (a scene
+    // delivering a goal is worth marking whoever pursues it) while the strip
+    // below narrows to what the shown threads are pursuing.
+    const placed = placeGoals(graph.goals || [], coverageOf(dense.nodes));
+    goalsAt = placed.marks;
+
     const layout = layoutGraph(dense, { colorOf, dashOf, heightOf });
     const model = applyPeriodGrouping(layout, { heightOf, collapsedMoments });
 
     clear(canvas);
+    const strip = unplacedStrip(stripFor(placed, slice.plotlines), peekGoal, {
+      label: "Not landed on the shown threads",
+    });
+    if (strip) canvas.appendChild(strip);
     canvas.appendChild(diagram(model, {
       expanded: openEvents, cardFor, onToggleEvent, onToggleBand, onToggleGroup,
-      focusEvent,
+      focusEvent, goalsAt: placed.marks, onGoal: peekGoal,
     }));
+    watchMarkedRows();
 
     const folded = lastBands.filter((b) => !openBands.has(b.id));
     const hidden = folded.reduce((n, b) => n + b.events.length, 0);

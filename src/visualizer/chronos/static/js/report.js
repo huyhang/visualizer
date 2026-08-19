@@ -21,7 +21,7 @@ import { calendarSwitcher, currentFor } from "./calendarview.js";
 import { clear, el, toast } from "./dom.js";
 import { entityTitle } from "./entities.js";
 import { withArticleTitles } from "./findings.js";
-import { showArticle, showScene } from "./peek.js";
+import { showArticle, showGoal, showScene } from "./peek.js";
 
 // Which thread the reader has narrowed to. "" is all of them.
 const ALL = "";
@@ -104,7 +104,14 @@ export async function mountBookReport(container, book, { onBooks, onBook, onScen
       render();
     };
     const deps = {
-      onScene, onGoal, onThread,
+      onScene, onThread,
+      // A goal named in a finding opens beside the report, not instead of it:
+      // the report is a list you work down, and losing your place in it to read
+      // one goal is the same bad trade the plotline view used to make. The
+      // navigating `onGoal` survives as the panel's way out.
+      onGoal: (id) => showGoal(book, id, {
+        calendar, onPlotline: (pid) => onScene(pid, null), onOpenInGoals: onGoal,
+      }),
       onNotes: (open) => { rememberNotes(open); render(); },
     };
     for (const node of sections(book, body, thread, deps)) results.appendChild(node);
@@ -292,8 +299,9 @@ function sceneLink(book, issue, { onScene }) {
   });
 }
 
-// The goal a message is said about, as somewhere to go: the goals view, opened
-// on it, where what it rests on and what the book does about it are answered.
+// The goal a message is said about, as something to open: the peek panel, where
+// what it rests on and what the book does about it are answered — beside the
+// list rather than in place of it.
 function goalLink(goal, { onGoal }) {
   return el("button", {
     class: "issue-goal", type: "button", text: goal.title,

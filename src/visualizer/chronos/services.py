@@ -19,7 +19,7 @@ from .browsing import (
     browse_plotlines,
     dominant_database,
 )
-from .calendar import codec_for, codec_for_attachment, select_calendar
+from .calendar import codec_for, codec_for_attachment
 from .continuation import effective_paths, resolve, resolve_all, would_cycle
 from .entity_gate import EntityGate
 from .errors import (
@@ -264,6 +264,7 @@ class BookService(_Service):
         return present_graph(
             view, self._events_by_id(book_id),
             {p.id: p for p in plotlines}, codec_for(book, calendar_id),
+            self._goals(book_id),
         )
 
     def _plotline_ids(self, book_id) -> list[str]:
@@ -736,10 +737,11 @@ class VisualizerService(_Service):
         self, book_id, query: str = "", page: int = 1, per_page: int = DEFAULT_PER_PAGE,
         calendar_id=None,
     ) -> dict:
-        # Validates the choice even though this table shows no labels itself, so
-        # a stale ``?calendar=`` fails the same way on every book-scoped read
-        # rather than only on the ones that happen to format a tick.
-        select_calendar(self._require_book(book_id), calendar_id)  # 404 for either
+        # The table labels one thing -- when each goal chip lands -- so it reads
+        # through the chosen calendar like every other book-scoped view, and a
+        # stale ``?calendar=`` 404s here the way it does everywhere else.
+        book = self._require_book(book_id)
+        codec = codec_for(book, calendar_id)  # 404 for an unattached calendar
         events_by_id = self._events_by_id(book_id)
         plotlines = self._plotlines(book_id)
         # Filter on the *resolved* path so a word from a shared/continued scene
@@ -751,13 +753,13 @@ class VisualizerService(_Service):
         )
         goals_by_id = {g.id: g for g in self._goals(book_id)}
         rows = [
-            self._row(pl, paths, events_by_id, book_id, counts, goals_by_id)
+            self._row(pl, paths, events_by_id, book_id, counts, goals_by_id, codec)
             for pl in plotlines
         ]
         return browse_plotlines(rows, query=query, page=page, per_page=per_page)
 
     @staticmethod
-    def _row(pl: Plotline, paths, events_by_id, book_id, counts, goals_by_id) -> dict:
+    def _row(pl: Plotline, paths, events_by_id, book_id, counts, goals_by_id, codec) -> dict:
         path = paths.get(pl.id, list(pl.events))
         titles = [events_by_id[eid].display_title for eid in path if eid in events_by_id]
         return {
@@ -769,7 +771,9 @@ class VisualizerService(_Service):
             # it, and the filter matches what the writer can see -- the title --
             # rather than the slug it is stored under. The same reference shape
             # every other response uses, so a client has one thing to render.
-            "goals": [goal_ref(gid, goals_by_id) for gid in pl.goals],
+            "goals": [
+                goal_ref(gid, goals_by_id, events_by_id, codec) for gid in pl.goals
+            ],
             "event_titles": titles,
             "conflicts": counts.get(pl.id, 0),
         }

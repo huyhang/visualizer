@@ -30,7 +30,12 @@
 // the rows it crosses keeps a long edge visibly separate from the short ones.
 
 export const NODE_W = 176;
-export const NODE_H = 62;
+// Two lines of name, the scene under it, and the date under that. A goal has no
+// date of its own -- it borrows the one belonging to the scene that delivers it
+// -- but that borrowed date is what makes the diagram readable as a chronology
+// as well as a dependency graph: an edge running down from a prerequisite dated
+// *later* than the goal beneath it is a story that cannot happen.
+export const NODE_H = 78;
 export const GAP_X = 24;
 export const GAP_Y = 64;
 export const PAD = 16;

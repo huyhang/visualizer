@@ -14,6 +14,7 @@
 // -- the pane scrolls instead.
 
 import { el, svgEl } from "./dom.js";
+import { goalMark } from "./goalcard.js";
 import { geometry } from "./layout.js";
 
 // Hue runs out before threads do, so identity rides on colour *and* stroke (see
@@ -77,6 +78,12 @@ function edgePath(e) {
 
 function nodeDot(n) {
   const g = svgEl("g", { class: "sg-node" });
+  // A scene that delivers a goal used to gain a third ring here. Two rings are
+  // already in play -- focus and terminus -- and a node wearing all three reads
+  // as a target rather than a scene. The tick in the row beside it says the same
+  // thing in a way that does not compete with the drawing, so the drawing keeps
+  // saying only what the drawing is for: where a scene sits in the weave.
+  //
   // The thread a writer arrived from keeps its own (stable) colour; an accent
   // ring marks it as "you are here" without recolouring anything.
   if (n.isFocus && !n.isTerminus) {
@@ -127,6 +134,45 @@ function whenLabel(slot) {
   return el("span", { class: "sg-row-when", text: slot.when });
 }
 
+// The goals a row delivers. A row is a scene, or a folded band standing for a
+// run of them, and either can be where a goal lands -- `goalsAt` was keyed by
+// row id after the fold for exactly that reason.
+//
+// Drawn as its own mark rather than folded into the title, because it is a
+// different kind of fact: the title says which scene this is, the mark says
+// what the book gets out of it. Clicking opens the goal beside the map.
+//
+// Under the head and indented to the title, wrapping as a set. Sharing the
+// head's line was tried and is worse: a scene can pay off three goals whose
+// names are sentences, and squeezing those onto one line spends the scene's own
+// title on a row of ellipses. Given a line of their own they simply flow onto a
+// second one, and nothing has to be clipped to a guess.
+//
+// The height that costs is real, and it is not this module's to take. A row is
+// absolutely positioned at a y the layout computed, so a row that grows without
+// the layout being told lands on top of the row beneath it. `.has-goals` on the
+// row is how `storymap.js` finds these and measures them -- that, not this
+// markup, is what keeps them from colliding.
+//
+// A sibling of the row head, never inside it: the head is a `<button>`, and a
+// button inside a button is not a thing a browser will honour.
+function goalChips(n, { goalsAt, onGoal }) {
+  const goals = (goalsAt && goalsAt.get(n.id)) || [];
+  if (!goals.length) return null;
+  return el("div", { class: "sg-row-goals" }, goals.map((ref) => el("button", {
+    class: "sg-goal", type: "button",
+    title: `${ref.title} \u2014 this scene delivers it`,
+    onclick: (e) => { e.stopPropagation(); onGoal(ref.id); },
+  }, [
+    el("span", { class: "sg-goal-mark", text: goalMark(ref), "aria-hidden": "true" }),
+    el("span", { class: "sg-goal-name", text: ref.title }),
+  ])));
+}
+
+// `.has-goals` on a row that carries marks: the stylesheet indents them by it,
+// and storymap.js measures by it.
+const marked = (goals) => (goals ? " has-goals" : "");
+
 // A scene's name. The book's terminus is underlined rather than labelled: it is
 // one row in the whole map, the note under the diagram says what the underline
 // means, and a badge on the busiest row was the thing that wrapped.
@@ -174,9 +220,13 @@ function groupToggle(slot, onToggleGroup) {
 // A folded stretch of one thread's solitary scenes. Reads as what it is -- an
 // amount of story -- and unfolds into its scenes on click.
 function bandRow(slot, n, opts) {
+  const goals = goalChips(n, opts);
   return el("div", {
-    class: "sg-row is-band",
+    class: "sg-row is-band" + marked(goals),
     style: `top:${slot.y}px`,
+    // Measured like any other row that carries marks, so it needs the id the
+    // height is filed under -- the band's own, which is its node id.
+    dataset: { event: n.id },
   }, [
     el("button", {
       class: "sg-row-head",
@@ -188,7 +238,10 @@ function bandRow(slot, n, opts) {
       titleSpan(n),
       whenLabel(slot),
     ]),
-  ]);
+    // A folded run can be where a goal lands, and folding it must not hide
+    // that: the mark says so on the band, and unfolding moves it to the scene.
+    goals,
+  ].filter(Boolean));
 }
 
 // Several scenes at one moment, sharing one row and one y -- so the dots sit at
@@ -203,9 +256,10 @@ function groupRow(slot, opts) {
     // asks the API for an event id that was never an event.
     const open = !n.isBand && expanded.has(n.id);
     const toggle = () => (n.isBand ? onToggleBand(n) : onToggleEvent(n));
+    const goals = goalChips(n, opts);
     return el("div", {
       class: "sg-group-scene" + (open ? " expanded" : "")
-        + (n.isBand ? " is-band" : "")
+        + (n.isBand ? " is-band" : "") + marked(goals)
         + (n.id === focusEvent ? " focused" : ""),
       dataset: { event: n.id },
       onkeydown: (e) => {
@@ -225,6 +279,7 @@ function groupRow(slot, opts) {
         laneDot(n),
         titleSpan(n),
       ]),
+      goals,
       open ? cardFor(n) : null,
     ].filter(Boolean));
   });
@@ -260,8 +315,10 @@ function eventRow(slot, opts) {
     whenLabel(slot),
   ]);
 
+  const goals = goalChips(n, opts);
   const row = el("div", {
-    class: "sg-row" + (open ? " expanded" : "") + (n.id === focusEvent ? " focused" : ""),
+    class: "sg-row" + (open ? " expanded" : "") + marked(goals)
+      + (n.id === focusEvent ? " focused" : ""),
     style: `top:${slot.y}px`,
     dataset: { event: n.id },
     // Esc closes the scene you are reading without reaching for the mouse.
@@ -271,7 +328,7 @@ function eventRow(slot, opts) {
       e.stopPropagation();
       onToggleEvent(n);
     },
-  }, [head, open ? cardFor(n) : null].filter(Boolean));
+  }, [head, goals, open ? cardFor(n) : null].filter(Boolean));
   return row;
 }
 

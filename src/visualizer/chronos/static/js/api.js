@@ -152,10 +152,13 @@ export const api = {
   listGoals: (book, { calendar } = {}) =>
     request("GET", `${bookPath(book)}/goals${viewQuery(calendar)}`),
 
-  // No `getGoal` here on purpose: the listing above already returns each goal
-  // in full, read against the rest of the book, so a second call for one of
-  // them would ask the server to do the same work again for less. The route
-  // exists for scripts (see ui-api-gaps.md).
+  // One goal, read against the rest of the book exactly as the listing reads
+  // it. The peek panel is why this exists: it opens beside a thread, a table or
+  // a map, none of which hold the book's goals, and asking for thirty to draw
+  // one is the trade the other way round from the goals view's own.
+  getGoal: (book, id, { calendar } = {}) =>
+    request("GET", goalPath(book, id) + viewQuery(calendar)),
+
   createGoal: (book, id, body) => request("POST", goalPath(book, id), { body }),
   updateGoal: (book, id, body, rev) =>
     request("PUT", goalPath(book, id), { body, ifMatch: rev }),

@@ -9,8 +9,11 @@
 
 import { api } from "./api.js";
 import { openBookForm } from "./bookform.js";
+import { calendarSwitcher, currentFor } from "./calendarview.js";
 import { clear, el, toast } from "./dom.js";
 import { pager } from "./paging.js";
+import { goalMark } from "./goalcard.js";
+import { showGoal } from "./peek.js";
 import { openPlotlineEditor } from "./plotedit.js";
 
 const PER_PAGE = 20;
@@ -24,16 +27,28 @@ function breadcrumb(bookTitle, onBooks) {
   ]);
 }
 
-// Each goal a thread serves, as a chip that opens the goal. Clicks stop there
-// rather than falling through to the row, which would open the plotline instead
-// of the thing that was clicked.
-function goalCells(goals, onGoals) {
+// Each goal a thread serves, as a chip that opens the goal beside the table
+// rather than instead of it -- losing the filter and page you were on is a
+// steep price for finding out what a goal is. Clicks stop at the chip rather
+// than falling through to the row, which would open the plotline instead of
+// the thing that was clicked.
+function goalCells(goals, onPeek) {
   return el("div", { class: "chip-row" }, (goals || []).map((g) => (g.missing
     ? el("span", { class: "chip missing", text: g.title, title: "No longer in this book" })
     : el("button", {
-        class: "chip link", type: "button", text: g.title, title: "Open this goal",
-        onclick: (e) => { e.stopPropagation(); onGoals(g.id); },
+        class: "chip link", type: "button",
+        text: `${goalMark(g)} ${g.title}`, title: landsAt(g),
+        onclick: (e) => { e.stopPropagation(); onPeek(g.id); },
       }))));
+}
+
+// Where the goal lands, on the chip's tooltip. The column has room for a name
+// and no more, but the date is the fact the writer came for, and the server has
+// already worked it out in the reckoning this page is read in.
+function landsAt(goal) {
+  if (!goal.achieved_scene) return "Open this goal — no scene delivers it yet";
+  const { title, when } = goal.achieved_scene;
+  return `Open this goal — delivered at ${title}${when ? ` · ${when}` : ""}`;
 }
 
 // How many problems this thread has (server-counted, so it matches what the
@@ -48,7 +63,7 @@ function healthCell(count) {
   });
 }
 
-function table(rows, onOpen, onGoals) {
+function table(rows, onOpen, onPeekGoal) {
   if (!rows.length) return el("p", { class: "empty", text: "No plotlines match your filter." });
   const body = rows.map((pl) => el("tr", { class: "pl-row", onclick: () => onOpen(pl.id) }, [
     el("td", {}, [
@@ -57,7 +72,7 @@ function table(rows, onOpen, onGoals) {
       // column of prose would squeeze the two that are scannable.
       pl.overview ? el("p", { class: "row-overview", text: pl.overview }) : null,
     ]),
-    el("td", {}, goalCells(pl.goals, onGoals)),
+    el("td", {}, goalCells(pl.goals, onPeekGoal)),
     el("td", {}, healthCell(pl.conflicts)),
   ]));
   return el("div", { class: "table-wrap" }, el("table", { class: "pl-table" }, [
@@ -84,6 +99,12 @@ export async function mountPlotlineTable(container, book, { onOpen, onBooks, onS
 
   const canWrite = Boolean((bookMeta.permissions || {}).write);
   const conflicted = bookMeta.status === "conflicted";
+  // The Goals column dates each chip with the scene that delivers it, so this
+  // table reads through a reckoning like every other book-scoped view.
+  const calendar = currentFor(book, bookMeta.calendars);
+  const peekGoal = (id) => showGoal(book, id, {
+    calendar, onPlotline: onOpen, onOpenInGoals: onGoals,
+  });
 
   // How many, not just whether — the button's whole job is to say if it is worth
   // opening. Two things keep it cheap. It is filled in *after* the page is on
@@ -155,6 +176,11 @@ export async function mountPlotlineTable(container, book, { onOpen, onBooks, onS
       // the book is already known to be conflicted, so the writer does not have
       // to open it to find out whether it is worth opening.
       reportButton,
+      // Which reckoning the goal chips are dated in. Re-mounts rather than
+      // re-labels: the dates came from the server's codec.
+      calendarSwitcher(book, bookMeta.calendars, () => mountPlotlineTable(
+        container, book, { onOpen, onBooks, onScenes, onGoals, onIssues, onMap },
+      )),
     ].filter(Boolean)),
     // What the book is about, under its title — the one screen that is about
     // this book and nothing else is where its summary belongs.
@@ -176,10 +202,12 @@ export async function mountPlotlineTable(container, book, { onOpen, onBooks, onS
 
   async function render() {
     try {
-      const data = await api.listPlotlines(book, { filter: state.query, page: state.page, perPage: PER_PAGE });
+      const data = await api.listPlotlines(book, {
+        filter: state.query, page: state.page, perPage: PER_PAGE, calendar,
+      });
       state.page = data.page; // server clamps out-of-range pages
       clear(results);
-      results.appendChild(table(data.plotlines, onOpen, onGoals));
+      results.appendChild(table(data.plotlines, onOpen, peekGoal));
       results.appendChild(pager(data, (p) => { state.page = p; render(); }, { noun: "plotline" }));
     } catch (e) {
       clear(results);

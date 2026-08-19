@@ -34,7 +34,10 @@ _MODULES = ("layout.js", "subgraph.js", "collapse.js", "timeaxis.js",
             # at module scope -- so the helper can be exercised directly.
             "storymap.js", "api.js", "calendarview.js", "cards.js", "findings.js",
             "focus.js", "fontscale.js", "peek.js", "entities.js", "picker.js",
-            "paging.js", "table.js")
+            "paging.js", "table.js",
+            # Goals reach the map two ways: the peek panel a mark opens
+            # (cards.js -> goalcard.js), and where the marks go (goalplacing.js).
+            "goalcard.js", "goalplacing.js")
 
 # Enough of a DOM for the renderer to build against, and no more. Deliberately
 # unforgiving: anything storygraph.js reaches for that is not here throws, which
@@ -69,7 +72,10 @@ export function text(root) {
   return (root.children || []).map(text).join(" ").trim();
 }
 const event = (extra) => ({ stopPropagation() {}, preventDefault() {}, ...extra });
-export const click = (el) => (el.listeners.click || []).forEach((fn) => fn(event()));
+// `target` is the element clicked, as a real event carries it: a row delegates
+// its toggle to the whole line and tells its own blank space apart from the
+// controls sitting on it by comparing against it.
+export const click = (el) => (el.listeners.click || []).forEach((fn) => fn(event({ target: el })));
 export const press = (el, key) =>
   (el.listeners.keydown || []).forEach((fn) => fn(event({ key })));
 // `is-band` marks both a folded row and the hollow dot beside it, so a test that
@@ -96,6 +102,7 @@ _PREAMBLE = """\
 import { applyPeriodGrouping, geometry, layoutGraph, orderLanes } from "./layout.js";
 import { connectedTo, restrictTo } from "./subgraph.js";
 import { collapseRuns } from "./collapse.js";
+import { coverageOf, placeGoals, stripFor } from "./goalplacing.js";
 import { remountDeps } from "./storymap.js";
 const INPUT = %s;
 const emit = (value) => console.log(JSON.stringify(value));
@@ -1323,3 +1330,224 @@ def test_unrelated_deps_ride_through_untouched(run_js):
                        ["a"], new Set(["a"])));
     """)
     assert got["focusEvent"] == "e1" and got["extra"] == 7
+
+
+# -- goals on the map --------------------------------------------------------
+#
+# A goal touches the timeline at one point, so it draws as one mark: on the
+# scene that delivers it, or on the band standing in for that scene. What is
+# under test is that the mark lands on the right row, that folding does not hide
+# it, and that a goal landing nowhere visible is named rather than dropped.
+#
+# The marks are drawn for the *book's* goals, not the shown threads': a scene on
+# screen that pays off a goal is worth seeing whoever is pursuing it. The strip
+# is the narrower half, and the two are checked apart for that reason.
+
+# One goal delivered at a junction, one inside alpha's solitary run, one with no
+# scene at all -- the three cases the map has to tell apart.
+_GOALS = [
+    {"id": "crown", "title": "The Crown", "missing": False, "achieved": True,
+     "achieved_at": "j1",
+     "achieved_scene": {"id": "j1", "title": "J1", "when": "40"}},
+    {"id": "seal", "title": "The Seal", "missing": False, "achieved": True,
+     "achieved_at": "a3",
+     "achieved_scene": {"id": "a3", "title": "A3", "when": "20"}},
+    {"id": "peace", "title": "The Pact Holds", "missing": False, "achieved": False,
+     "achieved_at": None, "achieved_scene": None},
+]
+
+
+def _with_goals(graph, lane_goals):
+    return {
+        **graph,
+        "goals": _GOALS,
+        "plotlines": [
+            {**p, "goals": list(lane_goals.get(p["id"], []))} for p in graph["plotlines"]
+        ],
+    }
+
+
+def _mapped(run_js, graph, selection, body):
+    """Draw the map the way storymap.js does, goals and all."""
+    return run_js("""
+      const slice = restrictTo(INPUT, SELECTION);
+      const dense = collapseRuns(slice);
+      const placed = placeGoals(INPUT.goals, coverageOf(dense.nodes));
+      const model = applyPeriodGrouping(layoutGraph(dense, {}), {});
+      const clicked = [];   // goals opened
+      const toggles = [];   // rows opened
+      const pane = diagram(model, {
+        expanded: new Set(), cardFor: () => null, focusEvent: null,
+        onToggleEvent: (n) => toggles.push(n.id), onToggleBand: (n) => toggles.push(n.id),
+        goalsAt: placed.marks, onGoal: (id) => clicked.push(id),
+      });
+      const strip = stripFor(placed, slice.plotlines);
+      const marked = () => find(pane, "sg-row")
+        .filter((r) => find(r, "sg-goal").length)
+        .map((r) => ({ row: text(r), goals: find(r, "sg-goal").map(text) }));
+    """.replace("SELECTION", json.dumps(selection)) + body, graph, dom=True)
+
+
+def test_a_goal_is_drawn_on_the_row_that_delivers_it(run_js, graph):
+    got = _mapped(run_js, _with_goals(graph, {"alpha": ["crown"]}), ["alpha", "beta"],
+                  "emit(marked());")
+
+    # `crown` lands on the junction; `seal` lands inside alpha's folded run.
+    # `peace` lands nowhere, so it is on no row at all.
+    assert sorted(g for row in got for g in row["goals"]) == ["✓ The Crown", "✓ The Seal"]
+    crown = next(r for r in got if r["goals"] == ["✓ The Crown"])
+    assert "J1" in crown["row"]
+
+
+def test_a_goal_inside_a_folded_run_is_marked_on_the_band(run_js, graph):
+    """alpha's a1-a4 fold into one band and `seal` lands on a3 inside it. The
+    fold must not take the goal down with the rows it hid -- that band is
+    precisely the one worth unfolding."""
+    got = _mapped(run_js, _with_goals(graph, {"alpha": ["seal"]}), ["alpha", "beta"], """
+      const band = find(pane, "sg-row").filter(hasClass("is-band"))
+        .find((r) => find(r, "sg-goal").length);
+      emit({ label: band ? text(band) : null,
+             goals: band ? find(band, "sg-goal").map(text) : [] });
+    """)
+
+    assert "scenes on Alpha" in got["label"]
+    assert got["goals"] == ["✓ The Seal"]
+
+
+def test_the_drawing_is_left_to_say_only_what_it_is_for(run_js, graph):
+    """A delivering scene used to gain a third ring on its node, on top of the
+    focus and terminus rings already in play. Three circles read as a target
+    rather than a scene, and the tick in the row says it without competing with
+    the drawing."""
+    got = _mapped(run_js, _with_goals(graph, {"alpha": ["crown"]}), ["alpha", "beta"], """
+      emit({ rings: find(pane, "sg-goal-ring").length,
+             dots: find(pane, "sg-dot").length,
+             marks: find(pane, "sg-goal").length });
+    """)
+
+    assert got["rings"] == 0
+    assert got["dots"] > 0 and got["marks"] == 2  # still drawn, still marked
+
+
+def test_a_goal_with_nowhere_to_land_is_named_rather_than_dropped(run_js, graph):
+    got = _mapped(run_js, _with_goals(graph, {"alpha": ["crown", "peace"]}), ["alpha"],
+                  "emit(strip.map((g) => ({ id: g.id, note: g.note })));")
+
+    assert got == [{"id": "peace", "note": "no scene yet"}]
+
+
+def test_a_goal_delivered_off_the_shown_threads_says_where_it_went(run_js, graph):
+    """gamma pursues the crown, which lands on j1 -- a scene gamma never walks
+    through. Marking nothing would read as "this goal is going nowhere"."""
+    got = _mapped(run_js, _with_goals(graph, {"gamma": ["crown"]}), ["gamma"],
+                  "emit(strip.map((g) => g.note));")
+
+    assert got == ["delivered at J1 · 40"]
+
+
+def test_the_strip_ignores_goals_the_shown_threads_do_not_pursue(run_js, graph):
+    """Otherwise ticking fewer threads would make the strip longer -- it would
+    fill up with goals belonging to the threads the writer just hid."""
+    got = _mapped(run_js, _with_goals(graph, {"delta": []}), ["delta"], """
+      emit({ strip: strip.length, unplaced: placed.unplaced.length });
+    """)
+
+    assert got["unplaced"] == 3  # every goal in the book is off this slice
+    assert got["strip"] == 0     # ...and delta pursues none of them
+
+
+def test_clicking_a_goal_mark_reaches_the_state_that_owns_it(run_js, graph):
+    """The renderer holds no state: opening the peek panel is storymap.js's job,
+    so the click has to come back out the way a row's does."""
+    got = _mapped(run_js, _with_goals(graph, {"alpha": ["crown"]}), ["alpha", "beta"], """
+      const chip = find(pane, "sg-goal").find((c) => text(c).includes("Crown"));
+      click(chip);
+      emit(clicked);
+    """)
+
+    assert got == ["crown"]
+
+
+def test_a_map_told_nothing_about_goals_draws_none(run_js, graph):
+    """The renderer gained an optional dependency, and the book that has no
+    goals passes none -- those maps must still draw."""
+    got = run_js("""
+      const dense = collapseRuns(restrictTo(INPUT, ["alpha", "beta"]));
+      const model = applyPeriodGrouping(layoutGraph(dense, {}), {});
+      const pane = diagram(model, {
+        expanded: new Set(), cardFor: () => null, focusEvent: null,
+        onToggleEvent: () => {}, onToggleBand: () => {},
+      });
+      emit({ goals: find(pane, "sg-goal").length,
+             rows: find(pane, "sg-row").length });
+    """, graph, dom=True)
+
+    assert got["goals"] == 0
+    assert got["rows"] > 0
+
+
+# -- marks may not cost a row its height -------------------------------------
+#
+# A map row is absolutely positioned at the y the layout computed, and the space
+# under it is exactly what `heightOf` reserved. So a row that grows marks the
+# layout was not told about is drawn on top of the row beneath it. That is not
+# hypothetical: it is what shipped, and in compact density four rows in five
+# overlapped, printing text over text.
+#
+# The marks sit under the head and wrap, which is what keeps the names and the
+# scene titles legible — so they *do* cost height, and the fix is that
+# storymap.js measures every row carrying them and feeds the real number back.
+# Height is a browser fact this harness cannot see. What it can hold is the
+# contract that measurement depends on: a row carrying marks says so, and can be
+# named. Break either and the overlap comes straight back.
+
+
+def test_a_row_carrying_marks_says_so(run_js, graph):
+    """`.has-goals` is how storymap.js finds the rows it has to measure."""
+    got = _mapped(run_js, _with_goals(graph, {"alpha": ["crown"]}), ["alpha", "beta"], """
+      emit(find(pane, "sg-row").map((r) => ({
+        marked: hasClass("has-goals")(r), goals: find(r, "sg-goal").length,
+      })));
+    """)
+
+    assert got, "the fixture drew no rows"
+    for row in got:
+        assert row["marked"] == (row["goals"] > 0), row
+    assert sum(r["goals"] for r in got) == 2  # the junction, and alpha's band
+
+
+def test_every_row_that_can_carry_marks_can_be_named(run_js, graph):
+    """The measurer files a height under `dataset.event`/`dataset.slot`, so a row
+    without one is a row it silently skips — and skipping is the overlap. The
+    band row is the one that had no id."""
+    got = _mapped(run_js, _with_goals(graph, {"alpha": ["seal"]}), ["alpha", "beta"], """
+      emit(find(pane, "sg-row").map((r) => ({
+        id: (r.dataset && (r.dataset.event || r.dataset.slot)) || null,
+        band: hasClass("is-band")(r), marked: hasClass("has-goals")(r),
+      })));
+    """)
+
+    assert any(r["band"] and r["marked"] for r in got), "no marked band in the fixture"
+    for row in got:
+        assert row["id"], f"a row the measurer cannot name: {row}"
+
+
+def test_the_marks_sit_beside_the_head_not_inside_it(run_js, graph):
+    """Each mark is a `<button>` and so is the head. Nested, the browser drops
+    one of them — and it is not predictable which."""
+    got = _mapped(run_js, _with_goals(graph, {"alpha": ["crown"]}), ["alpha", "beta"], """
+      emit(find(pane, "sg-row-head").reduce((n, h) => n + find(h, "sg-goal").length, 0));
+    """)
+
+    assert got == 0
+
+
+def test_a_mark_opens_its_goal_without_opening_the_row(run_js, graph):
+    """The mark sits inside the row, so it has to stop its click reaching it."""
+    got = _mapped(run_js, _with_goals(graph, {"alpha": ["crown"]}), ["alpha", "beta"], """
+      click(find(pane, "sg-goal").find((c) => text(c).includes("Crown")));
+      emit({ goals: clicked, rows: toggles });
+    """)
+
+    assert got["goals"] == ["crown"]
+    assert got["rows"] == [], "opening a goal also toggled the scene under it"

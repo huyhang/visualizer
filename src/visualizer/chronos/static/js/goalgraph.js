@@ -21,6 +21,7 @@
 // geometry is tested and this module only paints it.
 
 import { el, svgEl } from "./dom.js";
+import { DONE } from "./goalcard.js";
 import { layoutGoals } from "./goallayout.js";
 
 // The reader's text size relative to the default, so the boxes grow with the
@@ -81,14 +82,32 @@ function nodeBox(node, goal, selected, onPick) {
   }, [
     el("span", { class: "goal-label", text: name }),
     el("span", { class: "goal-sub", text: subtitle(goal, state) }),
+    el("span", { class: "goal-when", text: whenLabel(goal) }),
   ]);
 }
 
 // One line under the name saying where the goal stands. The scene it lands on
 // when it has one, because that is the fact a writer is looking for; the state
 // itself otherwise, since "open" is only interesting when there is no scene.
+//
+// Ticked when a scene delivers it -- the same tick the map and the threads use,
+// so "done" looks like one thing across the app rather than three.
 function subtitle(goal, state) {
   if (state === "conflicted") return "needs attention";
-  if (goal.achieved_scene) return goal.achieved_scene.title;
+  if (goal.achieved_scene) return `${DONE} ${goal.achieved_scene.title}`;
   return "no scene yet";
+}
+
+// And under that, when. Read down a chain of edges this is the chronology the
+// dependency graph implies, so a prerequisite dated after the goal it enables
+// is visible here rather than only in the findings list. Blank rather than
+// absent when there is no scene: an empty line keeps every box the same height,
+// and "no scene yet" has already been said on the line above.
+//
+// Server-formatted, like every other date in the app -- the span is trimmed to
+// its start, because a box this size cannot hold "X → Y" and the start is the
+// end a reader orders by.
+function whenLabel(goal) {
+  const when = (goal.achieved_scene || {}).when;
+  return when ? String(when).split(" → ")[0] : "";
 }

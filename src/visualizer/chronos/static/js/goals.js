@@ -12,11 +12,13 @@
 // a link, and a chip on a plotline links straight to the goal it names.
 
 import { api } from "./api.js";
-import { clear, el, expandableText, toast } from "./dom.js";
+import { calendarSwitcher, currentFor } from "./calendarview.js";
+import { clear, el, toast } from "./dom.js";
+import {
+  description, findingLines, goalFacts, stateChip, stateClass, summaryLine,
+} from "./goalcard.js";
 import { drawGoalGraph } from "./goalgraph.js";
 import { openGoalForm } from "./goalform.js";
-
-const isConflict = (f) => f.severity === "conflict";
 
 function breadcrumb(bookTitle, { onBooks, onBook }) {
   return el("nav", { class: "crumbs" }, [
@@ -26,52 +28,6 @@ function breadcrumb(bookTitle, { onBooks, onBook }) {
     el("span", { class: "sep", text: "›" }),
     el("span", { text: "Goals" }),
   ]);
-}
-
-// What a goal's state is called on screen. The server decides the state; this
-// only decides the wording, so the diagram and the card always agree.
-const STATE_LABEL = {
-  achieved: "achieved",
-  conflicted: "needs attention",
-  open: "open",
-};
-
-function stateChip(goal) {
-  const state = (goal.status || {}).state || "open";
-  return el("span", { class: `chip state ${state}`, text: STATE_LABEL[state] || state });
-}
-
-function findingLines(goal) {
-  const findings = (goal.status || {}).findings || [];
-  if (!findings.length) return null;
-  return el("div", { class: "findings" }, findings.map((f) => el("div", {
-    class: `finding ${isConflict(f) ? "conflict" : "hint"}`,
-  }, [
-    el("span", { class: "finding-mark", text: isConflict(f) ? "!" : "i", "aria-hidden": "true" }),
-    el("span", { class: "finding-text", text: f.message }),
-  ])));
-}
-
-// A row of goal chips that select the goal they name. `missing` ones are drawn
-// plainly and do not link: there is nothing to open, which the finding beside
-// them already explains.
-function goalChips(refs, onSelect, empty) {
-  if (!refs.length) return el("span", { class: "muted", text: empty });
-  return el("div", { class: "chip-row" }, refs.map((ref) => (ref.missing
-    ? el("span", { class: "chip goal missing", text: ref.title, title: "No longer in this book" })
-    : el("button", {
-        class: "chip goal link", type: "button", text: ref.title,
-        onclick: () => onSelect(ref.id),
-      }))));
-}
-
-// The one line a closed card shows, after its name and state: where the goal
-// lands, which is the fact a reader scanning the list is usually after. It
-// stands in for the four rows inside, so it says the *most* useful of them
-// rather than a count of all of them.
-function summaryLine(goal) {
-  if (goal.achieved_scene) return goal.achieved_scene.title;
-  return "no scene yet";
 }
 
 // One goal. Closed, it is a single row; open, it is everything the book knows
@@ -99,7 +55,7 @@ function goalCard(book, goal, { selected, canWrite, onSelect, onPlotline, onChan
 
   if (!open) {
     return el("article", {
-      class: `card goal-card is-${(goal.status || {}).state || "open"}`,
+      class: `card goal-card ${stateClass(goal)}`,
       id: `goal-${goal.id}`,
     }, head);
   }
@@ -107,7 +63,7 @@ function goalCard(book, goal, { selected, canWrite, onSelect, onPlotline, onChan
   return el("article", {
     // `is-expanded`, not `is-open`: `is-open` is already the *state* of a goal
     // no scene delivers yet, and one class cannot mean two things.
-    class: `card goal-card is-expanded is-selected is-${(goal.status || {}).state || "open"}`,
+    class: `card goal-card is-expanded is-selected ${stateClass(goal)}`,
     id: `goal-${goal.id}`,
   }, [
     el("div", { class: "goal-head-row" }, [
@@ -119,24 +75,10 @@ function goalCard(book, goal, { selected, canWrite, onSelect, onPlotline, onChan
         }),
       }) : null,
     ].filter(Boolean)),
-    goal.description ? expandableText(goal.description, { class: "goal-description" }) : null,
-    el("dl", { class: "goal-facts" }, [
-      el("dt", { text: "Rests on" }),
-      el("dd", {}, goalChips(goal.dependencies, onSelect, "Nothing.")),
-      el("dt", { text: "Needed by" }),
-      el("dd", {}, goalChips(goal.required_by, onSelect, "Nothing yet.")),
-      el("dt", { text: "Pursued by" }),
-      el("dd", {}, goal.plotlines.length
-        ? el("div", { class: "chip-row" }, goal.plotlines.map((p) => el("button", {
-            class: "chip link", type: "button", text: p.title,
-            title: "Open this plotline", onclick: () => onPlotline(p.id),
-          })))
-        : el("span", { class: "muted", text: "No thread yet." })),
-      el("dt", { text: "Achieved at" }),
-      el("dd", {}, goal.achieved_scene
-        ? el("span", { text: `${goal.achieved_scene.title} · ${goal.achieved_scene.when}` })
-        : el("span", { class: "muted", text: "No scene yet." })),
-    ]),
+    description(goal),
+    // Selecting a dependency here means the same as selecting it anywhere else
+    // on this page: it becomes the open card, and the URL says so.
+    goalFacts(goal, { onGoal: onSelect, onPlotline }),
     findingLines(goal),
   ].filter(Boolean));
 }
@@ -168,6 +110,9 @@ export async function mountGoals(container, book, {
   let bookMeta = { title: book };
   try { bookMeta = await api.getBook(book); } catch (e) { /* fall back to the id */ }
   const canWrite = Boolean((bookMeta.permissions || {}).write);
+  // A goal borrows its date from the scene that delivers it, so this page dates
+  // things and therefore has to be read through a reckoning like every other.
+  const calendar = currentFor(book, bookMeta.calendars);
 
   const filterBox = el("input", {
     type: "search", class: "filter-box", placeholder: "Filter goals…", autocomplete: "off",
@@ -183,6 +128,11 @@ export async function mountGoals(container, book, {
         class: "btn sm", type: "button", text: "+ New goal",
         onclick: () => openGoalForm(book, null, { goals, onDone: reload }),
       }) : null,
+      // Re-mounts rather than re-labels: every date on this page came from the
+      // server's codec, so a new reckoning means asking it again.
+      calendarSwitcher(book, bookMeta.calendars, () => mountGoals(container, book, {
+        goal, onBooks, onBook, onSelect, onPlotline,
+      })),
     ].filter(Boolean)),
     el("p", { class: "view-lead", text:
       "What this book is trying to bring about. A goal is drawn below everything "
@@ -225,7 +175,7 @@ export async function mountGoals(container, book, {
 
   async function reload() {
     try {
-      goals = (await api.listGoals(book)).goals;
+      goals = (await api.listGoals(book, { calendar })).goals;
     } catch (e) {
       clear(list);
       list.appendChild(el("p", { class: "empty", text: "Could not load goals." }));

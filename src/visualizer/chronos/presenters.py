@@ -369,7 +369,10 @@ def present_plotline(
         # goals themselves, so a reader can name what this thread is for without
         # fetching the book's goals to look each id up.
         "goals": this.goals,
-        "goal_refs": [goal_ref(g, {goal.id: goal for goal in goals}) for g in this.goals],
+        "goal_refs": [
+            goal_ref(g, {goal.id: goal for goal in goals}, events_by_id, codec)
+            for g in this.goals
+        ],
         "events": list(this.events),
         "continues_into": this.continues_into,
         # The target's display title, alongside its id. Supplied because the
@@ -497,11 +500,33 @@ def _dependents(goals: list[Goal]) -> dict[str, list[str]]:
     return out
 
 
-def goal_ref(goal_id: str, by_id: dict[str, Goal]) -> dict:
+def achieved_scene(goal: Goal, events_by_id: dict[str, Event], codec: TimeCodec) -> dict | None:
+    """Where a goal lands on the timeline, dated in the calendar being read.
+
+    ``None`` covers two different things -- no scene named yet, and a named
+    scene that is no longer in the book -- which a reader tells apart by the
+    ``achieved_at`` beside it. Kept apart from the ref itself so the one rule
+    about where a goal meets time lives in one function.
+    """
+    scene = events_by_id.get(goal.achieved_at) if goal.achieved_at else None
+    return None if scene is None else _node_ref(scene, codec, span=True)
+
+
+def goal_ref(
+    goal_id: str,
+    by_id: dict[str, Goal],
+    events_by_id: dict[str, Event],
+    codec: TimeCodec,
+) -> dict:
     """One goal named by another, or by a thread.
 
     ``missing`` rather than a guessed title: a dangling id is already reported
     as a finding, and dressing it up as a working link would hide it.
+
+    The landing scene rides along because every caller draws this ref somewhere
+    a date belongs -- a chip on a thread, a row in the table -- and fetching the
+    book's goals again to date a chip would be a second answer to a question the
+    server has already answered.
     """
     goal = by_id.get(goal_id)
     if goal is None:
@@ -511,7 +536,14 @@ def goal_ref(goal_id: str, by_id: dict[str, Goal]) -> dict:
         "title": goal.display_title,
         "achieved": goal.achieved_at is not None,
         "missing": False,
+        "achieved_at": goal.achieved_at,
+        "achieved_scene": achieved_scene(goal, events_by_id, codec),
     }
+
+
+def _view_ref(goal_id: str, view: "GoalView") -> dict:
+    """``goal_ref`` against a gathered book -- the form every goal response uses."""
+    return goal_ref(goal_id, view.by_id, view.events_by_id, view.codec)
 
 
 def _goal_finding(finding: GoalFinding) -> dict:
@@ -554,7 +586,6 @@ def present_goal(public: dict, view: GoalView) -> dict:
     """
     goal = Goal.from_storage(public)
     findings = view.findings.get(goal.id, [])
-    scene = view.events_by_id.get(goal.achieved_at) if goal.achieved_at else None
     book = public["book"]
     return {
         "kind": "goal",
@@ -564,20 +595,18 @@ def present_goal(public: dict, view: GoalView) -> dict:
         "name": goal.display_title,
         "description": goal.description,
         "depends_on": list(goal.depends_on),
-        "dependencies": [goal_ref(d, view.by_id) for d in goal.depends_on],
+        "dependencies": [_view_ref(d, view) for d in goal.depends_on],
         # The other direction, which nothing stores: what would be left hanging
         # if this goal were dropped, and what the diagram draws below it.
         "required_by": [
-            goal_ref(d, view.by_id) for d in view.dependents.get(goal.id, [])
+            _view_ref(d, view) for d in view.dependents.get(goal.id, [])
         ],
         "plotlines": [
             {"id": pid, "title": view.plotline_titles.get(pid, pid)}
             for pid in view.served.get(goal.id, [])
         ],
         "achieved_at": goal.achieved_at,
-        "achieved_scene": (
-            None if scene is None else _node_ref(scene, view.codec, span=True)
-        ),
+        "achieved_scene": achieved_scene(goal, view.events_by_id, view.codec),
         # How far down the dependency graph this goal sits, so a client can lay
         # the graph out in layers without walking the edges itself.
         "depth": view.depth.get(goal.id, 0),
@@ -1007,6 +1036,7 @@ def present_graph(
     events_by_id: dict[str, Event],
     plotlines_by_id: dict[str, Plotline],
     codec: TimeCodec,
+    goals: list[Goal] = (),
 ) -> dict:
     """The whole story graph, enriched so a client can lay it out by tick and
     colour it by role in a single call (design §7.4, §12).
@@ -1017,6 +1047,13 @@ def present_graph(
     ``continues_into`` alongside the **resolved** ``effective_events`` -- keeping
     stored-vs-inherited provenance recoverable so a future editor can route an
     edit back to the right stored field, not the flattened path.
+
+    The book's ``goals`` ride along once, at the top rather than on the nodes
+    they land on. A goal names its scene (``achieved_at``), so "which goals land
+    here" is that list read backwards -- and copying each goal onto its node
+    would answer the same question twice, while still leaving the map with no
+    way to name the goals that land on *no* shown scene. One list answers both.
+    Lanes name their goals by id, the way they name their events.
     """
     convergence = set(view["convergence"])
     divergence = set(view["divergence"])
@@ -1048,11 +1085,13 @@ def present_graph(
             "id": pid,
             "title": pl.display_title if pl else pid,
             "events": list(pl.events) if pl else list(effective),
+            "goals": list(pl.goals) if pl else [],
             "continues_into": pl.continues_into if pl else None,
             "continues_into_at": pl.continues_into_at if pl else None,
             "effective_events": list(effective),
         }
 
+    by_id = {goal.id: goal for goal in goals}
     return {
         "nodes": [node(eid) for eid in view["nodes"]],
         "edges": view["edges"],
@@ -1060,4 +1099,8 @@ def present_graph(
         "divergence": view["divergence"],
         "terminus": terminus,
         "plotlines": [lane(pid, view["paths"][pid]) for pid in sorted(view["paths"])],
+        "goals": [
+            goal_ref(goal.id, by_id, events_by_id, codec)
+            for goal in sorted(goals, key=lambda g: g.id)
+        ],
     }

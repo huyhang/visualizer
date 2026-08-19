@@ -11,19 +11,22 @@ time](design.md#2-principles-consistent-with-the-existing-codebase), so the
 question this document asks is not "what is missing from the product" but
 **"where does a writer with no terminal hit a wall?"**
 
-Of the **43 content routes** the app registers, **38 are called from a browser**
-and **5 are not**. Two of the five are the gaps below; the other three are
+Of the **43 content routes** the app registers, **39 are called from a browser**
+and **4 are not**. Two of the four are the gaps below; the other two are
 uncalled **by design**, because in each case a *listing* already carries
 everything the single-record read would return:
 
 - `GET /books/{book}/validate` — the whole-book report is in the UI, built
   instead on `GET /books/{book}/ui/issues`: the same rules, shaped for a reader
   rather than a machine. See [the book's report](README.md#the-books-report).
-- `GET /books/{book}/goals/{goal}` — `GET /books/{book}/goals` returns every
-  goal already read against the rest of the book, and the dependency diagram
-  needs all of them anyway. See [Goals](README.md#goals).
 - `GET /calendars/{owner}/{calendar}` — likewise: the library listing returns
   each entry in full.
+
+`GET /books/{book}/goals/{goal}` used to be on that list, on the grounds that
+the goals page needs every goal anyway. The peek panel changed the arithmetic:
+it opens a goal beside a thread, the plotline table, the report or the story
+map, none of which hold the book's goals — so fetching thirty to draw one was
+the same trade in reverse. The UI now calls both.
 
 One wrinkle in "from the UI": the six collaborator routes (three for books,
 three for calendars) are reached from **Akasha's Account page**, not from

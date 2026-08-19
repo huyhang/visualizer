@@ -99,7 +99,11 @@ def test_goals_are_listed_whole_for_the_diagram(book):
     # nothing stores, and the verdict.
     assert [g["depth"] for g in body["goals"]] == [0, 1]
     assert body["goals"][0]["required_by"] == [
-        {"id": "crown", "title": "crown", "achieved": False, "missing": False}
+        {
+            "id": "crown", "title": "crown", "achieved": False, "missing": False,
+            # Where it lands, so a chip can be dated wherever it is drawn.
+            "achieved_at": None, "achieved_scene": None,
+        }
     ]
 
 
@@ -231,6 +235,41 @@ def test_a_thread_names_the_goals_it_serves(book):
     assert body["goal_refs"][0]["title"] == "Aldric is crowned"
 
 
+def test_a_goal_chip_on_a_thread_says_where_it_lands(book):
+    """So the thread's timeline can put the goal on the scene that delivers it
+    without fetching the book's goals a second time to find out where that is."""
+    _goal(book, "crown", title="Aldric is crowned", achieved_at="the-coronation")
+    _thread(book, "road", ["the-claim", "the-coronation"], goals=["crown"])
+    ref = book.get(f"/books/{BOOK}/plotlines/road").get_json()["goal_refs"][0]
+    assert ref["achieved_at"] == "the-coronation"
+    assert ref["achieved_scene"] == {
+        "id": "the-coronation", "title": "The Coronation", "when": "40 → 50",
+    }
+
+
+def test_a_goal_with_no_scene_says_so_on_the_chip_rather_than_going_quiet(book):
+    """The timeline needs to tell "lands here" from "lands nowhere yet" -- the
+    second is what the strip above the rail is for."""
+    _goal(book, "crown")
+    _thread(book, "road", ["the-claim"], goals=["crown"])
+    ref = book.get(f"/books/{BOOK}/plotlines/road").get_json()["goal_refs"][0]
+    assert ref["achieved_at"] is None and ref["achieved_scene"] is None
+
+
+def test_the_graph_carries_the_books_goals_and_which_thread_pursues_each(book):
+    """The story map marks a goal on the scene it lands on, and lists the ones
+    that land on no shown scene. Both come from one list read two ways."""
+    _goal(book, "crown", title="Aldric is crowned", achieved_at="the-coronation")
+    _goal(book, "peace", title="The Pact holds")  # no scene yet
+    _thread(book, "road", ["the-claim", "the-coronation"], goals=["crown", "peace"])
+    graph = book.get(f"/books/{BOOK}/graph").get_json()
+
+    assert [g["id"] for g in graph["goals"]] == ["crown", "peace"]
+    landed = {g["id"]: g["achieved_at"] for g in graph["goals"]}
+    assert landed == {"crown": "the-coronation", "peace": None}
+    assert graph["plotlines"][0]["goals"] == ["crown", "peace"]
+
+
 def test_the_editor_preview_faces_the_same_goal_rule_as_the_save(book):
     resp = book.post(
         f"/books/{BOOK}/ui/plotline-preview",
@@ -245,7 +284,10 @@ def test_a_thread_is_findable_by_the_name_of_the_goal_it_serves(book):
     rows = book.get(f"/books/{BOOK}/ui/plotlines?filter=crowned").get_json()["plotlines"]
     assert [r["id"] for r in rows] == ["road"]
     assert rows[0]["goals"] == [
-        {"id": "crown", "title": "Aldric is crowned", "achieved": False, "missing": False}
+        {
+            "id": "crown", "title": "Aldric is crowned", "achieved": False,
+            "missing": False, "achieved_at": None, "achieved_scene": None,
+        }
     ]
 
 
