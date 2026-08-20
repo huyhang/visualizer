@@ -82,8 +82,8 @@
   <span class="muted" style="margin-left:auto">{{ "{:,}".format(overview.total_requests) }} requests in range</span>
 </div>
 
-{% for warning in overview.banners %}
-<div class="error" role="status">⚠ {{ warning }}</div>
+{% for alert in overview.alerts %}
+<div class="{{ 'error' if alert.severity == 'danger' else 'notice' }}" role="status">⚠ {{ alert.message }}</div>
 {% endfor %}
 
 {% if overview.truncated %}

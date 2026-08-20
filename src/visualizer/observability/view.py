@@ -17,6 +17,8 @@ from datetime import UTC, date, datetime, timedelta
 
 from . import charts
 from .aggregation import merge_counts, percentile_ms
+from .alerts import Alert, Thresholds
+from .alerts import evaluate as evaluate_alerts
 from .capacity import (
     format_bytes,
     format_months,
@@ -94,7 +96,7 @@ class Overview:
     latency: dict
     errors: dict
     problems: list[dict]
-    banners: list[str]
+    alerts: list[Alert]
     total_requests: int
     truncated: bool
 
@@ -117,6 +119,7 @@ def build_overview(
     problems: list[dict],
     window: str = DEFAULT_WINDOW,
     now: datetime | None = None,
+    thresholds: Thresholds | None = None,
 ) -> Overview:
     """Assemble everything the observability page shows."""
     moment = now or datetime.now(UTC)
@@ -136,7 +139,9 @@ def build_overview(
         latency=_latency_chart(hours, by_hour),
         errors=_error_chart(hours, by_hour),
         problems=problems,
-        banners=_banners(meters, months),
+        # Structured, not sentences: the same evaluation feeds the banner here
+        # and any future off-box notifier. See ``alerts``.
+        alerts=evaluate_alerts(capacity, months, thresholds),
         total_requests=sum(row.get("count", 0) for row in request_rows),
         truncated=any(row.get("route") == "<overflow>" for row in request_rows),
     )
@@ -199,19 +204,6 @@ def _daily_totals(storage_history: list[dict]) -> list[tuple[date, int]]:
         day = row["day"].date() if hasattr(row["day"], "date") else row["day"]
         totals[day] = totals.get(day, 0) + row.get("owns", 0) + row.get("authored", 0)
     return sorted(totals.items())
-
-
-def _banners(meters: list[Meter], months: float | None) -> list[str]:
-    warnings = [
-        f"{meter.label} is {meter.percent}% full."
-        for meter in meters
-        if meter.severity in ("warn", "danger")
-    ]
-    if months is not None and months < 6:
-        warnings.append(
-            f"At the current growth rate the volume fills in {format_months(months)}."
-        )
-    return warnings
 
 
 # -- writers -----------------------------------------------------------------

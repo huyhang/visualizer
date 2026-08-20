@@ -18,7 +18,11 @@ import logging
 import threading
 from datetime import UTC, datetime
 
-from .capacity import CapacitySource
+from .alerts import Alert, NullNotifier, Thresholds
+from .alerts import evaluate as evaluate_alerts
+from .alerts import raised as newly_raised
+from .alerts import resolved as newly_resolved
+from .capacity import CapacitySource, growth_per_day, months_until_full
 from .settings import CachedSwitch, StaticSwitch
 from .store import MetricsStore
 from .usage import UsageScan
@@ -44,6 +48,8 @@ class Flusher:
         *,
         usage_scan: UsageScan | None = None,
         capacity_source: CapacitySource | None = None,
+        notifier=None,
+        thresholds: Thresholds | None = None,
         now=_utcnow,
     ):
         self._recorder = recorder
@@ -51,6 +57,8 @@ class Flusher:
         self._switch = switch or StaticSwitch(True)
         self._usage_scan = usage_scan
         self._capacity_source = capacity_source
+        self._notifier = notifier or NullNotifier()
+        self._thresholds = thresholds or Thresholds()
         self._now = now
 
     def flush_once(self) -> int:
@@ -90,7 +98,36 @@ class Flusher:
         if self._capacity_source is not None:
             sample = self._capacity_source.sample()
             self._store.save_capacity({**sample.as_record(), "at": moment})
+            self._evaluate_alerts(sample.as_record())
         return True
+
+    def _evaluate_alerts(self, capacity: dict) -> list[Alert]:
+        """Diff this cycle's conditions against the last, and report the change.
+
+        Evaluating here rather than when the page is rendered is what lets an
+        alert reach someone who is not looking at the page. The notifier is
+        handed only what changed -- de-duplication is done here, once, so no
+        delivery mechanism has to reimplement it.
+        """
+        previous = [Alert.from_record(r) for r in self._store.active_alerts()]
+        current = evaluate_alerts(
+            capacity, self._months_until_full(capacity), self._thresholds
+        )
+        self._store.save_active_alerts([alert.as_record() for alert in current])
+        started, ended = newly_raised(previous, current), newly_resolved(previous, current)
+        if started or ended:
+            self._notifier.notify(started, ended)
+        return current
+
+    def _months_until_full(self, capacity: dict) -> float | None:
+        history = self._store.storage_days()
+        totals: dict = {}
+        for row in history:
+            day = row["day"].date() if hasattr(row["day"], "date") else row["day"]
+            totals[day] = totals.get(day, 0) + row.get("owns", 0) + row.get("authored", 0)
+        return months_until_full(
+            capacity.get("volume_free"), growth_per_day(sorted(totals.items()))
+        )
 
 
 class BackgroundFlusher:

@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 import mongomock
 import pytest
 
+from visualizer.observability.alerts import Thresholds
 from visualizer.observability.capacity import CapacitySample, StaticCapacitySource
 from visualizer.observability.flush import BackgroundFlusher, Flusher
 from visualizer.observability.recorder import InProcessRecorder, Sample
@@ -160,6 +161,132 @@ def test_a_scan_works_without_optional_collaborators():
     _, store, flusher = _parts()
     assert flusher.scan_once() is True
     assert store.latest_capacity() is None
+
+
+# -- the notifier seam ---------------------------------------------------------
+
+
+class RecordingNotifier:
+    """Stands in for the future email client."""
+
+    def __init__(self):
+        self.calls = []
+
+    def notify(self, raised, resolved):
+        self.calls.append(([a.kind for a in raised], [a.kind for a in resolved]))
+
+
+def _full_volume(fraction):
+    return StaticCapacitySource(
+        CapacitySample(volume_total=1000, volume_free=int(1000 * (1 - fraction)))
+    )
+
+
+def _with_notifier(capacity, notifier, switch=None):
+    recorder = InProcessRecorder()
+    store = MetricsStore(mongomock.MongoClient())
+    return store, Flusher(
+        recorder,
+        store,
+        switch or StaticSwitch(True),
+        capacity_source=capacity,
+        notifier=notifier,
+        now=lambda: NOW,
+    )
+
+
+def test_a_healthy_scan_notifies_nobody():
+    notifier = RecordingNotifier()
+    _, flusher = _with_notifier(_full_volume(0.10), notifier)
+    flusher.scan_once()
+    assert notifier.calls == []
+
+
+def test_crossing_a_threshold_notifies_once():
+    notifier = RecordingNotifier()
+    _, flusher = _with_notifier(_full_volume(0.95), notifier)
+    flusher.scan_once()
+    assert notifier.calls == [(["volume"], [])]
+
+
+def test_a_persisting_condition_does_not_notify_every_cycle():
+    """An hourly scan must not become an hourly email."""
+    notifier = RecordingNotifier()
+    _, flusher = _with_notifier(_full_volume(0.95), notifier)
+    for _ in range(5):
+        flusher.scan_once()
+    assert len(notifier.calls) == 1
+
+
+def test_escalation_notifies_again():
+    notifier = RecordingNotifier()
+    store = MetricsStore(mongomock.MongoClient())
+    warn, danger = _full_volume(0.80), _full_volume(0.95)
+    flusher = Flusher(InProcessRecorder(), store, StaticSwitch(True),
+                      capacity_source=warn, notifier=notifier, now=lambda: NOW)
+    flusher.scan_once()
+    flusher._capacity_source = danger
+    flusher.scan_once()
+    assert [c[0] for c in notifier.calls] == [["volume"], ["volume"]]
+
+
+def test_recovery_is_reported_as_resolved():
+    notifier = RecordingNotifier()
+    store = MetricsStore(mongomock.MongoClient())
+    flusher = Flusher(InProcessRecorder(), store, StaticSwitch(True),
+                      capacity_source=_full_volume(0.95), notifier=notifier, now=lambda: NOW)
+    flusher.scan_once()
+    flusher._capacity_source = _full_volume(0.10)
+    flusher.scan_once()
+    assert notifier.calls[-1] == ([], ["volume"])
+
+
+def test_alert_state_survives_a_restart():
+    """The diff is against persisted state, not process memory."""
+    notifier = RecordingNotifier()
+    client = mongomock.MongoClient()
+    for _ in range(2):                      # two separate Flusher instances
+        store = MetricsStore(client)
+        Flusher(InProcessRecorder(), store, StaticSwitch(True),
+                capacity_source=_full_volume(0.95), notifier=notifier,
+                now=lambda: NOW).scan_once()
+    assert len(notifier.calls) == 1
+
+
+def test_injected_thresholds_reach_the_evaluation():
+    notifier = RecordingNotifier()
+    store = MetricsStore(mongomock.MongoClient())
+    Flusher(InProcessRecorder(), store, StaticSwitch(True),
+            capacity_source=_full_volume(0.50), notifier=notifier,
+            thresholds=Thresholds(warn_at=0.20, danger_at=0.30),
+            now=lambda: NOW).scan_once()
+    assert notifier.calls == [(["volume"], [])]
+
+
+def test_pausing_stops_alert_evaluation_too():
+    notifier = RecordingNotifier()
+    store, flusher = _with_notifier(_full_volume(0.95), notifier, switch=StaticSwitch(False))
+    flusher.scan_once()
+    assert notifier.calls == []
+    assert store.active_alerts() == []
+
+
+def test_a_scan_without_a_notifier_still_evaluates_and_persists():
+    """The page reads the same evaluation, so it must run regardless."""
+    store, flusher = _with_notifier(_full_volume(0.95), None)
+    flusher.scan_once()
+    assert [a["kind"] for a in store.active_alerts()] == ["volume"]
+
+
+def test_a_failing_notifier_does_not_break_the_cycle():
+    class Exploding:
+        def notify(self, raised, resolved):
+            raise RuntimeError("smtp is down")
+
+    _, flusher = _with_notifier(_full_volume(0.95), Exploding())
+    background = BackgroundFlusher(flusher, flush_seconds=0.01, scan_seconds=0.01)
+    background.start()
+    background.stop(timeout=1.0)  # _safely logs and continues
 
 
 # -- the thread ---------------------------------------------------------------

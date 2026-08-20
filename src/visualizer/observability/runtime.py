@@ -10,6 +10,7 @@ from __future__ import annotations
 import atexit
 
 from . import Observability
+from .alerts import NullNotifier
 from .capacity import HostCapacitySource
 from .config import (
     get_data_path,
@@ -43,6 +44,9 @@ def start(client, auth_store) -> Observability:
                 MongoDocumentSource(client), auth_store.all_grants, store
             ),
             capacity_source=HostCapacitySource(client, get_data_path()),
+            # Evaluation runs in production from day one; only delivery is
+            # absent. Swapping this for an SMTP notifier changes nothing else.
+            notifier=NullNotifier(),
         ),
         flush_seconds=get_flush_seconds(),
         scan_seconds=get_scan_seconds(),

@@ -64,7 +64,7 @@ def test_an_empty_system_renders_without_data():
     assert overview.errors["empty"] is True
     assert overview.writers == []
     assert overview.hero == "not enough history"
-    assert overview.banners == []
+    assert overview.alerts == []
 
 
 # -- series ------------------------------------------------------------------
@@ -236,7 +236,7 @@ def test_route_ordering_is_stable_when_traffic_ties():
     assert [route.route for route in _overview(request_rows=rows).routes] == ["/a", "/b"]
 
 
-# -- capacity and banners ----------------------------------------------------
+# -- capacity and alerts -----------------------------------------------------
 
 
 def _capacity(free_tb=1.2, total_tb=4.0):
@@ -259,8 +259,8 @@ def test_meters_describe_each_resource():
 
 
 def test_a_full_volume_warns_and_then_alarms():
-    assert _overview(capacity=_capacity(free_tb=1.2)).banners == []
-    assert _overview(capacity=_capacity(free_tb=0.8)).banners  # 80% used
+    assert _overview(capacity=_capacity(free_tb=1.2)).alerts == []
+    assert _overview(capacity=_capacity(free_tb=0.8)).alerts  # 80% used
     danger = _overview(capacity=_capacity(free_tb=0.2)).meters[0]
     assert danger.severity == "danger"
 
@@ -276,14 +276,14 @@ def test_the_projection_uses_observed_growth():
     assert "/month" in overview.hero_detail
 
 
-def test_an_imminent_fill_raises_a_banner():
+def test_an_imminent_fill_raises_an_alert():
     history = [
         {"day": datetime(2026, 8, 12, tzinfo=UTC), "owns": 0, "authored": 0},
         {"day": datetime(2026, 8, 19, tzinfo=UTC), "owns": 700_000_000_000, "authored": 0},
     ]
     overview = _overview(capacity=_capacity(free_tb=1.2), storage_history=history)
 
-    assert any("fills in" in banner for banner in overview.banners)
+    assert any(a.kind == "fill_projection" for a in overview.alerts)
 
 
 def test_daily_totals_sum_every_writer_for_that_day():

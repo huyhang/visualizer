@@ -25,6 +25,7 @@ PROBLEMS = "problems"
 SETTINGS = "settings"
 STORAGE_DAYS = "storage_days"
 CAPACITY = "capacity"
+ALERTS = "alerts"
 
 # Hourly buckets and daily storage rows are the long-range trend, so they are
 # kept for a little over a year. Problem detail is bounded by row count instead
@@ -32,6 +33,7 @@ CAPACITY = "capacity"
 _RETENTION = timedelta(days=400)
 _MONITORING_KEY = "monitoring_enabled"
 _CAPACITY_KEY = "latest"
+_ALERTS_KEY = "active"
 _DEFAULT_PROBLEMS_KEPT = 500
 
 
@@ -61,6 +63,10 @@ class MetricsStore:
     @property
     def _capacity(self):
         return self._client[OPS_DB][CAPACITY]
+
+    @property
+    def _alerts(self):
+        return self._client[OPS_DB][ALERTS]
 
     def ensure_indexes(self) -> None:
         """Create the TTL and query indexes.
@@ -234,6 +240,24 @@ class MetricsStore:
     def latest_capacity(self) -> dict | None:
         record = self._capacity.find_one({"_id": _CAPACITY_KEY})
         return _public(record) if record else None
+
+
+    # -- alert state ---------------------------------------------------------
+
+    def save_active_alerts(self, records: list[dict]) -> None:
+        """Remember what was firing, so the next scan can report only changes.
+
+        A single document rather than a row per alert: it is read and replaced
+        atomically every cycle, so there is no partial state for a diff to
+        misread.
+        """
+        self._alerts.update_one(
+            {"_id": _ALERTS_KEY}, {"$set": {"alerts": records}}, upsert=True
+        )
+
+    def active_alerts(self) -> list[dict]:
+        record = self._alerts.find_one({"_id": _ALERTS_KEY}) or {}
+        return list(record.get("alerts", ()))
 
 
 def _public(row: dict) -> dict:

@@ -15,6 +15,7 @@ The layers, innermost first:
 ``store``        the ``_ops`` MongoDB boundary; atomic ``$inc`` upserts only
 ``usage``        who is charged for which stored bytes (pure rule + injected sweep)
 ``capacity``     host disk/memory/MongoDB sampling and the growth projection
+``alerts``       threshold evaluation as structured events, and the notifier seam
 ``flush``        drains the recorder and drives the periodic scans
 ``charts``       pure value-to-SVG geometry
 ``view``         stored rows to page content
@@ -23,6 +24,7 @@ The layers, innermost first:
 
 from dataclasses import dataclass
 
+from .alerts import Alert, Notifier, NullNotifier, Thresholds
 from .capacity import CapacitySource, HostCapacitySource
 from .flush import BackgroundFlusher, Flusher
 from .middleware import register_observability
@@ -38,6 +40,7 @@ from .store import MetricsStore
 from .usage import MongoDocumentSource, UsageScan
 
 __all__ = [
+    "Alert",
     "BackgroundFlusher",
     "CachedSwitch",
     "CapacitySource",
@@ -46,12 +49,15 @@ __all__ = [
     "InProcessRecorder",
     "MetricsStore",
     "MongoDocumentSource",
+    "Notifier",
+    "NullNotifier",
     "NullRecorder",
     "Observability",
     "Problem",
     "RequestRecorder",
     "Sample",
     "StaticSwitch",
+    "Thresholds",
     "UsageScan",
     "register_observability",
 ]
