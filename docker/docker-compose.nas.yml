@@ -1,9 +1,10 @@
 # The stack: one combined app + MongoDB.
 #
-# akasha and chronos run in a single gunicorn behind one origin
+# akasha, chronos and prithvi run in a single gunicorn behind one origin
 # (docker/Dockerfile -> visualizer.wsgi:application): akasha at `/`, chronos at
-# `/timeline`. One published port -> one Synology reverse-proxy entry, one
-# cookie, no CORS. `restart: unless-stopped` so it survives NAS reboots.
+# `/timeline`, prithvi at `/prithvi`. One published port -> one Synology
+# reverse-proxy entry, one cookie, no CORS. `restart: unless-stopped` so it
+# survives NAS reboots.
 #
 # Deploy (from the repo root on the NAS):
 #   SECRET_KEY is required — put it in docker/.env (auto-loaded), e.g.
@@ -15,11 +16,13 @@
 # One port (DSM itself uses 5000/5001, so those are avoided):
 #   5002/          -> akasha  (articles/entities, and the shared /login)
 #   5002/timeline  -> chronos (the plotline visualiser)
+#   5002/prithvi   -> prithvi (the map and pin API)
 # Point one Synology reverse-proxy rule (one hostname) at this port, enable
 # HTTPS, then set SESSION_COOKIE_SECURE=true in docker/.env.
 #
-# To run the two services on separate ports instead (development), build
-# Dockerfile.akasha / Dockerfile.chronos (visualizer.{akasha,chronos}.wsgi).
+# To run the services on separate ports instead (development), build
+# Dockerfile.akasha / Dockerfile.chronos / Dockerfile.prithvi
+# (visualizer.{akasha,chronos,prithvi}.wsgi).
 name: visualizer
 
 services:
@@ -41,6 +44,12 @@ services:
       # only if a reverse proxy serves the services on different hosts/paths.
       AKASHA_URL: ${AKASHA_URL:-/}
       CHRONOS_URL: ${CHRONOS_URL:-/timeline}
+      # Prithvi's three numbers. The upload cap bounds one request; the two
+      # retention limits bound how much history a map or pin keeps. Map
+      # revisions are whole drawings, which is why they are kept fewer.
+      PRITHVI_MAX_SVG_BYTES: ${PRITHVI_MAX_SVG_BYTES:-5242880}
+      PRITHVI_MAP_REVISIONS_KEEP: ${PRITHVI_MAP_REVISIONS_KEEP:-5}
+      PRITHVI_PIN_REVISIONS_KEEP: ${PRITHVI_PIN_REVISIONS_KEEP:-20}
       # Observability: per-writer storage/latency/errors in the reserved `_ops`
       # database, plus NAS capacity. Admin-only page at /admin/observability,
       # pausable from there at runtime. `false` here disables it at boot.

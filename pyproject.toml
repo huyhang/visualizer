@@ -37,10 +37,11 @@ build-backend = "setuptools.build_meta"
 line-length = 88
 
 [tool.pytest.ini_options]
-testpaths = ["tests/akasha", "tests/chronos"]
+testpaths = ["tests/akasha", "tests/chronos", "tests/prithvi"]
 # `src` is on the path for package imports. `tests/akasha` stays a
 # non-package dir so its historical bare `from conftest import ...` keeps working.
-# `tests/chronos` is a package (has __init__.py), so its conftest is namespaced
-# as `tests.chronos.conftest` -- no clash with the other suite's conftest; the
-# repo root (".") is on the path so that package resolves.
+# `tests/chronos` and `tests/prithvi` are packages (they have `__init__.py`), so
+# their conftests are namespaced as `tests.<service>.conftest` -- no clash with
+# the other suite's conftest; the repo root (".") is on the path so those
+# packages resolve.
 pythonpath = ["src", ".", "tests/akasha"]

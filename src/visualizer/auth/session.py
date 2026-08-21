@@ -94,8 +94,8 @@ def build_limiter(app, storage_uri: str = "memory://") -> Limiter:
     )
 
 
-# Display names for the two services, keyed by the slug ``current`` uses.
-SERVICE_NAMES = {"akasha": "Akasha", "chronos": "Chronos"}
+# Display names for the services, keyed by the slug ``current`` uses.
+SERVICE_NAMES = {"akasha": "Akasha", "chronos": "Chronos", "prithvi": "Prithvi"}
 
 
 def register_service_links(app, akasha_url: str, chronos_url: str, current: str) -> None:

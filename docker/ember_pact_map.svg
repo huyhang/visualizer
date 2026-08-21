@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 720" role="img" aria-labelledby="map-title map-desc">
+  <title id="map-title">The Ember Pact — the Western Realms</title>
+  <desc id="map-desc">A parchment map of the coast around the Ember Sea: uplands in the north, the river Vale running south-east to the harbour, and the old road between them.</desc>
+
+  <defs>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a9c6c4"/>
+      <stop offset="1" stop-color="#7ba3a4"/>
+    </linearGradient>
+    <linearGradient id="land" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#efe2bb"/>
+      <stop offset="1" stop-color="#d9c294"/>
+    </linearGradient>
+
+    <!-- Relief without a heightmap: blur the alpha of a few invisible ellipses
+         into a height field, then light it from the north-west. Overlapping
+         ellipses merge into a ridge. surfaceScale is height, stdDeviation is
+         rugged-versus-rolling, and the light elevation is contrast. -->
+    <filter id="relief" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="9" result="height"/>
+      <feDiffuseLighting in="height" surfaceScale="13" diffuseConstant="1"
+                         lighting-color="#e6d9bd" result="lit">
+        <feDistantLight azimuth="315" elevation="40"/>
+      </feDiffuseLighting>
+      <feComposite in="lit" in2="SourceAlpha" operator="in"/>
+    </filter>
+  </defs>
+
+  <rect x="0" y="0" width="1200" height="720" fill="url(#sea)"/>
+
+  <!-- The landmass. One closed path; the sea shows through everywhere else. -->
+  <path fill="url(#land)" stroke="#8a7551" stroke-width="2.5"
+        d="M0,0 L1200,0 L1200,150 C1080,170 1010,215 965,285
+           C925,350 870,395 795,430 C735,458 690,500 660,560
+           C632,615 585,660 520,690 L470,720 L0,720 Z"/>
+
+  <!-- Uplands. Invisible until the filter turns their alpha into terrain. -->
+  <g filter="url(#relief)" opacity="0.85">
+    <ellipse cx="300" cy="180" rx="120" ry="52"/>
+    <ellipse cx="390" cy="215" rx="95" ry="44"/>
+    <ellipse cx="215" cy="240" rx="80" ry="38"/>
+    <ellipse cx="470" cy="150" rx="70" ry="30"/>
+    <ellipse cx="180" cy="470" rx="105" ry="46"/>
+    <ellipse cx="285" cy="520" rx="80" ry="34"/>
+  </g>
+
+  <!-- The Vale, north-west to the harbour. -->
+  <path fill="none" stroke="#7ba3a4" stroke-width="7" stroke-linecap="round"
+        opacity="0.75"
+        d="M330,250 C420,300 470,360 520,410 C570,458 600,505 632,568"/>
+  <path fill="none" stroke="#7ba3a4" stroke-width="4" stroke-linecap="round"
+        opacity="0.6" d="M235,300 C300,330 320,360 372,392"/>
+
+  <!-- The old road: Highkeep, down through the Throne Hall, out to the water. -->
+  <path fill="none" stroke="#9a7f52" stroke-width="3.5" stroke-dasharray="12 9"
+        stroke-linecap="round"
+        d="M362,236 C420,320 470,400 540,470 C590,520 620,545 648,568"/>
+  <path fill="none" stroke="#9a7f52" stroke-width="2.5" stroke-dasharray="9 8"
+        stroke-linecap="round" opacity="0.8"
+        d="M540,470 C470,505 400,530 300,540"/>
+
+  <!-- Woodland, as a scatter rather than a texture: cheap, and it reads. -->
+  <g fill="#8fa06a" opacity="0.65">
+    <circle cx="700" cy="230" r="9"/><circle cx="726" cy="252" r="7"/>
+    <circle cx="678" cy="258" r="8"/><circle cx="742" cy="222" r="6"/>
+    <circle cx="705" cy="285" r="7"/><circle cx="660" cy="300" r="6"/>
+    <circle cx="770" cy="255" r="7"/><circle cx="640" cy="255" r="6"/>
+  </g>
+
+  <g font-family="serif" fill="#5c4a2e" opacity="0.85">
+    <text x="980" y="470" font-size="34" font-style="italic"
+          text-anchor="middle" fill="#3f5f61">The Ember Sea</text>
+    <text x="300" y="120" font-size="22" letter-spacing="4"
+          text-anchor="middle">THE HIGH MARCHES</text>
+    <text x="700" y="360" font-size="18" letter-spacing="3"
+          text-anchor="middle">THE OLD WOOD</text>
+    <text x="205" y="600" font-size="18" letter-spacing="3"
+          text-anchor="middle">THE SCARPS</text>
+    <text x="60" y="700" font-size="13" font-style="italic">Drawn for the
+      Ember Pact demo — pins come from Prithvi, not from this file.</text>
+  </g>
+</svg>

@@ -1,9 +1,9 @@
 # Deploy on a Synology NAS
 
 Everything specific to running the stack on DSM: first install, HTTPS, updating
-to a new commit, backups, and where the data actually lives. Both services and
+to a new commit, backups, and where the data actually lives. Every service and
 their shared MongoDB come from one compose file, so this covers the whole stack
-rather than either service in particular.
+rather than any one service in particular.
 
 > Before exposing this beyond your own network, read
 > [`SECURITY.md`](../SECURITY.md) — it lists the protections in place and the
@@ -21,8 +21,8 @@ change `mongo:7` to `mongo:4.4` in the compose file.
 1. **Put the repo on the NAS.** Anywhere you like — a shared folder such as
    `/volume1/docker/visualizer` is conventional. Cloning with git rather than
    copying the files makes [updating](#updating-to-a-new-commit) a one-liner.
-2. **Set the cookie-signing secret** in `docker/.env`. One value, shared by both
-   services, so a single login covers them:
+2. **Set the cookie-signing secret** in `docker/.env`. One value, shared by all
+   the services, so a single login covers them:
    ```bash
    echo "SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))')" > docker/.env
    ```
@@ -36,11 +36,12 @@ change `mongo:7` to `mongo:4.4` in the compose file.
 The app publishes host port **5002** (DSM itself uses 5000/5001). MongoDB has no
 published port — it is reachable only inside the Docker network.
 
-Check both halves are alive:
+Check every part is alive:
 
 ```bash
 curl -s localhost:5002/health            # {"status":"ok"}                  akasha
 curl -s localhost:5002/timeline/health   # {"service":"chronos",...}        chronos
+curl -s localhost:5002/prithvi/health    # {"service":"prithvi",...}        prithvi
 ```
 
 Then open **http://<nas>:5002/** and register — **the first account becomes the
@@ -51,7 +52,7 @@ administrator.**
 Terminate TLS with Synology's own reverse proxy rather than in the container:
 **Control Panel → Login Portal → Advanced → Reverse Proxy**, pointing an HTTPS
 hostname at `http://localhost:5002`, with a Let's Encrypt certificate bound to
-it. One rule covers both services — that is the reason they share an origin.
+it. One rule covers every service — that is the reason they share an origin.
 
 Then add `SESSION_COOKIE_SECURE=true` to `docker/.env` and redeploy, so the
 session cookie is only ever sent over HTTPS. With that set, logging in over plain
@@ -117,8 +118,8 @@ as well.
 
 ## Backups
 
-Both services share one MongoDB, so one dump covers everything — articles, books,
-plotlines, events, accounts and grants.
+Every service shares one MongoDB, so one dump covers everything — articles,
+books, plotlines, events, maps, pins, accounts and grants.
 
 It lives in a Docker **named volume**, `visualizer_mongo-data`, which on DSM sits
 under `/volume1/@docker/volumes/…` — a hidden system folder that File Station and
@@ -191,5 +192,5 @@ does not exist. On the NAS it does.
 | MongoDB data | Docker volume `visualizer_mongo-data`, under `/volume1/@docker/volumes/…` |
 | Backups | wherever `VISUALIZER_BACKUP_DIR` points, default `/volume1/backups/visualizer` |
 | Containers | `visualizer-app-1`, `visualizer-mongo-1` |
-| Published port | `5002` → both services (akasha at `/`, chronos at `/timeline`) |
+| Published port | `5002` → every service (akasha at `/`, chronos at `/timeline`, prithvi at `/prithvi`) |
 | Observability data | Mongo `_ops` (`request_hours`, `storage_days`, `problems`, `capacity`, `settings`) |

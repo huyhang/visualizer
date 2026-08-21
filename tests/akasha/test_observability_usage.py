@@ -19,6 +19,7 @@ from visualizer.observability.usage import (
     attribute,
     owner_index,
 )
+from visualizer.prithvi.store import PrithviStore
 
 
 def _grant(username, database, collection, doc_id, perms, granted_by, kind="database"):
@@ -167,13 +168,36 @@ def _populated_client():
     stories.create_event("novel", "opening", {"title": "Opening"}, author="devi")
     auth.grant_owner("mara", "novel", None, None, ["read", "write", "delete"], resource_type="book")
     CalendarStore(client).create("mara", "solar", {"name": "Solar"})
+    maps = PrithviStore(client)
+    body = {"svg": "<svg/>", "view_box": [0.0, 0.0, 1.0, 1.0], "sanitization": {}}
+    maps.create_map("world", "west", body, "mara")
+    maps.update_map("world", "west", body, 1, "devi")
+    maps.create_pin("world", "west", "people", "mara", {"x": 0.5, "y": 0.5}, "mara")
     return client, auth
 
 
 def test_the_sweep_skips_reserved_databases():
     client, _ = _populated_client()
     resources = {doc.resource[0] for doc in MongoDocumentSource(client).documents()}
-    assert resources == {"article", "book", "calendar"}
+    assert resources == {"article", "book", "calendar", "map", "pin"}
+
+
+def test_the_sweep_counts_a_map_once_and_charges_its_revisions_to_their_writers():
+    """Prithvi keeps revisions in their own records; the sweep rejoins them.
+
+    Without that, a map would be counted once per revision, and a drawing's
+    bytes would land on whoever happened to create the map rather than on
+    whoever redrew it.
+    """
+    client, _ = _populated_client()
+    maps = [
+        doc for doc in MongoDocumentSource(client).documents() if doc.resource[0] == "map"
+    ]
+
+    assert len(maps) == 1
+    assert maps[0].resource == ("map", "world", "west")
+    assert [author for author, _ in maps[0].history] == ["mara", "devi"]
+    assert maps[0].total_bytes > sum(size for _, size in maps[0].history)
 
 
 def test_the_sweep_measures_articles_and_their_history():

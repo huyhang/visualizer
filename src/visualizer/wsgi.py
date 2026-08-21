@@ -1,12 +1,12 @@
-"""Combined production entrypoint: both services on one port/origin.
+"""Combined production entrypoint: every service on one port/origin.
 
-akasha at ``/``, chronos at ``/timeline``. One ``MongoClient`` and one
-``AuthStore`` are shared between them (exactly as the split deployment already
-shares Mongo), so a single login covers both and there is no cross-service HTTP.
-Run with ``gunicorn visualizer.wsgi:application``.
+akasha at ``/``, chronos at ``/timeline``, prithvi at ``/prithvi``. One
+``MongoClient`` and one ``AuthStore`` are shared between them (exactly as the
+split deployment already shares Mongo), so a single login covers all of them and
+there is no cross-service HTTP. Run with ``gunicorn visualizer.wsgi:application``.
 
-The per-service entrypoints (``visualizer.akasha.wsgi`` / ``visualizer.chronos.wsgi``)
-still exist for running a service standalone in development.
+The per-service entrypoints (``visualizer.akasha.wsgi`` and its siblings) still
+exist for running one service standalone in development.
 """
 
 import os
@@ -25,6 +25,14 @@ from visualizer.chronos.app import create_app as create_chronos_app
 from visualizer.chronos.entity_gate import InProcessEntityGate
 from visualizer.chronos.store import CalendarStore, StoryStore
 from visualizer.observability import runtime as observability_runtime
+from visualizer.prithvi.app import create_app as create_prithvi_app
+from visualizer.prithvi.articles import InProcessArticleGateway
+from visualizer.prithvi.config import (
+    get_map_revisions_keep,
+    get_max_svg_bytes,
+    get_pin_revisions_keep,
+)
+from visualizer.prithvi.store import PrithviStore
 
 from .gateway import DEFAULT_CHRONOS_PREFIX, combine
 
@@ -34,7 +42,7 @@ _doc_store = DocumentStore(_client, versions_keep=get_versions_keep())
 _secret = get_secret_key()
 _secure = get_secure_cookies()
 _ratelimit = get_rate_limit_storage_uri()
-# Both halves share one recorder and one background flusher: they are the
+# All three share one recorder and one background flusher: they are the
 # same process, and the service label on each sample keeps them apart.
 _observability = observability_runtime.start(_client, _auth_store)
 
@@ -65,6 +73,23 @@ _chronos_app = create_chronos_app(
     chronos_url=_chronos_url,
     observability=_observability,
 )
+_prithvi_app = create_prithvi_app(
+    PrithviStore(
+        _client,
+        map_revisions_keep=get_map_revisions_keep(),
+        pin_revisions_keep=get_pin_revisions_keep(),
+    ),
+    InProcessArticleGateway(_doc_store),
+    _auth_store,
+    secret_key=_secret,
+    max_svg_bytes=get_max_svg_bytes(),
+    secure_cookies=_secure,
+    rate_limit_storage_uri=_ratelimit,
+    akasha_url=_akasha_url,
+    chronos_url=_chronos_url,
+    observability=_observability,
+)
 
-# One WSGI callable for gunicorn: akasha at "/", chronos at "/timeline".
-application = combine(_akasha_app, _chronos_app)
+# One WSGI callable for gunicorn: akasha at "/", chronos at "/timeline",
+# prithvi at "/prithvi".
+application = combine(_akasha_app, _chronos_app, prithvi_app=_prithvi_app)

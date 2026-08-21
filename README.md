@@ -1,11 +1,12 @@
 # visualizer
 
 A small self-hosted stack for building and keeping track of fictional worlds.
-Two Flask + MongoDB services that ship and run together: one holds **what exists**
-in your world, the other holds **what happens** in it.
+Three Flask + MongoDB services that ship and run together: one holds **what
+exists** in your world, one holds **what happens** in it, and one holds **where
+it happens**.
 
-Both share one MongoDB, one login, and one permission model, and both are
-designed to run comfortably on a home NAS.
+They share one MongoDB, one login, and one permission model, and are designed to
+run comfortably on a home NAS.
 
 > **Vibe-coded with Claude.** This project was built in conversation with
 > Anthropic's Claude (via Claude Code): the design was argued out and decided
@@ -14,42 +15,46 @@ designed to run comfortably on a home NAS.
 > novelists — not a hardened product. Two things follow. Read
 > [`SECURITY.md`](SECURITY.md) before exposing it beyond your own network; and
 > where the prose and the code disagree, believe the **test suite** — it runs
-> against both services and is the honest account of what actually works.
+> against every service and is the honest account of what actually works.
 
 ---
 
 ## Services
 
-Both services run in **one process behind a single origin** (port `5002`):
-akasha at `/`, chronos at `/timeline` — one login, one reverse-proxy entry.
+All three run in **one process behind a single origin** (port `5002`): akasha at
+`/`, chronos at `/timeline`, prithvi at `/prithvi` — one login, one
+reverse-proxy entry.
 
 | Service | Path | What it does | Docs |
 | --- | --- | --- | --- |
 | **akasha** | `/` | A Wikipedia-style article store and editor: characters, items, locations, lore — with linking, versioning and diffs. Has a web UI. | [README](docs/akasha/README.md) · [design](docs/akasha/editor-design.md) |
 | **chronos** | `/timeline` | A plotline & timeline API for fiction writers: books, events and plotlines, checked for continuity errors, with a plotline visualiser and editor. | [README](docs/chronos/README.md) · [getting started](docs/chronos/getting-started.md) · [plain-language overview](docs/chronos/OVERVIEW.md) · [design](docs/chronos/design.md) |
+| **prithvi** | `/prithvi` | An API-first map service: an SVG map per region of a world, with Akasha articles pinned to points on it. No UI, but a rendered SVG you can open. | [README](docs/prithvi/README.md) · [openapi](docs/prithvi/openapi.json) |
 | **mongo** | *internal* | Shared storage. Deliberately not published to the host. | — |
 
-The two are named for what they hold: **Akasha** (the aether said to record all
-things) is the canon; **Chronos** (time) is the sequence of events through it.
+They are named for what they hold: **Akasha** (the aether said to record all
+things) is the canon; **Chronos** (time) is the sequence of events through it;
+**Prithvi** (earth) is the ground those events happen on.
 
 **How they fit together.** Characters, items and locations are articles in
-Akasha. Chronos never invents them — it *references* them, and refuses a
-reference to something that doesn't exist. So there is one canon, and the
-timeline is checked against it.
+Akasha. Neither of the others invents one — they *reference* articles, and
+refuse a reference to something that doesn't exist. So there is one canon, and
+both the timeline and the maps are checked against it.
 
-**One process, one origin.** In production the two apps are served by a single
-gunicorn behind one origin (port `5002`) — akasha at `/`, chronos at `/timeline`
-— composed with Werkzeug's `DispatcherMiddleware` (`visualizer.wsgi:application`,
-see [`src/visualizer/gateway.py`](src/visualizer/gateway.py)). They already share
-one MongoDB, one `_auth` store and one `SECRET_KEY`, and chronos calls akasha
-in-process (no service-to-service HTTP), so co-mounting them changes nothing about
-how they work — it just gives **one reverse-proxy rule, one cookie and no CORS**,
-which is exactly what the Synology reverse-proxy deployment wants. It's a *front
-door*, not a merge: each app keeps its own factory and test suite, and the
-per-service entrypoints (`visualizer.akasha.wsgi` / `visualizer.chronos.wsgi`)
-still run a single service on its own port for development. The header's
-`AKASHA_URL` / `CHRONOS_URL` default to the relative paths `/` and `/timeline`;
-set them if a proxy serves the services on different hosts.
+**One process, one origin.** In production the apps are served by a single
+gunicorn behind one origin (port `5002`) — akasha at `/`, chronos at
+`/timeline`, prithvi at `/prithvi` — composed with Werkzeug's
+`DispatcherMiddleware` (`visualizer.wsgi:application`, see
+[`src/visualizer/gateway.py`](src/visualizer/gateway.py)). They already share one
+MongoDB, one `_auth` store and one `SECRET_KEY`, and both chronos and prithvi
+call akasha in-process (no service-to-service HTTP), so co-mounting them changes
+nothing about how they work — it just gives **one reverse-proxy rule, one cookie
+and no CORS**, which is exactly what the Synology reverse-proxy deployment wants.
+It's a *front door*, not a merge: each app keeps its own factory and test suite,
+and the per-service entrypoints (`visualizer.akasha.wsgi` and its siblings) still
+run a single service on its own port for development. The header's `AKASHA_URL` /
+`CHRONOS_URL` default to the relative paths `/` and `/timeline`; set them if a
+proxy serves the services on different hosts.
 
 ---
 
@@ -57,7 +62,7 @@ set them if a proxy serves the services on different hosts.
 
 ```bash
 # 1. Set the cookie-signing secret (git-ignored, auto-loaded by compose).
-#    One value, shared by both services, so a single login covers them.
+#    One value, shared by every service, so a single login covers them all.
 echo "SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))')" > docker/.env
 
 # 2. Build and start the stack (one app container + mongo)
@@ -68,8 +73,10 @@ docker compose -f docker/docker-compose.nas.yml up --build -d
   it becomes the administrator.**
 - **http://localhost:5002/timeline** — the plotline visualiser: browse your
   threads, see where they contradict each other, and reorder them.
-- **http://localhost:5002/health** — akasha liveness;
-  **/timeline/health** — chronos liveness.
+- **http://localhost:5002/prithvi/worlds/{world}/maps** — prithvi's map API;
+  a map with its pins drawn on is at `…/maps/{map}/render.svg`.
+- **http://localhost:5002/health** — akasha liveness; **/timeline/health** and
+  **/prithvi/health** — the other two.
 - **http://localhost:5002/admin/observability** — administrators only: NAS
   capacity, per-writer usage and API health. See **Observability** below.
 
@@ -159,7 +166,9 @@ without `--fix` it breaks the story again.
 src/visualizer/
   akasha/   articles, auth, grants, versioning, web UI
   chronos/           books, plotlines, events, story graph
-  static/js/         the few ES modules *both* services load
+  prithvi/           SVG maps, pins onto articles, sanitization
+  documents.py       the revision mechanics chronos and prithvi share
+  static/js/         the few ES modules the *browser* services load
 tests/               one suite per service (in-memory MongoDB)
 docker/              Dockerfiles, the compose stack, demo seed + backup scripts
 docs/                per-service READMEs, design documents, NAS deployment
@@ -175,7 +184,7 @@ serve it *beneath its own static path*, so one relative specifier —
 chronos at `/timeline`, or either standalone on its own port. Keep the directory
 small and dependency-free; a module there cannot import from either service.
 
-Both services follow the same conventions: **inversion of control** (every
+Every service follows the same conventions: **inversion of control** (every
 database or network boundary is a seam injected into an app factory) and **pure,
 DB-free logic modules** for the interesting rules, so the bulk of the test suite
 needs no server and no mocks.
@@ -203,7 +212,7 @@ pip install -e ".[dev]"     # the package + pytest, ruff, mongomock, jsonschema
 Then, from the repo root:
 
 ```bash
-pytest        # both suites, entirely against an in-memory MongoDB — no server needed
+pytest        # every suite, entirely against an in-memory MongoDB — no server needed
 ruff check    # lint
 ```
 

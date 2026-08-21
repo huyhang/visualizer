@@ -1,6 +1,6 @@
 # Security
 
-This document records the security measures **implemented** in `akasha`
+This document records the security measures **implemented** across the stack
 and the hardening **still required** before running it as a non-local (shared,
 internet- or LAN-reachable) service. The running code is the source of truth; if
 this doc and the code disagree, trust the code and fix the doc.
@@ -77,7 +77,7 @@ this doc and the code disagree, trust the code and fix the doc.
   access *management* (the `/admin` console, gated by `admin_required`), not
   content access. Document and book endpoints authorize every caller — admins
   included — against their grants, so an admin reads another user's content only
-  where explicitly granted. (`_authorize`/`_can_read` in both services no longer
+  where explicitly granted. (`_authorize`/`_can_read` in each service no longer
   short-circuit on the admin role.)
 
 ### Tenant / internal-state isolation
@@ -105,6 +105,15 @@ this doc and the code disagree, trust the code and fix the doc.
 - **Email and search-term validation** (`validation.py`).
 - **Open-redirect protection.** The post-login `next` redirect only accepts
   same-app relative paths (`target.startswith("/")` in `auth.py`).
+- **Uploaded SVG is rewritten, not trusted.** A map upload is refused outright if
+  it declares a DTD or an entity, is not UTF-8, nests beyond 100 levels, or has
+  no `viewBox`. What survives is rebuilt from an **allowlist** of drawing
+  elements — so scripting, animation, `<style>`, foreign content and anything
+  that could load a remote document are gone by construction rather than by
+  remembering to name them — and attributes are filtered namespace-aware, which
+  is what catches `xlink:href="javascript:…"` hiding behind a prefix. Only the
+  rewritten document is stored, and the response says what was removed
+  (`prithvi/svg.py`).
 
 ### Output handling (XSS)
 
@@ -115,7 +124,13 @@ this doc and the code disagree, trust the code and fix the doc.
   `textContent`/`createElement` (`static/js/dom.js`); the one `innerHTML` path is
   the already-escaped wikitext output.
 - **Jinja auto-escaping** on the server-rendered `login`/`register`/`admin`
-  pages.
+  pages. Prithvi adds no HTML of its own: it returns JSON, or SVG.
+- **Stored SVG is served under its own sandbox.** Every SVG response carries
+  `X-Content-Type-Options: nosniff` and a default-deny
+  `Content-Security-Policy` that permits no fetch and no script, allowing only
+  top-level navigation on a click so a pin can open its article. It is the
+  second line behind the sanitizer, deliberately: the first line inspects
+  values, and a value check is the kind that can be wrong.
 
 ### Sessions, cookies & secrets
 
@@ -206,7 +221,9 @@ Ordered roughly by priority. Items marked *(partial)* have some support already.
    `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` /
    `frame-ancestors 'none'` (clickjacking), `Referrer-Policy`, and
    `Permissions-Policy`. Flask-Talisman can supply most of these.
-7. **Request size limits.** Set `MAX_CONTENT_LENGTH` (none is configured) and
+7. **Request size limits.** *(partial — SVG uploads are capped at
+   `PRITHVI_MAX_SVG_BYTES`, refused from the declared length before buffering.)*
+   The article and timeline APIs still have no `MAX_CONTENT_LENGTH`; set one and
    bound field/array/string sizes to prevent memory-exhaustion via oversized
    documents. Listing is already capped (`limit` ≤ 500); keep pagination bounded.
 8. **CSRF defense-in-depth for the JSON API.** The API currently relies solely on

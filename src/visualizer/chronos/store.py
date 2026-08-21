@@ -2,7 +2,7 @@
 
 Two boundaries between the app and MongoDB, both built on ``ScopedDocuments``
 (which owns the composite key, the ``_rev`` optimistic concurrency and the
-author stamp -- see ``documents``):
+author stamp -- see ``visualizer.documents``, shared with Prithvi):
 
 - ``StoryStore`` -- books, plotlines, events and goals, scoped to a **book**.
 - ``CalendarStore`` -- the library of named, reusable calendars, scoped to their
@@ -20,13 +20,16 @@ may be recreated); embedded history/activity is a noted future addition.
 from collections.abc import Callable
 from datetime import datetime
 
-from .documents import ScopedDocuments
+from visualizer.documents import ScopedDocuments
+
 from .errors import (
+    AlreadyExists,
     BookNotFound,
     CalendarNotFound,
     EventNotFound,
     GoalNotFound,
     PlotlineNotFound,
+    RevisionConflict,
 )
 
 CHRONOS_DB = "_chronos"
@@ -45,7 +48,13 @@ class StoryStore:
         self._client = client
 
         def docs(name):
-            return ScopedDocuments(client[CHRONOS_DB][name], "book", clock)
+            return ScopedDocuments(
+                client[CHRONOS_DB][name],
+                "book",
+                clock,
+                already_exists=AlreadyExists,
+                conflict=RevisionConflict,
+            )
 
         self._books = docs(_BOOKS)
         self._plotlines = docs(_PLOTLINES)
@@ -173,7 +182,13 @@ class CalendarStore:
     """
 
     def __init__(self, client, clock: Callable[[], datetime] | None = None):
-        self._docs = ScopedDocuments(client[CHRONOS_DB][_CALENDARS], "owner", clock)
+        self._docs = ScopedDocuments(
+            client[CHRONOS_DB][_CALENDARS],
+            "owner",
+            clock,
+            already_exists=AlreadyExists,
+            conflict=RevisionConflict,
+        )
 
     def create(self, owner, calendar_id, body, author=None) -> dict:
         return self._docs.insert(owner, calendar_id, body, author or owner)

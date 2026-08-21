@@ -1,5 +1,5 @@
 #!/bin/sh
-# Nightly backup of the stack's MongoDB — both services, one dump.
+# Nightly backup of the stack's MongoDB — every service, one dump.
 #
 # Why a logical dump rather than copying the volume: `mongodump` is consistent
 # while the database is running, and copying the files under a live mongod gives
@@ -24,6 +24,8 @@
 #     docker exec restore-test mongorestore --archive=/tmp/r.archive --gzip
 #     docker exec restore-test mongosh --quiet --eval \
 #       'db.getSiblingDB("_chronos").books.countDocuments({})'
+#     docker exec restore-test mongosh --quiet --eval \
+#       'db.getSiblingDB("_prithvi").maps.countDocuments({})'
 #     docker rm -f restore-test
 
 set -eu

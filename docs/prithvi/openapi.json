@@ -1,0 +1,1850 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Prithvi API",
+    "version": "0.1.0",
+    "description": "Where the world's things are: SVG maps for Akasha worlds, with articles pinned to them.\n\n**A pin is an article on a map.** Its identity is the article's own address, so one article has at most one place per map, and the world in the path is shared by both -- a pin pointing outside its world cannot be expressed.\n\n**Permissions are Akasha's.** A map's world is an Akasha database, and that database's grants are the map's. There is nothing extra to share. A reader who cannot read a pinned article does not see that pin at all.\n\n**Every change carries `If-Match`.** Absent is `428`, stale is `409`.\n\n**Deleting frees the name.** A delete leaves a tombstone and hides the record; creating the same name again revives it as the next revision, and `restore` is there when you wanted the old contents back rather than a fresh start."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5002/prithvi",
+      "description": "Local docker compose stack"
+    },
+    {
+      "url": "http://localhost:5004",
+      "description": "Standalone, in development"
+    }
+  ],
+  "tags": [
+    {
+      "name": "service",
+      "description": "Liveness"
+    },
+    {
+      "name": "maps",
+      "description": "Uploading, reading and redrawing maps"
+    },
+    {
+      "name": "pins",
+      "description": "Placing articles on a map and moving them"
+    },
+    {
+      "name": "versions",
+      "description": "History and restore"
+    }
+  ],
+  "security": [
+    {
+      "sessionCookie": []
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "service"
+        ],
+        "summary": "Liveness",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The service is up",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/worlds/{world}/maps": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/World"
+        },
+        {
+          "$ref": "#/components/parameters/Page"
+        },
+        {
+          "$ref": "#/components/parameters/PerPage"
+        }
+      ],
+      "get": {
+        "tags": [
+          "maps"
+        ],
+        "summary": "List the maps of one world",
+        "responses": {
+          "200": {
+            "description": "One page of maps",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      }
+    },
+    "/worlds/{world}/maps/{map_name}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/World"
+        },
+        {
+          "$ref": "#/components/parameters/MapName"
+        }
+      ],
+      "post": {
+        "tags": [
+          "maps"
+        ],
+        "summary": "Upload a map",
+        "description": "Creates the map, or revives one whose name a delete freed.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/SvgUpload"
+        },
+        "responses": {
+          "201": {
+            "description": "The map as stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Map"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "maps"
+        ],
+        "summary": "Read a map's metadata",
+        "description": "The drawing itself is a separate, much larger request.",
+        "responses": {
+          "200": {
+            "description": "The map",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Map"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "maps"
+        ],
+        "summary": "Delete a map",
+        "description": "Writes a tombstone. Its pins are hidden until it is restored, and the name may be used again.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          }
+        }
+      }
+    },
+    "/worlds/{world}/maps/{map_name}/svg": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/World"
+        },
+        {
+          "$ref": "#/components/parameters/MapName"
+        }
+      ],
+      "get": {
+        "tags": [
+          "maps"
+        ],
+        "summary": "Read the sanitized drawing",
+        "responses": {
+          "200": {
+            "description": "The stored SVG",
+            "content": {
+              "image/svg+xml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "maps"
+        ],
+        "summary": "Replace the drawing",
+        "description": "The viewBox may not change while the map has pins.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/SvgUpload"
+        },
+        "responses": {
+          "200": {
+            "description": "The map as stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Map"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          },
+          "413": {
+            "$ref": "#/components/responses/TooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          }
+        }
+      }
+    },
+    "/worlds/{world}/maps/{map_name}/scale": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/World"
+        },
+        {
+          "$ref": "#/components/parameters/MapName"
+        }
+      ],
+      "put": {
+        "tags": [
+          "maps"
+        ],
+        "summary": "Record how far across the map is",
+        "description": "Stored and returned; nothing in this service reads it yet.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/ScaleBody"
+        },
+        "responses": {
+          "200": {
+            "description": "The map as stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Map"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          }
+        }
+      }
+    },
+    "/worlds/{world}/maps/{map_name}/render.svg": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/World"
+        },
+        {
+          "$ref": "#/components/parameters/MapName"
+        }
+      ],
+      "get": {
+        "tags": [
+          "maps"
+        ],
+        "summary": "The map with its pins drawn on",
+        "description": "Only the pins this caller may read, so it is never cached.",
+        "responses": {
+          "200": {
+            "description": "An SVG you can open in a browser",
+            "content": {
+              "image/svg+xml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      }
+    },
+    "/worlds/{world}/maps/{map_name}/versions": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/World"
+        },
+        {
+          "$ref": "#/components/parameters/MapName"
+        }
+      ],
+      "get": {
+        "tags": [
+          "versions"
+        ],
+        "summary": "Retained map revisions, newest first",
+        "responses": {
+          "200": {
+            "description": "The retained revisions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      }
+    },
+    "/worlds/{world}/maps/{map_name}/versions/{rev}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/World"
+        },
+        {
+          "$ref": "#/components/parameters/MapName"
+        },
+        {
+          "$ref": "#/components/parameters/Rev"
+        }
+      ],
+      "get": {
+        "tags": [
+          "versions"
+        ],
+        "summary": "One retained map revision",
+        "responses": {
+          "200": {
+            "description": "That revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapVersion"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      }
+    },
+    "/worlds/{world}/maps/{map_name}/restore/{rev}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/World"
+        },
+        {
+          "$ref": "#/components/parameters/MapName"
+        },
+        {
+          "$ref": "#/components/parameters/Rev"
+        }
+      ],
+      "post": {
+        "tags": [
+          "versions"
+        ],
+        "summary": "Re-apply a retained map revision",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The map as stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Map"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          }
+        }
+      }
+    },
+    "/worlds/{world}/maps/{map_name}/pins": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/World"
+        },
+        {
+          "$ref": "#/components/parameters/MapName"
+        },
+        {
+          "$ref": "#/components/parameters/Page"
+        },
+        {
+          "$ref": "#/components/parameters/PerPage"
+        }
+      ],
+      "get": {
+        "tags": [
+          "pins"
+        ],
+        "summary": "List the pins you may see",
+        "responses": {
+          "200": {
+            "description": "One page of pins",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PinPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      }
+    },
+    "/worlds/{world}/maps/{map_name}/pins/{collection}/{article}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/World"
+        },
+        {
+          "$ref": "#/components/parameters/MapName"
+        },
+        {
+          "$ref": "#/components/parameters/Collection"
+        },
+        {
+          "$ref": "#/components/parameters/Article"
+        }
+      ],
+      "post": {
+        "tags": [
+          "pins"
+        ],
+        "summary": "Pin an article to a place",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/PositionBody"
+        },
+        "responses": {
+          "201": {
+            "description": "The pin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pin"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "pins"
+        ],
+        "summary": "Read one pin",
+        "responses": {
+          "200": {
+            "description": "The pin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pin"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "pins"
+        ],
+        "summary": "Move a pin",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/PositionBody"
+        },
+        "responses": {
+          "200": {
+            "description": "The pin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pin"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "pins"
+        ],
+        "summary": "Remove a pin",
+        "description": "The article keeps its history, and may be pinned here again with an ordinary POST.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          }
+        }
+      }
+    },
+    "/worlds/{world}/maps/{map_name}/pins/{collection}/{article}/versions": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/World"
+        },
+        {
+          "$ref": "#/components/parameters/MapName"
+        },
+        {
+          "$ref": "#/components/parameters/Collection"
+        },
+        {
+          "$ref": "#/components/parameters/Article"
+        }
+      ],
+      "get": {
+        "tags": [
+          "versions"
+        ],
+        "summary": "Retained pin revisions, newest first",
+        "responses": {
+          "200": {
+            "description": "The retained revisions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      }
+    },
+    "/worlds/{world}/maps/{map_name}/pins/{collection}/{article}/versions/{rev}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/World"
+        },
+        {
+          "$ref": "#/components/parameters/MapName"
+        },
+        {
+          "$ref": "#/components/parameters/Collection"
+        },
+        {
+          "$ref": "#/components/parameters/Article"
+        },
+        {
+          "$ref": "#/components/parameters/Rev"
+        }
+      ],
+      "get": {
+        "tags": [
+          "versions"
+        ],
+        "summary": "One retained pin revision",
+        "responses": {
+          "200": {
+            "description": "That revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PinVersion"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      }
+    },
+    "/worlds/{world}/maps/{map_name}/pins/{collection}/{article}/restore/{rev}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/World"
+        },
+        {
+          "$ref": "#/components/parameters/MapName"
+        },
+        {
+          "$ref": "#/components/parameters/Collection"
+        },
+        {
+          "$ref": "#/components/parameters/Article"
+        },
+        {
+          "$ref": "#/components/parameters/Rev"
+        }
+      ],
+      "post": {
+        "tags": [
+          "versions"
+        ],
+        "summary": "Put a pin back where a revision had it",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The pin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pin"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "428": {
+            "$ref": "#/components/responses/PreconditionRequired"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "session",
+        "description": "The one session cookie the whole stack shares."
+      }
+    },
+    "parameters": {
+      "World": {
+        "name": "world",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "An Akasha database. Map permissions are this database's permissions."
+      },
+      "MapName": {
+        "name": "map_name",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "1-128 letters, digits, dots, underscores or hyphens."
+      },
+      "Collection": {
+        "name": "collection",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "The Akasha collection the pinned article lives in."
+      },
+      "Article": {
+        "name": "article",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "The pinned article's id. This, with the map, is the pin's identity."
+      },
+      "Rev": {
+        "name": "rev",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "integer"
+        },
+        "description": "A retained revision number."
+      },
+      "Page": {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        },
+        "description": "Clamped into range rather than refused."
+      },
+      "PerPage": {
+        "name": "per_page",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 25
+        },
+        "description": "Clamped to at most 100."
+      },
+      "IfMatch": {
+        "name": "If-Match",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "The revision you read, e.g. `\"3\"`. Required on every change.",
+        "example": "\"3\""
+      }
+    },
+    "requestBodies": {
+      "SvgUpload": {
+        "required": true,
+        "description": "The drawing itself, as a raw body.",
+        "content": {
+          "image/svg+xml": {
+            "schema": {
+              "type": "string"
+            },
+            "example": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1200 720\"/>"
+          }
+        }
+      },
+      "PositionBody": {
+        "required": true,
+        "description": "Exactly x and y, in viewBox units.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Position"
+            }
+          }
+        }
+      },
+      "ScaleBody": {
+        "required": true,
+        "description": "How far across the map is.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Scale"
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "The request is malformed",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "No session",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Your Akasha grants do not reach this world or article",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "No such world, map, pin or retained revision",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "The name is taken, your revision is stale, or the viewBox is locked",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "TooLarge": {
+        "description": "The upload is over the configured cap",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "UnsupportedMediaType": {
+        "description": "An SVG upload arrived as something else",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Unprocessable": {
+        "description": "Well formed, but the world disagrees",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "PreconditionRequired": {
+        "description": "This change needs an If-Match header",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    },
+    "headers": {
+      "ETag": {
+        "description": "The revision this response is at.",
+        "schema": {
+          "type": "string"
+        },
+        "example": "\"3\""
+      }
+    },
+    "schemas": {
+      "Health": {
+        "type": "object",
+        "required": [
+          "status",
+          "service"
+        ],
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "status": "ok",
+          "service": "prithvi"
+        }
+      },
+      "ViewBox": {
+        "type": "array",
+        "items": {
+          "type": "number"
+        },
+        "minItems": 4,
+        "maxItems": 4,
+        "description": "min-x, min-y, width, height, in the drawing's own units",
+        "example": [
+          0,
+          0,
+          1200,
+          720
+        ]
+      },
+      "Scale": {
+        "type": "object",
+        "required": [
+          "across",
+          "unit"
+        ],
+        "description": "How far the viewBox width spans in the world's own units.",
+        "properties": {
+          "across": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "unit": {
+            "type": "string",
+            "maxLength": 32
+          }
+        },
+        "example": {
+          "across": 400,
+          "unit": "leagues"
+        }
+      },
+      "Sanitization": {
+        "type": "object",
+        "required": [
+          "removed_elements",
+          "removed_attributes"
+        ],
+        "description": "What the sanitizer took out of the upload, and how often.",
+        "properties": {
+          "removed_elements": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "removed_attributes": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          }
+        },
+        "example": {
+          "removed_elements": {
+            "script": 1
+          },
+          "removed_attributes": {
+            "onclick": 2
+          }
+        }
+      },
+      "Position": {
+        "type": "object",
+        "required": [
+          "x",
+          "y"
+        ],
+        "additionalProperties": false,
+        "description": "A point in the map's own viewBox units.",
+        "properties": {
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          }
+        },
+        "example": {
+          "x": 355,
+          "y": 215
+        }
+      },
+      "Article": {
+        "type": "object",
+        "required": [
+          "database",
+          "collection",
+          "id",
+          "title",
+          "status"
+        ],
+        "description": "The Akasha article a pin names, read at the moment of asking.",
+        "properties": {
+          "database": {
+            "type": "string"
+          },
+          "collection": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "missing"
+            ]
+          }
+        },
+        "example": {
+          "database": "ember-pact",
+          "collection": "locations",
+          "id": "highkeep",
+          "title": "Highkeep",
+          "status": "available"
+        }
+      },
+      "Map": {
+        "type": "object",
+        "required": [
+          "world",
+          "id",
+          "rev",
+          "view_box",
+          "scale",
+          "sanitization"
+        ],
+        "properties": {
+          "world": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "rev": {
+            "type": "integer"
+          },
+          "view_box": {
+            "$ref": "#/components/schemas/ViewBox"
+          },
+          "scale": {
+            "$ref": "#/components/schemas/Scale",
+            "nullable": true
+          },
+          "sanitization": {
+            "$ref": "#/components/schemas/Sanitization"
+          },
+          "created_by": {
+            "type": "string",
+            "nullable": true
+          },
+          "updated_by": {
+            "type": "string",
+            "nullable": true
+          },
+          "updated_at": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "example": {
+          "world": "ember-pact",
+          "id": "western-realms",
+          "rev": 2,
+          "view_box": [
+            0,
+            0,
+            1200,
+            720
+          ],
+          "scale": {
+            "across": 400,
+            "unit": "leagues"
+          },
+          "sanitization": {
+            "removed_elements": {
+              "script": 1
+            },
+            "removed_attributes": {}
+          },
+          "created_by": "mara",
+          "updated_by": "mara",
+          "updated_at": "2026-01-01T00:00:00+00:00"
+        }
+      },
+      "MapPage": {
+        "type": "object",
+        "required": [
+          "maps",
+          "page",
+          "per_page",
+          "total",
+          "pages"
+        ],
+        "properties": {
+          "maps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Map"
+            }
+          },
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "pages": {
+            "type": "integer"
+          }
+        },
+        "example": {
+          "maps": [
+            {
+              "world": "ember-pact",
+              "id": "western-realms",
+              "rev": 2,
+              "view_box": [
+                0,
+                0,
+                1200,
+                720
+              ],
+              "scale": {
+                "across": 400,
+                "unit": "leagues"
+              },
+              "sanitization": {
+                "removed_elements": {
+                  "script": 1
+                },
+                "removed_attributes": {}
+              },
+              "created_by": "mara",
+              "updated_by": "mara",
+              "updated_at": "2026-01-01T00:00:00+00:00"
+            }
+          ],
+          "page": 1,
+          "per_page": 25,
+          "total": 1,
+          "pages": 1
+        }
+      },
+      "Pin": {
+        "type": "object",
+        "required": [
+          "world",
+          "map",
+          "article",
+          "position",
+          "rev"
+        ],
+        "properties": {
+          "world": {
+            "type": "string"
+          },
+          "map": {
+            "type": "string"
+          },
+          "article": {
+            "$ref": "#/components/schemas/Article"
+          },
+          "position": {
+            "$ref": "#/components/schemas/Position"
+          },
+          "rev": {
+            "type": "integer"
+          },
+          "created_by": {
+            "type": "string",
+            "nullable": true
+          },
+          "updated_by": {
+            "type": "string",
+            "nullable": true
+          },
+          "updated_at": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "example": {
+          "world": "ember-pact",
+          "map": "western-realms",
+          "article": {
+            "database": "ember-pact",
+            "collection": "locations",
+            "id": "highkeep",
+            "title": "Highkeep",
+            "status": "available"
+          },
+          "position": {
+            "x": 355,
+            "y": 215
+          },
+          "rev": 1,
+          "created_by": "mara",
+          "updated_by": "mara",
+          "updated_at": "2026-01-01T00:00:00+00:00"
+        }
+      },
+      "PinPage": {
+        "type": "object",
+        "required": [
+          "pins",
+          "page",
+          "per_page",
+          "total",
+          "pages"
+        ],
+        "properties": {
+          "pins": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Pin"
+            }
+          },
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "pages": {
+            "type": "integer"
+          }
+        },
+        "example": {
+          "pins": [
+            {
+              "world": "ember-pact",
+              "map": "western-realms",
+              "article": {
+                "database": "ember-pact",
+                "collection": "locations",
+                "id": "highkeep",
+                "title": "Highkeep",
+                "status": "available"
+              },
+              "position": {
+                "x": 355,
+                "y": 215
+              },
+              "rev": 1,
+              "created_by": "mara",
+              "updated_by": "mara",
+              "updated_at": "2026-01-01T00:00:00+00:00"
+            }
+          ],
+          "page": 1,
+          "per_page": 25,
+          "total": 1,
+          "pages": 1
+        }
+      },
+      "VersionEntry": {
+        "type": "object",
+        "required": [
+          "rev",
+          "op",
+          "author",
+          "timestamp",
+          "deleted"
+        ],
+        "properties": {
+          "rev": {
+            "type": "integer"
+          },
+          "op": {
+            "type": "string",
+            "enum": [
+              "create",
+              "update",
+              "delete",
+              "restore"
+            ]
+          },
+          "author": {
+            "type": "string",
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "deleted": {
+            "type": "boolean"
+          }
+        },
+        "example": {
+          "rev": 2,
+          "op": "update",
+          "author": "mara",
+          "timestamp": "2026-01-01T00:00:00+00:00",
+          "deleted": false
+        }
+      },
+      "VersionList": {
+        "type": "object",
+        "required": [
+          "versions"
+        ],
+        "properties": {
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VersionEntry"
+            }
+          }
+        },
+        "example": {
+          "versions": [
+            {
+              "rev": 2,
+              "op": "update",
+              "author": "mara",
+              "timestamp": "2026-01-01T00:00:00+00:00",
+              "deleted": false
+            }
+          ]
+        }
+      },
+      "MapVersion": {
+        "type": "object",
+        "required": [
+          "world",
+          "id",
+          "rev",
+          "op",
+          "author",
+          "timestamp",
+          "deleted"
+        ],
+        "description": "A retained map revision. The drawing is not included; restore it to see it.",
+        "properties": {
+          "world": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "rev": {
+            "type": "integer"
+          },
+          "op": {
+            "type": "string",
+            "enum": [
+              "create",
+              "update",
+              "delete",
+              "restore"
+            ]
+          },
+          "author": {
+            "type": "string",
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "deleted": {
+            "type": "boolean"
+          },
+          "view_box": {
+            "$ref": "#/components/schemas/ViewBox"
+          },
+          "scale": {
+            "$ref": "#/components/schemas/Scale",
+            "nullable": true
+          }
+        },
+        "example": {
+          "world": "ember-pact",
+          "id": "western-realms",
+          "rev": 2,
+          "op": "update",
+          "author": "mara",
+          "timestamp": "2026-01-01T00:00:00+00:00",
+          "deleted": false,
+          "view_box": [
+            0,
+            0,
+            1200,
+            720
+          ],
+          "scale": null
+        }
+      },
+      "PinVersion": {
+        "type": "object",
+        "required": [
+          "world",
+          "map",
+          "article",
+          "position",
+          "rev",
+          "op",
+          "author",
+          "timestamp",
+          "deleted"
+        ],
+        "properties": {
+          "world": {
+            "type": "string"
+          },
+          "map": {
+            "type": "string"
+          },
+          "article": {
+            "$ref": "#/components/schemas/Article"
+          },
+          "position": {
+            "$ref": "#/components/schemas/Position",
+            "nullable": true
+          },
+          "rev": {
+            "type": "integer"
+          },
+          "op": {
+            "type": "string",
+            "enum": [
+              "create",
+              "update",
+              "delete",
+              "restore"
+            ]
+          },
+          "author": {
+            "type": "string",
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "deleted": {
+            "type": "boolean"
+          }
+        },
+        "example": {
+          "world": "ember-pact",
+          "map": "western-realms",
+          "article": {
+            "database": "ember-pact",
+            "collection": "locations",
+            "id": "highkeep",
+            "title": "Highkeep",
+            "status": "available"
+          },
+          "position": {
+            "x": 355,
+            "y": 215
+          },
+          "rev": 2,
+          "op": "update",
+          "author": "mara",
+          "timestamp": "2026-01-01T00:00:00+00:00",
+          "deleted": false
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "error",
+          "code"
+        ],
+        "description": "Every failure. `code` is stable; `error` is prose and may change.",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "PRITHVI_ERROR",
+              "INVALID_WORLD",
+              "INVALID_MAP_NAME",
+              "INVALID_ARTICLE_ADDRESS",
+              "INVALID_SVG",
+              "INVALID_POSITION",
+              "INVALID_SCALE",
+              "INVALID_REVISION",
+              "UNSUPPORTED_MEDIA_TYPE",
+              "SVG_TOO_LARGE",
+              "PRECONDITION_REQUIRED",
+              "POSITION_OUT_OF_BOUNDS",
+              "ARTICLE_NOT_FOUND",
+              "WORLD_NOT_FOUND",
+              "MAP_NOT_FOUND",
+              "PIN_NOT_FOUND",
+              "REVISION_NOT_RETAINED",
+              "ALREADY_EXISTS",
+              "REVISION_CONFLICT",
+              "VIEWBOX_LOCKED",
+              "FORBIDDEN"
+            ]
+          },
+          "evidence": {
+            "type": "object"
+          }
+        },
+        "example": {
+          "error": "A pin must sit inside its map's viewBox.",
+          "code": "POSITION_OUT_OF_BOUNDS",
+          "evidence": {
+            "position": {
+              "x": 900,
+              "y": 10
+            },
+            "view_box": [
+              0,
+              0,
+              1200,
+              720
+            ]
+          }
+        }
+      }
+    }
+  }
+}

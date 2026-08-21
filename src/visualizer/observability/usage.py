@@ -22,6 +22,15 @@ from bson import BSON
 
 from visualizer.auth.store import DATABASE_RESOURCE
 from visualizer.chronos.store import CHRONOS_DB
+from visualizer.prithvi.store import (
+    MAP_IDENTITY,
+    MAP_REVISIONS,
+    MAPS,
+    PIN_IDENTITY,
+    PIN_REVISIONS,
+    PINS,
+    PRITHVI_DB,
+)
 
 # Shown when nothing in the grant graph or the document itself names an owner.
 UNATTRIBUTED = "(unattributed)"
@@ -187,6 +196,7 @@ class MongoDocumentSource:
     def documents(self) -> Iterator[StoredDocument]:
         yield from self._articles()
         yield from self._chronos()
+        yield from self._prithvi()
 
     def _articles(self) -> Iterator[StoredDocument]:
         for database in self._client.list_database_names():
@@ -214,6 +224,15 @@ class MongoDocumentSource:
                 created_by=stored.get("owner") or stored.get("created_by"),
             )
 
+    def _prithvi(self) -> Iterator[StoredDocument]:
+        database = self._client[PRITHVI_DB]
+        yield from _rejoined(
+            database[MAPS], database[MAP_REVISIONS], "map", MAP_IDENTITY
+        )
+        yield from _rejoined(
+            database[PINS], database[PIN_REVISIONS], "pin", PIN_IDENTITY
+        )
+
 
 def _article(database: str, collection: str, stored: dict) -> StoredDocument:
     history = tuple(
@@ -225,6 +244,30 @@ def _article(database: str, collection: str, stored: dict) -> StoredDocument:
         total_bytes=_sizeof(stored),
         history=history,
     )
+
+
+def _rejoined(heads, revisions, kind: str, identity) -> Iterator[StoredDocument]:
+    """One row per map or pin, with its separately stored revisions folded in.
+
+    Prithvi keeps each revision in its own document rather than inside the
+    record, because a map's revision is a whole SVG. Attribution's model is one
+    row per thing whose history it subtracts to find the current body, so the
+    sweep re-joins them here: the map counts once, its head is what its owner
+    "owns", and each revision's bytes are charged to whoever wrote it.
+    """
+    history: dict[str, list[tuple[str | None, int]]] = {}
+    for revision in revisions.find():
+        history.setdefault(revision["resource_key"], []).append(
+            (revision.get("author"), _sizeof(revision))
+        )
+    for head in heads.find():
+        entries = tuple(history.get(head["_id"], ()))
+        yield StoredDocument(
+            resource=(kind, *(head[field] for field in identity)),
+            total_bytes=_sizeof(head) + sum(size for _, size in entries),
+            history=entries,
+            created_by=head.get("created_by"),
+        )
 
 
 def _sizeof(document) -> int:
