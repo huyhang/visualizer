@@ -3,6 +3,10 @@
   "info": {
     "title": "Prithvi API",
     "version": "0.1.0",
+    "license": {
+      "name": "PolyForm Noncommercial 1.0.0, with an additional permission",
+      "url": "https://polyformproject.org/licenses/noncommercial/1.0.0"
+    },
     "description": "Where the world's things are: SVG maps for Akasha worlds, with articles pinned to them.\n\n**A pin is an article on a map.** Its identity is the article's own address, so one article has at most one place per map, and the world in the path is shared by both -- a pin pointing outside its world cannot be expressed.\n\n**Permissions are Akasha's.** A map's world is an Akasha database, and that database's grants are the map's. There is nothing extra to share. A reader who cannot read a pinned article does not see that pin at all.\n\n**Every change carries `If-Match`.** Absent is `428`, stale is `409`.\n\n**Deleting frees the name.** A delete leaves a tombstone and hides the record; creating the same name again revives it as the next revision, and `restore` is there when you wanted the old contents back rather than a fresh start."
   },
   "servers": [

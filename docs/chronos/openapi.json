@@ -3,10 +3,11 @@
   "info": {
     "title": "Chronos API",
     "version": "0.1.0",
-    "description": "Plotline & timeline API for fiction writers (see docs/chronos/design.md).\n\nTwo classes of rule govern writes. **Referential** rules are hard: a bad reference, an impossible timeframe, or deleting something still in use is rejected. **Story-logic** rules (temporal conflict, plotline ordering, convergence on the terminus) are soft: the write always succeeds and the finding is reported in the book's `status` and in `GET /books/{book}/validate`.\n\nEvery response separates stored fields (editable; send them back on a write) from computed fields (`status`, `_links`, `rev`) which are read-only.",
     "license": {
-      "name": "See repository"
-    }
+      "name": "PolyForm Noncommercial 1.0.0, with an additional permission",
+      "url": "https://polyformproject.org/licenses/noncommercial/1.0.0"
+    },
+    "description": "Plotline & timeline API for fiction writers (see docs/chronos/design.md).\n\nTwo classes of rule govern writes. **Referential** rules are hard: a bad reference, an impossible timeframe, or deleting something still in use is rejected. **Story-logic** rules (temporal conflict, plotline ordering, convergence on the terminus) are soft: the write always succeeds and the finding is reported in the book's `status` and in `GET /books/{book}/validate`.\n\nEvery response separates stored fields (editable; send them back on a write) from computed fields (`status`, `_links`, `rev`) which are read-only."
   },
   "servers": [
     {

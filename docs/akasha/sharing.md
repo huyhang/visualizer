@@ -5,12 +5,14 @@ in Akasha, and how you stay in control of it. If you just want the short version
 **you own what you create, and nobody else can see it until you deliberately
 share it.**
 
-Your writing is organised as **collections** (a folder-like group, e.g.
-*Characters* or *Locations*) that hold **articles** (a single entry, e.g.
-*Aragorn*). You can share either a whole collection or one individual article.
+Your writing is organised as **worlds**, which hold **collections** (a
+folder-like group, e.g. *Characters* or *Locations*), which hold **articles** (a
+single entry, e.g. *Aragorn*). You can share any of the three: a whole world, a
+whole collection, or one individual article. You own a world the moment you make
+its first category, the same way you own the category.
 
 You can also share the things you keep on the **timeline** side: a **book** and
-a **calendar**. All four work the same way and are shared from the same place,
+a **calendar**. All five work the same way and are shared from the same place,
 so the rest of this guide says "thing" where it means any of them.
 
 ---
@@ -57,9 +59,9 @@ account, and other people's usernames aren't put on display. You simply keep a
 short list of the folks you actually work with. To share with someone new, add
 them here first.
 
-### 2. Share a collection or article
+### 2. Share a world, a collection or an article
 
-**From the Account page** — under **Shared access**, switch between
+**From the Account page** — under **Shared access**, switch between *Worlds*,
 *Categories*, *Articles*, *Books* and *Calendars*, find the one you want (there's
 a filter box if the list is long), expand it, pick a collaborator and a role, and
 click **Share**. This is the only place that shows everything you own at once.
@@ -93,10 +95,23 @@ its dates — even if they have no access to the calendar in your library. Shari
 a **calendar** is a separate thing entirely: it lets someone attach *your*
 calendar to *their* books.
 
+Its **world** comes along too, as a **reader**. A timeline is a web of references
+— this scene happens at *Highkeep*, that one involves *Aldric* — and handing
+someone the book without the world would hand them a list of names they cannot
+open. So sharing a book also shares the world it is set in, at reader level and
+never more: if you want a co-author writing your canon as well as your timeline,
+share the world itself and choose *editor*. Two things follow. You can only pass
+on a world you own, so sharing someone else's book quietly shares nothing extra.
+And removing them from the book leaves the world where it was — take that back
+separately, from the *Worlds* tab.
+
 ---
 
-## Collection vs. single article — what carries over
+## World vs. collection vs. single article — what carries over
 
+- **Share a whole world** and the person gets that access to **everything in
+  it** — every category, every article, and every map, including ones you add
+  later. This is the whole canon; it is the biggest thing you can hand over.
 - **Share a whole collection** and the person gets that access to **every article
   inside it**, including ones you add later. This is the easy way to bring a
   co-writer onto a whole section of your world.

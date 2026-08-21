@@ -3,14 +3,13 @@
 Run ``python docker/seed_demo.py`` first -- this pins the locations that script
 writes, and refuses to invent any.
 
-One prerequisite is worth understanding rather than working around. Akasha hands
-out grants at *collection* and *article* scope, and Prithvi asks for one at
-**world** scope, because a map belongs to the world rather than to any category
-inside it. So a writer who owns every collection in ``ember-pact`` still cannot
-put a map in it until somebody says they own the world. In the demo that
-somebody is mara herself, who registered first and is therefore the
-administrator; the script does it through the ordinary admin form, and prints
-what it did in case you would rather have done it by hand.
+A map belongs to a *world* rather than to any category inside it, so Prithvi
+asks for a world-scoped grant. Creating a world's first category now claims the
+world, so on a stack seeded from scratch mara already owns ``ember-pact`` and
+there is nothing to arrange. On a stack whose worlds predate that rule nobody
+owns them, and the fix belongs in ``backfill_world_owners.py``; the fallback
+below covers the case anyway, because a demo that stops with a 403 and no
+explanation is a bad demo.
 
 Usage (from the repo root, stack already up and seeded):
     python docker/seed_prithvi_demo.py
@@ -116,12 +115,12 @@ def main():
 
 
 def grant_the_world(session):
-    """Give mara the world-scoped grant Prithvi asks for, as the admin she is.
+    """Make sure mara holds the world, granting it as the admin she is if not.
 
-    Asked first, because the admin form appends rather than replaces: running
-    this twice would otherwise leave two identical grants behind. The cheapest
-    way to ask is to use the permission -- if the world's map list answers, the
-    grant is already there.
+    Asked first, and not only to be polite: the admin form appends rather than
+    replaces, so granting unconditionally would leave an identical row behind on
+    every run. The cheapest way to ask is to use the permission -- if the
+    world's map list answers, there is nothing to do.
     """
     status, _ = session.call("GET", f"{PRITHVI}/worlds/{WORLD}/maps")
     if status == 200:

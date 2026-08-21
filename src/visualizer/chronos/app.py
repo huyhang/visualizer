@@ -8,6 +8,8 @@ login -- design decision in §12); Chronos authorizes at **book scope** using th
 same allow-only, most-specific-wins ``is_allowed`` logic.
 """
 
+from dataclasses import replace
+
 from flask import Flask, jsonify, render_template, request
 from flask_login import current_user, login_required
 from flask_wtf.csrf import CSRFProtect
@@ -391,6 +393,14 @@ def _register_routes(app, csrf, auth_store, books, plotlines, events, visualizer
     # The operation itself lives in ``visualizer.sharing``, which akasha's
     # account page drives through its own uniform routes. These are the
     # resource-shaped spelling of the same thing.
+    #
+    # The kind carries the world cascade rather than these routes doing it,
+    # precisely because there are two spellings: a rule applied here and not on
+    # the account page would be a rule nobody could rely on.
+    book_kind = replace(
+        sharing.BOOK,
+        after_share=sharing.world_reader_cascade(lambda b: books.get(b).get("world")),
+    )
 
     @app.get(_BOOK + "/collaborators")
     @csrf.exempt
@@ -398,7 +408,7 @@ def _register_routes(app, csrf, auth_store, books, plotlines, events, visualizer
     def list_collaborators(book):
         _require_owner(auth_store, book)
         return jsonify({
-            "collaborators": sharing.collaborators(auth_store, sharing.BOOK, _book_scope(book))
+            "collaborators": sharing.collaborators(auth_store, book_kind, _book_scope(book))
         })
 
     @app.put(_BOOK + "/collaborators/<username>")
@@ -407,17 +417,21 @@ def _register_routes(app, csrf, auth_store, books, plotlines, events, visualizer
     def add_collaborator(book, username):
         role = (request.get_json(silent=True) or {}).get("role", sharing.BOOK.default_role)
         result = sharing.share(
-            auth_store, sharing.BOOK, _book_scope(book), username, role,
+            auth_store, book_kind, _book_scope(book), username, role,
             me=current_user.username,
         )
-        return jsonify({"book": book, "user": username, "role": result["role"]})
+        return jsonify({
+            "book": book, "user": username, "role": result["role"],
+            # Named in the response rather than left as a side effect nobody sees.
+            "world": (result.get("also") or {}).get("database"),
+        })
 
     @app.delete(_BOOK + "/collaborators/<username>")
     @csrf.exempt
     @login_required
     def remove_collaborator(book, username):
         sharing.unshare(
-            auth_store, sharing.BOOK, _book_scope(book), username, me=current_user.username
+            auth_store, book_kind, _book_scope(book), username, me=current_user.username
         )
         return "", 204
 

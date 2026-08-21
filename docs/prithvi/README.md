@@ -41,10 +41,24 @@ grants:
 | `delete` | delete a whole map |
 
 Two consequences. Access to a *collection* inside a world is not access to that
-world's maps — the grant has to be on the database. And a reader shut out of one
-article does not see its pin: not in a listing, not on the rendered map, and not
-by asking for it directly, where the answer is `404` rather than `403`, because
-"forbidden" would confirm that something is pinned there.
+world's maps — the grant has to be on the world itself. And a reader shut out of
+one article does not see its pin: not in a listing, not on the rendered map, and
+not by asking for it directly, where the answer is `404` rather than `403`,
+because "forbidden" would confirm that something is pinned there.
+
+**Where a world grant comes from.** Creating a world's first category claims the
+world, the same way creating a category claims the category — so a writer can
+map their own world without anyone's help. From there a world is an ordinary
+shareable thing: it has a tab on the account page, and
+`/account/sharing/world/{world}/collaborators` behaves like every other kind.
+Sharing it hands over its maps and their pins in the same motion, because there
+is no separate map permission to hand over. Sharing a Chronos *book* also shares
+its `world`, always as a reader — a timeline is not much use if you cannot open
+the articles it points at.
+
+A world made before that rule existed has no owner. Run
+`docker/backfill_world_owners.py` once; it gives each world to the writer who
+already owns every category in it, and lists the ambiguous ones for a human.
 
 ## Uploading a map
 

@@ -2,10 +2,10 @@
 
 These are the HTTP half of ``visualizer.sharing``; the pure half is in
 ``test_sharing_kinds.py``. Every kind goes through the *same* registrar, so the
-point of parameterising is that a fifth kind would be covered by adding one row
-here rather than a new suite.
+point of parameterising is that a new kind is covered by adding one row here
+rather than a new suite -- which is exactly how world arrived.
 
-Two of the four kinds -- books and library calendars -- belong to Chronos, and
+Two of the five kinds -- books and library calendars -- belong to Chronos, and
 are exercised here against the **Akasha** app deliberately: sharing is pure grant
 work on the store both services share, which is exactly what lets the account
 page reach them without a cross-origin request.
@@ -18,6 +18,7 @@ OWNER = ["read", "write", "delete"]
 
 # (kind, grant scope as (database, collection, doc_id), resource_type, url tail)
 KINDS = [
+    ("world", ("mine", None, None), "database", "mine"),
     ("collection", ("mine", "cast", None), "database", "mine/cast"),
     ("article", ("mine", "cast", "aldric"), "database", "mine/cast/aldric"),
     ("book", ("ember-pact", None, None), "book", "ember-pact"),

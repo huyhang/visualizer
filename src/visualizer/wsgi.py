@@ -23,6 +23,7 @@ from visualizer.akasha.store import DocumentStore
 from visualizer.auth import AuthStore
 from visualizer.chronos.app import create_app as create_chronos_app
 from visualizer.chronos.entity_gate import InProcessEntityGate
+from visualizer.chronos.errors import ChronosError
 from visualizer.chronos.store import CalendarStore, StoryStore
 from visualizer.observability import runtime as observability_runtime
 from visualizer.prithvi.app import create_app as create_prithvi_app
@@ -51,10 +52,27 @@ _observability = observability_runtime.start(_client, _auth_store)
 _akasha_url = os.environ.get("AKASHA_URL", "/")
 _chronos_url = os.environ.get("CHRONOS_URL", DEFAULT_CHRONOS_PREFIX)
 
+_story_store = StoryStore(_client)
+
+
+def _book_world(book: str) -> str | None:
+    """Which world a book is set in -- what makes sharing a book share it too.
+
+    Passed into akasha rather than looked up there: the account page serves one
+    of the two routes that can share a book, and this is the one fact about
+    Chronos it needs to behave the same as the other.
+    """
+    try:
+        return _story_store.get_book(book).get("world")
+    except ChronosError:
+        return None
+
+
 _akasha_app = create_akasha_app(
     _doc_store,
     _auth_store,
     secret_key=_secret,
+    book_world=_book_world,
     secure_cookies=_secure,
     rate_limit_storage_uri=_ratelimit,
     akasha_url=_akasha_url,
@@ -62,7 +80,7 @@ _akasha_app = create_akasha_app(
     observability=_observability,
 )
 _chronos_app = create_chronos_app(
-    StoryStore(_client),
+    _story_store,
     InProcessEntityGate(_doc_store),
     _auth_store,
     calendar_store=CalendarStore(_client),

@@ -19,6 +19,7 @@ Browser GUI (server-rendered): ``/login``, ``/register``, ``/`` (home) and
 ``/admin`` (user + grant management, admins only).
 """
 
+from collections.abc import Callable
 from dataclasses import replace
 
 from flask import Flask, flash, jsonify, redirect, render_template, request, url_for
@@ -97,6 +98,11 @@ def create_app(
     akasha_url: str = "http://localhost:5002",
     chronos_url: str = "http://localhost:5003",
     observability: Observability | None = None,
+    # Resolves a Chronos book id to the world it is set in. Injected, because
+    # sharing a book also shares its world and *this* app serves one of the two
+    # routes that can do it -- while deliberately not importing Chronos. Left
+    # out, the account page shares the book alone; the wiring modules supply it.
+    book_world: Callable[[str], str | None] | None = None,
 ) -> Flask:
     app = Flask(__name__)
     # A secret key is required to sign session cookies. It must be supplied
@@ -131,7 +137,9 @@ def create_app(
     _register_sharing_routes(app, auth_store, csrf)
     # The account page lists things from both services, so it reaches them all
     # through one uniform family on this origin. See ``visualizer.sharing``.
-    sharing.register_account_sharing_routes(app, auth_store, csrf, ACCOUNT_KINDS)
+    sharing.register_account_sharing_routes(
+        app, auth_store, csrf, _account_kinds(book_world)
+    )
     _register_account_routes(app, auth_store, csrf, limiter)
     _register_admin_routes(app, auth_store)
     if observability is not None:
@@ -149,11 +157,16 @@ def _reject_reserved(database: str) -> None:
         raise ReservedName(f"Database '{database}' is reserved and not accessible.")
 
 
-# Akasha's two shareable kinds, tightened from the neutral descriptors: the
+# Akasha's three shareable kinds, tightened from the neutral descriptors: the
 # writer-facing words from ``terms.py``, and the guard that keeps the reserved
 # `_auth` / `_chronos` namespaces unshareable. The chronos two are taken as they
 # come -- akasha needs them to *list* a book on the account page, and a grant is
 # all that takes, so nothing here imports chronos.
+AKASHA_WORLD = replace(
+    sharing.WORLD,
+    label=TERMS["database"]["One"], plural=TERMS["database"]["Many"],
+    guard=lambda scope: _reject_reserved(scope["database"]),
+)
 AKASHA_COLLECTION = replace(
     sharing.COLLECTION,
     label=TERMS["collection"]["One"], plural=TERMS["collection"]["Many"],
@@ -166,7 +179,46 @@ AKASHA_ARTICLE = replace(
 )
 # The order the account page shows them in: this writer's own world first, then
 # what they have built on top of it.
-ACCOUNT_KINDS = (AKASHA_COLLECTION, AKASHA_ARTICLE, sharing.BOOK, sharing.CALENDAR)
+ACCOUNT_KINDS = (
+    AKASHA_WORLD, AKASHA_COLLECTION, AKASHA_ARTICLE, sharing.BOOK, sharing.CALENDAR
+)
+
+
+def _account_kinds(book_world) -> tuple:
+    """The shareable kinds, with the book taught to bring its world along.
+
+    The same cascade Chronos hangs on its own collaborator route, so the two
+    spellings of "share this book" cannot drift apart -- which they did, once,
+    and the account page is the spelling people actually use.
+    """
+    if book_world is None:
+        return ACCOUNT_KINDS
+    cascade = sharing.world_reader_cascade(book_world)
+    return tuple(
+        replace(kind, after_share=cascade) if kind is sharing.BOOK else kind
+        for kind in ACCOUNT_KINDS
+    )
+
+
+def _claim_unowned_world(auth_store: AuthStore, username: str, database: str) -> None:
+    """Whoever brings a world into being owns it, the same as a collection.
+
+    A world exists once something is created in it, so its first collection is
+    the moment there is anything to own. Only the *first*: a writer adding a
+    category to somebody else's world takes only that category, which is why
+    this looks for an existing owner before claiming anything.
+
+    Without this nobody would hold world scope, and the ``world`` kind would be
+    a resource with no owner entitled to share it -- which is exactly why the
+    kind did not exist before. Prithvi reads maps against this grant, so it is
+    also what lets a writer put a map in a world they made.
+    """
+    already_owned = any(
+        DELETE in (grant.get("perms") or ())
+        for grant in auth_store.grants_on(database, None, None)
+    )
+    if not already_owned:
+        auth_store.grant_owner(username, database, None, None, list(ALL_PERMS))
 
 
 def _require_owner(auth_store: AuthStore, database, collection, doc_id=None) -> None:
@@ -263,6 +315,7 @@ def _register_routes(app: Flask, store: DocumentStore, auth_store: AuthStore, cs
         auth_store.grant_owner(
             current_user.username, database, collection, None, list(ALL_PERMS)
         )
+        _claim_unowned_world(auth_store, current_user.username, database)
         return jsonify(result), 201
 
     @app.delete(_COLLECTION_ROUTE)

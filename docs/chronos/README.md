@@ -306,7 +306,9 @@ PUT    /books/<book>/goals/<goal>                    replace
 DELETE /books/<book>/goals/<goal>[?detach=true]      detach unpicks what points at it
 
 GET    /books/<book>/collaborators                   who can see it (owners only)
-PUT    /books/<book>/collaborators/<user>            invite / set role (owners only)
+PUT    /books/<book>/collaborators/<user>            invite / set role (owners only);
+                                                     also shares the book's `world`
+                                                     as a reader, if you own it
 DELETE /books/<book>/collaborators/<user>            remove (owners only)
 
 GET    /calendars                                    your library + anything shared with you

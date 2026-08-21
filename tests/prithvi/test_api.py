@@ -309,3 +309,90 @@ def test_the_factory_refuses_to_build_something_unusable(prithvi_store,
     with pytest.raises(ValueError):
         create_app(prithvi_store, article_gateway, auth_store, secret_key="s",
                    max_svg_bytes=0)
+
+
+# -- sharing a world ----------------------------------------------------------
+
+
+def _share_the_world(auth_store, username, role="reader"):
+    """Exactly what the account page does, and nothing Prithvi-specific."""
+    from visualizer import sharing
+
+    return sharing.share(
+        auth_store,
+        sharing.WORLD,
+        sharing.WORLD.scope({"database": WORLD}),
+        username,
+        role,
+        me="mara",
+    )
+
+
+def test_sharing_a_world_shares_its_maps_and_their_pins(app, auth_store, mapped):
+    """No cascade needed: a map's permissions *are* its world's.
+
+    Nothing in Prithvi is enumerated or copied when a world changes hands. The
+    map is reachable because the reader can read the world, and each pin is
+    visible because that same grant reaches the article beneath it.
+    """
+    from werkzeug.security import generate_password_hash
+
+    mapped.post(PIN_URL, json={"x": 10, "y": 20})
+    auth_store.create_user("newcomer", generate_password_hash("newcomer-pw"))
+    guest = app.test_client()
+    assert login(guest, "newcomer").status_code == 200
+    assert guest.get(MAP_URL).status_code == 403
+
+    _share_the_world(auth_store, "newcomer")
+
+    assert guest.get(f"/worlds/{WORLD}/maps").get_json()["total"] == 1
+    assert guest.get(MAP_URL).status_code == 200
+    assert [p["article"]["id"] for p in guest.get(f"{MAP_URL}/pins").get_json()["pins"]] == [
+        OPEN_ARTICLE
+    ]
+    assert "Highkeep" in guest.get(f"{MAP_URL}/render.svg").get_data(as_text=True)
+
+
+def test_a_world_reader_still_cannot_change_the_map(app, auth_store, mapped):
+    from werkzeug.security import generate_password_hash
+
+    auth_store.create_user("newcomer", generate_password_hash("newcomer-pw"))
+    guest = app.test_client()
+    login(guest, "newcomer")
+    _share_the_world(auth_store, "newcomer")
+
+    assert guest.post(PIN_URL, json={"x": 1, "y": 1}).status_code == 403
+    assert upload(guest, url=f"/worlds/{WORLD}/maps/second").status_code == 403
+
+
+def test_sharing_a_world_as_an_editor_hands_over_its_maps_too(app, auth_store, mapped):
+    from werkzeug.security import generate_password_hash
+
+    auth_store.create_user("newcomer", generate_password_hash("newcomer-pw"))
+    guest = app.test_client()
+    login(guest, "newcomer")
+    _share_the_world(auth_store, "newcomer", role="editor")
+
+    assert guest.post(PIN_URL, json={"x": 1, "y": 1}).status_code == 201
+
+
+def test_taking_the_world_back_takes_the_maps_with_it(app, auth_store, mapped):
+    from werkzeug.security import generate_password_hash
+
+    from visualizer import sharing
+
+    auth_store.create_user("newcomer", generate_password_hash("newcomer-pw"))
+    guest = app.test_client()
+    login(guest, "newcomer")
+    _share_the_world(auth_store, "newcomer")
+    assert guest.get(MAP_URL).status_code == 200
+
+    sharing.unshare(
+        auth_store,
+        sharing.WORLD,
+        sharing.WORLD.scope({"database": WORLD}),
+        "newcomer",
+        me="mara",
+    )
+
+    assert guest.get(MAP_URL).status_code == 403

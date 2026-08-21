@@ -1,9 +1,13 @@
 [project]
 name = "visualizer"
 version = "0.1.0"
-description = "A short description of your project"
+description = "A suite of products to help a writer build their fictional world"
 readme = "README.md"
 requires-python = ">=3.11"
+license = { file = "LICENSE" }
+# Source-available, not open source: PolyForm Noncommercial, plus an additional
+# permission putting everything you write with it outside the licence entirely.
+classifiers = ["License :: Other/Proprietary License"]
 dependencies = [
     "flask>=2.2",
     "pymongo>=4.0",

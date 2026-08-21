@@ -217,3 +217,25 @@ ruff check    # lint
 ```
 
 The editable install puts `visualizer` on the path, so no `PYTHONPATH` is needed.
+
+---
+
+## Licence
+
+**[PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0)**,
+with one additional permission. See [`LICENSE`](LICENSE) for the full text.
+
+The short version: use it, change it, run it on your own machine or your NAS,
+share it with the people you write with. Don't sell it, and don't run it as a
+paid service.
+
+**What you write with it is not covered at all.** Your worlds, articles,
+timelines, maps and manuscripts are yours, including the ones you sell — the
+noncommercial terms are about the software, not about your novel. That
+permission is spelled out at the top of `LICENSE` because a writing tool whose
+licence left a professional novelist guessing would be a bad writing tool.
+
+This is *source-available*, not open source: it does not meet the OSI
+definition, and it is not MIT or Apache. Everything it depends on is
+permissively licensed (Flask, PyMongo, NetworkX, and friends), so nothing here
+is anyone else's copyleft to honour.

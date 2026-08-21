@@ -3,7 +3,11 @@
   "info": {
     "title": "Akasha API",
     "version": "0.1.0",
-    "description": "The canon half of the visualizer stack: a store of flat JSON articles with linking, fine-grained sharing and per-article version history.\n\n**Names are addresses.** The triple `database / collection / id` keys every grant, every `[[wikilink]]` and every Chronos `EntityRef`, which is why nothing here renames one. The UI shows a friendlier reading of them (`ember-pact` as \"Ember Pact\", collections as \"categories\"); that is presentation only and never reaches this API.\n\n**Deletes are soft.** A deleted article keeps its version history and can be restored; only `DELETE …/collections/{collection}?purge=1` destroys anything for good."
+    "license": {
+      "name": "PolyForm Noncommercial 1.0.0, with an additional permission",
+      "url": "https://polyformproject.org/licenses/noncommercial/1.0.0"
+    },
+    "description": "The canon half of the visualizer stack: a store of flat JSON articles with linking, fine-grained sharing and per-article version history.\n\n**Names are addresses.** The triple `database / collection / id` keys every grant, every `[[wikilink]]` and every Chronos `EntityRef`, which is why nothing here renames one. The UI shows a friendlier reading of them (`ember-pact` as \"Ember Pact\", collections as \"categories\"); that is presentation only and never reaches this API.\n\n**Deletes are soft.** A deleted article keeps its version history and can be restored; only `DELETE \u2026/collections/{collection}?purge=1` destroys anything for good."
   },
   "servers": [
     {
@@ -206,7 +210,7 @@
           "browse"
         ],
         "summary": "Delete a database with no collections left",
-        "description": "Gated on nothing but being logged in, exactly like creating a namespace: an empty database holds nothing to protect, and emptying it was already owner-only. In practice you will not find one — MongoDB drops a database with its last collection — so this exists for a shell left by an older version.",
+        "description": "Gated on nothing but being logged in, exactly like creating a namespace: an empty database holds nothing to protect, and emptying it was already owner-only. In practice you will not find one \u2014 MongoDB drops a database with its last collection \u2014 so this exists for a shell left by an older version.",
         "responses": {
           "204": {
             "description": "Dropped."
@@ -302,7 +306,7 @@
           "browse"
         ],
         "summary": "Delete an empty collection you own",
-        "description": "Refuses while a **live** article remains: emptying a collection is the article endpoint's job. A **tombstone** is the harder case — it holds no article, only the version history of one that was deleted — so it also refuses by default, and goes only with `?purge=1`. Dropping the last collection drops the database with it.",
+        "description": "Refuses while a **live** article remains: emptying a collection is the article endpoint's job. A **tombstone** is the harder case \u2014 it holds no article, only the version history of one that was deleted \u2014 so it also refuses by default, and goes only with `?purge=1`. Dropping the last collection drops the database with it.",
         "parameters": [
           {
             "$ref": "#/components/parameters/Purge"
@@ -351,7 +355,7 @@
           "browse"
         ],
         "summary": "One page of a collection's articles",
-        "description": "`filter` matches every whitespace-separated word against the whole article — slug, title and field values — so it is a full-text search of the collection, not just its names. Ordered by title. An out-of-range `page` is clamped to the last one. When there is a `filter`, results are ordered by how well each article answers it — exact name, then prefix, then a word start, then anywhere — so a truncated result holds the ones you probably meant.",
+        "description": "`filter` matches every whitespace-separated word against the whole article \u2014 slug, title and field values \u2014 so it is a full-text search of the collection, not just its names. Ordered by title. An out-of-range `page` is clamped to the last one. When there is a `filter`, results are ordered by how well each article answers it \u2014 exact name, then prefix, then a word start, then anywhere \u2014 so a truncated result holds the ones you probably meant.",
         "parameters": [
           {
             "$ref": "#/components/parameters/Filter"
@@ -403,7 +407,7 @@
           "browse"
         ],
         "summary": "Articles deleted from this collection",
-        "description": "Deletes are soft, so a tombstone still holds the history that makes it recoverable — but nothing else lists it, which would otherwise mean recovery required already knowing the slug you had lost.",
+        "description": "Deletes are soft, so a tombstone still holds the history that makes it recoverable \u2014 but nothing else lists it, which would otherwise mean recovery required already knowing the slug you had lost.",
         "responses": {
           "200": {
             "description": "Tombstones and how to undo them.",
@@ -611,7 +615,7 @@
           "articles"
         ],
         "summary": "Delete an article",
-        "description": "Soft: the document leaves every listing, search and link, but its version history is kept and it can be restored. Nothing warns you that a Chronos scene may reference it — that shows up in the book's report.",
+        "description": "Soft: the document leaves every listing, search and link, but its version history is kept and it can be restored. Nothing warns you that a Chronos scene may reference it \u2014 that shows up in the book's report.",
         "parameters": [
           {
             "$ref": "#/components/parameters/IfMatch"
@@ -795,7 +799,7 @@
           "versions"
         ],
         "summary": "Restore a version as a new revision",
-        "description": "Never rewinds: the old body is re-applied as the next revision, so the restore is itself in the history. Revives a deleted document. A deletion snapshot cannot be restored (404) — restore the version before it.",
+        "description": "Never rewinds: the old body is re-applied as the next revision, so the restore is itself in the history. Revives a deleted document. A deletion snapshot cannot be restored (404) \u2014 restore the version before it.",
         "responses": {
           "200": {
             "description": "Restored.",
@@ -879,7 +883,7 @@
           "sharing"
         ],
         "summary": "Share this collection",
-        "description": "Owner-only, and idempotent: re-sharing replaces the role. You cannot share with yourself — it could only reduce your own access.",
+        "description": "Owner-only, and idempotent: re-sharing replaces the role. You cannot share with yourself \u2014 it could only reduce your own access.",
         "requestBody": {
           "$ref": "#/components/requestBodies/RoleWrite"
         },
@@ -990,7 +994,7 @@
           "sharing"
         ],
         "summary": "Share this article",
-        "description": "Owner-only, and idempotent: re-sharing replaces the role. You cannot share with yourself — it could only reduce your own access.",
+        "description": "Owner-only, and idempotent: re-sharing replaces the role. You cannot share with yourself \u2014 it could only reduce your own access.",
         "requestBody": {
           "$ref": "#/components/requestBodies/RoleWrite"
         },
@@ -1046,7 +1050,7 @@
           "browse"
         ],
         "summary": "Recently written articles",
-        "description": "Across every readable namespace. Scans them all, the same reach `/suggest` has — affordable because it answers a page load, not a keystroke.",
+        "description": "Across every readable namespace. Scans them all, the same reach `/suggest` has \u2014 affordable because it answers a page load, not a keystroke.",
         "parameters": [
           {
             "$ref": "#/components/parameters/Limit"
@@ -1160,6 +1164,117 @@
         }
       }
     },
+    "/account/sharing/world/{world}/collaborators": {
+      "parameters": [
+        {
+          "name": "world",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "Akasha database (world) name. Names beginning with `_` are reserved and rejected with 400."
+        }
+      ],
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Who can access this world",
+        "description": "One uniform family the account page drives, covering every shareable kind including the two whose resources live in Chronos. Served here because sharing is pure grant work on the store both services already share -- so the page needs no cross-origin request, and still works when the services run standalone on separate ports. The resource-shaped routes elsewhere in this file (and Chronos's own) run the same code. Owner-only.",
+        "responses": {
+          "200": {
+            "description": "Everyone granted at this exact scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollaboratorList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/account/sharing/world/{world}/collaborators/{username}": {
+      "parameters": [
+        {
+          "name": "world",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "Akasha database (world) name. Names beginning with `_` are reserved and rejected with 400."
+        },
+        {
+          "$ref": "#/components/parameters/Username"
+        }
+      ],
+      "put": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Share a whole world with someone",
+        "description": "A world is an entire canon, so it is handed over as a reader unless you say otherwise. Sharing a Chronos book whose `world` is set does this for you, always as a reader and only if you own the world yourself.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/RoleWrite"
+        },
+        "responses": {
+          "200": {
+            "description": "Shared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollaboratorResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Stop sharing a world with someone",
+        "responses": {
+          "204": {
+            "description": "Revoked."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
     "/account/sharing/collection/{database}/{collection}/collaborators": {
       "parameters": [
         {
@@ -1215,7 +1330,7 @@
           "account"
         ],
         "summary": "Share this collection",
-        "description": "Owner-only, and idempotent: re-sharing replaces the role. You cannot share with yourself — it could only reduce your own access.",
+        "description": "Owner-only, and idempotent: re-sharing replaces the role. You cannot share with yourself \u2014 it could only reduce your own access.",
         "requestBody": {
           "$ref": "#/components/requestBodies/RoleWrite"
         },
@@ -1326,7 +1441,7 @@
           "account"
         ],
         "summary": "Share this article",
-        "description": "Owner-only, and idempotent: re-sharing replaces the role. You cannot share with yourself — it could only reduce your own access.",
+        "description": "Owner-only, and idempotent: re-sharing replaces the role. You cannot share with yourself \u2014 it could only reduce your own access.",
         "requestBody": {
           "$ref": "#/components/requestBodies/RoleWrite"
         },
@@ -1437,7 +1552,7 @@
           "account"
         ],
         "summary": "Share this book",
-        "description": "Owner-only, and idempotent: re-sharing replaces the role. You cannot share with yourself — it could only reduce your own access.",
+        "description": "Owner-only, and idempotent: re-sharing replaces the role. You cannot share with yourself \u2014 it could only reduce your own access.",
         "requestBody": {
           "$ref": "#/components/requestBodies/RoleWrite"
         },
@@ -1566,7 +1681,7 @@
           "account"
         ],
         "summary": "Share this library calendar",
-        "description": "Owner-only, and idempotent: re-sharing replaces the role. You cannot share with yourself — it could only reduce your own access.",
+        "description": "Owner-only, and idempotent: re-sharing replaces the role. You cannot share with yourself \u2014 it could only reduce your own access.",
         "requestBody": {
           "$ref": "#/components/requestBodies/RoleWrite"
         },
@@ -1648,7 +1763,7 @@
       "DocId": {
         "name": "doc_id",
         "in": "path",
-        "description": "The article's slug — its permanent address, and what every `[[link]]` and Chronos reference points at.",
+        "description": "The article's slug \u2014 its permanent address, and what every `[[link]]` and Chronos reference points at.",
         "required": true,
         "schema": {
           "type": "string"
@@ -1691,7 +1806,7 @@
       "Filter": {
         "name": "filter",
         "in": "query",
-        "description": "Every word must appear somewhere in the article — slug, title or any field value.",
+        "description": "Every word must appear somewhere in the article \u2014 slug, title or any field value.",
         "schema": {
           "type": "string"
         }
@@ -1915,7 +2030,7 @@
       },
       "Document": {
         "type": "object",
-        "description": "An article body: a **flat** JSON object. Every value is a scalar or an array of scalars — no nested objects, no arrays of arrays. Enforced on create and update (`validation.py`); a violation is a 400. Two field names are conventional rather than special: `title` becomes the heading and `body` the wikitext prose; everything else renders as an infobox fact.",
+        "description": "An article body: a **flat** JSON object. Every value is a scalar or an array of scalars \u2014 no nested objects, no arrays of arrays. Enforced on create and update (`validation.py`); a violation is a 400. Two field names are conventional rather than special: `title` becomes the heading and `body` the wikitext prose; everything else renders as an infobox fact.",
         "properties": {},
         "additionalProperties": {
           "oneOf": [
@@ -2082,7 +2197,7 @@
       },
       "DatabaseSummary": {
         "type": "object",
-        "description": "`name` is the address; `title` is it rendered readably (`ember-pact` → \"Ember Pact\", derived, never stored). Counts are of what *this caller* may read.",
+        "description": "`name` is the address; `title` is it rendered readably (`ember-pact` \u2192 \"Ember Pact\", derived, never stored). Counts are of what *this caller* may read.",
         "required": [
           "name",
           "title",
@@ -2136,7 +2251,7 @@
       },
       "CollectionSummary": {
         "type": "object",
-        "description": "`can_write` is permission to create a *new* article here — a grant naming one specific document does not qualify. `can_delete` is ownership.",
+        "description": "`can_write` is permission to create a *new* article here \u2014 a grant naming one specific document does not qualify. `can_delete` is ownership.",
         "required": [
           "name",
           "title",
@@ -2171,7 +2286,7 @@
       },
       "CollectionList": {
         "type": "object",
-        "description": "`empty` says the database really holds nothing, as distinct from holding nothing *you* may read — the difference between offering to delete it and telling you to ask for access.",
+        "description": "`empty` says the database really holds nothing, as distinct from holding nothing *you* may read \u2014 the difference between offering to delete it and telling you to ask for access.",
         "required": [
           "database",
           "title",
@@ -2266,7 +2381,7 @@
       },
       "ArticlePage": {
         "type": "object",
-        "description": "One page of a collection, ordered by title. An out-of-range `page` is clamped to the last one rather than erroring. `deleted` counts the tombstones — what a purge would discard, and what could be restored; it is 0 for a caller who could do neither.",
+        "description": "One page of a collection, ordered by title. An out-of-range `page` is clamped to the last one rather than erroring. `deleted` counts the tombstones \u2014 what a purge would discard, and what could be restored; it is 0 for a caller who could do neither.",
         "required": [
           "database",
           "collection",
@@ -2379,7 +2494,7 @@
       },
       "DeletedArticle": {
         "type": "object",
-        "description": "A tombstone. The body is gone, so `title` comes from the newest snapshot that still had one — what the article was called when it went. `restore_rev` is the revision a restore would re-apply, and is null once pruning has aged out every body: then there is nothing left to bring back.",
+        "description": "A tombstone. The body is gone, so `title` comes from the newest snapshot that still had one \u2014 what the article was called when it went. `restore_rev` is the revision a restore would re-apply, and is null once pruning has aged out every body: then there is nothing left to bring back.",
         "required": [
           "id",
           "title",
@@ -2624,7 +2739,7 @@
       },
       "VersionList": {
         "type": "object",
-        "description": "Retained snapshots, newest first. Capped by `VERSIONS_KEEP`; older ones are pruned. A deleted document still answers here — which is what makes it recoverable.",
+        "description": "Retained snapshots, newest first. Capped by `VERSIONS_KEEP`; older ones are pruned. A deleted document still answers here \u2014 which is what makes it recoverable.",
         "required": [
           "id",
           "versions"
@@ -2722,7 +2837,7 @@
           "key": "race",
           "status": "changed",
           "old": "Man",
-          "new": "Dúnedain"
+          "new": "D\u00fanedain"
         }
       },
       "Diff": {

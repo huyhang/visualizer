@@ -11,6 +11,7 @@ grant namespace, and which of the three scope fields (``database`` ->
 ``collection`` -> ``doc_id``) a single resource of that kind fills in. That is
 genuinely all that varies:
 
+    world        database=<db>    collection=None    doc_id=None
     collection   database=<db>    collection=<col>   doc_id=None
     article      database=<db>    collection=<col>   doc_id=<id>
     book         database=<book>  collection=None    doc_id=None
@@ -35,6 +36,7 @@ from flask_login import current_user, login_required
 from .auth.authz import (
     DATABASE_RESOURCE,
     DELETE,
+    READ,
     ROLE_PERMS,
     is_allowed,
     role_for_perms,
@@ -71,6 +73,11 @@ class ResourceKind:
     # Refuse a scope outright before any grant is touched -- akasha uses it to
     # keep the reserved `_auth` / `_chronos` databases unshareable.
     guard: Callable[[dict], None] | None = None
+    # Something else to share whenever one of these is shared, run after the
+    # grant lands. It hangs off the *kind* rather than off a route because a
+    # book has two collaborator routes -- its own, and the account page's -- and
+    # a rule that only one of them applied would be a rule nobody could rely on.
+    after_share: Callable[[AuthStore, dict, str, str], dict | None] | None = None
 
     @property
     def blanks(self) -> tuple[str, ...]:
@@ -107,15 +114,26 @@ class ResourceKind:
         return next(scope.get(f) for f in reversed(self.fills) if scope.get(f))
 
 
-# The four kinds the stack actually has. They live together because a kind is
+# The five kinds the stack actually has. They live together because a kind is
 # nothing but a description of a grant's shape, and grants already share one
 # store -- ``authz`` names chronos's "book" in its own doc-comment for the same
 # reason. Labels and guards are neutral here; a service tightens its own with
-# ``dataclasses.replace`` (akasha gives its two the reserved-namespace guard and
-# the writer-facing words from ``terms.py``).
+# ``dataclasses.replace`` (akasha gives its akasha-side ones the reserved-
+# namespace guard and the writer-facing words from ``terms.py``).
 #
-# There is deliberately no *world* (whole-database) kind: nothing grants
-# ownership of an akasha database, so no one would be entitled to share one.
+# ``WORLD`` was the missing one, and for a while it was missing for a good
+# reason: nothing granted ownership of a whole akasha database, so nobody would
+# have been entitled to share one. Creating a world's first collection now
+# claims the world too, which supplies the owner the operation needs -- and
+# Prithvi needs the kind, because a map's permissions *are* its world's.
+WORLD = ResourceKind(
+    name="world", label="World", plural="Worlds",
+    fills=("database",), path_as=("world",),
+    # A world is a whole canon. It is handed out to be read unless someone
+    # deliberately says otherwise; a collection or a book is handed out to be
+    # worked on.
+    default_role="reader",
+)
 COLLECTION = ResourceKind(
     name="collection", label="Collection", plural="Collections",
     fills=("database", "collection"),
@@ -151,10 +169,11 @@ def owned_resources(grants: Iterable[Mapping], kinds: Iterable[ResourceKind]) ->
 
     A scope is "owned" when the user holds ``delete`` on a grant naming exactly
     one resource of a known kind -- which is precisely the set they are allowed
-    to share with others. Grants broader than one resource (a whole akasha
-    database, or the instance-wide wildcard) match no kind and so are excluded:
-    they are access-management territory, not a shareable thing. Duplicates are
-    collapsed and the result sorted for a stable display order.
+    to share with others. A whole akasha database is now such a kind (a
+    ``world``); what remains excluded is the instance-wide wildcard, which names
+    no resource at all and is access-management territory rather than a
+    shareable thing. Duplicates are collapsed and the result sorted for a stable
+    display order.
     """
     kinds = list(kinds)
     seen: set[tuple] = set()
@@ -184,8 +203,8 @@ def resources_shared_with(
     ``me`` can delete is an owned resource and belongs there instead). What
     remains is genuinely "shared with me" as a reader or an editor.
 
-    Unlike ``owned_resources`` this keeps grants broader than a single resource,
-    because being handed a whole akasha database is a real thing to be told
+    Unlike ``owned_resources`` this keeps grants that name no kind at all -- the
+    instance-wide wildcard an administrator holds is a real thing to be told
     about even though it is not a thing you can re-share. Those carry a null
     ``kind``; the caller decides how to name them.
     """
@@ -289,7 +308,51 @@ def share(
         username, scope["database"], scope["collection"], scope["doc_id"],
         list(perms), granted_by=me, resource_type=kind.resource_type,
     )
-    return {"kind": kind.name, **dict(scope), "user": username, "role": role}
+    result = {"kind": kind.name, **dict(scope), "user": username, "role": role}
+    if kind.after_share:
+        result["also"] = kind.after_share(auth_store, scope, username, me)
+    return result
+
+
+def world_reader_cascade(world_of: Callable[[str], str | None]):
+    """An ``after_share`` hook: hand over a book's world as a reader too.
+
+    A timeline is references -- this scene happens at *Highkeep* -- so a book
+    without its world is a list of names the reader cannot open. ``world_of``
+    resolves a book id to the world it is set in, and is injected because that
+    answer lives in a Chronos document and this module knows nothing about
+    Chronos.
+
+    Three things make it decline rather than act:
+
+    - **The book names no world.** Optional field, nothing to cascade to.
+    - **The sharer does not own the world.** You cannot pass on what you do not
+      hold, and owning a book confers nothing over the canon it points at. It
+      stays quiet rather than failing the invite: the book was the thing being
+      given, and it was given.
+    - **They can already read it.** ``share`` *replaces* the grant at a scope,
+      so cascading over an existing editor would quietly demote them. A cascade
+      may add access; it may never reduce it.
+
+    Read only, always. Sharing a book is not a way to hand over write access to
+    an entire canon; a co-author who needs that gets a deliberate share of the
+    world itself.
+    """
+
+    def cascade(auth_store: AuthStore, scope: Mapping, username: str, me: str):
+        world = world_of(scope["database"])
+        if not world:
+            return None
+        if not is_allowed(auth_store.grants_for(me), DELETE, world):
+            return None
+        if is_allowed(auth_store.grants_for(username), READ, world):
+            return None
+        return share(
+            auth_store, WORLD, WORLD.scope({"database": world}),
+            username, "reader", me=me,
+        )
+
+    return cascade
 
 
 def unshare(
