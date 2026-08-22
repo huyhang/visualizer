@@ -29,7 +29,7 @@ reverse-proxy entry.
 | --- | --- | --- | --- |
 | **akasha** | `/` | A Wikipedia-style article store and editor: characters, items, locations, lore — with linking, versioning and diffs. Has a web UI. | [README](docs/akasha/README.md) · [design](docs/akasha/editor-design.md) |
 | **chronos** | `/timeline` | A plotline & timeline API for fiction writers: books, events and plotlines, checked for continuity errors, with a plotline visualiser and editor. | [README](docs/chronos/README.md) · [getting started](docs/chronos/getting-started.md) · [plain-language overview](docs/chronos/OVERVIEW.md) · [design](docs/chronos/design.md) |
-| **prithvi** | `/prithvi` | An API-first map service: an SVG map per region of a world, with Akasha articles pinned to points on it. No UI, but a rendered SVG you can open. | [README](docs/prithvi/README.md) · [openapi](docs/prithvi/openapi.json) |
+| **prithvi** | `/prithvi` | An SVG map per region of a world, with Akasha articles pinned to points on it. Has a web UI: upload a map, place and move pins, and read a pin's article beside the map. | [README](docs/prithvi/README.md) · [openapi](docs/prithvi/openapi.json) |
 | **mongo** | *internal* | Shared storage. Deliberately not published to the host. | — |
 
 They are named for what they hold: **Akasha** (the aether said to record all
@@ -52,9 +52,9 @@ nothing about how they work — it just gives **one reverse-proxy rule, one cook
 and no CORS**, which is exactly what the Synology reverse-proxy deployment wants.
 It's a *front door*, not a merge: each app keeps its own factory and test suite,
 and the per-service entrypoints (`visualizer.akasha.wsgi` and its siblings) still
-run a single service on its own port for development. The header's `AKASHA_URL` /
-`CHRONOS_URL` default to the relative paths `/` and `/timeline`; set them if a
-proxy serves the services on different hosts.
+run a single service on its own port for development. The header's `AKASHA_URL`,
+`CHRONOS_URL` and `PRITHVI_URL` default to the relative paths `/`, `/timeline`
+and `/prithvi`; set them if a proxy serves the services on different hosts.
 
 ---
 
@@ -73,8 +73,10 @@ docker compose -f docker/docker-compose.nas.yml up --build -d
   it becomes the administrator.**
 - **http://localhost:5002/timeline** — the plotline visualiser: browse your
   threads, see where they contradict each other, and reorder them.
-- **http://localhost:5002/prithvi/worlds/{world}/maps** — prithvi's map API;
-  a map with its pins drawn on is at `…/maps/{map}/render.svg`.
+- **http://localhost:5002/prithvi/** — the map browser: upload an SVG for a
+  world you can write, pin articles to it, and click a pin to read its
+  article beside the map. The API is under `…/prithvi/worlds/{world}/maps`,
+  and a map with its pins drawn on is at `…/maps/{map}/render.svg`.
 - **http://localhost:5002/health** — akasha liveness; **/timeline/health** and
   **/prithvi/health** — the other two.
 - **http://localhost:5002/admin/observability** — administrators only: NAS

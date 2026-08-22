@@ -35,7 +35,7 @@ from visualizer.prithvi.config import (
 )
 from visualizer.prithvi.store import PrithviStore
 
-from .gateway import DEFAULT_CHRONOS_PREFIX, combine
+from .gateway import DEFAULT_CHRONOS_PREFIX, DEFAULT_PRITHVI_PREFIX, combine
 
 _client = get_mongo_client()
 _auth_store = AuthStore(_client)
@@ -51,6 +51,7 @@ _observability = observability_runtime.start(_client, _auth_store)
 # cross-origin URLs. Overridable, but these are the right defaults here.
 _akasha_url = os.environ.get("AKASHA_URL", "/")
 _chronos_url = os.environ.get("CHRONOS_URL", DEFAULT_CHRONOS_PREFIX)
+_prithvi_url = os.environ.get("PRITHVI_URL", DEFAULT_PRITHVI_PREFIX)
 
 _story_store = StoryStore(_client)
 
@@ -77,6 +78,7 @@ _akasha_app = create_akasha_app(
     rate_limit_storage_uri=_ratelimit,
     akasha_url=_akasha_url,
     chronos_url=_chronos_url,
+    prithvi_url=_prithvi_url,
     observability=_observability,
 )
 _chronos_app = create_chronos_app(
@@ -89,6 +91,7 @@ _chronos_app = create_chronos_app(
     rate_limit_storage_uri=_ratelimit,
     akasha_url=_akasha_url,
     chronos_url=_chronos_url,
+    prithvi_url=_prithvi_url,
     observability=_observability,
 )
 _prithvi_app = create_prithvi_app(
@@ -105,6 +108,7 @@ _prithvi_app = create_prithvi_app(
     rate_limit_storage_uri=_ratelimit,
     akasha_url=_akasha_url,
     chronos_url=_chronos_url,
+    prithvi_url=_prithvi_url,
     observability=_observability,
 )
 

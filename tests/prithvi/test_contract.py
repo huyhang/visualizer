@@ -24,9 +24,15 @@ _OPENAPI_PATH = (
 )
 
 # The shared auth pages and static assets come from ``visualizer.auth``; they
-# are the same on every service and are not part of this contract.
+# are the same on every service and are not part of this contract. So is the
+# map browser's HTML shell, which is a page rather than an endpoint -- but note
+# what is *not* here: the ``/ui/...`` routes it calls are ordinary JSON the
+# document describes like any other, because "the UI needs it" is not a reason
+# for an endpoint to go unspecified.
 _NOT_OUR_API = {
+    "/",
     "/static/{filename}",
+    "/static/js/shared/{filename}",
     "/login",
     "/logout",
     "/register",
@@ -162,6 +168,9 @@ def seeded(client):
     "url,name",
     [
         ("/health", "Health"),
+        ("/ui/worlds", "WorldList"),
+        (f"/ui/worlds/{WORLD}/articles", "ArticleChoiceList"),
+        (f"/ui/worlds/{WORLD}/articles/{COLLECTION}/{OPEN_ARTICLE}", "ArticlePreview"),
         (f"/worlds/{WORLD}/maps", "MapPage"),
         (MAP_URL, "Map"),
         (f"{MAP_URL}/versions", "VersionList"),

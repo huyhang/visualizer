@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Prithvi">
+  <g fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M5 24.2 C 9 22.2, 13 22.2, 16 23.2 C 19 24.2, 23 24.2, 27 22.4"/>
+    <path d="M9.5 28.2 C 12.5 27, 15 27, 17.5 27.6 C 20 28.2, 22 28, 23.5 27.3"/>
+  </g>
+  <path fill="#ffffff" fill-rule="evenodd" d="M16 21.2 C 16 21.2, 21.2 14.4, 21.2 10.4 A 5.2 5.2 0 1 0 10.8 10.4 C 10.8 14.4, 16 21.2, 16 21.2 Z M17.9 10.2 A 1.9 1.9 0 1 1 14.1 10.2 A 1.9 1.9 0 1 1 17.9 10.2 Z"/>
+</svg>

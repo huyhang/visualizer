@@ -18,11 +18,12 @@ Which *pins* a reader may see is deliberately not decided here; that rule lives
 in the service, where a new route cannot forget to ask for it.
 """
 
-from flask import Flask, current_app, jsonify, make_response, request
+from flask import Flask, current_app, jsonify, make_response, render_template, request
 from flask_login import current_user, login_required
 from flask_wtf.csrf import CSRFProtect
 
 from visualizer.akasha.browsing import DEFAULT_PER_PAGE, clamp_per_page
+from visualizer.akasha.labels import derive_title
 from visualizer.auth import (
     DATABASE_RESOURCE,
     AuthError,
@@ -33,9 +34,11 @@ from visualizer.auth import (
     register_service_links,
 )
 from visualizer.observability import Observability
+from visualizer.shared_assets import register_shared_assets
 
 from .articles import ArticleGateway
 from .errors import (
+    ArticleNotFound,
     Forbidden,
     InvalidRevision,
     PreconditionRequired,
@@ -44,15 +47,19 @@ from .errors import (
     UnsupportedMediaType,
 )
 from .models import ArticleRef
+from .presenters import article_choices, article_preview
 from .services import PrithviService
 from .store import PrithviStore
 from .svg import sanitize_svg
+from .validation import validate_article_address, validate_world
 
 SVG_MEDIA_TYPE = "image/svg+xml"
 
 _MAPS = "/worlds/<world>/maps"
 _MAP = _MAPS + "/<map_name>"
 _PIN = _MAP + "/pins/<collection>/<article>"
+_UI_ARTICLES = "/ui/worlds/<world>/articles"
+_UI_ARTICLE = _UI_ARTICLES + "/<collection>/<article>"
 
 
 def create_app(
@@ -66,6 +73,7 @@ def create_app(
     rate_limit_storage_uri: str = "memory://",
     akasha_url: str = "http://localhost:5002",
     chronos_url: str = "http://localhost:5003",
+    prithvi_url: str = "http://localhost:5004",
     observability: Observability | None = None,
 ) -> Flask:
     if not secret_key:
@@ -84,11 +92,12 @@ def create_app(
     csrf = CSRFProtect(app)
     limiter = build_limiter(app, rate_limit_storage_uri)
     init_login(app, auth_store)
-    # No HTML of our own, so a browser login has nowhere here to land: it falls
-    # back to "/". The service links still matter, because the shared login page
-    # is served by this app too and should say which service it belongs to.
-    register_auth_routes(app, auth_store, csrf, limiter, home_endpoint=None)
-    register_service_links(app, akasha_url, chronos_url, current="prithvi")
+    # The map browser is this app's own HTML, so a browser login lands there.
+    register_auth_routes(app, auth_store, csrf, limiter, home_endpoint="index")
+    register_service_links(
+        app, akasha_url, chronos_url, current="prithvi", prithvi_url=prithvi_url
+    )
+    register_shared_assets(app)
 
     service = PrithviService(
         store,
@@ -96,6 +105,7 @@ def create_app(
         lambda upload: sanitize_svg(upload, max_svg_bytes),
         akasha_url,
     )
+    _register_ui_routes(app, auth_store, articles, service, akasha_url)
     _register_map_routes(app, csrf, auth_store, service)
     _register_pin_routes(app, csrf, auth_store, service)
 
@@ -103,6 +113,108 @@ def create_app(
         observability.install(app, "prithvi")
     _register_error_handlers(app)
     return app
+
+
+# -- browser UI ----------------------------------------------------------------
+
+
+def _register_ui_routes(app, auth_store, articles, service: PrithviService, akasha_url):
+    """The map browser: an HTML shell and three read-only catalog views.
+
+    Every write this page makes goes through the ordinary map and pin routes
+    below, ``If-Match`` and all, so there is exactly one write path and it is
+    the documented one. What the API had no reason to offer, and a browser
+    cannot work without, is the *catalog*: which worlds this reader may open,
+    which articles they may pin, and what one of those articles says. Those
+    three, and nothing else, live here.
+
+    These are GETs, so ``csrf.exempt`` would be noise -- ``CSRFProtect`` only
+    guards the methods that change something.
+    """
+
+    @app.get("/")
+    @login_required
+    def index():
+        return render_template("maps.html")
+
+    @app.get("/ui/worlds")
+    @login_required
+    def ui_worlds():
+        return jsonify({"worlds": _world_choices(auth_store, articles, service)})
+
+    @app.get(_UI_ARTICLES)
+    @login_required
+    def ui_articles(world):
+        validate_world(world)
+        _authorize(auth_store, "read", world)
+        rows = _readable_articles(auth_store, articles, world)
+        query = request.args.get("q", "")
+        return jsonify({"articles": article_choices(rows, query)})
+
+    @app.get(_UI_ARTICLE)
+    @login_required
+    def ui_article(world, collection, article):
+        validate_world(world)
+        validate_article_address(collection, article)
+        _authorize(auth_store, "read", world)
+        ref = ArticleRef(world, collection, article)
+        _require_visible_article(auth_store, ref)
+        return jsonify(article_preview(ref, articles.fetch(ref), akasha_url))
+
+
+def _world_choices(auth_store, articles, service: PrithviService) -> list[dict]:
+    """The worlds this caller may open, and what they may do in each.
+
+    Readability is decided by ``_allowed`` -- the same predicate ``_authorize``
+    raises on -- so this list and the routes its entries link to cannot drift
+    apart. A world that appears here is a world whose maps will load.
+    """
+    grants = _grants(auth_store)
+    return [
+        {
+            "id": world,
+            "title": derive_title(world),
+            "map_count": len(service.list_maps(world)),
+            # Two separate grants, reported separately, because the routes they
+            # gate are separate: uploading a map needs `write`, removing one
+            # needs `delete`. Collapsing them into one flag is how a reader ends
+            # up looking at a Delete button that only the server will refuse.
+            "can_write": _allowed(grants, "write", world),
+            "can_delete": _allowed(grants, "delete", world),
+        }
+        for world in articles.list_worlds()
+        if _allowed(grants, "read", world)
+    ]
+
+
+def _readable_articles(auth_store, articles, world: str) -> list[dict]:
+    """Articles in ``world`` this caller may read -- the pin picker's universe.
+
+    The same ``may_read`` predicate the pin service takes, applied to the same
+    kind of ``ArticleRef``, so the picker cannot offer an article that creating
+    a pin would then refuse.
+    """
+    may_read = _may_read(auth_store)
+    return [
+        row
+        for row in articles.list_articles(world)
+        if may_read(ArticleRef(world, row["collection"], row["id"]))
+    ]
+
+
+def _require_visible_article(auth_store, ref: ArticleRef) -> None:
+    """An article you may not read answers exactly as one that is not there.
+
+    Not merely a 404 of its own: the *same* error a missing article raises,
+    with the same code and the same evidence, because anything that told the
+    two apart would confirm the article exists. This is the pin rule from
+    ``services`` applied to the card behind the pin.
+    """
+    if not _may_read(auth_store)(ref):
+        raise ArticleNotFound(
+            "That Akasha article does not exist.",
+            evidence={"article": ref.to_dict(title=None, status="missing")},
+        )
 
 
 # -- maps ---------------------------------------------------------------------
@@ -328,10 +440,18 @@ def _grants(auth_store):
     return auth_store.grants_for(current_user.username)
 
 
+def _allowed(grants, permission: str, world: str) -> bool:
+    """May this caller do ``permission`` in ``world``? The single spelling.
+
+    Both the guard below and the UI's world list ask through here, so "which
+    worlds you are shown" and "which worlds you may open" are the same question
+    answered by the same code rather than two checks that agree until one moves.
+    """
+    return is_allowed(grants, permission, world, resource_type=DATABASE_RESOURCE)
+
+
 def _authorize(auth_store, permission: str, world: str) -> None:
-    if not is_allowed(
-        _grants(auth_store), permission, world, resource_type=DATABASE_RESOURCE
-    ):
+    if not _allowed(_grants(auth_store), permission, world):
         raise Forbidden(
             f"You lack '{permission}' permission on the Akasha world '{world}'."
         )

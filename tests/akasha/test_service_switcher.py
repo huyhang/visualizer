@@ -1,4 +1,4 @@
-"""The header service switcher links across to Chronos (and Admin)."""
+"""The header service switcher links across to the other services (and Admin)."""
 
 import mongomock
 from conftest import login
@@ -12,14 +12,15 @@ from visualizer.auth import AuthStore
 def test_editor_header_has_switcher_with_timeline_link(client):
     html = client.get("/").get_data(as_text=True)
     assert "service-switch" in html
-    assert "Articles" in html and "Timeline" in html
+    assert "Articles" in html and "Timeline" in html and "Maps" in html
     assert "http://localhost:5003" in html          # default chronos URL
+    assert "http://localhost:5004" in html          # default prithvi URL
     assert ">Admin<" in html                          # seeded client is an admin
 
 
 def test_account_page_also_has_switcher(client):
     html = client.get("/account").get_data(as_text=True)
-    assert "service-switch" in html and "Timeline" in html
+    assert "service-switch" in html and "Timeline" in html and "Maps" in html
 
 
 def test_switcher_urls_are_configurable():
@@ -30,12 +31,14 @@ def test_switcher_urls_are_configurable():
         DocumentStore(client_db), auth, secret_key="s",
         akasha_url="https://world.example/akasha",
         chronos_url="https://world.example/chronos",
+        prithvi_url="https://world.example/maps",
     )
     app.config.update(TESTING=True, WTF_CSRF_ENABLED=False, RATELIMIT_ENABLED=False)
     c = app.test_client()
     assert login(c, "mara", "pw").status_code == 200
     html = c.get("/").get_data(as_text=True)
     assert "https://world.example/chronos" in html
+    assert "https://world.example/maps" in html
     assert 'aria-current="page"' in html              # akasha tab marked active
     # A non-admin sees no Admin link.
     assert "https://world.example/akasha/admin" not in html

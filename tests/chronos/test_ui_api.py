@@ -88,8 +88,9 @@ def test_static_assets_are_served(seeded, client):
 def test_header_switcher_links_to_akasha(seeded, client):
     html = client.get("/").get_data(as_text=True)
     assert "service-switch" in html
-    assert "Articles" in html and "Timeline" in html
+    assert "Articles" in html and "Timeline" in html and "Maps" in html
     assert "http://localhost:5002" in html            # default akasha URL
+    assert "http://localhost:5004" in html            # default prithvi URL
     assert ">Admin<" not in html                        # writer is not an admin
 
 
@@ -117,12 +118,14 @@ def test_switcher_urls_are_configurable(story_store, fake_gate, auth_store, cale
         story_store, fake_gate, auth_store, calendar_store=calendar_store, secret_key="s",
         akasha_url="https://world.example/akasha",
         chronos_url="https://world.example/chronos",
+        prithvi_url="https://world.example/maps",
     )
     app.config.update(TESTING=True, WTF_CSRF_ENABLED=False, RATELIMIT_ENABLED=False)
     c = app.test_client()
     assert c.post("/login", json={"username": "mara", "password": "mara-pass"}).status_code == 200
     html = c.get("/").get_data(as_text=True)
     assert "https://world.example/akasha" in html
+    assert "https://world.example/maps" in html
     assert 'aria-current="page"' in html               # chronos tab marked active
 
 

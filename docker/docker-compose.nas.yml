@@ -16,7 +16,7 @@
 # One port (DSM itself uses 5000/5001, so those are avoided):
 #   5002/          -> akasha  (articles/entities, and the shared /login)
 #   5002/timeline  -> chronos (the plotline visualiser)
-#   5002/prithvi   -> prithvi (the map and pin API)
+#   5002/prithvi   -> prithvi (the map browser, and the map and pin API)
 # Point one Synology reverse-proxy rule (one hostname) at this port, enable
 # HTTPS, then set SESSION_COOKIE_SECURE=true in docker/.env.
 #
@@ -44,6 +44,7 @@ services:
       # only if a reverse proxy serves the services on different hosts/paths.
       AKASHA_URL: ${AKASHA_URL:-/}
       CHRONOS_URL: ${CHRONOS_URL:-/timeline}
+      PRITHVI_URL: ${PRITHVI_URL:-/prithvi}
       # Prithvi's three numbers. The upload cap bounds one request; the two
       # retention limits bound how much history a map or pin keeps. Map
       # revisions are whole drawings, which is why they are kept fewer.

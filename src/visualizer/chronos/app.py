@@ -72,6 +72,7 @@ def create_app(
     rate_limit_storage_uri: str = "memory://",
     akasha_url: str = "http://localhost:5002",
     chronos_url: str = "http://localhost:5003",
+    prithvi_url: str = "http://localhost:5004",
     observability: Observability | None = None,
 ) -> Flask:
     if not secret_key:
@@ -88,7 +89,9 @@ def create_app(
     init_login(app, auth_store)
     # The read-only visualiser (below) is the HTML home a browser login lands on.
     register_auth_routes(app, auth_store, csrf, limiter, home_endpoint="index")
-    register_service_links(app, akasha_url, chronos_url, current="chronos")
+    register_service_links(
+        app, akasha_url, chronos_url, current="chronos", prithvi_url=prithvi_url
+    )
     register_shared_assets(app)
 
     books = BookService(story_store, entity_gate, calendar_store)

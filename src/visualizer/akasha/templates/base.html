@@ -190,6 +190,7 @@
       <span class="service-switch" role="navigation" aria-label="Switch service">
         <a href="{{ service_links.akasha }}"{% if service_links.current == 'akasha' %} class="active" aria-current="page"{% endif %}>Articles</a>
         <a href="{{ service_links.chronos }}"{% if service_links.current == 'chronos' %} class="active" aria-current="page"{% endif %}>Timeline</a>
+        <a href="{{ service_links.prithvi }}"{% if service_links.current == 'prithvi' %} class="active" aria-current="page"{% endif %}>Maps</a>
         {% if current_user.is_admin %}<a href="{{ service_links.admin }}">Admin</a>{% endif %}
       </span>
       <a href="{{ url_for('account_page') }}">Account</a>

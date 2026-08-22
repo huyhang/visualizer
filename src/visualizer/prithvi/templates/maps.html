@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prithvi — maps</title>
+  <link rel="icon" href="{{ url_for('static', filename='prithvi-icon.svg') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='maps.css') }}">
+  <script>
+    // The mount point, so `api.js` works at `/prithvi` behind the gateway and
+    // at `/` when prithvi runs on its own port.
+    window.__BASE__ = {{ request.script_root | tojson }};
+    // Theme and text size before first paint, so neither flashes.
+    (function () {
+      try {
+        var saved = localStorage.getItem("prithvi-theme");
+        var dark = saved ? saved === "dark"
+          : window.matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+      } catch (e) { document.documentElement.setAttribute("data-theme", "light"); }
+      try {
+        var px = parseInt(localStorage.getItem("prithvi-fontscale"), 10);
+        if (px) document.documentElement.style.fontSize = px + "px";
+      } catch (e) { /* private mode: the default size is fine */ }
+    })();
+  </script>
+</head>
+<body>
+  <header class="app-header">
+    <button class="brand to-worlds" type="button">
+      <span class="mark"><img src="{{ url_for('static', filename='prithvi-glyph.svg') }}"
+        alt="" width="26" height="26"></span><span class="brand-name">Prithvi</span>
+    </button>
+    <div class="header-actions">
+      <nav class="service-switch" aria-label="Switch service">
+        <a href="{{ service_links.akasha }}"{% if service_links.current == 'akasha' %} class="active" aria-current="page"{% endif %}>Articles</a>
+        <a href="{{ service_links.chronos }}"{% if service_links.current == 'chronos' %} class="active" aria-current="page"{% endif %}>Timeline</a>
+        <a href="{{ service_links.prithvi }}"{% if service_links.current == 'prithvi' %} class="active" aria-current="page"{% endif %}>Maps</a>
+        {% if current_user.is_admin %}<a href="{{ service_links.admin }}">Admin</a>{% endif %}
+      </nav>
+      <button class="icon-btn font-btn" id="font-toggle" aria-label="Text size" title="Text size">A</button>
+      <button class="icon-btn" id="theme-toggle" aria-label="Toggle theme" title="Toggle light/dark">◐</button>
+      <a class="header-link" href="{{ service_links.account }}">Account</a>
+      <span class="userchip">
+        <span class="avatar">{{ current_user.username[0] | upper }}</span>
+        <span class="username">{{ current_user.username }}</span>
+      </span>
+      <form class="inline-form" method="post" action="{{ url_for('auth.logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="link-btn" type="submit">Log out</button>
+      </form>
+    </div>
+  </header>
+
+  <div class="notice" id="notice" hidden role="status"></div>
+
+  <main class="content">
+    <section class="view" id="worlds-view">
+      <h1 class="view-title">Worlds</h1>
+      <p class="view-lead muted">Choose a world to see its maps.</p>
+      <div class="card-grid" id="world-grid"></div>
+      <p class="empty" id="worlds-empty" hidden>
+        No worlds you can read. Create one in Articles first.
+      </p>
+    </section>
+
+    <section class="view" id="maps-view" hidden>
+      <nav class="crumbs" aria-label="Breadcrumb">
+        <button class="crumb to-worlds" type="button">Worlds</button>
+        <span class="sep" aria-hidden="true">/</span><span id="world-crumb"></span>
+      </nav>
+      <h1 class="view-title" id="world-title"></h1>
+      <p class="view-lead muted" id="world-lead"></p>
+      <div class="card-grid" id="map-grid"></div>
+      <p class="empty" id="maps-empty" hidden>No maps in this world yet.</p>
+
+      <form class="upload" id="upload-form" hidden>
+        <h2>Upload a map</h2>
+        <div class="upload-fields">
+          <div class="field">
+            <label for="map-file">SVG file</label>
+            <input id="map-file" type="file" accept="image/svg+xml,.svg" required>
+          </div>
+          <div class="field">
+            <label for="map-name">Map name</label>
+            <input id="map-name" type="text" maxlength="128"
+                   pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,127}" required>
+            <p class="hint">Its permanent address: letters, digits, dots, hyphens.</p>
+          </div>
+        </div>
+        <button class="btn" type="submit">Upload SVG</button>
+      </form>
+    </section>
+
+    <section class="workspace" id="map-view" hidden>
+      <div class="map-bar">
+        <div class="map-heading">
+          <nav class="crumbs" aria-label="Breadcrumb">
+            <button class="crumb to-worlds" type="button">Worlds</button>
+            <span class="sep" aria-hidden="true">/</span>
+            <button class="crumb" id="map-world-link" type="button"></button>
+            <span class="sep" aria-hidden="true">/</span><span id="map-crumb"></span>
+          </nav>
+          <h1 id="map-title"></h1>
+          <p class="muted" id="map-meta"></p>
+        </div>
+        <div class="map-tools">
+          <span class="placing" id="placing" hidden>
+            Click the map to place <strong id="placing-name"></strong>
+            <button class="btn ghost sm" id="cancel-placing" type="button">Cancel</button>
+          </span>
+          <span class="edit-bar" id="edit-bar" hidden>
+            <span class="dirty" id="dirty-state">No unsaved changes</span>
+            <button class="btn ghost sm" id="discard-changes" type="button" disabled>Discard</button>
+            <button class="btn sm" id="save-changes" type="button" disabled>Save</button>
+          </span>
+          <span class="zoom" role="group" aria-label="Zoom">
+            <button class="icon-btn" id="zoom-out" type="button" aria-label="Zoom out">−</button>
+            <button class="zoom-level" id="zoom-reset" type="button" title="Reset to fit">100%</button>
+            <button class="icon-btn" id="zoom-in" type="button" aria-label="Zoom in">+</button>
+          </span>
+          <button class="btn danger sm" id="delete-map" type="button" hidden>Delete map</button>
+        </div>
+      </div>
+
+      <div class="map-layout">
+        <aside class="picker" id="picker" aria-label="Add a pin" hidden>
+          <h2>Add a pin</h2>
+          <p class="muted">Pick an article, then click where it belongs.</p>
+          <label class="sr-only" for="article-search">Find an article</label>
+          <input id="article-search" type="search" placeholder="Find an article…" autocomplete="off">
+          <div class="choices" id="article-results"></div>
+        </aside>
+
+        <!-- The frame owns the border and cannot grow; the stage inside it is
+             the scroll viewport the drawing is measured against. -->
+        <div class="map-frame">
+          <div class="map-stage" id="map-stage"></div>
+        </div>
+
+        <aside class="inspector" aria-label="Selected pin">
+          <section id="pin-preview" hidden>
+            <p class="eyebrow" id="preview-eyebrow"></p>
+            <h2 id="preview-title"></h2>
+            <p class="excerpt" id="preview-excerpt"></p>
+            <dl class="facts" id="preview-facts"></dl>
+            <div class="inspector-actions">
+              <a class="btn" id="preview-link" target="_top">Open in Articles</a>
+              <button class="btn danger" id="remove-pin" type="button" hidden>Remove pin</button>
+            </div>
+          </section>
+          <section id="inspector-empty">
+            <h2>Pin details</h2>
+            <p class="muted">Click a pin to read its article without leaving the map.</p>
+          </section>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

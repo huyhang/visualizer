@@ -97,6 +97,7 @@ def create_app(
     rate_limit_storage_uri: str = "memory://",
     akasha_url: str = "http://localhost:5002",
     chronos_url: str = "http://localhost:5003",
+    prithvi_url: str = "http://localhost:5004",
     observability: Observability | None = None,
     # Resolves a Chronos book id to the world it is set in. Injected, because
     # sharing a book also shares its world and *this* app serves one of the two
@@ -122,7 +123,9 @@ def create_app(
     limiter = build_limiter(app, rate_limit_storage_uri)
     init_login(app, auth_store)
     register_auth_routes(app, auth_store, csrf, limiter)
-    register_service_links(app, akasha_url, chronos_url, current="akasha")
+    register_service_links(
+        app, akasha_url, chronos_url, current="akasha", prithvi_url=prithvi_url
+    )
     register_shared_assets(app)
 
     # Every template can say "world"/"category" without hard-coding it; see

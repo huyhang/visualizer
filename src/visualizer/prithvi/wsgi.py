@@ -10,6 +10,7 @@ from visualizer.akasha.config import (
     get_akasha_url,
     get_chronos_url,
     get_mongo_client,
+    get_prithvi_url,
     get_rate_limit_storage_uri,
     get_secret_key,
     get_secure_cookies,
@@ -45,6 +46,7 @@ app = create_app(
     rate_limit_storage_uri=get_rate_limit_storage_uri(),
     akasha_url=get_akasha_url(),
     chronos_url=get_chronos_url(),
+    prithvi_url=get_prithvi_url(),
     observability=_observability,
 )
 

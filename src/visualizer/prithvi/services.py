@@ -17,6 +17,8 @@ since "forbidden" would confirm that something is pinned there.
 
 from collections.abc import Callable
 
+from visualizer.akasha.labels import derive_title
+
 from .articles import ArticleGateway
 from .errors import (
     ArticleNotFound,
@@ -302,10 +304,16 @@ def _body(svg: SanitizedSvg, scale) -> dict:
 
 
 def _map_view(record: dict) -> dict:
-    """A map without its drawing -- that is a separate, much larger request."""
+    """A map without its drawing -- that is a separate, much larger request.
+
+    ``title`` is derived here rather than in the browser: ``labels.py`` exists
+    so there is exactly one implementation of that rule, and a listing ships
+    the readable name beside the slug so a page can print what it was given.
+    """
     return {
         "world": record["world"],
         "id": record["map"],
+        "title": derive_title(record["map"]),
         "rev": record["rev"],
         "view_box": record["view_box"],
         "scale": record.get("scale"),

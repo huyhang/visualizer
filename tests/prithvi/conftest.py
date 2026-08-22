@@ -56,12 +56,34 @@ class FakeArticleGateway:
         if world not in self._worlds:
             raise WorldNotFound(f"There is no Akasha world called '{world}'.")
 
+    def list_worlds(self) -> list[str]:
+        return sorted(self._worlds)
+
+    def list_articles(self, world: str) -> list[dict]:
+        self.require_world(world)
+        return [
+            {
+                "database": ref.world,
+                "collection": ref.collection,
+                "id": ref.article_id,
+                "document": dict(document),
+                "rev": 1,
+            }
+            for ref, document in sorted(self._articles.items(), key=_address)
+            if ref.world == world
+        ]
+
     def fetch(self, ref: ArticleRef) -> dict:
         try:
             document = self._articles[ref]
         except KeyError as exc:
             raise ArticleNotFound("That Akasha article does not exist.") from exc
         return {"id": ref.article_id, "document": dict(document), "rev": 1}
+
+
+def _address(item):
+    ref, _ = item
+    return (ref.world, ref.collection, ref.article_id)
 
 
 @pytest.fixture
@@ -73,7 +95,19 @@ def mongo_client():
 def document_store(mongo_client):
     store = DocumentStore(mongo_client)
     store.create_collection(WORLD, COLLECTION)
-    store.create(WORLD, COLLECTION, OPEN_ARTICLE, {"title": "Highkeep"}, author="mara")
+    # Given a body and a field, so the UI's preview has something real to
+    # flatten and tabulate rather than only a title.
+    store.create(
+        WORLD,
+        COLLECTION,
+        OPEN_ARTICLE,
+        {
+            "title": "Highkeep",
+            "body": "A fortress above the [[locations/ember-road|Ember Road]].",
+            "kind": "Fortress",
+        },
+        author="mara",
+    )
     store.create(WORLD, COLLECTION, CLOSED_ARTICLE, {"title": "Oathstone"}, author="mara")
     return store
 

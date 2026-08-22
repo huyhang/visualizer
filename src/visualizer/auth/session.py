@@ -98,18 +98,25 @@ def build_limiter(app, storage_uri: str = "memory://") -> Limiter:
 SERVICE_NAMES = {"akasha": "Akasha", "chronos": "Chronos", "prithvi": "Prithvi"}
 
 
-def register_service_links(app, akasha_url: str, chronos_url: str, current: str) -> None:
+def register_service_links(
+    app, akasha_url: str, chronos_url: str, current: str, prithvi_url: str
+) -> None:
     """Expose cross-service nav links to every template (the header switcher).
 
-    Both services share one login (one cookie across ports/origins), so these are
-    plain links between the two apps. The URLs are injected here rather than
-    hard-coded in templates, so a reverse-proxy deployment can point them wherever
-    it serves each service. ``current`` (``"akasha"``/``"chronos"``) lets a header
-    highlight the active service.
+    The three services share one login (one cookie across ports/origins), so
+    these are plain links between the apps. The URLs are injected here rather
+    than hard-coded in templates, so a reverse-proxy deployment can point them
+    wherever it serves each service. ``current`` (``"akasha"``/``"chronos"``/
+    ``"prithvi"``) lets a header highlight the active service.
+
+    ``prithvi_url`` is required rather than defaulted, for the same reason the
+    other two are: a header whose links depend on which caller remembered to
+    pass an argument is a header that silently points somewhere wrong.
     """
     links = {
         "akasha": akasha_url,
         "chronos": chronos_url,
+        "prithvi": prithvi_url,
         # Account and Admin are akasha-owned pages; expose them so either service's
         # header can link to them under the shared origin.
         "account": akasha_url.rstrip("/") + "/account",
@@ -118,9 +125,9 @@ def register_service_links(app, akasha_url: str, chronos_url: str, current: str)
         # The same service, spelled for a human. The shared auth pages are served
         # by *both* apps, so their titles cannot name one of them: a page reached
         # at /timeline/login used to call itself "Akasha". The nav says
-        # "Articles"/"Timeline" because those describe what you would go and do;
-        # a page title says which service you are signing in to, which is the
-        # name the docs and the URLs use.
+        # "Articles"/"Timeline"/"Maps" because those describe what you would go
+        # and do; a page title says which service you are signing in to, which
+        # is the name the docs and the URLs use.
         "name": SERVICE_NAMES.get(current, current.title()),
     }
 

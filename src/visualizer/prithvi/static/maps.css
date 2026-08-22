@@ -1,0 +1,256 @@
+/* Prithvi's map browser.
+ *
+ * The same indigo tokens Articles and Timeline use, redeclared rather than
+ * imported: there is no build step and no shared stylesheet, and the alternative
+ * -- copying a sibling service's whole sheet -- is how two of them drift.
+ * Only the tokens are shared vocabulary; every rule below is this page's own.
+ */
+
+:root, [data-theme="light"] {
+  --bg: #f5f6fb; --surface: #fff; --surface-2: #f9fafc;
+  --border: #e7e9f1; --text: #1f2430; --muted: #6b7280;
+  --accent: #6366f1; --accent-strong: #4f46e5; --accent-soft: #eef1ff;
+  --danger: #dc2626; --danger-soft: #fdecec; --paper: #fff7df; --ink: #2b2118;
+  --shadow: 0 1px 2px rgba(16,24,40,.04), 0 6px 20px rgba(16,24,40,.06);
+  --radius: 14px;
+}
+[data-theme="dark"] {
+  --bg: #0e1016; --surface: #171a22; --surface-2: #1d212b;
+  --border: #282d3a; --text: #e6e8ee; --muted: #98a1b2;
+  --accent: #818cf8; --accent-strong: #a5b4fc; --accent-soft: #1c2140;
+  --danger: #f87171; --danger-soft: #3a1f24; --paper: #fff7df; --ink: #2b2118;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 28px rgba(0,0,0,.4);
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0; display: flex; flex-direction: column;
+  color: var(--text); background: var(--bg); line-height: 1.55;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+h1, h2, p { margin-top: 0; }
+.muted, .hint { color: var(--muted); }
+.hint { margin: .35rem 0 0; font-size: .76rem; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+
+/* header */
+.app-header {
+  flex: none; min-height: 54px; display: flex; align-items: center; gap: .75rem;
+  padding: .55rem 1rem; background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.brand {
+  display: flex; align-items: center; gap: .5rem;
+  border: 0; background: none; font-weight: 700; padding: 0;
+}
+.mark {
+  width: 26px; height: 26px; display: grid; place-items: center; border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+}
+/* `display: block` kills the inline baseline gap that would otherwise push the
+   glyph a pixel off centre inside its square. */
+.mark img { display: block; }
+.brand-name { letter-spacing: -.01em; }
+.header-actions { margin-left: auto; display: flex; align-items: center; gap: .5rem; }
+.service-switch {
+  display: flex; gap: .2rem; padding-right: .5rem;
+  border-right: 1px solid var(--border);
+}
+.service-switch a, .header-link {
+  color: var(--muted); font-size: .85rem; font-weight: 600;
+  padding: .3rem .6rem; border-radius: 8px;
+}
+.service-switch a:hover, .header-link:hover {
+  background: var(--surface-2); text-decoration: none;
+}
+.service-switch a.active { color: var(--accent-strong); background: var(--accent-soft); }
+.icon-btn {
+  width: 34px; height: 34px; border: 1px solid var(--border); border-radius: 9px;
+  background: var(--surface-2);
+}
+.icon-btn:hover:not(:disabled) { border-color: var(--accent); }
+.icon-btn:disabled { cursor: default; opacity: .4; }
+.font-btn { font-weight: 800; }
+.userchip { display: flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .85rem; }
+.avatar {
+  width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%;
+  color: var(--accent-strong); background: var(--accent-soft); font-weight: 700;
+}
+.inline-form { display: inline; }
+.link-btn, .crumb {
+  border: 0; background: none; color: var(--accent); font-weight: 600; padding: 0;
+}
+
+/* notice */
+.notice {
+  position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 50;
+  max-width: min(620px, calc(100vw - 2rem)); padding: .65rem .85rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-radius: 10px; color: var(--accent-strong); background: var(--accent-soft);
+  box-shadow: var(--shadow);
+}
+.notice.error {
+  color: var(--danger); background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 25%, transparent);
+}
+
+/* list views */
+.content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.view { flex: 1; overflow: auto; max-width: 960px; width: 100%; margin: 0 auto; padding: 1.75rem 1.5rem 4rem; }
+.view-title { margin: .2rem 0 .3rem; font-size: 1.7rem; font-weight: 800; letter-spacing: -.02em; }
+.view-lead { margin: 0 0 1.25rem; }
+.crumbs { color: var(--muted); font-size: .82rem; margin-bottom: .4rem; }
+.crumbs .sep { opacity: .5; margin: 0 .3rem; }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: .9rem; }
+.card {
+  min-height: 106px; display: flex; flex-direction: column; gap: .2rem;
+  padding: .9rem 1rem; text-align: left;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); box-shadow: var(--shadow);
+}
+.card:hover { border-color: var(--accent); }
+.card-title { font-weight: 700; font-size: 1.02rem; overflow-wrap: anywhere; }
+.card-sub, .card-meta { color: var(--muted); font-size: .8rem; }
+.card-meta { margin-top: auto; }
+.empty { color: var(--muted); padding: 2rem 0; text-align: center; }
+
+/* upload */
+.upload {
+  max-width: 640px; margin-top: 2rem; padding: 1rem;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); box-shadow: var(--shadow);
+}
+.upload-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.field { margin-bottom: .9rem; }
+label {
+  display: block; margin-bottom: .3rem; color: var(--muted);
+  font-size: .74rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+}
+input {
+  width: 100%; padding: .55rem .65rem; background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 9px;
+}
+input:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: .5rem .85rem; border: 1px solid transparent; border-radius: 9px;
+  color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  font-weight: 600;
+}
+.btn:hover:not(:disabled) { filter: brightness(1.07); text-decoration: none; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.ghost { color: var(--accent-strong); background: var(--accent-soft); }
+.btn.danger { color: var(--danger); background: var(--danger-soft); }
+.btn.sm { padding: .3rem .58rem; font-size: .8rem; }
+
+/* one map -- the layout that keeps the stage a viewport */
+.workspace { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.map-bar {
+  flex: none; display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 1rem; padding: .8rem 1.1rem;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.map-heading h1 { margin: 0; font-size: 1.5rem; letter-spacing: -.02em; }
+.map-heading p { margin: .1rem 0 0; font-size: .82rem; }
+.map-tools { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; justify-content: flex-end; }
+.placing, .edit-bar { display: flex; align-items: center; gap: .45rem; font-size: .84rem; }
+.placing {
+  padding: .3rem .4rem .3rem .7rem; border-radius: 10px;
+  color: var(--accent-strong); background: var(--accent-soft);
+}
+.dirty { color: var(--muted); font-size: .78rem; }
+.dirty.unsaved { color: var(--accent-strong); font-weight: 700; }
+.zoom { display: flex; align-items: center; gap: .25rem; }
+.zoom-level {
+  min-width: 60px; height: 34px; padding: 0 .5rem; font-size: .8rem; font-weight: 700;
+  color: var(--muted); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 9px;
+}
+
+/* `grid-template-rows` is load-bearing, not decoration. Without an explicit
+ * row the implicit one is `auto`, so the frame grows to whatever the drawing
+ * needs, the page scrolls instead of the stage, and -- because the stage is
+ * what the zoom code measures -- every zoom compounds the last one. Pinning
+ * the row to the container height makes the stage a fixed hole that the
+ * drawing scrolls inside. `min-height: 0` on the children is what lets a grid
+ * item be smaller than its content at all. */
+.map-layout {
+  flex: 1; min-height: 0; display: grid;
+  grid-template-columns: 250px minmax(320px, 1fr) 310px;
+  grid-template-rows: minmax(0, 1fr);
+}
+.picker, .inspector { min-height: 0; overflow: auto; padding: 1rem; background: var(--surface); }
+.picker { border-right: 1px solid var(--border); }
+.inspector { border-left: 1px solid var(--border); }
+.map-frame {
+  min-width: 0; min-height: 0; margin: 1rem; display: flex;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); box-shadow: var(--shadow); overflow: hidden;
+}
+/* No border of its own, so its layout box *is* the viewport the drawing is
+ * fitted to -- and stays so whether or not scrollbars are showing. */
+.map-stage { flex: 1; min-width: 0; min-height: 0; overflow: auto; display: grid; }
+.map-stage > svg { place-self: center; display: block; touch-action: none; }
+.map-stage.placing { cursor: crosshair; }
+.map-stage.panning { cursor: grabbing; user-select: none; }
+
+/* pins */
+.pin { cursor: pointer; }
+.pin:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
+.pin-disc { fill: #b42318; stroke: var(--paper); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
+.pin-core { fill: var(--paper); }
+.pin-label {
+  fill: var(--ink); stroke: var(--paper); paint-order: stroke;
+  font-family: Georgia, "Times New Roman", serif; font-weight: 700; user-select: none;
+}
+.pin.selected .pin-disc { fill: var(--accent-strong); }
+.pin.dragging { cursor: grabbing; }
+
+/* picker and inspector */
+.choices { display: grid; gap: .35rem; margin-top: .65rem; }
+.choice {
+  padding: .5rem .6rem; text-align: left; display: grid; gap: .1rem;
+  border: 1px solid var(--border); border-radius: 9px; background: var(--surface-2);
+}
+.choice:hover { border-color: var(--accent); }
+.choice-scope { color: var(--muted); font-size: .76rem; }
+.eyebrow {
+  margin: 0; color: var(--accent); font-size: .72rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .06em;
+}
+#pin-preview h2 { margin: .1rem 0 .75rem; font-size: 1.3rem; }
+.excerpt { margin: .8rem 0; }
+.facts { margin: 0; }
+.facts div {
+  display: grid; grid-template-columns: minmax(80px, .8fr) 1.2fr; gap: .6rem;
+  padding: .45rem 0; border-top: 1px solid var(--border);
+}
+.facts dt { color: var(--muted); font-size: .8rem; font-weight: 700; }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+.inspector-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1.1rem; }
+
+@media (max-width: 1080px) {
+  .map-layout { grid-template-columns: 220px minmax(0, 1fr); }
+  .inspector { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--border); }
+}
+@media (max-width: 760px) {
+  .userchip { display: none; }
+  .upload-fields { grid-template-columns: 1fr; }
+  /* Stacked, so each pane scrolls the page rather than fighting for height. */
+  .map-layout { display: flex; flex-direction: column; }
+  .picker { border-right: 0; border-bottom: 1px solid var(--border); }
+  .map-frame { min-height: 60vh; }
+}

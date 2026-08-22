@@ -1,9 +1,10 @@
 # Prithvi
 
 Where the world's things are. Prithvi holds SVG maps for [Akasha](../akasha/README.md)
-worlds and pins Akasha articles to points on them. It is API-first: no pages, no
-editor, no templates — the one thing you can open in a browser is a map with its
-pins drawn on.
+worlds and pins Akasha articles to points on them. It has a map browser at
+`/prithvi` — upload a drawing, place and move pins, read a pin's article without
+leaving the map — over the same JSON API, which remains the whole contract and
+the only way anything is written.
 
 *Prithvi — the Sanskrit earth — is the ground the story walks on.*
 
@@ -59,6 +60,42 @@ the articles it points at.
 A world made before that rule existed has no owner. Run
 `docker/backfill_world_owners.py` once; it gives each world to the writer who
 already owns every category in it, and lists the ambiguous ones for a human.
+
+## The map browser
+
+Open `/prithvi/` — `http://localhost:5002/prithvi/` in the combined stack, or
+the **Maps** tab in the header shared with Articles and Timeline.
+
+**Worlds → maps → one map.** The landing page lists the Akasha worlds you can
+read; opening one shows its maps; opening a map draws it with its pins. Every
+list shows the readable title with the slug beneath it, because the slug is the
+permanent address and worth being able to see.
+
+**Placing a pin.** With `write` on the world, the left pane lists the articles
+in that world you can read and that are not pinned here yet. Choose one, then
+click anywhere inside the map's `viewBox`; clicks outside it do nothing, which
+is the same rectangle the API validates against. Drag a pin to move it. Select a
+pin and **Remove pin** takes it off.
+
+**Draft, then Save.** Placing, dragging and removing change a local draft only —
+the header counts the unsaved changes. **Save** issues the writes (deletes,
+then moves, then creates), each carrying the revision it was loaded at, so a
+concurrent edit is refused rather than silently overwritten; on a conflict the
+page reloads the server's pins and says so. **Discard** throws the draft away.
+Leaving the page with unsaved changes asks first.
+
+**Reading a pin.** Anyone with `read` on the world can open the map and click a
+pin. The article appears beside it — title, an excerpt, a few fields and a link
+into Articles. Pins whose article you cannot read are not on the map at all, and
+asking for one directly answers exactly as if it did not exist.
+
+**Zoom and pan.** 50%–400%, by wheel or the toolbar; the map is fitted to the
+pane at 100% and the pointer stays put as you zoom. Drag the background to pan.
+The **A** control cycles the same four text sizes as the other two services.
+
+**Deleting a map** needs `delete` on the world and asks for confirmation. Each
+of these controls appears only if your grants allow it — a button that only the
+server would refuse is worse than no button.
 
 ## Uploading a map
 
@@ -152,6 +189,10 @@ by a contract test.
 | `PRITHVI_MAX_SVG_BYTES` | `5242880` | Largest accepted upload |
 | `PRITHVI_MAP_REVISIONS_KEEP` | `5` | Retained revisions per map |
 | `PRITHVI_PIN_REVISIONS_KEEP` | `20` | Retained revisions per pin |
+
+`PRITHVI_URL` names where a browser reaches this service, for the **Maps** link
+in all three headers: `/prithvi` under the combined stack, `http://localhost:5004`
+when prithvi runs on its own port.
 
 Everything else — Mongo, the secret, cookie flags, rate-limit storage — is the
 stack's, read from the same environment as the other services.

@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Prithvi API",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "license": {
       "name": "PolyForm Noncommercial 1.0.0, with an additional permission",
       "url": "https://polyformproject.org/licenses/noncommercial/1.0.0"
@@ -35,6 +35,10 @@
     {
       "name": "versions",
       "description": "History and restore"
+    },
+    {
+      "name": "ui",
+      "description": "Read-only catalog views the map browser needs and the API did not"
     }
   ],
   "security": [
@@ -967,6 +971,119 @@
           }
         }
       }
+    },
+    "/ui/worlds": {
+      "get": {
+        "tags": [
+          "ui"
+        ],
+        "summary": "Worlds this reader may open, and what they may do in each",
+        "description": "Readability here is the same check the map routes enforce, so a world listed is a world whose maps will load.",
+        "responses": {
+          "200": {
+            "description": "Every readable world",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorldList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/ui/worlds/{world}/articles": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/World"
+        }
+      ],
+      "get": {
+        "tags": [
+          "ui"
+        ],
+        "summary": "Articles in this world the reader may pin",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Match against title, id and collection.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching articles, best first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleChoiceList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/ui/worlds/{world}/articles/{collection}/{article}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/World"
+        },
+        {
+          "$ref": "#/components/parameters/Collection"
+        },
+        {
+          "$ref": "#/components/parameters/Article"
+        }
+      ],
+      "get": {
+        "tags": [
+          "ui"
+        ],
+        "summary": "One article as the card shown beside its pin",
+        "description": "An article the caller may not read answers exactly as one that does not exist, so the response cannot confirm that it is there.",
+        "responses": {
+          "200": {
+            "description": "The compact card",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticlePreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1348,6 +1465,7 @@
         "required": [
           "world",
           "id",
+          "title",
           "rev",
           "view_box",
           "scale",
@@ -1359,6 +1477,10 @@
           },
           "id": {
             "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "description": "The map id as a reader should see it, derived from the slug."
           },
           "rev": {
             "type": "integer"
@@ -1389,6 +1511,7 @@
         "example": {
           "world": "ember-pact",
           "id": "western-realms",
+          "title": "Western Realms",
           "rev": 2,
           "view_box": [
             0,
@@ -1445,6 +1568,7 @@
             {
               "world": "ember-pact",
               "id": "western-realms",
+              "title": "Western Realms",
               "rev": 2,
               "view_box": [
                 0,
@@ -1847,6 +1971,207 @@
               720
             ]
           }
+        }
+      },
+      "WorldChoice": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "map_count",
+          "can_write",
+          "can_delete"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Akasha database name."
+          },
+          "title": {
+            "type": "string"
+          },
+          "map_count": {
+            "type": "integer"
+          },
+          "can_write": {
+            "type": "boolean",
+            "description": "May upload maps and pin articles."
+          },
+          "can_delete": {
+            "type": "boolean",
+            "description": "May delete maps."
+          }
+        },
+        "example": {
+          "id": "ember-pact",
+          "title": "Ember Pact",
+          "map_count": 1,
+          "can_write": true,
+          "can_delete": true
+        }
+      },
+      "WorldList": {
+        "type": "object",
+        "required": [
+          "worlds"
+        ],
+        "properties": {
+          "worlds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorldChoice"
+            }
+          }
+        },
+        "example": {
+          "worlds": [
+            {
+              "id": "ember-pact",
+              "title": "Ember Pact",
+              "map_count": 1,
+              "can_write": true,
+              "can_delete": true
+            }
+          ]
+        }
+      },
+      "ArticleChoice": {
+        "type": "object",
+        "required": [
+          "database",
+          "collection",
+          "collection_title",
+          "id",
+          "title"
+        ],
+        "properties": {
+          "database": {
+            "type": "string"
+          },
+          "collection": {
+            "type": "string"
+          },
+          "collection_title": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "database": "ember-pact",
+          "collection": "locations",
+          "collection_title": "Locations",
+          "id": "highkeep",
+          "title": "Highkeep"
+        }
+      },
+      "ArticleChoiceList": {
+        "type": "object",
+        "required": [
+          "articles"
+        ],
+        "properties": {
+          "articles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArticleChoice"
+            },
+            "description": "Best match first, capped at twenty."
+          }
+        },
+        "example": {
+          "articles": [
+            {
+              "database": "ember-pact",
+              "collection": "locations",
+              "collection_title": "Locations",
+              "id": "highkeep",
+              "title": "Highkeep"
+            }
+          ]
+        }
+      },
+      "ArticleFact": {
+        "type": "object",
+        "required": [
+          "key",
+          "value"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "key": "Kind",
+          "value": "Fortress"
+        }
+      },
+      "ArticlePreview": {
+        "type": "object",
+        "required": [
+          "database",
+          "collection",
+          "collection_title",
+          "id",
+          "title",
+          "excerpt",
+          "facts",
+          "url"
+        ],
+        "properties": {
+          "database": {
+            "type": "string"
+          },
+          "collection": {
+            "type": "string"
+          },
+          "collection_title": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "excerpt": {
+            "type": "string",
+            "description": "The body as plain prose: wikitext marks removed and links reduced to their labels."
+          },
+          "facts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArticleFact"
+            },
+            "description": "At most six of the article's other fields."
+          },
+          "url": {
+            "type": "string",
+            "description": "Where Akasha shows the full article."
+          }
+        },
+        "example": {
+          "database": "ember-pact",
+          "collection": "locations",
+          "collection_title": "Locations",
+          "id": "highkeep",
+          "title": "Highkeep",
+          "excerpt": "A fortress above the Ember Road.",
+          "facts": [
+            {
+              "key": "Kind",
+              "value": "Fortress"
+            }
+          ],
+          "url": "/#/ember-pact/locations/highkeep"
         }
       }
     }
