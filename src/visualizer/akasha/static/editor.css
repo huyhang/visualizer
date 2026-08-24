@@ -65,6 +65,10 @@ a.brand:hover { text-decoration: none; opacity: .85; }
 }
 .icon-btn:hover { border-color: var(--accent); }
 .font-btn { font-weight: 800; letter-spacing: -.02em; }
+/* The logout mark inherits the text colour, so it follows the theme and the
+   accent on hover the way the label it replaced did. */
+.logout-btn { display: grid; place-items: center; color: var(--accent); }
+.logout-btn:hover { border-color: var(--accent); }
 .menu-toggle { display: none; }
 .link-btn { background: none; border: none; color: var(--accent); font-weight: 600; font-size: .9rem; padding: .3rem .4rem; }
 .inline-form { display: inline; margin: 0; }

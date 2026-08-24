@@ -81,6 +81,10 @@ h1, h2, p { margin-top: 0; }
 .icon-btn:hover:not(:disabled) { border-color: var(--accent); }
 .icon-btn:disabled { cursor: default; opacity: .4; }
 .font-btn { font-weight: 800; }
+/* The logout mark inherits the text colour, so it follows the theme and the
+   accent on hover the way the label it replaced did. */
+.logout-btn { display: grid; place-items: center; color: var(--accent); }
+.logout-btn:hover { border-color: var(--accent); }
 .userchip { display: flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .85rem; }
 .avatar {
   width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%;

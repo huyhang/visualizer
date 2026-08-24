@@ -9,7 +9,6 @@ import { api, ApiError } from "./api.js";
 import {
   changeCount, clonePins, movePin, pinChanges, pinKey, placePin, removePin, samePin,
 } from "./draft.js";
-import { initFontScale } from "./fontscale.js";
 import { mountMap } from "./mapview.js";
 import { clearPreview, showPreview, showUnavailable } from "./preview.js";
 import { slugify } from "./shared/slug.js";
@@ -55,8 +54,6 @@ const el = {
   zoomOut: $("zoom-out"),
   zoomReset: $("zoom-reset"),
   zoomIn: $("zoom-in"),
-  fontToggle: $("font-toggle"),
-  themeToggle: $("theme-toggle"),
 };
 
 const preview = {
@@ -564,17 +561,6 @@ async function guard(work) {
   }
 }
 
-function toggleTheme() {
-  const next =
-    document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
-  document.documentElement.setAttribute("data-theme", next);
-  try {
-    localStorage.setItem("prithvi-theme", next);
-  } catch (error) {
-    // Private mode: the choice applies to this page and will not be remembered.
-  }
-}
-
 function debounce(fn, ms) {
   let timer = null;
   return () => {
@@ -597,7 +583,6 @@ el.save.addEventListener("click", saveChanges);
 el.zoomOut.addEventListener("click", () => setZoom(state.zoom - ZOOM_STEP));
 el.zoomReset.addEventListener("click", () => setZoom(1));
 el.zoomIn.addEventListener("click", () => setZoom(state.zoom + ZOOM_STEP));
-el.themeToggle.addEventListener("click", toggleTheme);
 window.addEventListener("hashchange", onHashChange);
 window.addEventListener("resize", debounce(refit, 150));
 window.addEventListener("beforeunload", (event) => {
@@ -612,7 +597,9 @@ function suggestName() {
   el.mapName.value = slugify(file.name.replace(/\.svg$/i, ""));
 }
 
-initFontScale(el.fontToggle, refit);
+// Shared prefs owns both header controls; the map only needs to know when
+// the text size changed, because every rem-based dimension just moved.
+document.addEventListener("prefs:fontscale", refit);
 
 guard(async () => {
   const found = await api.worlds();

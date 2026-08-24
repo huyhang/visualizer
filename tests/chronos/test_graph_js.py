@@ -33,7 +33,7 @@ _MODULES = ("layout.js", "subgraph.js", "collapse.js", "timeaxis.js",
             # imports cleanly under node -- nothing in the graph touches the DOM
             # at module scope -- so the helper can be exercised directly.
             "storymap.js", "api.js", "calendarview.js", "cards.js", "findings.js",
-            "focus.js", "fontscale.js", "peek.js", "entities.js", "picker.js",
+            "focus.js", "peek.js", "entities.js", "picker.js",
             "paging.js", "table.js",
             # Goals reach the map two ways: the peek panel a mark opens
             # (cards.js -> goalcard.js), and where the marks go (goalplacing.js).

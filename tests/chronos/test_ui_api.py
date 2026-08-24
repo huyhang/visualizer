@@ -91,24 +91,27 @@ def test_header_switcher_links_to_akasha(seeded, client):
     assert "Articles" in html and "Timeline" in html and "Maps" in html
     assert "http://localhost:5002" in html            # default akasha URL
     assert "http://localhost:5004" in html            # default prithvi URL
-    assert ">Admin<" not in html                        # writer is not an admin
+    assert ">Admin<" not in html            # Admin is a tab inside Accounts now
 
 
 def test_header_has_account_link(seeded, client):
     # akasha_url defaults to http://localhost:5002 in the test app, so the link
     # is that base + /account (relative "/account" under the single-origin gateway).
     html = client.get("/").get_data(as_text=True)
-    assert ">Account<" in html and "/account" in html
+    assert ">Access<" in html and "/account" in html
 
 
-def test_header_switcher_shows_admin_for_admins(seeded, app):
+def test_an_admin_gets_the_same_header_as_anyone_else(seeded, app):
+    """Admin moved into the Accounts page as a tab, so the header stopped
+    varying by role: one link for everyone, and Akasha decides what is behind
+    it. What an admin may do is unchanged -- ``/admin`` is still guarded."""
     from tests.chronos.conftest import _login
 
     admin = app.test_client()
     _login(admin, "admin", "admin-pass")
     html = admin.get("/").get_data(as_text=True)
-    assert ">Admin<" in html
-    assert "http://localhost:5002/admin" in html
+    assert ">Admin<" not in html
+    assert ">Access<" in html
 
 
 def test_switcher_urls_are_configurable(story_store, fake_gate, auth_store, calendar_store):

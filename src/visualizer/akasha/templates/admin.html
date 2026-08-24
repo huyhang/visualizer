@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Admin — Akasha{% endblock %}
 {% block content %}
-<div class="page-header">
-  <h1>Admin console</h1>
-  <p>Manage user accounts and fine-grained access control.</p>
-</div>
+{% with active = 'admin',
+        subtitle = 'Manage user accounts and fine-grained access control.' %}
+  {% include "_account_tabs.html" %}
+{% endwith %}
 
 {% if new_credential %}
 <div class="card" style="border-color: var(--accent);">

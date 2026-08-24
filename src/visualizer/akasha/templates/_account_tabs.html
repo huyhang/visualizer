@@ -1,0 +1,23 @@
+{# The Access area: your own account, and -- for an admin -- the console.
+
+   One destination with two tabs rather than two header links. The header then
+   carries services and nothing else, and the two pages that were always about
+   "who may do what" stop being scattered across it.
+
+   The Admin tab renders only for an admin. That is presentation, not security:
+   ``/admin`` is guarded by ``admin_required`` regardless, and a tab that
+   forbids you on click is worse than a tab that was never there.
+
+   Callers set ``active`` ("account" or "admin") and ``subtitle``. #}
+<div class="page-header">
+  <h1>Access</h1>
+  <p>{{ subtitle }}</p>
+</div>
+<nav class="tabs" aria-label="Access sections">
+  <a href="{{ url_for('account_page') }}"
+     {% if active == 'account' %}class="active" aria-current="page"{% endif %}>Account</a>
+  {% if current_user.is_admin %}
+  <a href="{{ url_for('admin_page') }}"
+     {% if active == 'admin' %}class="active" aria-current="page"{% endif %}>Admin</a>
+  {% endif %}
+</nav>

@@ -28,7 +28,7 @@ def test_account_page_renders_for_a_logged_in_user(app, auth_store):
     user = _user(app, "alice")
     resp = user.get("/account")
     assert resp.status_code == 200
-    assert b"Your account" in resp.data
+    assert b"<h1>Access</h1>" in resp.data
     assert b"alice" in resp.data
 
 
@@ -194,3 +194,57 @@ def test_shared_with_me_excludes_your_own_resources(app, auth_store):
     alice.post(collection_url(database="world", collection="cast"))
     body = alice.get("/account").data.decode()
     assert "Nothing has been shared with you yet." in body
+
+
+# -- the Accounts tabs ----------------------------------------------------------
+#
+# Account and Admin used to be two header links. They are one destination now,
+# with a tab each, so these check what each role is offered -- and that hiding
+# the Admin tab is presentation rather than the boundary itself.
+
+
+def test_the_account_page_leads_with_the_accounts_tabs(app):
+    html = _user(app, "alice").get("/account").get_data(as_text=True)
+    assert "<h1>Access</h1>" in html
+    assert 'class="tabs"' in html
+    assert ">Account</a>" in html
+
+
+def test_an_ordinary_user_is_offered_no_admin_tab(app):
+    html = _user(app, "alice").get("/account").get_data(as_text=True)
+    assert ">Admin</a>" not in html
+
+
+def test_an_admin_is_offered_both_tabs(client):
+    html = client.get("/account").get_data(as_text=True)
+    assert ">Account</a>" in html
+    assert ">Admin</a>" in html
+
+
+def test_the_admin_console_wears_the_same_tabs(client):
+    html = client.get("/admin").get_data(as_text=True)
+    assert "<h1>Access</h1>" in html
+    assert ">Account</a>" in html
+    assert ">Admin</a>" in html
+
+
+def _tab_strip(html):
+    """Just the tabs nav -- the shared header marks its active link the same way."""
+    return html.split('class="tabs"', 1)[1].split("</nav>", 1)[0]
+
+
+def test_each_page_marks_its_own_tab_current(client):
+    account = _tab_strip(client.get("/account").get_data(as_text=True))
+    admin = _tab_strip(client.get("/admin").get_data(as_text=True))
+    # Exactly one tab is current on each page, and it is the one you are on
+    # rather than simply the first.
+    assert account.count('aria-current="page"') == 1
+    assert admin.count('aria-current="page"') == 1
+    assert 'aria-current="page"' in account.split(">Account</a>")[0]
+    assert 'aria-current="page"' in admin.split(">Admin</a>")[0]
+    assert 'aria-current="page"' not in admin.split(">Account</a>")[0]
+
+
+def test_hiding_the_admin_tab_is_not_the_only_guard(app):
+    """The tab is presentation; ``admin_required`` is the actual boundary."""
+    assert _user(app, "alice").get("/admin").status_code == 403

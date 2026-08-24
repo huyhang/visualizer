@@ -17,8 +17,6 @@
 
 import { $, el, clear, toast, modal } from "./dom.js";
 import { api, ApiError } from "./api.js";
-import { initTheme } from "./theme.js";
-import { initFontScale } from "./fontscale.js";
 import { Browser } from "./browser.js";
 import { renderArticle } from "./viewer.js";
 import { renderEditor } from "./editor.js";
@@ -484,8 +482,6 @@ function initSidebarResize() {
 // -- boot --------------------------------------------------------------------
 
 function initChrome() {
-  initTheme($("#theme-toggle"));
-  initFontScale($("#font-toggle"));
   $("#menu-toggle").addEventListener("click", () => {
     const open = sidebar.classList.toggle("open");
     $("#scrim").hidden = !open;

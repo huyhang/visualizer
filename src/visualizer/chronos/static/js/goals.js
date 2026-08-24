@@ -201,7 +201,7 @@ export async function mountGoals(container, book, {
 
   // The diagram is laid out in pixels against the reader's text size, so it has
   // to be drawn again when that changes. The font control sets the root font
-  // size (see fontscale.js), which is the one thing worth watching for: the
+  // size (see shared/prefs.js), which is the one thing worth watching for: the
   // cards below reflow by themselves, being ordinary HTML.
   if (typeof MutationObserver === "function") {
     new MutationObserver(render).observe(document.documentElement, {

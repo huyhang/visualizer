@@ -43,8 +43,6 @@ import { mountScenes } from "./scenes.js";
 import { mountStoryMap } from "./storymap.js";
 import { mountPlotlineTable } from "./table.js";
 import { applyFocus } from "./focus.js";
-import { initFontScale } from "./fontscale.js";
-import { initTheme } from "./theme.js";
 
 const content = $("#content");
 
@@ -181,8 +179,6 @@ function route() {
 // -- boot --------------------------------------------------------------------
 
 function initChrome() {
-  initTheme($("#theme-toggle"));
-  initFontScale($("#font-toggle"));
   applyFocus(); // restore "hide the marks" from last time
 }
 

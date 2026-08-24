@@ -105,7 +105,10 @@ def test_the_shared_modules_are_served_under_this_apps_static_path(client):
     for module in _shared_modules():
         resp = client.get(f"/static/js/shared/{module.name}")
         assert resp.status_code == 200, module.name
-        assert "slugify" in resp.get_data(as_text=True)
+        assert resp.get_data(as_text=True).strip(), module.name
+    # The one every service actually imports, by name rather than by count.
+    served = client.get("/static/js/shared/slug.js")
+    assert "slugify" in served.get_data(as_text=True)
 
 
 # Elements whose displayed value is *not* set by a `value` attribute -- the

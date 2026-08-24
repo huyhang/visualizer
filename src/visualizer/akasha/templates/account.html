@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Your account — Akasha{% endblock %}
+{% block title %}Account — Akasha{% endblock %}
 {% block content %}
 {% macro share_item(res, contacts, roles) %}
 <li class="share-item" data-collab-url="{{ res.collab_url }}"
@@ -33,10 +33,10 @@
   </div>
 </li>
 {% endmacro %}
-<div class="page-header">
-  <h1>Your account</h1>
-  <p>Manage your profile and share the things you own with other people.</p>
-</div>
+{% with active = 'account',
+        subtitle = 'Manage your profile and share the things you own with other people.' %}
+  {% include "_account_tabs.html" %}
+{% endwith %}
 
 <div class="card">
   <div class="card-head">

@@ -1,4 +1,8 @@
-"""The header service switcher links across to the other services (and Admin)."""
+"""The header service switcher links across to the other services.
+
+Admin and Account used to sit here too; they are now one "Accounts" link
+leading to a page with a tab each, so the switcher is services only.
+"""
 
 import mongomock
 from conftest import login
@@ -15,7 +19,10 @@ def test_editor_header_has_switcher_with_timeline_link(client):
     assert "Articles" in html and "Timeline" in html and "Maps" in html
     assert "http://localhost:5003" in html          # default chronos URL
     assert "http://localhost:5004" in html          # default prithvi URL
-    assert ">Admin<" in html                          # seeded client is an admin
+    # Admin is no longer a header link even for an admin: it is a tab inside
+    # Accounts, so the switcher carries services and nothing else.
+    assert ">Admin<" not in html
+    assert ">Access<" in html
 
 
 def test_account_page_also_has_switcher(client):
@@ -40,7 +47,7 @@ def test_switcher_urls_are_configurable():
     assert "https://world.example/chronos" in html
     assert "https://world.example/maps" in html
     assert 'aria-current="page"' in html              # akasha tab marked active
-    # A non-admin sees no Admin link.
+    # Nobody gets an Admin link in the header any more.
     assert "https://world.example/akasha/admin" not in html
 
 

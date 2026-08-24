@@ -10,20 +10,8 @@
     // The mount point, so `api.js` works at `/prithvi` behind the gateway and
     // at `/` when prithvi runs on its own port.
     window.__BASE__ = {{ request.script_root | tojson }};
-    // Theme and text size before first paint, so neither flashes.
-    (function () {
-      try {
-        var saved = localStorage.getItem("prithvi-theme");
-        var dark = saved ? saved === "dark"
-          : window.matchMedia("(prefers-color-scheme: dark)").matches;
-        document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
-      } catch (e) { document.documentElement.setAttribute("data-theme", "light"); }
-      try {
-        var px = parseInt(localStorage.getItem("prithvi-fontscale"), 10);
-        if (px) document.documentElement.style.fontSize = px + "px";
-      } catch (e) { /* private mode: the default size is fine */ }
-    })();
   </script>
+  <script src="{{ url_for('shared_js', filename='prefs.js') }}"></script>
 </head>
 <body>
   <header class="app-header">
@@ -36,18 +24,22 @@
         <a href="{{ service_links.akasha }}"{% if service_links.current == 'akasha' %} class="active" aria-current="page"{% endif %}>Articles</a>
         <a href="{{ service_links.chronos }}"{% if service_links.current == 'chronos' %} class="active" aria-current="page"{% endif %}>Timeline</a>
         <a href="{{ service_links.prithvi }}"{% if service_links.current == 'prithvi' %} class="active" aria-current="page"{% endif %}>Maps</a>
-        {% if current_user.is_admin %}<a href="{{ service_links.admin }}">Admin</a>{% endif %}
       </nav>
+      <a class="header-link" href="{{ service_links.account }}">Access</a>
       <button class="icon-btn font-btn" id="font-toggle" aria-label="Text size" title="Text size">A</button>
       <button class="icon-btn" id="theme-toggle" aria-label="Toggle theme" title="Toggle light/dark">◐</button>
-      <a class="header-link" href="{{ service_links.account }}">Account</a>
       <span class="userchip">
         <span class="avatar">{{ current_user.username[0] | upper }}</span>
         <span class="username">{{ current_user.username }}</span>
       </span>
       <form class="inline-form" method="post" action="{{ url_for('auth.logout') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button class="link-btn" type="submit">Log out</button>
+        <button class="icon-btn logout-btn" type="submit"
+                aria-label="Log out" title="Log out"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+        </svg></button>
       </form>
     </div>
   </header>
