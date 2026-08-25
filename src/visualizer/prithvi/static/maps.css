@@ -213,12 +213,12 @@ input:focus {
  * item be smaller than its content at all. */
 .map-layout {
   flex: 1; min-height: 0; display: grid;
-  grid-template-columns: 250px minmax(320px, 1fr) 310px;
+  grid-template-columns: 310px minmax(320px, 1fr) 250px;
   grid-template-rows: minmax(0, 1fr);
 }
 .picker, .inspector { min-height: 0; overflow: auto; padding: 1rem; background: var(--surface); }
-.picker { border-right: 1px solid var(--border); }
-.inspector { border-left: 1px solid var(--border); }
+.inspector { border-right: 1px solid var(--border); }
+.picker { border-left: 1px solid var(--border); }
 .map-frame {
   min-width: 0; min-height: 0; margin: 1rem; display: flex;
   border: 1px solid var(--border); border-radius: var(--radius);
@@ -267,13 +267,13 @@ input:focus {
 .inspector-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1.1rem; }
 
 @media (max-width: 1080px) {
-  .map-layout { grid-template-columns: 220px minmax(0, 1fr); }
-  .inspector { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--border); }
+  .map-layout { grid-template-columns: 260px minmax(0, 1fr); }
+  .picker { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--border); }
 }
 @media (max-width: 760px) {
   .upload-fields { grid-template-columns: 1fr; }
   /* Stacked, so each pane scrolls the page rather than fighting for height. */
   .map-layout { display: flex; flex-direction: column; }
-  .picker { border-right: 0; border-bottom: 1px solid var(--border); }
+  .inspector { border-right: 0; border-bottom: 1px solid var(--border); }
   .map-frame { min-height: 60vh; }
 }

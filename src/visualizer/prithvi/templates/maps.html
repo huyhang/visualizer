@@ -116,20 +116,9 @@
       </div>
 
       <div class="map-layout">
-        <aside class="picker" id="picker" aria-label="Add a pin" hidden>
-          <h2>Add a pin</h2>
-          <p class="muted">Pick an article, then click where it belongs.</p>
-          <label class="sr-only" for="article-search">Find an article</label>
-          <input id="article-search" type="search" placeholder="Find an article…" autocomplete="off">
-          <div class="choices" id="article-results"></div>
-        </aside>
-
-        <!-- The frame owns the border and cannot grow; the stage inside it is
-             the scroll viewport the drawing is measured against. -->
-        <div class="map-frame">
-          <div class="map-stage" id="map-stage"></div>
-        </div>
-
+        <!-- Source order is left-to-right on purpose: the panels are swapped by
+             moving them here rather than with `order`, so tab order still
+             follows what you see. -->
         <aside class="inspector" aria-label="Selected pin">
           <section id="pin-preview" hidden>
             <p class="eyebrow" id="preview-eyebrow"></p>
@@ -145,6 +134,20 @@
             <h2>Pin details</h2>
             <p class="muted">Click a pin to read its article without leaving the map.</p>
           </section>
+        </aside>
+
+        <!-- The frame owns the border and cannot grow; the stage inside it is
+             the scroll viewport the drawing is measured against. -->
+        <div class="map-frame">
+          <div class="map-stage" id="map-stage"></div>
+        </div>
+
+        <aside class="picker" id="picker" aria-label="Add a pin" hidden>
+          <h2>Add a pin</h2>
+          <p class="muted">Pick an article, then click where it belongs.</p>
+          <label class="sr-only" for="article-search">Find an article</label>
+          <input id="article-search" type="search" placeholder="Find an article…" autocomplete="off">
+          <div class="choices" id="article-results"></div>
         </aside>
       </div>
     </section>
