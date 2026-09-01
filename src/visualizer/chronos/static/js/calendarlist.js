@@ -9,8 +9,9 @@
 //   `value() -> attachment[]` and `problems() -> string[]`.
 //
 // An attachment *names* a library calendar and says how this book uses it — the
-// label it goes by and the span of ticks its culture kept it for. It never
-// carries the calendar itself; the server reads that from the library.
+// label it goes by, the span of ticks its culture kept it for, and for an Earth
+// calendar which moment this book's tick 0 was. It never carries the calendar
+// itself; the server reads that from the library.
 //
 // The common case is one row, and it should still feel like one field: an
 // unnamed single calendar shows no id box, no era box and no remove button.
@@ -39,7 +40,10 @@ export function calendarList({
   const node = el("div", { class: "calendar-list" }, [body, addButton]);
 
   function blank() {
-    return { id: "", label: "", descriptor: null, source: null, from_tick: null, until_tick: null };
+    return {
+      id: "", label: "", descriptor: null, source: null,
+      from_tick: null, until_tick: null, origin: null,
+    };
   }
 
   function row(attachment) {
@@ -55,6 +59,7 @@ export function calendarList({
     const field = calendarField({
       initial: attachment.descriptor,
       source: attachment.source,
+      origin: attachment.origin,
       library,
       onCreateCalendar,
       onChange,
@@ -157,6 +162,7 @@ export function calendarList({
       source: entry.field.source(),
       from_tick: toTick(entry.state.from),
       until_tick: toTick(entry.state.until),
+      origin: entry.field.origin(),
     })),
     problems: () => problems(rows, idFor),
   };

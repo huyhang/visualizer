@@ -726,6 +726,9 @@ def present_attachment(attachment: CalendarAttachment, primary: bool) -> dict:
         "descriptor": attachment.descriptor,
         "from_tick": attachment.from_tick,
         "until_tick": attachment.until_tick,
+        # Null for every calendar but a Gregorian one; the book form needs it
+        # back to fill in the field it was typed into.
+        "origin": attachment.origin,
         # Whether this is the one a read with no ``?calendar=`` uses.
         "primary": primary,
         # Where the copy came from, owner-qualified. Null once the writer edits

@@ -58,6 +58,7 @@ from .scheduling import window_for
 from .store import CalendarStore, StoryStore
 from .validation import (
     validate_book_payload,
+    validate_calendar_attachments,
     validate_calendar_payload,
     validate_event_payload,
     validate_goal_payload,
@@ -201,6 +202,9 @@ class BookService(_Service):
             # which is what makes "the library has moved on" a fact rather than
             # a guess, and why the copy needs no checksum stored beside it.
             attachment.source = {"owner": owner, "calendar": name, "rev": entry["rev"]}
+        # Last, because the story-local half of an attachment can only be judged
+        # against the descriptor that has just been copied in.
+        validate_calendar_attachments(book.calendars)
         return book
 
     def create(self, book_id, payload, author=None) -> dict:

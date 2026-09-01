@@ -174,12 +174,47 @@ every rule in Chronos runs on integers and cannot see the choice. Naming a
 calendar the book has not attached is a `404 CALENDAR_NOT_FOUND` rather than a
 silent fallback: a stale bookmark should say so, not mislabel a whole page.
 
+**A parallel Earth.** A story that also happens here can attach a Gregorian
+calendar. The library entry says only how long a tick is:
+
+```jsonc
+{"kind": "gregorian", "tick_unit": "hour"}
+```
+
+and the *book* says which Earth moment its tick `0` was, because that is the
+story's own alignment — two books may share this calendar and sit centuries
+apart:
+
+```jsonc
+{"id": "earth", "label": "Earth",
+ "source": {"owner": "mara", "calendar": "earth"},
+ "origin": "2024-02-27T00:00Z"}
+```
+
+Tick `48` then reads `February 29, 2024, 00:00 UTC`. Months are Earth's own —
+28, 29, 30 or 31 days, with the leap rule and its century exception — so
+`{"year": 2024, "month": 2}` spans 29 days and the same date in 2023 spans 28.
+Only the labels vary in length; a tick stays exactly one day, hour or minute.
+
+A `day`-counting calendar takes a bare date for its origin (`2024-02-27`);
+anything finer takes a time and a fixed UTC offset (`Z`, or `-08:00`) and must
+begin on a whole tick. The offset says which wall clock these dates are told by;
+named timezones and daylight saving are not supported, because they would make
+some dates name two ticks and others none.
+
+Years run in both directions and read as `44 BCE` before year 1. What crosses
+the wire is still a map of plain integers — 44 BCE is `{"year": -43}` — so a
+date is the same shape in every calendar.
+
 **Calendars that begin and end.** An attachment may carry `from_tick` /
-`until_tick` — the span its culture actually kept it. Ticks are offset by
-`from_tick`, so a reckoning founded mid-story reads Year 1 at its own beginning;
-a tick outside the span formats as `before …` / `after …` rather than being
-given a date in a calendar nobody was keeping. The bound is half-open, like
-every other interval here.
+`until_tick` — the span its culture actually kept it. A tick outside the span
+formats as `before …` / `after …` rather than being given a date in a calendar
+nobody was keeping. The bound is half-open, like every other interval here.
+
+Ticks are also offset by `from_tick`, so an invented reckoning founded mid-story
+reads Year 1 at its own beginning. Not Earth: its `origin` already says where it
+sits, so an era only bounds it, and a scene keeps the Earth date the writer
+anchored it to.
 
 Reusable calendars live in a **library** (`/calendars`) and are *copied* into a
 book when attached — see [the calendar library](#the-calendar-library).
@@ -820,8 +855,13 @@ database named `x`. Grants written before this field are read as `"database"`.
 ## Seed a demo story
 
 `docker/seed_demo.py` builds a book ("The Ember Pact") over the real HTTP APIs —
-entities, a calendar, six events, four plotlines, a terminus — and demonstrates
-both rule classes.
+entities, two calendars, six events, four plotlines, a terminus — and
+demonstrates both rule classes.
+
+The two calendars are the point of the switcher: the Imperial Reckoning, whose
+months are a fixed 30 days, and Earth, anchored so that tick `48` — the Harbor
+Exchange — is `February 29, 2024`. Reading the book through either one leaves
+every tick, every ordering and every verdict exactly where it was.
 
 ```bash
 python docker/seed_demo.py        # seed; leaves the book CONFLICTED

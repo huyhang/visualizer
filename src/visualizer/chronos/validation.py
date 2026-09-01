@@ -8,7 +8,7 @@ from the URL, so it is passed in rather than read from the body.
 
 from typing import Any
 
-from .calendar import TimeCodec
+from .calendar import GREGORIAN_TICK_UNITS, TimeCodec, codec_for_attachment
 from .errors import (
     InvalidBook,
     InvalidCalendar,
@@ -283,7 +283,36 @@ def validate_goal_payload(goal_id: str, payload: Any) -> Goal:
     )
 
 
-_CALENDAR_KINDS = ("identity", "mixed_radix")
+_CALENDAR_KINDS = ("identity", "mixed_radix", "gregorian")
+
+
+def _check_gregorian(raw: dict) -> None:
+    """A reusable Earth calendar: how long a tick is, and nothing story-local.
+
+    Two things are refused rather than ignored. Fixed cycles, because a
+    Gregorian month is not a fixed number of days and a descriptor claiming
+    otherwise was written by someone expecting it to be honoured. And ``origin``,
+    because which Earth moment tick 0 was is the one fact a *reusable* entry
+    cannot know -- it belongs to each book that attaches this calendar.
+    """
+    fixed = [field for field in ("base_unit", "cycles", "epoch_label") if field in raw]
+    if fixed:
+        raise InvalidBook(
+            "A Gregorian calendar has no fixed cycles -- its month lengths and "
+            "leap years come from the Gregorian rules themselves.",
+            evidence={"unexpected": fixed},
+        )
+    if "origin" in raw:
+        raise InvalidBook(
+            "A Gregorian calendar's 'origin' belongs to each book that attaches "
+            "it, not to the reusable library entry."
+        )
+    if raw.get("tick_unit") not in GREGORIAN_TICK_UNITS:
+        raise InvalidBook(
+            "A Gregorian calendar needs a 'tick_unit' of 'day', 'hour' or 'minute'.",
+            evidence={"tick_unit": raw.get("tick_unit"),
+                      "known": list(GREGORIAN_TICK_UNITS)},
+        )
 
 
 def _check_cycle(raw: Any, position: int) -> None:
@@ -325,6 +354,8 @@ def _check_calendar(raw: Any) -> None:
         )
     if kind == "identity":
         return  # ticks display as themselves; nothing else is read
+    if kind == "gregorian":
+        return _check_gregorian(raw)
     base_unit = raw.get("base_unit", "tick")
     if not (isinstance(base_unit, str) and base_unit.strip()):
         raise InvalidBook("'base_unit' must be a non-empty string.")
@@ -427,6 +458,9 @@ def _parse_attachment(raw: Any, position: int, seen: set[str]) -> CalendarAttach
             evidence={"calendar": attachment_id},
         )
     from_tick, until_tick = _check_era(raw, where)
+    origin = raw.get("origin")
+    if origin is not None and not isinstance(origin, str):
+        raise InvalidBook(f"{where}: 'origin' must be a string or null.")
     return CalendarAttachment(
         id=attachment_id,
         # Filled in by the service from the library entry ``source`` names.
@@ -435,7 +469,36 @@ def _parse_attachment(raw: Any, position: int, seen: set[str]) -> CalendarAttach
         source=_check_source(raw.get("source"), where),
         from_tick=from_tick,
         until_tick=until_tick,
+        # Only meaningful once the descriptor is in hand, so what it *says* is
+        # checked later -- see ``validate_calendar_attachments``.
+        origin=origin.strip() if origin else None,
     )
+
+
+def validate_calendar_attachments(attachments: list[CalendarAttachment]) -> None:
+    """The checks that need the descriptor, once the library copy is in hand.
+
+    Run at the write, not the read. A book whose Gregorian origin is missing or
+    nonsense can be described perfectly well in a payload, and the mistake only
+    surfaces when a codec is built -- which happens on every read. Catching it
+    here is the difference between a refused save and a book that is stored and
+    then cannot be opened.
+
+    Building the codec *is* the check: there is no second copy of the rules here
+    to fall out of step with the one that formats dates.
+    """
+    for position, attachment in enumerate(attachments, start=1):
+        where = f"Calendar {position}"
+        kind = (attachment.descriptor or {}).get("kind", "mixed_radix")
+        if kind != "gregorian" and attachment.origin is not None:
+            raise InvalidBook(
+                f"{where}: only a Gregorian calendar has an 'origin'.",
+                evidence={"calendar": attachment.id, "kind": kind},
+            )
+        try:
+            codec_for_attachment(attachment)
+        except InvalidTimeframe as bad:
+            raise InvalidBook(f"{where}: {bad.message}", evidence=bad.evidence) from bad
 
 
 def _parse_calendars(body: dict) -> list[CalendarAttachment]:
@@ -454,6 +517,14 @@ def _parse_calendars(body: dict) -> list[CalendarAttachment]:
         if legacy is None:
             return []
         _check_calendar(legacy)
+        if legacy.get("kind") == "gregorian":
+            # The old spelling has nowhere to put an origin, and a Gregorian
+            # calendar cannot be read without one. Nothing is lost: this shape
+            # predates the library, and Earth calendars only exist after it.
+            raise InvalidBook(
+                "A Gregorian calendar needs a per-book 'origin', so attach it "
+                "from the library with 'calendars' rather than inline."
+            )
         return [CalendarAttachment(id=DEFAULT_CALENDAR_ID, descriptor=legacy)]
     if not isinstance(calendars, list):
         raise InvalidBook("'calendars' must be a list.")

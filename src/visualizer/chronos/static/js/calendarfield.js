@@ -22,8 +22,10 @@
 
 import { clear, el } from "./dom.js";
 import {
-  PRESETS, calendarHint, calendarProblems, descriptorFrom, draftFrom, emptyCycle,
+  GREGORIAN_TICK_UNITS, PRESETS, calendarHint, calendarProblems, dateUnits,
+  descriptorFrom, draftFrom, emptyCycle,
 } from "./calendars.js";
+import { dateFields } from "./datefields.js";
 
 // -- the bare editor ----------------------------------------------------------
 
@@ -33,7 +35,10 @@ export function inlineCalendarEditor({ initial = null, onChange = () => {} } = {
 
   function rebuild(focusCycle = null, notify = true) {
     clear(body);
-    body.appendChild(inlineEditor(state, { rebuild, refresh, onChange }));
+    body.appendChild(calendarKind(state, { rebuild }));
+    body.appendChild(state.draft.kind === "gregorian"
+      ? gregorianEditor(state, { refresh })
+      : inlineEditor(state, { rebuild, refresh, onChange }));
     if (focusCycle !== null) {
       const input = body.querySelectorAll(".cycle-row input")[focusCycle * 2];
       if (input) input.focus();
@@ -90,8 +95,8 @@ const MODES = [
 // have none — in which case the mode is offered but says so plainly rather than
 // presenting an empty select.
 export function calendarField({
-  initial = null, source = null, library = [], onCreateCalendar = null,
-  onChange = () => {},
+  initial = null, source = null, origin = null, library = [],
+  onCreateCalendar = null, onChange = () => {},
 } = {}) {
   const state = {
     mode: source ? "library" : "none",
@@ -101,6 +106,11 @@ export function calendarField({
     // Flipped only by the update offer below -- the one deliberate act that
     // lets a library change into a book.
     tookUpdate: false,
+    // Where this book sits on Earth's timeline, for a Gregorian calendar. Held
+    // as the boxes the writer typed rather than as the string they compose to,
+    // so a half-finished date survives a rebuild.
+    origin: null,
+    originText: origin || "",
   };
 
   const body = el("div", { class: "calendar-body" });
@@ -170,7 +180,10 @@ export function calendarField({
     },
     // For display only: what this calendar currently reads as.
     descriptor: () => (chosen() ? chosen().descriptor : null),
-    problems: () => current().problems(state),
+    // Which Earth moment this book's tick 0 was, or null for any calendar that
+    // does not sit on Earth's timeline.
+    origin: () => (isEarth(state) ? state.originText || null : null),
+    problems: () => [...current().problems(state), ...originProblems(state)],
   };
 }
 
@@ -246,6 +259,7 @@ function libraryPicker(state, deps) {
     create,
     picked ? el("p", { class: "field-hint muted calendar-reading",
       text: calendarHint(picked.descriptor) }) : null,
+    gregorianOrigin(state, deps),
     updateOffer(state, library, deps),
     el("p", { class: "field-hint muted", text: picked && picked.unreachable
       ? `Copied from ${picked.qualified_id}, which you can no longer see — deleted, `
@@ -256,6 +270,101 @@ function libraryPicker(state, deps) {
         + "here — and a book someone shares with you keeps working even if they "
         + "never share the calendar." }),
   ].filter(Boolean));
+}
+
+// -- where this book sits on Earth's timeline ---------------------------------
+//
+// The one thing a book says about a calendar's *content*, and only ever about
+// an Earth one. It is asked here rather than in the library because it is this
+// story's alignment: two books may share the same Earth calendar and sit
+// centuries apart. Everything else on this form still only names a calendar.
+
+// What the API stores: a date, and a time with a fixed offset when ticks are
+// finer than a day. Written by `composeOrigin`, never typed directly — which is
+// why a year before 1 can be stored as the plain count `-0043` without anyone
+// having to know that is how 44 BCE is spelled.
+const ORIGIN = /^(-?\d+)-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(.*))?$/;
+const OFFSET = /^(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
+
+function isEarth(state) {
+  const picked = state.mode === "library" ? state.picked : null;
+  return Boolean(picked && picked.descriptor && picked.descriptor.kind === "gregorian");
+}
+
+function gregorianOrigin(state, deps) {
+  state.origin = null;
+  if (!isEarth(state)) return null;
+  const { tick_unit: unit } = state.picked.descriptor;
+  const units = dateUnits(state.picked.descriptor);
+  const held = splitOrigin(state.originText);
+
+  const fields = dateFields(units);
+  fields.fill(held.components);
+  const offset = unit === "day" ? null : textInput(held.offset, "Z", record);
+
+  function record() {
+    state.originText = composeOrigin(fields, units, offset, unit);
+    deps.onChange();
+  }
+  for (const control of fields.controls) control.addEventListener("input", record);
+  state.origin = { fields, offset };
+
+  return el("div", { class: "field gregorian-origin" }, [
+    el("label", { class: "field-label", text: "This book's tick 0 fell on" }),
+    el("p", { class: "field-hint muted", text:
+      "Where your story meets Earth's timeline. Asked here rather than in the "
+      + "library, because another book may use the same calendar centuries apart." }),
+    el("div", { class: "field-row" }, [
+      fields.node,
+      offset ? labelled("UTC offset", offset,
+        "Z, or a fixed offset like -08:00. Daylight saving is not applied.") : null,
+    ].filter(Boolean)),
+  ]);
+}
+
+// The boxes as the API spells them, or "" while any of them is still blank. An
+// origin is the one date that may not name a period: a half-filled one would
+// quietly become the first of January, which is not what was typed.
+function composeOrigin(fields, units, offset, unit) {
+  const { date, error } = fields.value();
+  if (error || units.some(({ name }) => date[name] === undefined)) return "";
+  const pad = (n, width) => String(Math.abs(n)).padStart(width, "0");
+  const sign = date.year < 0 ? "-" : "";
+  const day = `${sign}${pad(date.year, 4)}-${pad(date.month, 2)}-${pad(date.day, 2)}`;
+  if (unit === "day") return day;
+  const clock = `${pad(date.hour, 2)}:${pad(date.minute || 0, 2)}`;
+  return `${day}T${clock}${(offset && offset.value.trim()) || "Z"}`;
+}
+
+function splitOrigin(text) {
+  const match = ORIGIN.exec(String(text || ""));
+  if (!match) return { components: null, offset: "Z" };
+  const [, year, month, day, hour, minute, offset] = match;
+  const components = { year: Number(year), month: Number(month), day: Number(day) };
+  if (hour !== undefined) {
+    components.hour = Number(hour);
+    components.minute = Number(minute);
+  }
+  return { components, offset: offset || "Z" };
+}
+
+// Mirrors the server and goes no further, the same discipline as
+// `calendarProblems`: a browser that refuses what the API would accept is a
+// worse bug than one that lets a 400 through.
+function originProblems(state) {
+  if (!isEarth(state)) return [];
+  const live = state.origin;
+  if (live) {
+    const { error } = live.fields.value();
+    if (error) return [error];
+    if (live.offset && !OFFSET.test(live.offset.value.trim())) {
+      return ["Use Z for UTC, or a fixed offset like -08:00."];
+    }
+  }
+  if (!state.originText) {
+    return ["Say which Earth date this book's tick 0 fell on."];
+  }
+  return [];
 }
 
 // "The library version has moved on — take it?" Explicit and previewable,
@@ -297,6 +406,45 @@ function optionLabel(calendar, library) {
 }
 
 // -- the inline editor --------------------------------------------------------
+
+// Which of the two things a calendar can be. Switching replaces the draft
+// outright rather than merging: a half-kept fantasy cycle list riding along
+// inside an Earth calendar is exactly the kind of leftover that gets saved by
+// accident later.
+function calendarKind(state, deps) {
+  const choose = el("select", {}, [
+    el("option", { value: "mixed_radix", text: "Invented — fixed cycles" }),
+    el("option", { value: "gregorian", text: "Earth — Gregorian months" }),
+  ]);
+  choose.value = state.draft.kind === "gregorian" ? "gregorian" : "mixed_radix";
+  choose.addEventListener("change", () => {
+    state.draft = choose.value === "gregorian"
+      ? { kind: "gregorian", tickUnit: "day" }
+      : PRESETS[0].draft();
+    deps.rebuild();
+  });
+  return labelled("What kind of calendar", choose,
+    "Earth's months are 28, 29, 30 or 31 days and are not yours to set.");
+}
+
+// Everything an Earth calendar gets to choose. Which Earth date a book's tick 0
+// was is asked for on the *book* — see `gregorianOrigin` — because it is that
+// story's alignment, not a property of the calendar being written here.
+function gregorianEditor(state, deps) {
+  const choose = el("select", {}, GREGORIAN_TICK_UNITS.map((value) =>
+    el("option", { value, text: capitalize(value) })));
+  choose.value = state.draft.tickUnit;
+  choose.addEventListener("change", () => {
+    state.draft.tickUnit = choose.value;
+    deps.refresh();
+  });
+  return el("div", {}, [
+    labelled("One tick is a…", choose,
+      "The smallest unit your story counts in. Fixed, even though the months are not."),
+    el("p", { class: "field-hint muted calendar-reading",
+      text: calendarHint(descriptorFrom(state.draft)) }),
+  ]);
+}
 
 function inlineEditor(state, deps) {
   const { draft } = state;
@@ -355,6 +503,8 @@ function presetButtons(state, deps) {
 }
 
 // -- small pieces -------------------------------------------------------------
+
+const capitalize = (word) => String(word).charAt(0).toUpperCase() + String(word).slice(1);
 
 function textInput(value, placeholder, onInput) {
   const input = el("input", { type: "text", value, placeholder, autocomplete: "off" });

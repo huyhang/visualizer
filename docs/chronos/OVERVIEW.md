@@ -176,6 +176,13 @@ Invented calendars are fine — thirteen months, ten-day weeks, whatever your
 world uses. And events *before* your starting point are just negative numbers,
 so flashbacks and ancient history need no special handling.
 
+**A story that also happens on Earth.** If your world runs beside ours, attach a
+Gregorian calendar and say which Earth date your tick zero fell on. Chronos then
+uses Earth's own months — February is 28 days, or 29 — and its leap years, going
+back past year 1 if the parallel is an ancient one. The scenes do not move: they
+are the same ticks, read a second way, so the Imperial view and the Earth view
+are two labels on one timeline.
+
 **More than one calendar.** Worlds rarely agree on how to count. A book can keep
 several reckonings side by side — the Imperial one, the elves' — and you read
 the same scenes, and the goals that land on them, through whichever you like;

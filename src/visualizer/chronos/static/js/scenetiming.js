@@ -6,18 +6,18 @@
 // before anything is saved, so nothing downstream ever learns which was typed.
 //
 // Two rules keep this honest. The date inputs are generated from the calendar's
-// own cycles, so any invented calendar works with no per-calendar code here.
-// And no mixed-radix arithmetic happens in the browser — the server resolves
-// every date (api.resolveDates), because a client that disagreed with it about
-// what "Day 12" means would be the worst possible bug in this feature.
+// own units (see `datefields`), so any invented calendar — and Earth — works
+// with no per-calendar code here. And no calendar arithmetic happens in the
+// browser — the server resolves every date (api.resolveDates), because a client
+// that disagreed with it about what "Day 12" means would be the worst possible
+// bug in this feature.
 
 import { api } from "./api.js";
-import { calendarHint, dateUnits, plural } from "./calendars.js";
+import { calendarHint, dateUnits, plural, tickName } from "./calendars.js";
+import { dateFields } from "./datefields.js";
 import { clear, el } from "./dom.js";
 
 const DEBOUNCE_MS = 250;
-
-const capitalize = (word) => String(word).charAt(0).toUpperCase() + String(word).slice(1);
 
 // -- reading the two kinds of input -------------------------------------------
 
@@ -28,52 +28,6 @@ function intOrNull(input) {
   return Number.isInteger(n) ? n : NaN;
 }
 
-// One end of a timeframe said as a date: a number box per unit, coarse to fine.
-// Leaving the finer ones blank is how a writer says "some time that day" — the
-// date then names the whole period, which is exactly what the server does with
-// it. Leaving a *middle* one blank is a hole, and is reported rather than
-// quietly dropped: silently discarding a day the writer typed would schedule
-// the scene somewhere they never said.
-function dateEnd(units) {
-  const boxes = units.map((unit) => ({
-    unit,
-    input: el("input", {
-      type: "text", inputmode: "numeric", class: "date-part",
-      title: unit.max === null
-        ? `${capitalize(unit.name)} — any whole number`
-        : `${capitalize(unit.name)} ${unit.min}–${unit.max}`,
-    }),
-  }));
-  return {
-    node: el("div", { class: "date-end" }, boxes.map(({ unit, input }) =>
-      el("label", { class: "date-part" }, [
-        el("span", { class: "date-part-name muted", text: capitalize(unit.name) }),
-        input,
-      ]))),
-    inputs: boxes.map((b) => b.input),
-    empty: () => boxes.every(({ input }) => input.value.trim() === ""),
-    value() {
-      const date = {};
-      let blank = false;
-      for (const { unit, input } of boxes) {
-        const raw = input.value.trim();
-        if (raw === "") { blank = true; continue; }
-        if (blank) return { error: `Fill in the ${units[0].name} down to the ${unit.name}, or leave the finer parts blank.` };
-        const n = Number(raw);
-        if (!Number.isInteger(n)) return { error: "Dates must be whole numbers." };
-        date[unit.name] = n;
-      }
-      return { date };
-    },
-    fill: (components) => {
-      for (const { unit, input } of boxes) {
-        const value = components ? components[unit.name] : undefined;
-        input.value = value === undefined || value === null ? "" : String(value);
-      }
-    },
-  };
-}
-
 // -- what the live hint says ---------------------------------------------------
 
 function describeTicks(labelled, start, end, calendar) {
@@ -82,7 +36,7 @@ function describeTicks(labelled, start, end, calendar) {
   if (end === null) return `Starts ${label(start)} — but give an end too, or neither.`;
   if (start > end) return `${label(start)} is after ${label(end)} — the start must come first.`;
   if (start === end) return `${label(start)} (a moment).`;
-  return `${label(start)} → ${label(end)} (${end - start} ${plural(calendar.base_unit || "tick")}).`;
+  return `${label(start)} → ${label(end)} (${end - start} ${plural(tickName(calendar))}).`;
 }
 
 // A resolved date says two things the writer wants: the period it landed on,
@@ -91,7 +45,7 @@ function describeTicks(labelled, start, end, calendar) {
 function describeDates(resolved, calendar) {
   const { start_tick: start, end_tick: end, ticks } = resolved;
   const label = (tick) => (ticks.find((t) => t.tick === tick) || {}).label || String(tick);
-  const span = `${end - start} ${plural(calendar.base_unit || "tick")}`;
+  const span = `${end - start} ${plural(tickName(calendar))}`;
   return `${label(start)} → ${label(end)} (${span}) — ticks ${start} → ${end}.`;
 }
 
@@ -111,7 +65,11 @@ function showReadings(list, ticks, at) {
 // Whether asking the server for a label would tell the writer anything: with no
 // calendar the label *is* the number, so the round trip would be noise.
 export function labelsAreUseful(calendar) {
-  return Boolean(calendar) && calendar.kind !== "identity" && (calendar.cycles || []).length > 0;
+  if (!calendar || calendar.kind === "identity") return false;
+  // Earth carries no cycles — its months are not a thing this book declares —
+  // so the shape test below would say its labels are worthless. They are the
+  // whole point of it.
+  return calendar.kind === "gregorian" || (calendar.cycles || []).length > 0;
 }
 
 // -- the section ---------------------------------------------------------------
@@ -244,9 +202,9 @@ export function sceneTiming(book, {
     clear(dateRow);
     startDate = endDate = null;
     if (!units.length) return;
-    startDate = dateEnd(units);
-    endDate = dateEnd(units);
-    for (const input of [...startDate.inputs, ...endDate.inputs]) {
+    startDate = dateFields(units);
+    endDate = dateFields(units);
+    for (const input of [...startDate.controls, ...endDate.controls]) {
       input.addEventListener("input", schedule);
     }
     dateRow.appendChild(labelled("Starts", startDate.node));

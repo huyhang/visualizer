@@ -83,7 +83,11 @@ def _plotline(client, plotline, write=_post):
 @pytest.fixture
 def seeded(gated, client):
     """Exactly what ``python docker/seed_demo.py`` builds, in the same order."""
-    _post(client, f"/books/{BOOK}", {"title": "The Ember Pact"})
+    for calendar_id, name, descriptor, notes in seed.LIBRARY_CALENDARS:
+        _post(client, f"/calendars/{seed.USER}/{calendar_id}",
+              {"name": name, "descriptor": descriptor, "notes": notes})
+    _post(client, f"/books/{BOOK}",
+          {"title": "The Ember Pact", "calendars": seed.calendar_attachments()})
     _events(client, [*seed.EVENTS, seed.SIGHTING_BROKEN])
     _goals(client, seed.GOALS)
     for plotline in [*seed.SOUND_PLOTLINES, seed.WITNESS_BROKEN]:
@@ -99,6 +103,38 @@ def _findings(client):
 def test_the_seed_writes_without_a_single_refusal(seeded):
     """The fixture asserts it call by call; this names why it matters."""
     assert seeded.get(f"/books/{BOOK}/goals").get_json()["goals"]
+
+
+def test_the_demo_reads_one_tick_line_through_two_calendars(seeded):
+    """The claim the seed's own output and both READMEs make: the Harbor
+    Exchange is a fictional date and February 29 on Earth, and the *same* tick
+    either way. February 29 is the load-bearing part -- a fixed-cycle calendar
+    cannot produce it, so a Gregorian reading that quietly used 30-day months
+    would show a different day here and nothing else would notice."""
+    both = {
+        which: seeded.get(
+            f"/books/{BOOK}/events/meet-at-emberport?calendar={which}"
+        ).get_json()
+        for which in (seed.CALENDAR_ID, seed.EARTH_CALENDAR_ID)
+    }
+
+    assert both["imperial"]["start_label"] == "Year 1, Month 1, Day 3, 00:00 AF"
+    assert both["earth"]["start_label"] == "February 29, 2024, 00:00 UTC"
+    assert both["imperial"]["start_tick"] == both["earth"]["start_tick"] == 48
+    assert both["imperial"]["end_tick"] == both["earth"]["end_tick"] == 72
+
+
+def test_the_demos_earth_origin_belongs_to_the_book(seeded):
+    """The library entry is reusable; where this story sits on Earth is not."""
+    attached = seeded.get(f"/books/{BOOK}").get_json()["calendars"]
+    by_id = {c["id"]: c for c in attached}
+
+    assert [c["id"] for c in attached] == [seed.CALENDAR_ID, seed.EARTH_CALENDAR_ID]
+    assert by_id["earth"]["origin"] == seed.EARTH_ORIGIN
+    assert by_id["imperial"]["origin"] is None
+    assert "origin" not in seeded.get(
+        f"/calendars/{seed.USER}/{seed.EARTH_CALENDAR_ID}"
+    ).get_json()["descriptor"]
 
 
 def test_a_fresh_seed_leaves_the_book_conflicted(seeded):

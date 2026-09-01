@@ -34,7 +34,9 @@ testable.
 
 - No writing/prose editor UI. Chronos is an HTTP/JSON API first; a UI can come
   later on top of it, the way the editor was layered onto `akasha`.
-- No real-world calendar semantics. Time is abstract (see §4).
+- No location-dependent time. Time stays abstract (see §4); a book may project
+  its ticks onto Earth's calendar at a fixed UTC offset, but named timezones and
+  daylight saving are out.
 - No automatic *resolution* of conflicts — Chronos **detects and reports**;
   the writer decides what to change.
 
@@ -438,8 +440,31 @@ descriptor picks one via a pure `codec_for(book)` factory:
 
   `format` is repeated `divmod` (mixed-radix decomposition); `span` is the
   inverse composition.
-- **`GregorianCodec` (optional).** For real-world settings, back the same
-  interface with `datetime`.
+- **`GregorianCodec` (a parallel Earth).** For a story that also happens here.
+  Everything above rests on a unit being a fixed number of ticks, and a
+  Gregorian month is not — which is why Earth is its own codec rather than
+  another cycle table:
+
+  ```jsonc
+  { "kind": "gregorian", "tick_unit": "hour" }   // and nothing else
+  ```
+
+  Only the *labels* vary in length. A tick stays exactly one day, hour or
+  minute, so `span` simply reports a shorter period for February and nothing
+  downstream learns why. The arithmetic is Hinnant's civil-day conversion rather
+  than `datetime`, which caps at year 1: a story whose Earth thread reaches
+  antiquity should be able to start there, and years before 1 read as `44 BCE`
+  while their *components* stay the plain integers every other calendar sends.
+
+  The one thing the descriptor cannot carry is which Earth moment a particular
+  book's tick 0 was. That is the story's own alignment — two books may share one
+  Earth calendar and sit centuries apart — so it lives on the attachment as
+  `origin`, beside the era bounds. It is an ISO-8601 date, plus a time and a
+  fixed UTC offset when ticks are finer than a day; being fixed, the offset
+  cancels out of every conversion and serves only to say which wall clock these
+  dates are told by. Named zones and daylight saving are deliberately out: they
+  would make some dates name two ticks and some name none, which is exactly the
+  round-trip the rest of §4.1 rests on.
 
 **A date names a period, not an instant.** `span` returns a *range* because that
 is what a writer means. Components are given from the largest unit down and the
@@ -504,6 +529,15 @@ reference would put a database read under every formatted date — and it is als
 what makes a shared book readable: its labels are its own bytes, so no grant on
 the library entry is involved. `source` records provenance so an update can be
 offered explicitly.
+
+`from_tick` says two things at once, and only one of them is always true. It
+always bounds what a reckoning covers. It *also* fixes where that reckoning's
+own count begins — but only for a calendar with no other way of knowing, which
+is any calendar whose year 1 is simply wherever its culture started. A Gregorian
+calendar already knows, from its `origin`, so an era only hides the ticks
+outside itself and never moves it; shifting it would silently re-date every
+scene against the alignment the writer stated. Each codec answers that for
+itself (`TimeCodec.anchored`), so `EraCodec` needs no idea which kind it wraps.
 
 ---
 

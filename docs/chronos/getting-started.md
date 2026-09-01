@@ -111,6 +111,13 @@ it a date and Chronos works out the tick. Ticks remain the stored truth — ever
 continuity check runs on them, which is why changing calendars never moves a
 scene.
 
+> **A story with a parallel on Earth?** Set **What kind of calendar** to
+> **Earth — Gregorian months** instead. The only thing to choose is whether one
+> tick is a day, an hour or a minute; the months are Earth's own and the form
+> never asks you for a length. Where your story sits on Earth's timeline is
+> asked for on the *book*, in the next step — because another book may use the
+> same calendar a thousand years away.
+
 ---
 
 ## 3. Create the book, and attach the calendar
@@ -129,6 +136,11 @@ Then **Time**. Under **How it counts**, choose **From your library** and pick
 here builds one without leaving the form — into the library, because that is
 where calendars live either way.) Leave it on **No calendar** and scenes read
 back as bare integers, which is a real choice and not a missing one.
+
+Picking an Earth calendar adds one more question here: **this book's tick 0 fell
+on**. Fill in the date — and the time and UTC offset, if its ticks are finer
+than a day — and every scene in the book gets its Earth date from that one
+answer. Years before 1 are typed as a plain year with the era set to **BCE**.
 
 **Create book**, and you land on its (empty) plotline table.
 

@@ -120,8 +120,10 @@ capacity sample; history already collected is kept and expires on its own.
 
 `docker/seed_demo.py` builds a small story ("The Ember Pact") across both
 services over their real HTTP APIs — a cast of characters, six scenes, and four
-plotlines. **Three of the threads are sound; the fourth is broken on purpose**,
-so you can see the continuity checks actually fire:
+plotlines, dated in two calendars at once: the fictional Imperial Reckoning and
+Earth's, where the Harbor Exchange falls on February 29, 2024. Switch between
+them and no scene moves. **Three of the threads are sound; the fourth is broken
+on purpose**, so you can see the continuity checks actually fire:
 
 ```bash
 python docker/seed_demo.py        # stack must already be up

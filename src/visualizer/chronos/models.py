@@ -230,6 +230,8 @@ class CalendarAttachment:
 
     ``from_tick``/``until_tick`` bound the era this reckoning was kept in, so a
     destroyed culture's calendar stops dating scenes that happened after it.
+    ``origin`` is the same sort of story-local fact for a Gregorian calendar:
+    which Earth moment this book's tick 0 was.
     """
 
     id: str
@@ -241,6 +243,10 @@ class CalendarAttachment:
     source: dict | None = None
     from_tick: int | None = None
     until_tick: int | None = None
+    # Which Earth moment this book's tick 0 was, for a Gregorian descriptor.
+    # It lives here rather than in the library entry because it is the *story's*
+    # alignment: two books may share one Earth calendar and sit centuries apart.
+    origin: str | None = None
 
     @property
     def display_label(self) -> str:
@@ -254,6 +260,7 @@ class CalendarAttachment:
             "source": self.source,
             "from_tick": self.from_tick,
             "until_tick": self.until_tick,
+            "origin": self.origin,
         }
 
     @classmethod
@@ -265,6 +272,7 @@ class CalendarAttachment:
             source=doc.get("source"),
             from_tick=doc.get("from_tick"),
             until_tick=doc.get("until_tick"),
+            origin=doc.get("origin"),
         )
 
 

@@ -3,9 +3,12 @@
 Creates, over the real HTTP APIs (no direct DB writes):
 
 - akasha: the canon -- characters, items, locations as articles.
-- chronos: the book "The Ember Pact" with a fictional calendar, six events,
+- chronos: the book "The Ember Pact" with two parallel calendars, six events,
   five plotlines -- three of which share one ending via `continues_into` -- and
-  the goals those threads serve, one resting on two others.
+  the goals those threads serve, one resting on two others. The calendars are a
+  fictional one and Earth's, over the same scenes: the Harbor Exchange is Year
+  1, Month 1, Day 3 in the Imperial Reckoning and February 29, 2024 on Earth,
+  and it is tick 48 either way.
 
 Three of those plotlines are sound. The fourth -- "The Witness's Tale" -- is
 deliberately broken, so a fresh seed leaves the book **conflicted** and you can
@@ -67,6 +70,36 @@ CALENDAR = {
     ],
     "epoch_label": "AF",
 }
+
+# The second reckoning over the same scenes: Earth, for the story's parallel
+# thread here. Its tick is an hour because the book's tick is an hour -- both
+# calendars read one tick line, and Earth has to advance at its pace.
+EARTH_CALENDAR_ID = "earth"
+EARTH_CALENDAR = {"kind": "gregorian", "tick_unit": "hour"}
+
+# Where this story meets Earth's timeline. Chosen so the Harbor Exchange at tick
+# 48 lands on February 29 -- the one date no fixed-cycle calendar can produce,
+# and the clearest way to see the two reckonings are not the same arithmetic.
+# It belongs to the book, not to the library entry above: another story could
+# attach the same Earth calendar a thousand years away.
+EARTH_ORIGIN = "2024-02-27T00:00Z"
+
+
+def calendar_attachments():
+    """The two readings this book keeps of its one tick line."""
+    return [
+        {
+            "id": CALENDAR_ID,
+            "label": "Imperial Reckoning",
+            "source": {"owner": USER, "calendar": CALENDAR_ID},
+        },
+        {
+            "id": EARTH_CALENDAR_ID,
+            "label": "Earth",
+            "source": {"owner": USER, "calendar": EARTH_CALENDAR_ID},
+            "origin": EARTH_ORIGIN,
+        },
+    ]
 
 # Each entity is a full article: a reserved ``title`` and wikitext ``body`` (with
 # [[col/id|label]] cross-links, resolved relative to the article's own
@@ -480,21 +513,30 @@ def seed_entities(client):
             show(status, f"{collection}/{slug}", document.get("title", ""))
 
 
-def seed_calendar(client):
-    """Put the story's calendar in the library, where calendars live.
+LIBRARY_CALENDARS = [
+    (CALENDAR_ID, "Imperial Reckoning", CALENDAR,
+     "Hours, days, months, years, counted from the Founding (AF)."),
+    (EARTH_CALENDAR_ID, "Earth", EARTH_CALENDAR,
+     "Gregorian dates, for the thread that runs beside our own world."),
+]
 
-    A book chooses a calendar rather than describing one, so this has to exist
-    before the book can point at it. It is also the reusable half: the same
-    entry is offered to every other book this writer starts.
+
+def seed_calendar(client):
+    """Put the story's calendars in the library, where calendars live.
+
+    A book chooses a calendar rather than describing one, so these have to exist
+    before the book can point at them. It is also the reusable half: the same
+    entries are offered to every other book this writer starts.
     """
-    step("chronos: the calendar, in the library")
-    status, body = client.upsert(f"{CHRONOS}/calendars/{USER}/{CALENDAR_ID}", {
-        "name": "Imperial Reckoning",
-        "descriptor": CALENDAR,
-        "notes": "Hours, days, months, years, counted from the Founding (AF).",
-    })
-    show(status, f"calendar '{USER}/{CALENDAR_ID}'",
-         body.get("name", "") if body else "")
+    step("chronos: the calendars, in the library")
+    for calendar_id, name, descriptor, notes in LIBRARY_CALENDARS:
+        status, body = client.upsert(f"{CHRONOS}/calendars/{USER}/{calendar_id}", {
+            "name": name,
+            "descriptor": descriptor,
+            "notes": notes,
+        })
+        show(status, f"calendar '{USER}/{calendar_id}'",
+             body.get("name", "") if body else "")
 
 
 def seed_book_and_events(client):
@@ -503,11 +545,7 @@ def seed_book_and_events(client):
     # is no inline spelling to choose here -- the API refuses one.
     status, body = client.upsert(f"{CHRONOS}/books/{BOOK}", {
         "title": "The Ember Pact",
-        "calendars": [{
-            "id": "imperial",
-            "label": "Imperial Reckoning",
-            "source": {"owner": USER, "calendar": CALENDAR_ID},
-        }],
+        "calendars": calendar_attachments(),
     })
     show(status, f"book '{BOOK}'")
     for spec in [*EVENTS, SIGHTING_BROKEN]:
@@ -663,6 +701,16 @@ def report(client):
     for f in conv["failures"]:
         print(f"    - [{f['plotline']}] {f['reason']} (stops at '{f.get('last_event')}')")
 
+    # One scene, both reckonings. Same ticks either way -- which is the point:
+    # nothing above this line could tell you which calendar it was computed in.
+    print("\n  the Harbor Exchange, read both ways:")
+    for calendar in (CALENDAR_ID, EARTH_CALENDAR_ID):
+        _, scene = client.get(
+            f"{CHRONOS}/books/{BOOK}/events/meet-at-emberport?calendar={calendar}"
+        )
+        print(f"    {calendar:9} {scene['start_label']}  (ticks {scene['start_tick']}"
+              f" -> {scene['end_tick']})")
+
 
 def next_steps(fixed, mixed, periods, solo=False):
     step("what to try next")
@@ -670,6 +718,7 @@ def next_steps(fixed, mixed, periods, solo=False):
     print(f"  curl -b cookies.txt {base}                      # one-glance status")
     print(f"  curl -b cookies.txt {base}/validate             # the full report")
     print(f"  curl -b cookies.txt {base}/graph                # how threads connect")
+    print(f"  curl -b cookies.txt '{base}/events?calendar=earth'  # the same scenes, dated on Earth")
     print(f"  curl -b cookies.txt {base}/events/meet-at-emberport/plotlines")
     print(f"  curl -b cookies.txt {base}/plotlines/witness-tale?expand=events")
     if fixed:

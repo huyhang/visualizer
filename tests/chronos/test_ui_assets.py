@@ -263,7 +263,9 @@ def test_the_attachment_list_names_a_calendar_and_does_not_carry_one():
 
     Two halves. Dropping `source` would sever every book's link to the library
     on the next save: no update offer would ever appear again, and nothing would
-    raise. Dropping `until_tick` would quietly un-end a calendar that had ended.
+    raise. Dropping `until_tick` would quietly un-end a calendar that had ended,
+    and dropping `origin` would leave an Earth calendar with nowhere to stand --
+    the save is refused, but only after the writer has typed the date twice.
 
     And `descriptor` must stay *absent*. The library is where calendars are
     authored; the server reads the descriptor from it. Sending one back would be
@@ -273,7 +275,7 @@ def test_the_attachment_list_names_a_calendar_and_does_not_carry_one():
     source = (_JS_DIR / "calendarlist.js").read_text()
     start = source.index("value: () =>")
     block = source[start : source.index("problems:", start)]
-    missing = [f for f in ("id", "label", "source", "from_tick", "until_tick")
+    missing = [f for f in ("id", "label", "source", "from_tick", "until_tick", "origin")
                if f"{f}:" not in block]
     assert not missing, f"calendarlist.js value() never sends {missing}"
     assert "descriptor:" not in block, (

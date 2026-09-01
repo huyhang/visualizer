@@ -159,7 +159,7 @@
           "books"
         ],
         "summary": "Read a book",
-        "description": "Includes the computed `status` \u2014 the one-glance answer to whether the story currently holds together.",
+        "description": "Includes the computed `status` — the one-glance answer to whether the story currently holds together.",
         "responses": {
           "200": {
             "$ref": "#/components/responses/BookResponse"
@@ -472,7 +472,7 @@
             "$ref": "#/components/responses/Conflict"
           }
         },
-        "description": "Blocked with `409 PLOTLINE_IN_USE` while other plotlines still continue into this one, unless `inline=true` \u2014 which absorbs this plotline into each dependent first, so their stories survive the deletion."
+        "description": "Blocked with `409 PLOTLINE_IN_USE` while other plotlines still continue into this one, unless `inline=true` — which absorbs this plotline into each dependent first, so their stories survive the deletion."
       }
     },
     "/books/{book}/goals": {
@@ -611,7 +611,7 @@
           "goals"
         ],
         "summary": "Delete a goal",
-        "description": "Blocked with `409 GOAL_IN_USE` while threads serve this goal or other goals depend on it, and the evidence names them. `detach=true` unpicks those references first \u2014 the same bargain `EVENT_IN_USE` offers.",
+        "description": "Blocked with `409 GOAL_IN_USE` while threads serve this goal or other goals depend on it, and the evidence names them. `detach=true` unpicks those references first — the same bargain `EVENT_IN_USE` offers.",
         "parameters": [
           {
             "$ref": "#/components/parameters/IfMatch"
@@ -657,7 +657,7 @@
           "events"
         ],
         "summary": "Create an event",
-        "description": "Every EntityRef must already exist in Akasha, or the write is rejected with 422. A temporal conflict does NOT reject the write \u2014 it is reported.",
+        "description": "Every EntityRef must already exist in Akasha, or the write is rejected with 422. A temporal conflict does NOT reject the write — it is reported.",
         "requestBody": {
           "$ref": "#/components/requestBodies/EventWrite"
         },
@@ -1079,7 +1079,7 @@
           "visualizer"
         ],
         "summary": "The book's continuity report",
-        "description": "Everything wrong across every plotline in one book, in the same words the plotline view uses, grouped by kind and ordered to be read top to bottom. `/books/{book}/validate` answers the same question for a machine \u2014 ids, categories, one ordering violation per thread; this answers it for the writer. `problems` are contradictions and are exactly what the book's `status` is computed from; `notes` are things worth knowing that are not faults (an undated scene is a draft state, not a fault).",
+        "description": "Everything wrong across every plotline in one book, in the same words the plotline view uses, grouped by kind and ordered to be read top to bottom. `/books/{book}/validate` answers the same question for a machine — ids, categories, one ordering violation per thread; this answers it for the writer. `problems` are contradictions and are exactly what the book's `status` is computed from; `notes` are things worth knowing that are not faults (an undated scene is a draft state, not a fault).",
         "parameters": [
           {
             "$ref": "#/components/parameters/BookId"
@@ -1396,7 +1396,7 @@
           "calendars"
         ],
         "summary": "The calendar library visible to you",
-        "description": "Your own calendars plus any shared with you. Not book-scoped: a calendar outlives any one book, and is chosen while a book is being created \u2014 when there is no book to scope to.",
+        "description": "Your own calendars plus any shared with you. Not book-scoped: a calendar outlives any one book, and is chosen while a book is being created — when there is no book to scope to.",
         "responses": {
           "200": {
             "description": "The library.",
@@ -1425,7 +1425,7 @@
           "calendars"
         ],
         "summary": "Create a calendar in your library",
-        "description": "`owner` must be you \u2014 a writer may only create under their own name. The creator owns it outright. Two writers may each hold a calendar with the same slug, and neither creation tells the other anything.",
+        "description": "`owner` must be you — a writer may only create under their own name. The creator owns it outright. Two writers may each hold a calendar with the same slug, and neither creation tells the other anything.",
         "requestBody": {
           "required": true,
           "content": {
@@ -1533,7 +1533,7 @@
           "calendars"
         ],
         "summary": "Delete a calendar",
-        "description": "Not a cascade. Books that copied it keep working \u2014 the copy *is* their calendar \u2014 and only their provenance pointer goes dangling, the same posture Chronos takes toward a deleted Akasha article. Grants naming this calendar are swept, so the slug is free again.",
+        "description": "Not a cascade. Books that copied it keep working — the copy *is* their calendar — and only their provenance pointer goes dangling, the same posture Chronos takes toward a deleted Akasha article. Grants naming this calendar are swept, so the slug is free again.",
         "parameters": [
           {
             "$ref": "#/components/parameters/IfMatch"
@@ -1610,7 +1610,7 @@
           "calendars"
         ],
         "summary": "Share a calendar",
-        "description": "Owners only. Idempotent. The calendar appears in their library beside any calendar of their own that happens to share its name \u2014 they are distinct records, told apart by owner.",
+        "description": "Owners only. Idempotent. The calendar appears in their library beside any calendar of their own that happens to share its name — they are distinct records, told apart by owner.",
         "requestBody": {
           "required": false,
           "content": {
@@ -1758,7 +1758,7 @@
         "schema": {
           "type": "string"
         },
-        "description": "Optimistic-concurrency precondition \u2014 the `rev` you last read, e.g. \"3\". Omit (or send `*`) for an unconditional write. A stale value returns 409.",
+        "description": "Optimistic-concurrency precondition — the `rev` you last read, e.g. \"3\". Omit (or send `*`) for an unconditional write. A stale value returns 409.",
         "example": "\"3\""
       },
       "CalendarOwner": {
@@ -1786,7 +1786,7 @@
         "schema": {
           "type": "string"
         },
-        "description": "Which of the book's attached calendars to write dates in. Omit for its primary (first) one. A calendar the book has not attached is a 404, never a silent fallback \u2014 a stale choice must say so rather than mislabel every date in the response. Ticks stay canonical: this chooses how they are *said* -- and, on a write carrying `start_date`/`end_date`, which reckoning those dates are read in."
+        "description": "Which of the book's attached calendars to write dates in. Omit for its primary (first) one. A calendar the book has not attached is a 404, never a silent fallback — a stale choice must say so rather than mislabel every date in the response. Ticks stay canonical: this chooses how they are *said* -- and, on a write carrying `start_date`/`end_date`, which reckoning those dates are read in."
       }
     },
     "requestBodies": {
@@ -1893,7 +1893,7 @@
         }
       },
       "BadRequest": {
-        "description": "Malformed payload \u2014 e.g. `INVALID_TIMEFRAME`, `INVALID_PLOTLINE`, `INVALID_EVENT`, `INVALID_BOOK`.",
+        "description": "Malformed payload — e.g. `INVALID_TIMEFRAME`, `INVALID_PLOTLINE`, `INVALID_EVENT`, `INVALID_BOOK`.",
         "content": {
           "application/json": {
             "schema": {
@@ -1991,7 +1991,7 @@
           "overview": {
             "type": "string",
             "example": "A smuggler's oath, and the winter it costs her.",
-            "description": "What this book is about, in the writer's own words. Free prose that no rule reads. Empty string when never written \u2014 never null.",
+            "description": "What this book is about, in the writer's own words. Free prose that no rule reads. Empty string when never written — never null.",
             "maxLength": 10000
           },
           "terminus": {
@@ -2012,7 +2012,7 @@
             "type": "string",
             "nullable": true,
             "example": "middle-earth",
-            "description": "The Akasha database this book's characters, items and locations live in. A default for the article pickers, not a constraint \u2014 an EntityRef still names its own database."
+            "description": "The Akasha database this book's characters, items and locations live in. A default for the article pickers, not a constraint — an EntityRef still names its own database."
           },
           "plotlines": {
             "type": "array",
@@ -2046,7 +2046,7 @@
             "items": {
               "$ref": "#/components/schemas/CalendarAttachment"
             },
-            "description": "Every reckoning this book keeps, in the writer's order. The first is the primary. Several at once are the point: parallel cultures counting one canonical tick line. Choosing between them changes labels only \u2014 no tick, no ordering and no verdict moves."
+            "description": "Every reckoning this book keeps, in the writer's order. The first is the primary. Several at once are the point: parallel cultures counting one canonical tick line. Choosing between them changes labels only — no tick, no ordering and no verdict moves."
           }
         },
         "example": {
@@ -2114,7 +2114,7 @@
                 "$ref": "#/components/schemas/Calendar"
               }
             ],
-            "description": "The pre-library single-calendar spelling, still accepted. Stored as a one-element `calendars` list under the id `default`."
+            "description": "The pre-library single-calendar spelling, still accepted. Stored as a one-element `calendars` list under the id `default`. A Gregorian calendar cannot be sent this way: it needs a per-book `origin`, and this shape has nowhere to put one."
           },
           "calendars": {
             "type": "array",
@@ -2122,7 +2122,7 @@
             "items": {
               "$ref": "#/components/schemas/CalendarAttachment"
             },
-            "description": "Replaces the whole list. Ids must be unique within the book. Each entry names a library calendar via `source`; a `descriptor` is refused. Send this *or* the older single `calendar`, never both. A book with no calendars shows plain integer ticks \u2014 that is how \"no calendar\" is said, not by describing one inline."
+            "description": "Replaces the whole list. Ids must be unique within the book. Each entry names a library calendar via `source`; a `descriptor` is refused. Send this *or* the older single `calendar`, never both. A book with no calendars shows plain integer ticks — that is how \"no calendar\" is said, not by describing one inline."
           }
         },
         "example": {
@@ -2151,7 +2151,7 @@
       "Calendar": {
         "type": "object",
         "nullable": true,
-        "description": "Optional descriptor that translates between integer ticks and readable dates. Cycles are ordered smallest first and nest over the base unit; their names are the keys a `Date` is written with.",
+        "description": "A descriptor that translates between integer ticks and readable dates. A mixed-radix calendar declares its own fixed cycles, ordered smallest first and nesting over the base unit; their names are the keys a `Date` is written with. A Gregorian calendar declares only `tick_unit`: its months are Earth's own, of 28, 29, 30 or 31 days, and the moment its tick 0 fell on belongs to each book that attaches it (see `CalendarAttachment.origin`).",
         "properties": {
           "base_unit": {
             "type": "string",
@@ -2180,13 +2180,24 @@
             "type": "string",
             "example": "AF"
           },
+          "tick_unit": {
+            "type": "string",
+            "enum": [
+              "day",
+              "hour",
+              "minute"
+            ],
+            "example": "hour",
+            "description": "Required when `kind` is `gregorian`, and meaningless otherwise. How long one tick is -- fixed, even though the months it labels are not."
+          },
           "kind": {
             "type": "string",
             "enum": [
               "identity",
-              "mixed_radix"
+              "mixed_radix",
+              "gregorian"
             ],
-            "description": "Defaults to mixed_radix when cycles are given."
+            "description": "Defaults to mixed_radix when omitted. A `gregorian` descriptor requires `tick_unit` and refuses `base_unit`, `cycles` and `epoch_label` -- Earth's month lengths are not a fact a calendar gets to declare."
           }
         }
       },
@@ -2419,7 +2430,7 @@
           "overview": {
             "type": "string",
             "example": "Mara's thread: the debt she takes on, and who pays it.",
-            "description": "What this thread is about, in the writer's own words. Free prose that no rule reads. Empty string when never written \u2014 never null.",
+            "description": "What this thread is about, in the writer's own words. Free prose that no rule reads. Empty string when never written — never null.",
             "maxLength": 10000
           },
           "book": {
@@ -2636,7 +2647,7 @@
       },
       "Goal": {
         "type": "object",
-        "description": "Something the book is trying to bring about. Stored: what it is, the goals it rests on (`depends_on`), and the scene that delivers it (`achieved_at`, optional). Everything else \u2014 `dependencies`, `required_by`, `plotlines`, `depth`, `status` \u2014 is computed from the rest of the book on every read, so there is no stored verdict to fall out of step with the story.",
+        "description": "Something the book is trying to bring about. Stored: what it is, the goals it rests on (`depends_on`), and the scene that delivers it (`achieved_at`, optional). Everything else — `dependencies`, `required_by`, `plotlines`, `depth`, `status` — is computed from the rest of the book on every read, so there is no stored verdict to fall out of step with the story.",
         "required": [
           "kind",
           "id",
@@ -2680,7 +2691,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Ids of goals that must be met before this one. Stored \u2014 send these back on a write."
+            "description": "Ids of goals that must be met before this one. Stored — send these back on a write."
           },
           "dependencies": {
             "type": "array",
@@ -2696,7 +2707,7 @@
             "items": {
               "$ref": "#/components/schemas/GoalRef"
             },
-            "description": "Goals that rest on this one \u2014 `depends_on` read backwards."
+            "description": "Goals that rest on this one — `depends_on` read backwards."
           },
           "plotlines": {
             "type": "array",
@@ -2724,7 +2735,7 @@
           "depth": {
             "type": "integer",
             "readOnly": true,
-            "description": "How deep this goal sits in the dependency graph \u2014 zero when it rests on nothing, otherwise one past the deepest thing it rests on. Lets a client draw the graph in layers without walking it."
+            "description": "How deep this goal sits in the dependency graph — zero when it rests on nothing, otherwise one past the deepest thing it rests on. Lets a client draw the graph in layers without walking it."
           },
           "status": {
             "$ref": "#/components/schemas/GoalStatus"
@@ -2817,13 +2828,13 @@
           },
           "missing": {
             "type": "boolean",
-            "description": "True when nothing in this book has that id. Said plainly rather than dressed up with a guessed title \u2014 a finding beside it explains how a book gets into that state.",
+            "description": "True when nothing in this book has that id. Said plainly rather than dressed up with a guessed title — a finding beside it explains how a book gets into that state.",
             "readOnly": true
           },
           "achieved_at": {
             "type": "string",
             "nullable": true,
-            "description": "The id of the scene that delivers this goal, or null while none does. Present only where a client draws the landing scene \u2014 a thread's goal_refs, the plotline table, the graph's goals. A goal named by another goal (dependencies, required_by) is a bare chip and is sent undated.",
+            "description": "The id of the scene that delivers this goal, or null while none does. Present only where a client draws the landing scene — a thread's goal_refs, the plotline table, the graph's goals. A goal named by another goal (dependencies, required_by) is a bare chip and is sent undated.",
             "readOnly": true
           },
           "achieved_scene": {
@@ -2833,7 +2844,7 @@
               }
             ],
             "nullable": true,
-            "description": "That scene, dated through the calendar being read. Null both when no scene is named and when the named one is no longer in the book \u2014 `achieved_at` beside it tells the two apart. Present on the same refs as `achieved_at`.",
+            "description": "That scene, dated through the calendar being read. Null both when no scene is named and when the named one is no longer in the book — `achieved_at` beside it tells the two apart. Present on the same refs as `achieved_at`.",
             "readOnly": true
           }
         }
@@ -2901,7 +2912,7 @@
       },
       "GoalList": {
         "type": "object",
-        "description": "Every goal in the book, unpaginated: a book keeps goals in the tens, and the dependency graph is only readable whole \u2014 a page of it would draw edges to goals that are not on it.",
+        "description": "Every goal in the book, unpaginated: a book keeps goals in the tens, and the dependency graph is only readable whole — a page of it would draw edges to goals that are not on it.",
         "required": [
           "goals"
         ],
@@ -3125,7 +3136,7 @@
           },
           "unscheduled": {
             "type": "array",
-            "description": "Scenes still waiting for timing \u2014 a to-do list, not a fault: these alone do not make a book conflicted. Each carries the window its neighbours imply; an `impossible` window IS a contradiction.",
+            "description": "Scenes still waiting for timing — a to-do list, not a fault: these alone do not make a book conflicted. Each carries the window its neighbours imply; an `impossible` window IS a contradiction.",
             "items": {
               "type": "object",
               "properties": {
@@ -3140,7 +3151,7 @@
           },
           "goals": {
             "type": "array",
-            "description": "What the book's goals say about themselves \u2014 notes and faults together, each carrying its own severity. Only the `conflict` ones count towards `status`.",
+            "description": "What the book's goals say about themselves — notes and faults together, each carrying its own severity. Only the `conflict` ones count towards `status`.",
             "items": {
               "$ref": "#/components/schemas/GoalFinding"
             }
@@ -3387,7 +3398,7 @@
           },
           "goals": {
             "type": "array",
-            "description": "Every goal in the book, id-ordered. A goal names the scene it lands on, so \"which goals land on this node\" is this list read backwards \u2014 and the goals that land on no shown scene are the ones a map has to name separately. One list rather than a copy on each node, so the two readings cannot disagree.",
+            "description": "Every goal in the book, id-ordered. A goal names the scene it lands on, so \"which goals land on this node\" is this list read backwards — and the goals that land on no shown scene are the ones a map has to name separately. One list rather than a copy on each node, so the two readings cannot disagree.",
             "items": {
               "$ref": "#/components/schemas/GoalRef"
             },
@@ -3457,7 +3468,7 @@
               "achieved_scene": {
                 "id": "the-coronation",
                 "title": "The Coronation",
-                "when": "40 \u2192 50"
+                "when": "40 → 50"
               }
             }
           ]
@@ -3594,7 +3605,7 @@
       },
       "EventNeighborhood": {
         "type": "object",
-        "description": "Which plotlines pass through, converge into, and diverge out of a single event. Built for reading: ids carry titles, times are codec-formatted, and `role`/`summary` state what is happening. All fields are computed by the presenter \u2014 nothing here is stored.",
+        "description": "Which plotlines pass through, converge into, and diverge out of a single event. Built for reading: ids carry titles, times are codec-formatted, and `role`/`summary` state what is happening. All fields are computed by the presenter — nothing here is stored.",
         "required": [
           "event",
           "role",
@@ -3690,7 +3701,7 @@
           "event": {
             "id": "meet-at-emberport",
             "title": "The Harbor Exchange",
-            "when": "Year 1, Month 1, Day 3 \u2192 Day 4 AF",
+            "when": "Year 1, Month 1, Day 3 → Day 4 AF",
             "location": "Emberport"
           },
           "role": "convergence",
@@ -3726,7 +3737,7 @@
                 "from": {
                   "id": "lyra-infiltrates",
                   "title": "Lyra Infiltrates",
-                  "when": "Day 1\u20133"
+                  "when": "Day 1–3"
                 },
                 "plotlines": [
                   {
@@ -3932,7 +3943,7 @@
       },
       "Finding": {
         "type": "object",
-        "description": "Error envelope \u2014 the same vocabulary as a Verdict, so one shape covers errors, status verdicts and /validate entries.",
+        "description": "Error envelope — the same vocabulary as a Verdict, so one shape covers errors, status verdicts and /validate entries.",
         "required": [
           "error"
         ],
@@ -3996,7 +4007,7 @@
         "type": "object",
         "nullable": true,
         "readOnly": true,
-        "description": "Where an unscheduled scene could go, inferred from its plotline neighbours. Null on a side means unconstrained. `impossible` means the surrounding scenes leave no room at all \u2014 a real contradiction.",
+        "description": "Where an unscheduled scene could go, inferred from its plotline neighbours. Null on a side means unconstrained. `impossible` means the surrounding scenes leave no room at all — a real contradiction.",
         "properties": {
           "earliest": {
             "type": "integer",
@@ -4218,7 +4229,7 @@
               }
             ],
             "nullable": true,
-            "description": "The scene the message is said about (\"this scene has not ended when \u2026\"). Null for a book-wide issue such as no ending being designated."
+            "description": "The scene the message is said about (\"this scene has not ended when …\"). Null for a book-wide issue such as no ending being designated."
           },
           "events": {
             "type": "array",
@@ -4239,7 +4250,7 @@
             "items": {
               "$ref": "#/components/schemas/EntityRef"
             },
-            "description": "The Akasha articles this message quotes, by id \u2014 a client holding the grant may substitute each title for the quoted `'id'`."
+            "description": "The Akasha articles this message quotes, by id — a client holding the grant may substitute each title for the quoted `'id'`."
           },
           "doc": {
             "type": "string",
@@ -4283,7 +4294,7 @@
               "conflict",
               "info"
             ],
-            "description": "Shared by every issue in the group \u2014 severity follows the code and a group is one heading's worth of codes, so it is stated once here rather than repeated on each entry."
+            "description": "Shared by every issue in the group — severity follows the code and a group is one heading's worth of codes, so it is stated once here rather than repeated on each entry."
           },
           "codes": {
             "type": "array",
@@ -4358,7 +4369,7 @@
             "items": {
               "$ref": "#/components/schemas/ThreadRollup"
             },
-            "description": "Every thread in the book and its share of the problems \u2014 the report's triage list and its filter menu, without a second request."
+            "description": "Every thread in the book and its share of the problems — the report's triage list and its filter menu, without a second request."
           }
         },
         "example": {
@@ -4413,7 +4424,7 @@
                 {
                   "code": "UNSCHEDULED",
                   "severity": "info",
-                  "message": "No timing yet \u2014 its neighbours put it between 10 and 20.",
+                  "message": "No timing yet — its neighbours put it between 10 and 20.",
                   "scene": {
                     "id": "the-vigil",
                     "title": "The Vigil"
@@ -4960,7 +4971,7 @@
       },
       "MissingEntityFinding": {
         "type": "object",
-        "description": "A scene naming an Akasha article that no longer exists. Referential integrity is enforced on write, so this can only be an article deleted *after* the scene was written \u2014 Akasha holds no back-reference to Chronos and cannot warn anyone at the time.",
+        "description": "A scene naming an Akasha article that no longer exists. Referential integrity is enforced on write, so this can only be an article deleted *after* the scene was written — Akasha holds no back-reference to Chronos and cannot warn anyone at the time.",
         "required": [
           "event",
           "role",
@@ -5032,7 +5043,7 @@
       },
       "CalendarAttachment": {
         "type": "object",
-        "description": "One reckoning a book keeps its dates in. A book **names** a library calendar; it cannot describe one of its own. The server reads the descriptor out of the library and copies it in, which is why the copy can never disagree with the entry it claims to come from, why provenance cannot be forged, and why a book can only ever hold a calendar that really exists in somebody's library.\n\nCopying happens **on attach, not on every save** \u2014 otherwise editing a book's title would quietly adopt whatever the library had become since. `source.rev` is how a caller chooses: omit it to take the calendar as it stands, or send the revision this book already holds to keep that copy.",
+        "description": "One reckoning a book keeps its dates in. A book **names** a library calendar; it cannot describe one of its own. The server reads the descriptor out of the library and copies it in, which is why the copy can never disagree with the entry it claims to come from, why provenance cannot be forged, and why a book can only ever hold a calendar that really exists in somebody's library.\n\nCopying happens **on attach, not on every save** — otherwise editing a book's title would quietly adopt whatever the library had become since. `source.rev` is how a caller chooses: omit it to take the calendar as it stands, or send the revision this book already holds to keep that copy.",
         "required": [
           "id",
           "source"
@@ -5055,19 +5066,25 @@
               }
             ],
             "readOnly": true,
-            "description": "Resolved from the library at attach time. Returned on reads; **rejected on writes** \u2014 a book that sends one gets a 400."
+            "description": "Resolved from the library at attach time. Returned on reads; **rejected on writes** — a book that sends one gets a 400."
           },
           "from_tick": {
             "type": "integer",
             "nullable": true,
             "example": 0,
-            "description": "When this reckoning began. Ticks are offset by it, so a calendar founded mid-story reads Year 1 at its own start. Null means it has always been kept."
+            "description": "When this reckoning began. A mixed-radix calendar is offset by it, so one founded mid-story reads Year 1 at its own start; a Gregorian calendar is only *bounded* by it, because `origin` already says where it sits. Null means it has always been kept."
           },
           "until_tick": {
             "type": "integer",
             "nullable": true,
             "example": 48200,
-            "description": "The first tick *not* covered (half-open, as everywhere else). A scene outside the span formats as \u201cbefore/after <label>\u201d rather than being given a date in a calendar nobody was keeping \u2014 which is how a destroyed culture's calendar stops dating the epilogue."
+            "description": "The first tick *not* covered (half-open, as everywhere else). A scene outside the span formats as “before/after <label>” rather than being given a date in a calendar nobody was keeping — which is how a destroyed culture's calendar stops dating the epilogue."
+          },
+          "origin": {
+            "type": "string",
+            "nullable": true,
+            "example": "2024-02-27T06:00-08:00",
+            "description": "Which Earth moment this book's tick 0 fell on. Required for a Gregorian calendar and refused for any other. A `day`-counting calendar takes a bare date (`2024-02-27`); anything finer takes a time and a fixed UTC offset (`Z` or `-08:00`) and must begin on a whole tick. Daylight saving is not applied. A year before 1 is written as the plain count that runs 1, 0, -1 back through it -- `-0043` is 44 BCE -- and reads back as `44 BCE`."
           },
           "source": {
             "type": "object",
@@ -5101,7 +5118,7 @@
       },
       "LibraryCalendar": {
         "type": "object",
-        "description": "A named, reusable calendar in a writer's library. Identity is `(owner, id)`: calendar names are generic enough that two writers will independently pick the same slug, so a global namespace would let whoever registered \u201cimperial\u201d first own that word for everybody \u2014 and would tell the next writer that a calendar they cannot read exists. Attaching one to a book copies it; nothing here is on the read path of a book's dates.",
+        "description": "A named, reusable calendar in a writer's library. Identity is `(owner, id)`: calendar names are generic enough that two writers will independently pick the same slug, so a global namespace would let whoever registered “imperial” first own that word for everybody — and would tell the next writer that a calendar they cannot read exists. Attaching one to a book copies it; nothing here is on the read path of a book's dates.",
         "required": [
           "kind",
           "id",
@@ -5144,7 +5161,7 @@
           "notes": {
             "type": "string",
             "maxLength": 2000,
-            "description": "Free prose. Empty when never written \u2014 never null."
+            "description": "Free prose. Empty when never written — never null."
           },
           "permissions": {
             "$ref": "#/components/schemas/Permissions"
@@ -5160,7 +5177,7 @@
       },
       "LibraryCalendarWrite": {
         "type": "object",
-        "description": "Writable fields. The id comes from the URL and the owner from the session. A descriptor is required: \u201cplain numbers\u201d is a book attaching no calendar, not a library entry.",
+        "description": "Writable fields. The id comes from the URL and the owner from the session. A descriptor is required: “plain numbers” is a book attaching no calendar, not a library entry.",
         "required": [
           "name",
           "descriptor"
@@ -5293,7 +5310,7 @@
         "additionalProperties": {
           "type": "integer"
         },
-        "description": "A date, keyed by this calendar's own unit names (see `Calendar.cycles` and `base_unit`; `TickLabels.components` is the same shape coming back). Cycles are 1-indexed, the base unit 0-indexed, and the top cycle is open-ended.\n\nComponents must run contiguously from the largest unit down -- `{year, month}` is a date, a bare `{day}` is not. Omitting the finer ones is how a date names a **period**: `{year: 3, month: 4, day: 12}` is the whole of that day. A `start_date` takes the period's first tick and an `end_date` the first tick after it, so the same date in both fields spans exactly that day.",
+        "description": "A date, keyed by the selected calendar's own unit names (`TickLabels.components` is the same shape coming back). A mixed-radix calendar names them itself (see `Calendar.cycles` and `base_unit`): cycles are 1-indexed, the base unit 0-indexed, and the top cycle is open-ended. A Gregorian calendar names `year`, `month`, `day`, and `hour`/`minute` at finer `tick_unit`s, with the day bounded by that month's actual length; its `year` is open-ended in both directions and counts 1, 0, -1 back through 1 BCE.\n\nComponents must run contiguously from the largest unit down -- `{year, month}` is a date, a bare `{day}` is not. Omitting the finer ones is how a date names a **period**: `{year: 3, month: 4, day: 12}` is the whole of that day, and `{year: 2024, month: 2}` is all 29 days of it. A `start_date` takes the period's first tick and an `end_date` the first tick after it, so the same date in both fields spans exactly that period.",
         "example": {
           "year": 3,
           "month": 4,
