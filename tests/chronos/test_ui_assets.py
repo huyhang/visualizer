@@ -195,6 +195,29 @@ def test_the_shared_modules_are_served_under_this_apps_static_path(client):
     assert "slugify" in served.get_data(as_text=True)
 
 
+def test_the_heading_actions_are_built_one_way():
+    """Both views that share `.books-head` build its buttons with one helper.
+
+    The compact rule for that row swaps each action's words for its glyph. A
+    button built by hand has no glyph to swap to, so it would be squashed to a
+    36px square with its label still inside -- and the two views share the
+    class, so a rule written for one reaches the other.
+    """
+    assert "export function headingAction" in (_JS_DIR / "dom.js").read_text()
+    for module in ("books.js", "calendarlibrary.js"):
+        source = (_JS_DIR / module).read_text()
+        assert "headingAction" in source, module
+        head = source.split('class: "books-head"', 1)[1].split("]),", 1)[0]
+        assert 'el("button"' not in head, f"{module} hand-builds a heading button"
+
+
+def test_the_shared_service_nav_stylesheet_is_served(client):
+    """The nav's geometry travels with it, at this app's own static path."""
+    response = client.get("/static/shared/service-nav.css")
+    assert response.status_code == 200
+    assert ".service-nav" in response.get_data(as_text=True)
+
+
 def _body_builder(source: str) -> str:
     """The text of a module's ``body()`` payload builder.
 

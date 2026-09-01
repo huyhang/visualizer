@@ -43,10 +43,16 @@ function _toolbar({ titles, title, rev }, handlers) {
       { label: title },
     ]),
     el("span", { class: "spacer" }),
-    el("button", { class: "btn sm", text: "Edit", onclick: () => handlers.onEdit() }),
-    el("button", { class: "btn sm secondary", text: "History", onclick: () => handlers.onHistory() }),
-    el("button", { class: "btn sm secondary", text: "Share", onclick: () => handlers.onShare() }),
-    el("button", { class: "btn sm danger", text: "Delete", onclick: () => handlers.onDelete(rev) }),
+    // Grouped rather than loose beside the trail: on a phone the four of them
+    // move to a line of their own, and four siblings in a wrapping row cannot
+    // be moved together. How long the trail is then stops deciding how many
+    // buttons end up stranded on a second row.
+    el("div", { class: "pane-actions" }, [
+      el("button", { class: "btn sm", text: "Edit", onclick: () => handlers.onEdit() }),
+      el("button", { class: "btn sm secondary", text: "History", onclick: () => handlers.onHistory() }),
+      el("button", { class: "btn sm secondary", text: "Share", onclick: () => handlers.onShare() }),
+      el("button", { class: "btn sm danger", text: "Delete", onclick: () => handlers.onDelete(rev) }),
+    ]),
   ]);
 }
 

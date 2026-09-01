@@ -52,7 +52,7 @@ nothing about how they work — it just gives **one reverse-proxy rule, one cook
 and no CORS**, which is exactly what the Synology reverse-proxy deployment wants.
 It's a *front door*, not a merge: each app keeps its own factory and test suite,
 and the per-service entrypoints (`visualizer.akasha.wsgi` and its siblings) still
-run a single service on its own port for development. The header's `AKASHA_URL`,
+run a single service on its own port for development. The service nav's `AKASHA_URL`,
 `CHRONOS_URL` and `PRITHVI_URL` default to the relative paths `/`, `/timeline`
 and `/prithvi`; set them if a proxy serves the services on different hosts.
 

@@ -111,6 +111,13 @@ def test_the_shared_modules_are_served_under_this_apps_static_path(client):
     assert "slugify" in served.get_data(as_text=True)
 
 
+def test_the_shared_service_nav_stylesheet_is_served(client):
+    """The nav's geometry travels with it, at this app's own static path."""
+    response = client.get("/static/shared/service-nav.css")
+    assert response.status_code == 200
+    assert ".service-nav" in response.get_data(as_text=True)
+
+
 # Elements whose displayed value is *not* set by a `value` attribute -- the
 # mirror of the same check in ``tests/chronos/test_ui_assets.py``. A textarea's
 # value is its child text; a select's is whichever option carries `selected`.

@@ -14,7 +14,7 @@
 // the calendars; a book copies one when it wants it.
 
 import { api } from "./api.js";
-import { clear, el, expandableText, field, toast } from "./dom.js";
+import { clear, el, expandableText, field, headingAction, toast } from "./dom.js";
 import { calendarHint } from "./calendars.js";
 import { inlineCalendarEditor } from "./calendarfield.js";
 import { confirmModal, modal } from "./picker.js";
@@ -39,10 +39,12 @@ export async function mountCalendarLibrary(container, { onBooks, me }) {
     ]),
     el("div", { class: "books-head" }, [
       el("h1", { class: "view-title", text: "Your calendars" }),
-      el("button", {
-        class: "btn sm", type: "button", text: "+ New calendar",
-        onclick: () => openCalendarForm({ me, onDone: render }),
-      }),
+      el("div", { class: "head-actions" }, [
+        headingAction({
+          label: "＋ New calendar", glyph: "plus",
+          onClick: () => openCalendarForm({ me, onDone: render }),
+        }),
+      ]),
     ]),
     el("p", { class: "view-lead muted", text:
       "Reckonings you can attach to any book. A book copies the calendar it "

@@ -15,7 +15,14 @@ one login is used.
 
 from functools import wraps
 
-from flask import Blueprint, redirect, render_template, request, url_for
+from flask import (
+    Blueprint,
+    has_request_context,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_login import (
@@ -98,20 +105,47 @@ def build_limiter(app, storage_uri: str = "memory://") -> Limiter:
 SERVICE_NAMES = {"akasha": "Akasha", "chronos": "Chronos", "prithvi": "Prithvi"}
 
 
+def _active_service(current: str, home_endpoint: str) -> str | None:
+    """Which service the *current page* is, or ``None`` on a utility page.
+
+    ``current`` says which app is serving the request, which is not the same
+    question. Access, Admin, Observability and change-password are all served
+    by akasha, so a navigation keyed on ``current`` highlighted Articles while
+    you stood on Access -- and told a screen reader ``aria-current="page"``
+    about a page you were not on.
+
+    An allowlist of one rather than a denylist of the rest: a service's own
+    surface is its ``index``, and anything else it grows later is a utility
+    page that correctly highlights nothing without being registered here.
+    """
+    if not has_request_context():
+        return None
+    return current if request.endpoint == home_endpoint else None
+
+
 def register_service_links(
-    app, akasha_url: str, chronos_url: str, current: str, prithvi_url: str
+    app,
+    akasha_url: str,
+    chronos_url: str,
+    current: str,
+    prithvi_url: str,
+    home_endpoint: str = "index",
 ) -> None:
-    """Expose cross-service nav links to every template (the header switcher).
+    """Expose cross-service nav links to every template (the service nav).
 
     The three services share one login (one cookie across ports/origins), so
     these are plain links between the apps. The URLs are injected here rather
     than hard-coded in templates, so a reverse-proxy deployment can point them
     wherever it serves each service. ``current`` (``"akasha"``/``"chronos"``/
-    ``"prithvi"``) lets a header highlight the active service.
+    ``"prithvi"``) says which app this is; ``active`` says which service the
+    page belongs to, and is ``None`` on the shared utility pages.
 
     ``prithvi_url`` is required rather than defaulted, for the same reason the
-    other two are: a header whose links depend on which caller remembered to
-    pass an argument is a header that silently points somewhere wrong.
+    other two are: a nav whose links depend on which caller remembered to
+    pass an argument is a nav that silently points somewhere wrong.
+    ``home_endpoint`` may default, because all three services name their own
+    surface ``index`` and a wrong value highlights nothing at all -- loud
+    rather than silent, and asserted per service.
     """
     links = {
         "akasha": akasha_url,
@@ -133,7 +167,11 @@ def register_service_links(
 
     @app.context_processor
     def _inject_service_links():
-        return {"service_links": links}
+        # Recomputed per request, because ``active`` is about the page rather
+        # than the app. Everything else in here is constant.
+        return {
+            "service_links": {**links, "active": _active_service(current, home_endpoint)}
+        }
 
 
 def _wants_json() -> bool:

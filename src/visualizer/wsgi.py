@@ -47,7 +47,7 @@ _ratelimit = get_rate_limit_storage_uri()
 # same process, and the service label on each sample keeps them apart.
 _observability = observability_runtime.start(_client, _auth_store)
 
-# Behind one origin the header switcher's links are relative paths, not
+# Behind one origin the service nav's links are relative paths, not
 # cross-origin URLs. Overridable, but these are the right defaults here.
 _akasha_url = os.environ.get("AKASHA_URL", "/")
 _chronos_url = os.environ.get("CHRONOS_URL", DEFAULT_CHRONOS_PREFIX)

@@ -38,15 +38,19 @@
   </script>
   <style>
     :root, [data-theme="light"] {
-      --bg: #f5f6fb; --surface: #ffffff; --border: #e7e9f1; --text: #1f2430;
+      --bg: #f5f6fb; --surface: #ffffff; --surface-2: #f9fafc;
+      --border: #e7e9f1; --text: #1f2430;
       --muted: #6b7280; --accent: #6366f1; --accent-strong: #4f46e5;
+      --accent-soft: #eef1ff;
       --danger: #dc2626; --danger-soft: #fdecec; --ok-soft: #e5f6ec;
       --shadow: 0 1px 2px rgba(16,24,40,.04), 0 6px 20px rgba(16,24,40,.06);
       --radius: 14px;
     }
     [data-theme="dark"] {
-      --bg: #0e1016; --surface: #171a22; --border: #282d3a; --text: #e6e8ee;
+      --bg: #0e1016; --surface: #171a22; --surface-2: #1d212b;
+      --border: #282d3a; --text: #e6e8ee;
       --muted: #98a1b2; --accent: #818cf8; --accent-strong: #a5b4fc;
+      --accent-soft: #1c2140;
       --danger: #f87171; --danger-soft: #3a1f24; --ok-soft: #16311f;
       --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 28px rgba(0,0,0,.4);
     }
@@ -56,6 +60,8 @@
       padding: 2rem 1rem; background: var(--bg); color: var(--text);
       font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     }
+    body.has-service-nav { display: block; min-height: 0; padding: 0; }
+    .app-shell-main.auth-surface { display: grid; place-items: center; padding: 2rem 1rem; }
     main { width: 100%; max-width: 420px; }
     .card {
       background: var(--surface); border: 1px solid var(--border);
@@ -83,8 +89,17 @@
     .muted { color: var(--muted); font-size: .88rem; }
     a { color: var(--accent-strong); }
   </style>
+  {# After this page's own rules: the shared nav owns the geometry it introduces. #}
+  <link rel="stylesheet" href="{{ url_for('shared_static', filename='service-nav.css') }}">
 </head>
-<body>
+<body{% if current_user.is_authenticated %} class="has-service-nav"{% endif %}>
+  {# Signing in has no nav to show; changing your password, reached while
+     signed in, does -- and is the one page these three shells share. #}
+  {% if current_user.is_authenticated %}
+  <div class="app-shell">
+    {% include "_service_nav.html" %}
+    <div class="app-shell-main auth-surface">
+  {% endif %}
   <main>
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% for category, message in messages %}
@@ -93,5 +108,9 @@
     {% endwith %}
     {% block content %}{% endblock %}
   </main>
+  {% if current_user.is_authenticated %}
+    </div>
+  </div>
+  {% endif %}
 </body>
 </html>

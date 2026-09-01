@@ -191,7 +191,7 @@ by a contract test.
 | `PRITHVI_PIN_REVISIONS_KEEP` | `20` | Retained revisions per pin |
 
 `PRITHVI_URL` names where a browser reaches this service, for the **Maps** link
-in all three headers: `/prithvi` under the combined stack, `http://localhost:5004`
+in the shared service nav: `/prithvi` under the combined stack, `http://localhost:5004`
 when prithvi runs on its own port.
 
 Everything else — Mongo, the secret, cookie flags, rate-limit storage — is the

@@ -34,8 +34,10 @@ and **http://localhost:5002/** answers.
 **Register.** The first account becomes the administrator. Everything below is
 done as that one user; nothing here needs a second account or an admin console.
 
-Two services share that login: **Articles** (Akasha) holds *what exists* in your
-world, **Timeline** (Chronos) holds *what happens*. The switcher is top right.
+Three services share that login: **Articles** (Akasha) holds *what exists* in
+your world, **Timeline** (Chronos) holds *what happens*, and **Maps** (Prithvi)
+holds *where it happens*. All three are always on screen: a rail down the left
+on a computer, a tab bar along the bottom on a phone.
 
 ---
 

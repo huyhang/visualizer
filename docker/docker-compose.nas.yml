@@ -40,7 +40,7 @@ services:
       # In-memory auth rate limiting by default; point at a shared backend (e.g.
       # redis://redis:6379) to hold limits across multiple gunicorn workers.
       RATELIMIT_STORAGE_URI: ${RATELIMIT_STORAGE_URI:-memory://}
-      # The header switcher's links. Relative paths keep it same-origin; override
+      # The service nav's links. Relative paths keep it same-origin; override
       # only if a reverse proxy serves the services on different hosts/paths.
       AKASHA_URL: ${AKASHA_URL:-/}
       CHRONOS_URL: ${CHRONOS_URL:-/timeline}

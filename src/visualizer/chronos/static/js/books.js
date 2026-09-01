@@ -7,7 +7,7 @@
 
 import { api } from "./api.js";
 import { openBookForm } from "./bookform.js";
-import { clear, el } from "./dom.js";
+import { clear, el, headingAction } from "./dom.js";
 
 // A book that reads `conflicted` used to say so and stop there. It is a button
 // now, and it goes to the report that explains it.
@@ -46,12 +46,17 @@ function bookCard(book, { onOpen, onReport }) {
   ]);
 }
 
-function newBookButton(onOpen, { primary = false } = {}) {
+// Straight into it: a new book's whole point is the plotline you are about to
+// write, and that is one screen further in.
+const openNewBook = (onOpen) => () =>
+  openBookForm({ onDone: (saved) => onOpen(saved.id) });
+
+// The empty shelf's version: the only thing on the screen, so it keeps its
+// words at every width. The heading's version is in `mountBooks`.
+function newBookButton(onOpen) {
   return el("button", {
-    class: `btn${primary ? "" : " secondary"} sm`, type: "button", text: "+ New book",
-    // Straight into it: a new book's whole point is the plotline you are about
-    // to write, and that is one screen further in.
-    onclick: () => openBookForm({ onDone: (saved) => onOpen(saved.id) }),
+    class: "btn sm", type: "button", text: "＋ New book",
+    onclick: openNewBook(onOpen),
   });
 }
 
@@ -63,15 +68,18 @@ export async function mountBooks(container, { onOpen, onCalendars, onReport }) {
   container.appendChild(el("div", { class: "view books-view" }, [
     el("div", { class: "books-head" }, [
       el("h1", { class: "view-title", text: "Your books" }),
-      // Reachable from the shelf rather than from inside a book, because a
-      // calendar belongs to no book in particular — and the writer wants one
-      // ready *before* creating the book that will use it.
-      el("button", {
-        class: "btn secondary sm", type: "button", text: "Calendars",
-        title: "Reckonings you can attach to any book",
-        onclick: onCalendars,
-      }),
-      newBookButton(onOpen),
+      el("div", { class: "head-actions" }, [
+        // Reachable from the shelf rather than from inside a book, because a
+        // calendar belongs to no book in particular — and the writer wants one
+        // ready *before* creating the book that will use it.
+        headingAction({
+          label: "Calendars", glyph: "calendar", variant: "secondary",
+          title: "Reckonings you can attach to any book", onClick: onCalendars,
+        }),
+        headingAction({
+          label: "＋ New book", glyph: "plus", onClick: openNewBook(onOpen),
+        }),
+      ]),
     ]),
     el("p", { class: "view-lead muted", text: "Choose a book to explore its plotlines." }),
     results,
@@ -94,7 +102,7 @@ export async function mountBooks(container, { onOpen, onCalendars, onReport }) {
     // The first thing a new writer sees. It used to be a dead end.
     results.appendChild(el("div", { class: "empty-cta" }, [
       el("p", { class: "empty", text: "You have no books yet." }),
-      newBookButton(onOpen, { primary: true }),
+      newBookButton(onOpen),
     ]));
     return;
   }

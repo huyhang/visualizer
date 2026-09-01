@@ -54,18 +54,16 @@
     header nav a:hover { background: var(--surface-2); color: var(--text); text-decoration: none; }
     header nav .font-btn { font-weight: 800; letter-spacing: -.02em; }
     .logout-btn { display: inline-grid; place-items: center; padding: .35rem .5rem; }
-    .service-switch {
-      display: inline-flex; align-items: center; gap: .2rem;
-      padding-right: .5rem; margin-right: .15rem; border-right: 1px solid var(--border);
-    }
-    .service-switch a.active { background: var(--accent-soft); color: var(--accent-strong); }
     .userchip { display: inline-flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .85rem; padding-left: .5rem; }
     .userchip .avatar {
       width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
       background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; font-size: .75rem;
     }
 
-    main { max-width: 1000px; margin: 2rem auto; padding: 0 1.25rem; }
+    /* `width` + `min-width: 0` so this cannot be stretched past the column
+       by a wide child: a flex item's default minimum is its content, and
+       an admin table used to drag the whole page sideways on a phone. */
+    main { width: 100%; min-width: 0; max-width: 1000px; margin: 2rem auto; padding: 0 1.25rem; }
 
     /* page header */
     .page-header { margin: 0 0 1rem; }
@@ -136,7 +134,10 @@
     .btn-full { width: 100%; margin-top: 1rem; padding: .65rem; }
 
     /* tables */
-    .table-wrap { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    /* Scroll the table rather than the page: an admin roster is wider than
+       a phone, and a page that slides sideways to reach it is the thing the
+       service nav was moved out of the header to stop. */
+    .table-wrap { max-width: 100%; border: 1px solid var(--border); border-radius: 12px; overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; }
     th, td { text-align: left; padding: .7rem .85rem; font-size: .9rem; vertical-align: middle; }
     thead th {
@@ -184,49 +185,60 @@
     pre.result.err { background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 25%, transparent); color: var(--danger); }
     pre.result.ok  { border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
     .btn-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .25rem; }
+    @media (max-width: 560px) {
+      main { margin: 1rem auto; padding: 0 .75rem; }
+      .card { padding: 1rem; }
+      .segmented { max-width: 100%; overflow-x: auto; }
+    }
   </style>
+  {# After this page's own rules: the shared nav owns the geometry it introduces. #}
+  <link rel="stylesheet" href="{{ url_for('shared_static', filename='service-nav.css') }}">
 </head>
 <body>
   {% if current_user.is_authenticated %}
-  <header>
-    <span class="brand"><span class="mark"><img src="{{ url_for('static', filename='akasha-glyph.svg') }}" alt="" width="26" height="26"></span> Akasha</span>
-    <nav>
-      <span class="service-switch" role="navigation" aria-label="Switch service">
-        <a href="{{ service_links.akasha }}"{% if service_links.current == 'akasha' %} class="active" aria-current="page"{% endif %}>Articles</a>
-        <a href="{{ service_links.chronos }}"{% if service_links.current == 'chronos' %} class="active" aria-current="page"{% endif %}>Timeline</a>
-        <a href="{{ service_links.prithvi }}"{% if service_links.current == 'prithvi' %} class="active" aria-current="page"{% endif %}>Maps</a>
-      </span>
-      <a href="{{ url_for('account_page') }}">Access</a>
-      {# Both controls, in the same order as the three app headers. The font one
-         was missing here entirely, so text size did not survive a trip to this
-         page. shared/prefs.js wires whichever of them a page has. #}
-      <button class="link font-btn" type="button" id="font-toggle"
-              aria-label="Text size" title="Text size">A</button>
-      <button class="link" type="button" id="theme-toggle"
-              aria-label="Toggle light/dark" title="Toggle light/dark">◐</button>
-      <span class="userchip">
-        <span class="avatar">{{ current_user.username[0] | upper }}</span>{{ current_user.username }}
-      </span>
-      <form class="inline" method="post" action="{{ url_for('auth.logout') }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button class="link logout-btn" type="submit" aria-label="Log out" title="Log out">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-            <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
-          </svg>
-        </button>
-      </form>
-    </nav>
-  </header>
+  <div class="app-shell">
+    {% include "_service_nav.html" %}
+    <div class="app-shell-main">
+      <header>
+        <span class="brand"><span class="mark"><img src="{{ url_for('static', filename='akasha-glyph.svg') }}" alt="" width="26" height="26"></span><span class="brand-name"> Akasha</span></span>
+        <nav>
+          <a class="access-link{% if not service_links.active %} active{% endif %}"
+             href="{{ url_for('account_page') }}"
+             {%- if not service_links.active %} aria-current="true"{% endif %}>Access</a>
+          {# Both controls, in the same order as the three app headers. The font one
+             was missing here entirely, so text size did not survive a trip to this
+             page. shared/prefs.js wires whichever of them a page has. #}
+          <button class="link font-btn" type="button" id="font-toggle"
+                  aria-label="Text size" title="Text size">A</button>
+          <button class="link" type="button" id="theme-toggle"
+                  aria-label="Toggle light/dark" title="Toggle light/dark">◐</button>
+          <span class="userchip">
+            <span class="avatar">{{ current_user.username[0] | upper }}</span>{{ current_user.username }}
+          </span>
+          <form class="inline" method="post" action="{{ url_for('auth.logout') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="link logout-btn" type="submit" aria-label="Log out" title="Log out">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                   stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+            </button>
+          </form>
+        </nav>
+      </header>
+      {% endif %}
+      <main>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% for category, message in messages %}
+            <div class="{{ 'error' if category == 'error' else 'notice' }}">{{ message }}</div>
+          {% endfor %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+      </main>
+  {% if current_user.is_authenticated %}
+    </div>
+  </div>
   {% endif %}
-  <main>
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% for category, message in messages %}
-        <div class="{{ 'error' if category == 'error' else 'notice' }}">{{ message }}</div>
-      {% endfor %}
-    {% endwith %}
-    {% block content %}{% endblock %}
-  </main>
 </body>
 </html>

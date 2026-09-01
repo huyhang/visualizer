@@ -1,0 +1,261 @@
+/* The shared service navigation: Articles / Timeline / Maps.
+ *
+ * One stylesheet for all three services, served from the package root by
+ * ``shared_assets.py`` for the same reason ``prefs.js`` is -- the three apps
+ * used to hand-write this and the copies drifted.
+ *
+ * Three states, all media queries. There is deliberately no JavaScript: a
+ * navigation that is simply always on screen needs no toggle, no drawer and no
+ * stored preference, which is the whole class of bugs this avoids.
+ *
+ *   >=1101px   left rail, glyph + label      176px
+ *   821-1100   left rail, glyph only          64px   (Prithvi's map runs out
+ *                                                     of room around here)
+ *   <=820px    bottom tab bar, glyph + label  56px of height
+ *
+ * The two size tokens live on :root rather than on the shell so that anything
+ * pinned to the viewport -- a toast, say -- can get out of the way with the
+ * same numbers. Each is zero in the axis the navigation does not occupy, so a
+ * single expression works at every width.
+ */
+
+:root {
+  --service-nav-w: 176px;
+  --service-nav-h: 0px;
+}
+
+/* ---- shell ------------------------------------------------------------- */
+
+/* `min-height` rather than `height`: a short page still gets a rail that
+   reaches the bottom of the window, and a long one still scrolls the page. */
+.app-shell {
+  display: grid;
+  grid-template-columns: var(--service-nav-w) minmax(0, 1fr);
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.app-shell-main {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- the navigation itself --------------------------------------------- */
+
+.service-nav {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  z-index: 40;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+  padding: .7rem .6rem;
+  overflow-y: auto;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+
+/* 46px so the target clears the 44px minimum even before the padding. */
+.service-nav-link {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  padding: .4rem .5rem;
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: .9rem;
+  font-weight: 700;
+  line-height: 1.15;
+  text-decoration: none;
+}
+
+.service-nav-link:hover {
+  color: var(--text);
+  background: var(--surface-2);
+  text-decoration: none;
+}
+
+.service-nav-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.service-nav-link.active {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+/* The same white-on-gradient square the headers use for the brand, so the rail
+   and the header show one mark rather than two takes on it. */
+.service-nav-mark {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+}
+
+.service-nav-mark svg {
+  display: block;
+  width: 26px;
+  height: 26px;
+}
+
+/* ---- 821-1100px: glyphs only ------------------------------------------- */
+
+@media (max-width: 1100px) {
+  :root { --service-nav-w: 64px; }
+
+  /* Pixels, not rem. At the largest text setting a `.6rem` gutter is 13px a
+     side, which leaves a 37px target inside a 64px rail -- under the 44px
+     minimum. The rail's width does not scale with the text, so its gutter
+     must not either. */
+  .service-nav { padding: 8px 4px; }
+
+  .service-nav-link {
+    justify-content: center;
+    padding: .4rem .2rem;
+  }
+
+  /* Hidden from the eye, kept for the accessible name. The `title` on the
+     link covers sighted hover. */
+  .service-nav-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+}
+
+/* ---- <=820px: bottom tab bar -------------------------------------------- */
+
+@media (max-width: 820px) {
+  :root {
+    --service-nav-w: 0px;
+    --service-nav-h: 56px;
+  }
+
+  .app-shell { grid-template-columns: minmax(0, 1fr); }
+
+  /* Reserve the bar's own height so it never covers the map stage, the
+     article pane or the end of a long page. */
+  .app-shell-main {
+    padding-bottom: calc(var(--service-nav-h) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .service-nav {
+    position: fixed;
+    inset: auto 0 0 0;
+    top: auto;
+    z-index: 50;
+    /* Exactly the reserved height, not `auto`: the padding below the content
+       is computed from the same token, and a bar that grows past it sits on
+       top of the last of the page (and of Akasha's article drawer). */
+    height: var(--service-nav-h);
+    flex-direction: row;
+    gap: 0;
+    padding: 0 0 env(safe-area-inset-bottom, 0px);
+    overflow: visible;
+    border-right: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .service-nav-link {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: var(--service-nav-h);
+    flex-direction: column;
+    justify-content: center;
+    gap: .12rem;
+    padding: .3rem .2rem;
+    border-radius: 0;
+    /* Pixels for the same reason the gutter above is: the bar is a fixed
+       height, so its label cannot be free to scale out of it. */
+    font-size: 11px;
+  }
+
+  /* The labels come back: a tab bar has room for them, and three abstract
+     marks on their own do not say Articles from Timeline. */
+  .service-nav-label {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+  }
+
+  /* A filled pill is too heavy across a whole tab; the rule above it reads as
+     a tab indicator instead. */
+  .service-nav-link.active {
+    background: none;
+    box-shadow: inset 0 2px 0 var(--accent-strong);
+  }
+
+  .service-nav-mark {
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+  }
+
+  .service-nav-mark svg {
+    width: 21px;
+    height: 21px;
+  }
+
+  /* The avatar says nothing the Access link does not, and it costs a column.
+     The three app stylesheets already drop it on a phone; the account shell
+     never had a narrow-screen rule at all, and now shares this geometry. */
+  .app-shell-main .userchip { display: none; }
+}
+
+@media (max-width: 420px) {
+  /* At the largest text setting a 320px row still runs out. The service name
+     is redundant here: the tab bar already marks which one you are in. */
+  .app-shell-main .brand-name { display: none; }
+  .app-shell-main > header { gap: .35rem; padding: .5rem .6rem; }
+
+  /* The account shell's header is plain text links at full size. With the
+     three service links gone it is short, but at 320px and the largest text
+     setting the four that remain still do not fit side by side. */
+  .app-shell-main > header nav { gap: .2rem; }
+  .app-shell-main > header nav a,
+  .app-shell-main > header nav .link { font-size: .8rem; padding: .25rem .3rem; }
+}
+
+/* ---- Access, in the header ---------------------------------------------- */
+
+/* Access stays in the header rather than joining the nav -- it is your account,
+   not a fourth place to work. It carries the active treatment on exactly the
+   pages where no service does, which is what stops Articles claiming to be the
+   current page while you stand on Access. `aria-current="true"` rather than
+   `"page"`: Admin and change-password are in this section without being this
+   page, and only `"page"` promises an exact match. */
+.access-link.active {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+/* ---- things pinned to the viewport -------------------------------------- */
+
+/* Centred on the content, not on the window, and clear of the tab bar. Both
+   tokens are zero in the axis the navigation does not use, so this one
+   expression is correct at every width. Loaded after each app's stylesheet,
+   so it wins on equal specificity. */
+.toast {
+  left: calc(50% + var(--service-nav-w) / 2);
+  bottom: calc(1.25rem + var(--service-nav-h));
+}

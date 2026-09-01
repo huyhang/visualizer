@@ -72,6 +72,10 @@ def test_chronos_static_served_under_prefix(gc):
     resp = gc.get("/timeline/static/visualizer.css")
     assert resp.status_code == 200
 
+    # url_for supplies the mount prefix, so the shared sheet resolves here too.
+    shared = gc.get("/timeline/static/shared/service-nav.css")
+    assert shared.status_code == 200
+
 
 def test_shared_modules_are_served_by_both_apps_at_their_own_mounts(gc):
     """Why the shared tree is imported with a *relative* specifier.

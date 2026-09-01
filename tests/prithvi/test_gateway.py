@@ -81,7 +81,12 @@ def test_the_map_browser_and_its_assets_are_served_under_the_mount(
     assert f"{DEFAULT_PRITHVI_PREFIX}/static/js/app.js" in markup
     assert f'window.__BASE__ = "{DEFAULT_PRITHVI_PREFIX}"' in markup
 
-    for asset in ("static/maps.css", "static/js/app.js", "static/js/shared/slug.js"):
+    for asset in (
+        "static/maps.css",
+        "static/shared/service-nav.css",
+        "static/js/app.js",
+        "static/js/shared/slug.js",
+    ):
         served = stack.get(f"{DEFAULT_PRITHVI_PREFIX}/{asset}")
         assert served.status_code == 200, asset
 

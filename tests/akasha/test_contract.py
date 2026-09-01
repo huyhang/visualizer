@@ -44,9 +44,10 @@ _HTTP_METHODS = {"get", "post", "put", "delete"}
 _BROWSER_ONLY = {
     ("get", "/"),                       # the editor SPA shell
     ("get", "/static/{filename}"),
-    # The ES modules both services load, served out of the package root by
-    # ``visualizer.shared_assets``. An asset route, not part of the JSON API.
+    # Assets every service loads, served out of the package root by
+    # ``visualizer.shared_assets``. Asset routes, not part of the JSON API.
     ("get", "/static/js/shared/{filename}"),
+    ("get", "/static/shared/{filename}"),
     ("get", "/login"),
     ("get", "/register"),
     ("get", "/change-password"),

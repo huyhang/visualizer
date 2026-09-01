@@ -6,6 +6,8 @@
   <title>Akasha</title>
   <link rel="icon" href="{{ url_for('static', filename='akasha-icon.svg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='editor.css') }}">
+  {# After the app's own sheet: the shared nav owns the geometry it introduces. #}
+  <link rel="stylesheet" href="{{ url_for('shared_static', filename='service-nav.css') }}">
   <script src="{{ url_for('shared_js', filename='prefs.js') }}"></script>
   <script>
     // The browser pane's width, before first paint. Akasha's alone -- the other
@@ -19,51 +21,53 @@
   </script>
 </head>
 <body>
-  <header class="app-header">
-    <button class="icon-btn menu-toggle" id="menu-toggle" aria-label="Toggle browser">☰</button>
-    <a class="brand" id="home-link" href="#/" title="All {{ terms.database.many }}"><span class="mark"><img src="{{ url_for('static', filename='akasha-glyph.svg') }}" alt="" width="26" height="26"></span><span class="brand-name">Akasha</span></a>
-    <div class="header-actions">
-      <nav class="service-switch" aria-label="Switch service">
-        <a href="{{ service_links.akasha }}"{% if service_links.current == 'akasha' %} class="active" aria-current="page"{% endif %}>Articles</a>
-        <a href="{{ service_links.chronos }}"{% if service_links.current == 'chronos' %} class="active" aria-current="page"{% endif %}>Timeline</a>
-        <a href="{{ service_links.prithvi }}"{% if service_links.current == 'prithvi' %} class="active" aria-current="page"{% endif %}>Maps</a>
-      </nav>
-      <a class="header-link" href="{{ url_for('account_page') }}">Access</a>
-      <button class="icon-btn font-btn" id="font-toggle" aria-label="Text size" title="Text size">A</button>
-      <button class="icon-btn" id="theme-toggle" aria-label="Toggle theme" title="Toggle light/dark">◐</button>
-      <span class="userchip"><span class="avatar">{{ current_user.username[0] | upper }}</span>
-        <span class="username">{{ current_user.username }}</span></span>
-      <form class="inline-form" method="post" action="{{ url_for('auth.logout') }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button class="icon-btn logout-btn" type="submit"
-                aria-label="Log out" title="Log out"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-          <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
-        </svg></button>
-      </form>
-    </div>
-  </header>
+  <div class="app-shell">
+    {% include "_service_nav.html" %}
+    <div class="app-shell-main">
+      <header class="app-header">
+        <button class="icon-btn menu-toggle" id="menu-toggle" aria-label="Toggle browser">☰</button>
+        <a class="brand" id="home-link" href="#/" title="All {{ terms.database.many }}"><span class="mark"><img src="{{ url_for('static', filename='akasha-glyph.svg') }}" alt="" width="26" height="26"></span><span class="brand-name">Akasha</span></a>
+        <div class="header-actions">
+          <a class="header-link access-link{% if not service_links.active %} active{% endif %}"
+             href="{{ url_for('account_page') }}"
+             {%- if not service_links.active %} aria-current="true"{% endif %}>Access</a>
+          <button class="icon-btn font-btn" id="font-toggle" aria-label="Text size" title="Text size">A</button>
+          <button class="icon-btn" id="theme-toggle" aria-label="Toggle theme" title="Toggle light/dark">◐</button>
+          <span class="userchip"><span class="avatar">{{ current_user.username[0] | upper }}</span>
+            <span class="username">{{ current_user.username }}</span></span>
+          <form class="inline-form" method="post" action="{{ url_for('auth.logout') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="icon-btn logout-btn" type="submit"
+                    aria-label="Log out" title="Log out"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+            </svg></button>
+          </form>
+        </div>
+      </header>
 
-  <div class="app-body">
-    <div class="scrim" id="scrim" hidden></div>
-    <aside class="sidebar" id="sidebar" aria-label="Browser">
-      <div class="sidebar-head">
-        <input type="search" id="search-box" placeholder="Search titles…" autocomplete="off">
-        <button class="btn sm" id="new-article-btn" title="New article">＋ New</button>
+      <div class="app-body">
+        <div class="scrim" id="scrim" hidden></div>
+        <aside class="sidebar" id="sidebar" aria-label="Browser">
+          <div class="sidebar-head">
+            <input type="search" id="search-box" placeholder="Search titles…" autocomplete="off">
+            <button class="btn sm" id="new-article-btn" title="New article">＋ New</button>
+          </div>
+          <div class="search-results" id="search-results" hidden
+               aria-label="Matches"></div>
+          <nav class="tree" id="tree" aria-label="{{ terms.database.Many }}"></nav>
+          <div class="sidebar-resize" id="sidebar-resize" role="separator"
+               aria-orientation="vertical" aria-label="Resize the browser"></div>
+        </aside>
+
+        <main class="content" id="content">
+          <!-- Every route renders here: the grid of worlds, one world's categories,
+               one category's article list, or one article. -->
+          <article class="pane" id="pane"></article>
+        </main>
       </div>
-      <div class="search-results" id="search-results" hidden
-           aria-label="Matches"></div>
-      <nav class="tree" id="tree" aria-label="{{ terms.database.Many }}"></nav>
-      <div class="sidebar-resize" id="sidebar-resize" role="separator"
-           aria-orientation="vertical" aria-label="Resize the browser"></div>
-    </aside>
-
-    <main class="content" id="content">
-      <!-- Every route renders here: the grid of worlds, one world's categories,
-           one category's article list, or one article. -->
-      <article class="pane" id="pane"></article>
-    </main>
+    </div>
   </div>
 
   <div class="toast" id="toast" hidden></div>

@@ -33,6 +33,7 @@ _NOT_OUR_API = {
     "/",
     "/static/{filename}",
     "/static/js/shared/{filename}",
+    "/static/shared/{filename}",
     "/login",
     "/logout",
     "/register",

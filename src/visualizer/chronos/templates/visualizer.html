@@ -6,6 +6,8 @@
   <title>Chronos — plotline visualiser</title>
   <link rel="icon" href="{{ url_for('static', filename='chronos-icon.svg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='visualizer.css') }}">
+  {# After the app's own sheet: the shared nav owns the geometry it introduces. #}
+  <link rel="stylesheet" href="{{ url_for('shared_static', filename='service-nav.css') }}">
   <script>
     // The path this app is mounted under ("" standalone, "/timeline" behind the
     // single-origin gateway). The JS prepends it to API/login paths so the SPA
@@ -15,32 +17,34 @@
   <script src="{{ url_for('shared_js', filename='prefs.js') }}"></script>
 </head>
 <body>
-  <header class="app-header">
-    <span class="brand"><span class="mark"><img src="{{ url_for('static', filename='chronos-glyph.svg') }}" alt="" width="26" height="26"></span><span class="brand-name">Chronos</span></span>
-    <div class="header-actions">
-      <nav class="service-switch" aria-label="Switch service">
-        <a href="{{ service_links.akasha }}"{% if service_links.current == 'akasha' %} class="active" aria-current="page"{% endif %}>Articles</a>
-        <a href="{{ service_links.chronos }}"{% if service_links.current == 'chronos' %} class="active" aria-current="page"{% endif %}>Timeline</a>
-        <a href="{{ service_links.prithvi }}"{% if service_links.current == 'prithvi' %} class="active" aria-current="page"{% endif %}>Maps</a>
-      </nav>
-      <a class="header-link" href="{{ service_links.account }}">Access</a>
-      <button class="icon-btn font-btn" id="font-toggle" aria-label="Text size" title="Text size">A</button>
-      <button class="icon-btn" id="theme-toggle" aria-label="Toggle theme" title="Toggle light/dark">◐</button>
-      <span class="userchip"><span class="avatar">{{ current_user.username[0] | upper }}</span>
-        <span class="username">{{ current_user.username }}</span></span>
-      <form class="inline-form" method="post" action="{{ url_for('auth.logout') }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button class="icon-btn logout-btn" type="submit"
-                aria-label="Log out" title="Log out"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
-             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-          <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
-        </svg></button>
-      </form>
-    </div>
-  </header>
+  <div class="app-shell">
+    {% include "_service_nav.html" %}
+    <div class="app-shell-main">
+      <header class="app-header">
+        <span class="brand"><span class="mark"><img src="{{ url_for('static', filename='chronos-glyph.svg') }}" alt="" width="26" height="26"></span><span class="brand-name">Chronos</span></span>
+        <div class="header-actions">
+          <a class="header-link access-link{% if not service_links.active %} active{% endif %}"
+             href="{{ service_links.account }}"
+             {%- if not service_links.active %} aria-current="true"{% endif %}>Access</a>
+          <button class="icon-btn font-btn" id="font-toggle" aria-label="Text size" title="Text size">A</button>
+          <button class="icon-btn" id="theme-toggle" aria-label="Toggle theme" title="Toggle light/dark">◐</button>
+          <span class="userchip"><span class="avatar">{{ current_user.username[0] | upper }}</span>
+            <span class="username">{{ current_user.username }}</span></span>
+          <form class="inline-form" method="post" action="{{ url_for('auth.logout') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="icon-btn logout-btn" type="submit"
+                    aria-label="Log out" title="Log out"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+            </svg></button>
+          </form>
+        </div>
+      </header>
 
-  <main class="content" id="content"></main>
+      <main class="content" id="content"></main>
+    </div>
+  </div>
 
   <div class="peek" id="peek" aria-live="polite"></div>
   <div class="toast" id="toast" hidden></div>

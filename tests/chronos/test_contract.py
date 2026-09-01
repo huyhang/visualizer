@@ -36,9 +36,10 @@ _OPENAPI_PATH = (
 # Auth/static routes come from akasha and are out of this contract's scope.
 _NOT_OUR_API = {
     "/static/{filename}",
-    # The ES modules both services load, served out of the package root by
-    # ``visualizer.shared_assets``. An asset route, not part of the JSON API.
+    # Assets every service loads, served out of the package root by
+    # ``visualizer.shared_assets``. Asset routes, not part of the JSON API.
     "/static/js/shared/{filename}",
+    "/static/shared/{filename}",
     "/login",
     "/logout",
     "/register",

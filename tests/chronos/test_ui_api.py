@@ -85,13 +85,31 @@ def test_static_assets_are_served(seeded, client):
     assert client.get("/static/visualizer.css").status_code == 200
 
 
-def test_header_switcher_links_to_akasha(seeded, client):
+def test_the_service_nav_links_to_akasha(seeded, client):
     html = client.get("/").get_data(as_text=True)
-    assert "service-switch" in html
+    assert 'class="service-nav"' in html
+    assert 'aria-label="Applications"' in html
     assert "Articles" in html and "Timeline" in html and "Maps" in html
     assert "http://localhost:5002" in html            # default akasha URL
     assert "http://localhost:5004" in html            # default prithvi URL
     assert ">Admin<" not in html            # Admin is a tab inside Accounts now
+    # The whole point: the widest group is out of the row, so it cannot wrap.
+    header = html.split("<header", 1)[1].split("</header>", 1)[0]
+    assert "Articles" not in header and "Timeline" not in header
+    assert "Maps" not in header
+
+
+def test_chronos_marks_timeline_current_on_its_own_surface(seeded, client):
+    nav = (
+        client.get("/").get_data(as_text=True)
+        .split('<nav class="service-nav"', 1)[1].split("</nav>", 1)[0]
+    )
+    current = [
+        chunk.split('<span class="service-nav-label">')[1].split("<")[0]
+        for chunk in nav.split('<a class="service-nav-link')[1:]
+        if 'aria-current="page"' in chunk.partition(">")[0]
+    ]
+    assert current == ["Timeline"]
 
 
 def test_header_has_account_link(seeded, client):
@@ -1072,5 +1090,13 @@ def test_logging_out_of_chronos_lands_somewhere_that_works(client, app):
 
 
 def test_the_change_password_page_renders_on_chronos_too(client):
-    assert client.get("/change-password").status_code == 200
+    response = client.get("/change-password")
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    # The auth shell had no cross-service navigation at all before the rail:
+    # signed in on this page, there was no way back to the other two services.
+    assert 'class="service-nav"' in html
+    assert "Articles" in html and "Timeline" in html and "Maps" in html
+    # Not the Timeline surface, so nothing is the current page.
+    assert 'aria-current="page"' not in html
 

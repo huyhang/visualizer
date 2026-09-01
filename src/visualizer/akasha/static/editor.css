@@ -43,15 +43,6 @@ a.brand:hover { text-decoration: none; opacity: .85; }
   background: linear-gradient(135deg, var(--accent), var(--accent-strong));
 }
 .header-actions { margin-left: auto; display: flex; align-items: center; gap: .5rem; }
-.service-switch {
-  display: inline-flex; align-items: center; gap: .2rem;
-  padding-right: .5rem; margin-right: .15rem; border-right: 1px solid var(--border);
-}
-.service-switch a {
-  color: var(--muted); font-weight: 600; font-size: .85rem; padding: .3rem .6rem; border-radius: 8px;
-}
-.service-switch a:hover { background: var(--surface-2); text-decoration: none; }
-.service-switch a.active { background: var(--accent-soft); color: var(--accent-strong); }
 .header-link { color: var(--muted); font-weight: 600; font-size: .9rem; padding: .3rem .5rem; border-radius: 8px; }
 .header-link:hover { background: var(--surface-2); text-decoration: none; }
 .userchip { display: inline-flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .85rem; }
@@ -179,6 +170,7 @@ a.brand:hover { text-decoration: none; opacity: .85; }
 
 .pane-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-bottom: 1rem; }
 .pane-toolbar .spacer { flex: 1; }
+.pane-actions { display: flex; align-items: center; gap: .4rem; }
 .crumbs { color: var(--muted); font-size: .82rem; margin-bottom: .4rem; }
 .crumbs .sep { opacity: .5; margin: 0 .25rem; }
 .crumbs a { color: var(--muted); }
@@ -425,19 +417,10 @@ del.d { background: var(--del-soft); color: var(--del); border-radius: 3px; padd
      say which of the three services you are in, and the other two show theirs. */
   .username { display: none; }
 
-  /* Let the header wrap rather than run off the side. Without this the controls
-     past the switcher sit outside the viewport and the whole page scrolls
-     sideways to reach them. */
-  .app-header { flex-wrap: wrap; row-gap: .4rem; padding: .5rem .75rem; }
-  .header-actions { flex-wrap: wrap; justify-content: flex-end; gap: .4rem; max-width: 100%; }
-  /* The widest group by far. It scrolls within itself instead of forcing the
-     row wider, so a fourth link (Admin) cannot push Log out off-screen. */
-  .service-switch {
-    max-width: 100%; overflow-x: auto; scrollbar-width: none;
-    padding-right: .35rem; margin-right: 0;
-  }
-  .service-switch::-webkit-scrollbar { display: none; }
-  .service-switch a { white-space: nowrap; }
+  /* One row again, now that the three service links live in the shared nav.
+     Nothing left in here is wide enough to need wrapping. */
+  .app-header { flex-wrap: nowrap; padding: .5rem .75rem; }
+  .header-actions { flex-wrap: nowrap; gap: .4rem; min-width: 0; }
   /* The avatar says nothing the Account link does not, and it costs a column. */
   .userchip { display: none; }
 
@@ -451,6 +434,24 @@ del.d { background: var(--del-soft); color: var(--del); border-radius: 3px; padd
   }
   .sidebar.open { transform: translateX(0); }
   .scrim { position: absolute; inset: 0; background: rgba(0,0,0,.4); z-index: 20; }
+
+  /* The article trail and its four actions stop sharing a line. How many
+     buttons fit beside "Home / Ember Pact / Characters / Lyra Vane" depends on
+     the article's path and on the reader's text size, so at some sizes one
+     button wrapped and at others three did. Giving each its own row makes the
+     layout the same whatever the path says. */
+  .pane-toolbar .crumbs { flex: 1 1 100%; margin-bottom: 0; }
+  .pane-toolbar .spacer { display: none; }
+  .pane-actions { flex: 1 1 100%; }
+  /* Only ever squeezed, never wrapped: four actions on one line is the point
+     of moving them here, and shrinking a word is better than stranding one.
+     They divide the row equally and each may ellipsis, so the row fits at any
+     text size rather than at the sizes that happened to be tested. */
+  .pane-actions { width: 100%; }
+  .pane-actions .btn {
+    flex: 1 1 0; min-width: 0; padding-left: .35rem; padding-right: .35rem;
+    display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
 }
 .muted { color: var(--muted); }
 .row-gap { display: flex; gap: .5rem; flex-wrap: wrap; }

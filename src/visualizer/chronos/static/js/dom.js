@@ -97,6 +97,38 @@ export function field(label, control, hint) {
   ]);
 }
 
+// The glyphs a heading action can wear. A closed set kept here rather than at
+// the call sites, so two views cannot draw the same "new" button two ways.
+const ACTION_GLYPHS = {
+  plus: [["path", { d: "M12 5v14M5 12h14" }]],
+  calendar: [
+    ["rect", { x: "3", y: "5", width: "18", height: "16", rx: "2" }],
+    ["path", { d: "M7 3v4M17 3v4M3 9h18" }],
+  ],
+};
+
+// A button for a view heading, in Akasha's language: `btn sm`, primary unless
+// asked otherwise, labelled "＋ New <thing>".
+//
+// It carries both a label and a glyph and always has for both; which one shows
+// is the stylesheet's business. That is what lets the heading row stay a single
+// line on a phone -- the actions shrink to their glyphs instead of pushing the
+// title onto a second row. The label is never removed from the DOM, so it stays
+// the button's accessible name in either state and needs no `aria-label`.
+export function headingAction({ label, glyph, variant = "", title, onClick }) {
+  return el("button", {
+    class: `btn sm ${variant} head-action`.replace(/ +/g, " ").trim(),
+    type: "button", title: title || label, onclick: onClick,
+  }, [
+    svgEl("svg", {
+      class: "head-action-glyph", viewBox: "0 0 24 24", fill: "none",
+      stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round",
+      "stroke-linejoin": "round", "aria-hidden": "true", focusable: "false",
+    }, (ACTION_GLYPHS[glyph] || []).map(([tag, attrs]) => svgEl(tag, attrs))),
+    el("span", { class: "head-action-label", text: label }),
+  ]);
+}
+
 let toastTimer = null;
 export function toast(message, isError = false) {
   const node = $("#toast");

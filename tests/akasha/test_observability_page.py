@@ -120,6 +120,8 @@ def test_the_page_renders_before_any_data_exists(stack):
     response = _as(app, "root", "root-pass").get("/admin/observability")
 
     assert response.status_code == 200
+    assert b'class="service-nav"' in response.data
+    assert b'aria-current="page"' not in response.data   # not a service surface
     assert b"not enough history" in response.data
 
 

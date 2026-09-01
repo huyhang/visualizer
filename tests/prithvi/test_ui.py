@@ -41,9 +41,16 @@ def test_the_map_browser_needs_a_login(app):
     assert app.test_client().get("/").status_code in (302, 401)
 
 
-def test_the_header_offers_all_three_services(client):
+def test_the_service_nav_offers_all_three_services(client):
     body = client.get("/").get_data(as_text=True)
+    assert 'class="service-nav"' in body
+    assert 'aria-label="Applications"' in body
     assert "Articles" in body and "Timeline" in body and "Maps" in body
+    # Named in the nav and nowhere else: finding them anywhere in the document
+    # would still pass while they sat in the header wrapping onto a second row.
+    header = body.split("<header", 1)[1].split("</header>", 1)[0]
+    assert "Articles" not in header and "Timeline" not in header
+    assert "Maps" not in header
     assert 'aria-current="page"' in body
 
 
@@ -51,6 +58,7 @@ def test_the_header_offers_all_three_services(client):
     "path",
     [
         "/static/maps.css",
+        "/static/shared/service-nav.css",
         "/static/js/app.js",
         "/static/js/shared/slug.js",
         "/static/prithvi-glyph.svg",
