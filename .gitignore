@@ -220,3 +220,6 @@ __marimo__/
 
 # macos
 .DS_Store
+
+# Claude stuff
+.claude
