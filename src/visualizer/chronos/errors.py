@@ -181,6 +181,20 @@ class TerminusInUse(ChronosError):
     code = "TERMINUS_IN_USE"
 
 
+class ManuscriptInUse(ChronosError):
+    """Raised when deleting a book whose Logos manuscript still holds prose."""
+
+    status_code = 409
+    code = "MANUSCRIPT_IN_USE"
+
+
+class EventInManuscript(ChronosError):
+    """Raised when deleting a scene a live Logos section is written from."""
+
+    status_code = 409
+    code = "EVENT_IN_MANUSCRIPT"
+
+
 class InvalidRevision(ChronosError):
     """Raised when an ``If-Match``/``_rev`` precondition value is malformed."""
 

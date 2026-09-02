@@ -316,7 +316,7 @@ GET    /books                                        books you can read
 POST   /books/<book>                                 create (you become owner)
 GET    /books/<book>                                 read (incl. computed status)
 PUT    /books/<book>                                 update title/overview/terminus/calendars
-DELETE /books/<book>                                 delete book + its contents
+DELETE /books/<book>                                 delete book + its contents; refused while Logos holds prose
 POST   /books/<book>/terminus/<event>                designate the terminus
 GET    /books/<book>/validate                        full invariant report
 GET    /books/<book>/graph                           the whole story graph
@@ -331,7 +331,7 @@ GET    /books/<book>/events                          the book's scenes, in story
 POST   /books/<book>/events/<event>                  create
 GET    /books/<book>/events/<event>
 PUT    /books/<book>/events/<event>
-DELETE /books/<book>/events/<event>[?detach=true]    detach removes it from plotlines first
+DELETE /books/<book>/events/<event>[?detach=true]    detach removes it from plotlines first; refused while a Logos section is written from it
 GET    /books/<book>/events/<event>/plotlines[?relation=converging|diverging|through]
 
 GET    /books/<book>/goals                           every goal, read against the book

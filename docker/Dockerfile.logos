@@ -1,0 +1,31 @@
+# Lightweight image for the logos API (manuscript volumes, sections and prose).
+#
+# Mirrors its three siblings: same slim base, same layout, same layer ordering.
+# Logos always ships alongside chronos and akasha and reads both in-process (a
+# book has to exist before a manuscript can hang off it), so the only real
+# difference is the gunicorn entrypoint.
+#
+# Build context is the repo root (see docker-compose.nas.yml).
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies first so app-code edits don't invalidate this layer.
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# The source tree is copied under /app/src so the package imports as
+# `visualizer.logos` (see PYTHONPATH below).
+COPY src /app/src
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/src \
+    MONGO_URI=mongodb://mongo:27017
+
+EXPOSE 5000
+
+# Threaded (gthread) workers, as in the sibling images. A section PUT carries a
+# whole chapter of rich text, so the 60s timeout is worth keeping here too.
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", \
+     "--workers", "2", "--worker-class", "gthread", "--threads", "4", \
+     "--timeout", "60", "visualizer.logos.wsgi:app"]

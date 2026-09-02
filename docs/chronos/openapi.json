@@ -208,6 +208,7 @@
           "books"
         ],
         "summary": "Delete a book and everything in it",
+        "description": "The cascade covers plotlines, events and goals. It never covers Logos prose: while a manuscript exists for this book the delete is refused with `409 MANUSCRIPT_IN_USE`, and the manuscript must be deleted explicitly through Logos first.",
         "parameters": [
           {
             "$ref": "#/components/parameters/IfMatch"
@@ -743,7 +744,7 @@
           "events"
         ],
         "summary": "Delete an event",
-        "description": "Blocked with `409 EVENT_IN_USE` while any plotline still lists it, unless `detach=true`. Deleting the book's terminus is always blocked (`409 TERMINUS_IN_USE`) until a new one is designated.",
+        "description": "Blocked with `409 EVENT_IN_USE` while any plotline still lists it, unless `detach=true`. Blocked with `409 EVENT_IN_MANUSCRIPT` while any live Logos section is written from it; `detach=true` does not override this, because detaching would silently edit prose. Deleting the book's terminus is always blocked (`409 TERMINUS_IN_USE`) until a new one is designated.",
         "parameters": [
           {
             "$ref": "#/components/parameters/IfMatch"
@@ -1933,7 +1934,7 @@
         }
       },
       "Conflict": {
-        "description": "`ALREADY_EXISTS`, `REVISION_CONFLICT`, `EVENT_IN_USE`, `PLOTLINE_IN_USE` or `TERMINUS_IN_USE`.",
+        "description": "A conflicting write, or a resource still referenced from inside Chronos (`EVENT_IN_USE`, `PLOTLINE_IN_USE`, `TERMINUS_IN_USE`) or from a Logos manuscript (`MANUSCRIPT_IN_USE`, `EVENT_IN_MANUSCRIPT`).",
         "content": {
           "application/json": {
             "schema": {
@@ -3961,6 +3962,7 @@
               "CALENDAR_NOT_FOUND",
               "CHRONOS_ERROR",
               "ENTITY_NOT_FOUND",
+              "EVENT_IN_MANUSCRIPT",
               "EVENT_IN_USE",
               "EVENT_NOT_FOUND",
               "FORBIDDEN",
@@ -3974,6 +3976,7 @@
               "INVALID_PLOTLINE",
               "INVALID_REVISION",
               "INVALID_TIMEFRAME",
+              "MANUSCRIPT_IN_USE",
               "PLOTLINE_CYCLE",
               "PLOTLINE_IN_USE",
               "PLOTLINE_NOT_FOUND",

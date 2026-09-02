@@ -22,6 +22,15 @@ from bson import BSON
 
 from visualizer.auth.store import DATABASE_RESOURCE
 from visualizer.chronos.store import CHRONOS_DB
+from visualizer.logos.store import (
+    LOGOS_DB,
+    OUTLINE_REVISIONS,
+    OUTLINES,
+    SECTION_REVISIONS,
+    SECTIONS,
+    VOLUME_REVISIONS,
+    VOLUMES,
+)
 from visualizer.prithvi.store import (
     MAP_IDENTITY,
     MAP_REVISIONS,
@@ -197,6 +206,7 @@ class MongoDocumentSource:
         yield from self._articles()
         yield from self._chronos()
         yield from self._prithvi()
+        yield from self._logos()
 
     def _articles(self) -> Iterator[StoredDocument]:
         for database in self._client.list_database_names():
@@ -233,6 +243,21 @@ class MongoDocumentSource:
             database[PINS], database[PIN_REVISIONS], "pin", PIN_IDENTITY
         )
 
+    def _logos(self) -> Iterator[StoredDocument]:
+        """Manuscript bytes are charged to the Chronos book they belong to.
+
+        A volume is not a thing anyone shares or owns separately -- the book is
+        -- so charging prose to the book puts a manuscript and the timeline it
+        was written from on the same line of the usage page.
+        """
+        database = self._client[LOGOS_DB]
+        for heads, revisions in (
+            (OUTLINES, OUTLINE_REVISIONS),
+            (VOLUMES, VOLUME_REVISIONS),
+            (SECTIONS, SECTION_REVISIONS),
+        ):
+            yield from _rejoined_by_book(database[heads], database[revisions])
+
 
 def _article(database: str, collection: str, stored: dict) -> StoredDocument:
     history = tuple(
@@ -264,6 +289,23 @@ def _rejoined(heads, revisions, kind: str, identity) -> Iterator[StoredDocument]
         entries = tuple(history.get(head["_id"], ()))
         yield StoredDocument(
             resource=(kind, *(head[field] for field in identity)),
+            total_bytes=_sizeof(head) + sum(size for _, size in entries),
+            history=entries,
+            created_by=head.get("created_by"),
+        )
+
+
+def _rejoined_by_book(heads, revisions) -> Iterator[StoredDocument]:
+    """``_rejoined``, but every record charged to its Chronos book."""
+    history: dict[str, list[tuple[str | None, int]]] = {}
+    for revision in revisions.find():
+        history.setdefault(revision["resource_key"], []).append(
+            (revision.get("author"), _sizeof(revision))
+        )
+    for head in heads.find():
+        entries = tuple(history.get(head["_id"], ()))
+        yield StoredDocument(
+            resource=("book", head["book"]),
             total_bytes=_sizeof(head) + sum(size for _, size in entries),
             history=entries,
             created_by=head.get("created_by"),

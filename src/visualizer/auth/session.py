@@ -102,7 +102,12 @@ def build_limiter(app, storage_uri: str = "memory://") -> Limiter:
 
 
 # Display names for the services, keyed by the slug ``current`` uses.
-SERVICE_NAMES = {"akasha": "Akasha", "chronos": "Chronos", "prithvi": "Prithvi"}
+SERVICE_NAMES = {
+    "akasha": "Akasha",
+    "chronos": "Chronos",
+    "prithvi": "Prithvi",
+    "logos": "Logos",
+}
 
 
 def _active_service(current: str, home_endpoint: str) -> str | None:

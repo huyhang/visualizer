@@ -1,10 +1,10 @@
 # The stack: one combined app + MongoDB.
 #
-# akasha, chronos and prithvi run in a single gunicorn behind one origin
+# akasha, chronos, prithvi and logos run in a single gunicorn behind one origin
 # (docker/Dockerfile -> visualizer.wsgi:application): akasha at `/`, chronos at
-# `/timeline`, prithvi at `/prithvi`. One published port -> one Synology
-# reverse-proxy entry, one cookie, no CORS. `restart: unless-stopped` so it
-# survives NAS reboots.
+# `/timeline`, prithvi at `/prithvi`, logos at `/logos`. One published port ->
+# one Synology reverse-proxy entry, one cookie, no CORS. `restart:
+# unless-stopped` so it survives NAS reboots.
 #
 # Deploy (from the repo root on the NAS):
 #   SECRET_KEY is required — put it in docker/.env (auto-loaded), e.g.
@@ -17,12 +17,13 @@
 #   5002/          -> akasha  (articles/entities, and the shared /login)
 #   5002/timeline  -> chronos (the plotline visualiser)
 #   5002/prithvi   -> prithvi (the map browser, and the map and pin API)
+#   5002/logos     -> logos   (the manuscript API; no browser UI yet)
 # Point one Synology reverse-proxy rule (one hostname) at this port, enable
 # HTTPS, then set SESSION_COOKIE_SECURE=true in docker/.env.
 #
 # To run the services on separate ports instead (development), build
-# Dockerfile.akasha / Dockerfile.chronos / Dockerfile.prithvi
-# (visualizer.{akasha,chronos,prithvi}.wsgi).
+# Dockerfile.akasha / Dockerfile.chronos / Dockerfile.prithvi / Dockerfile.logos
+# (visualizer.{akasha,chronos,prithvi,logos}.wsgi).
 name: visualizer
 
 services:
@@ -51,6 +52,11 @@ services:
       PRITHVI_MAX_SVG_BYTES: ${PRITHVI_MAX_SVG_BYTES:-5242880}
       PRITHVI_MAP_REVISIONS_KEEP: ${PRITHVI_MAP_REVISIONS_KEEP:-5}
       PRITHVI_PIN_REVISIONS_KEEP: ${PRITHVI_PIN_REVISIONS_KEEP:-20}
+      # How many drafts of each section Logos keeps. Prose is the one thing here
+      # that cannot be reconstructed, so this is the most generous retention in
+      # the stack -- and an invalid value stops the app rather than silently
+      # keeping fewer than asked.
+      LOGOS_SECTION_REVISIONS_KEEP: ${LOGOS_SECTION_REVISIONS_KEEP:-20}
       # Observability: per-writer storage/latency/errors in the reserved `_ops`
       # database, plus NAS capacity. Admin-only page at /admin/observability,
       # pausable from there at runtime. `false` here disables it at boot.

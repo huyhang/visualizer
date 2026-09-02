@@ -1,7 +1,8 @@
 """Application services (design §6.3) -- thin orchestration.
 
-Each service is injected with the two seams (``StoryStore``, ``EntityGate``) and
-does the same shape of work: load, validate purely, persist, present. It knows
+Each service is injected with its seams (``StoryStore``, ``EntityGate``, and for
+the two that guard prose, a ``ManuscriptGate``) and does the same shape of work:
+load, validate purely, persist, present. It knows
 nothing about Flask or Mongo internals. Story-logic invariants are *computed*
 (reported via presenters), never blocking (all-soft, §8.1); referential rules
 are enforced hard here.
@@ -24,16 +25,19 @@ from .continuation import effective_paths, resolve, resolve_all, would_cycle
 from .entity_gate import EntityGate
 from .errors import (
     EntityNotFound,
+    EventInManuscript,
     EventInUse,
     GoalCycle,
     GoalInUse,
     InvalidGoal,
     InvalidPlotline,
+    ManuscriptInUse,
     PlotlineCycle,
     PlotlineInUse,
     TerminusInUse,
 )
 from .goal_rules import dependency_cycle, goals_by_event
+from .manuscript_gate import ManuscriptGate, NullManuscriptGate
 from .models import Book, EntityRef, Event, Goal, Plotline
 from .plotline_health import conflict_counts
 from .presenters import (
@@ -158,9 +162,16 @@ class BookService(_Service):
     forged, because it is the *only* thing the caller gets to state.
     """
 
-    def __init__(self, store: StoryStore, entities: EntityGate, calendars: CalendarStore):
+    def __init__(
+        self,
+        store: StoryStore,
+        entities: EntityGate,
+        calendars: CalendarStore,
+        manuscripts: ManuscriptGate | None = None,
+    ):
         super().__init__(store, entities)
         self.calendars = calendars
+        self.manuscripts = manuscripts or NullManuscriptGate()
 
     def _resolve_attachments(self, book: Book, held: Book | None = None) -> Book:
         """Fill each attachment's descriptor from the library entry it names.
@@ -231,6 +242,15 @@ class BookService(_Service):
         # its story but still present -- a state nobody asked for, and one no
         # error message can undo.
         self.store.check_book_rev(book_id, expected_rev)
+        # Prose is not part of the cascade and never will be: a book delete must
+        # not be able to take a manuscript with it. Logos offers an explicit
+        # manuscript delete, and that has to happen first.
+        if self.manuscripts.has_content(book_id):
+            raise ManuscriptInUse(
+                "Cannot delete a Chronos book while its Logos manuscript holds "
+                "content; delete the manuscript first.",
+                evidence={"book": book_id},
+            )
         # Cascade: remove everything the book holds, then the book itself.
         for pl in self.store.list_plotlines(book_id):
             self.store.delete_plotline(book_id, pl["id"], author=author)
@@ -276,6 +296,15 @@ class BookService(_Service):
 
 
 class EventService(_Service):
+    def __init__(
+        self,
+        store: StoryStore,
+        entities: EntityGate,
+        manuscripts: ManuscriptGate | None = None,
+    ):
+        super().__init__(store, entities)
+        self.manuscripts = manuscripts or NullManuscriptGate()
+
     def _check_entities(self, event: Event) -> None:
         missing = self.entities.missing(event.entity_refs())
         if missing:
@@ -327,6 +356,16 @@ class EventService(_Service):
             raise TerminusInUse(
                 "Cannot delete the terminus; designate a new terminus first.",
                 evidence={"terminus": event_id},
+            )
+        # Unlike a plotline reference, this one ``detach=true`` cannot clear:
+        # detaching would silently edit prose, so a scene that has been written
+        # is refused outright until the section stops naming it.
+        written = self.manuscripts.sections_referencing(book_id, event_id)
+        if written:
+            raise EventInManuscript(
+                "Cannot delete a scene that one or more Logos sections are "
+                "written from.",
+                evidence={"sections": written},
             )
         referencing = [p for p in self.store.list_plotlines(book_id) if event_id in p["events"]]
         # A goal that lands on this scene is holding it just as a thread listing

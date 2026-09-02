@@ -1,0 +1,1276 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Logos API",
+    "version": "1.0.0",
+    "description": "Versioned manuscripts for Chronos books: ordered volumes, ordered sections, and one structured rich-text document per section.\n\nPaths are relative to the service mount. In the combined deployment that is `/logos`; running Logos standalone it is `/`.\n\nEvery mutation of an existing resource requires an `If-Match` header carrying the `rev` from its last read. Unlike Chronos and Prithvi, Logos refuses an unconditional write: a lost update to prose cannot be reconstructed."
+  },
+  "servers": [
+    { "url": "/logos", "description": "Combined single-origin deployment" },
+    { "url": "/", "description": "Standalone deployment" }
+  ],
+  "security": [{ "sessionCookie": [] }],
+  "tags": [
+    { "name": "manuscripts", "description": "One manuscript per Chronos book." },
+    { "name": "volumes", "description": "Ordered, numbered entries in a series." },
+    { "name": "sections", "description": "Prologue, chapters, epilogue, glossary." }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["manuscripts"],
+        "summary": "Liveness",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The service is up.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Health" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/books": {
+      "get": {
+        "tags": ["manuscripts"],
+        "summary": "Every Chronos book you can read, and whether it has a manuscript",
+        "description": "Counts only. Word totals need the prose itself, so they are on the manuscript and report reads instead.",
+        "responses": {
+          "200": {
+            "description": "The shelf.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BookList" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/books/{book}": {
+      "get": {
+        "tags": ["manuscripts"],
+        "summary": "The manuscript outline for one book",
+        "description": "A book with no manuscript yet reads as `rev` 0 with an empty volume list, and carries no `ETag`.",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }],
+        "responses": {
+          "200": {
+            "description": "The manuscript.",
+            "headers": { "ETag": { "$ref": "#/components/headers/ETag" } },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Manuscript" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "tags": ["manuscripts"],
+        "summary": "Delete a manuscript and its retained history",
+        "description": "The only hard delete Logos offers, and what must happen before the Chronos book can be removed. Refused with `409 CASCADE_REQUIRED` while it still holds volumes or sections, unless `cascade=true`.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Book" },
+          { "$ref": "#/components/parameters/IfMatch" },
+          { "$ref": "#/components/parameters/Cascade" }
+        ],
+        "responses": {
+          "204": { "description": "Gone, history included." },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "428": { "$ref": "#/components/responses/PreconditionRequired" }
+        }
+      }
+    },
+    "/books/{book}/report": {
+      "get": {
+        "tags": ["manuscripts"],
+        "summary": "Progress across a book, and every reference that no longer lands",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }],
+        "responses": {
+          "200": {
+            "description": "The report.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Report" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/books/{book}/volume-order": {
+      "put": {
+        "tags": ["manuscripts"],
+        "summary": "Rearrange the volumes",
+        "description": "The body must list every current volume id exactly once. `If-Match` is the manuscript's revision, not a volume's.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Book" },
+          { "$ref": "#/components/parameters/IfMatch" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/VolumeOrder" },
+        "responses": {
+          "200": {
+            "description": "The manuscript, renumbered.",
+            "headers": { "ETag": { "$ref": "#/components/headers/ETag" } },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Manuscript" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "428": { "$ref": "#/components/responses/PreconditionRequired" }
+        }
+      }
+    },
+    "/books/{book}/volumes/{volume}": {
+      "post": {
+        "tags": ["volumes"],
+        "summary": "Create a volume",
+        "description": "The first volume creates the manuscript. New volumes go last; use volume-order to move them.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Book" },
+          { "$ref": "#/components/parameters/Volume" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/VolumeBody" },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "headers": { "ETag": { "$ref": "#/components/headers/ETag" } },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Volume" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      },
+      "get": {
+        "tags": ["volumes"],
+        "summary": "One volume and its section list",
+        "description": "Sections carry their counts but not their prose. Use the manuscript read for the text.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Book" },
+          { "$ref": "#/components/parameters/Volume" }
+        ],
+        "responses": {
+          "200": {
+            "description": "The volume.",
+            "headers": { "ETag": { "$ref": "#/components/headers/ETag" } },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Volume" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "put": {
+        "tags": ["volumes"],
+        "summary": "Replace a volume's title and overview",
+        "description": "Section order belongs to the volume and is not part of this body; use section-order to change it.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Book" },
+          { "$ref": "#/components/parameters/Volume" },
+          { "$ref": "#/components/parameters/IfMatch" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/VolumeBody" },
+        "responses": {
+          "200": {
+            "description": "The volume.",
+            "headers": { "ETag": { "$ref": "#/components/headers/ETag" } },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Volume" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "428": { "$ref": "#/components/responses/PreconditionRequired" }
+        }
+      },
+      "delete": {
+        "tags": ["volumes"],
+        "summary": "Delete a volume",
+        "description": "Refused with `409 CASCADE_REQUIRED` while it still holds sections, unless `cascade=true`.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Book" },
+          { "$ref": "#/components/parameters/Volume" },
+          { "$ref": "#/components/parameters/IfMatch" },
+          { "$ref": "#/components/parameters/Cascade" }
+        ],
+        "responses": {
+          "204": { "description": "Gone." },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "428": { "$ref": "#/components/responses/PreconditionRequired" }
+        }
+      }
+    },
+    "/books/{book}/volumes/{volume}/manuscript": {
+      "get": {
+        "tags": ["volumes"],
+        "summary": "The whole volume, prose included, for reading or export",
+        "parameters": [
+          { "$ref": "#/components/parameters/Book" },
+          { "$ref": "#/components/parameters/Volume" }
+        ],
+        "responses": {
+          "200": {
+            "description": "The assembled volume.",
+            "headers": { "ETag": { "$ref": "#/components/headers/ETag" } },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/VolumeManuscript" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/books/{book}/volumes/{volume}/section-order": {
+      "put": {
+        "tags": ["volumes"],
+        "summary": "Rearrange the sections in a volume",
+        "description": "The body must list every current section id exactly once. Chapter numbers follow from the result.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Book" },
+          { "$ref": "#/components/parameters/Volume" },
+          { "$ref": "#/components/parameters/IfMatch" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/SectionOrder" },
+        "responses": {
+          "200": {
+            "description": "The volume, renumbered.",
+            "headers": { "ETag": { "$ref": "#/components/headers/ETag" } },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Volume" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "428": { "$ref": "#/components/responses/PreconditionRequired" }
+        }
+      }
+    },
+    "/books/{book}/volumes/{volume}/sections/{section}": {
+      "post": {
+        "tags": ["sections"],
+        "summary": "Create a section",
+        "description": "A volume may hold many chapters but at most one prologue, epilogue and glossary. Named Chronos events must exist.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Book" },
+          { "$ref": "#/components/parameters/Volume" },
+          { "$ref": "#/components/parameters/Section" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/SectionBody" },
+        "responses": {
+          "201": {
+            "description": "Created.",
+            "headers": { "ETag": { "$ref": "#/components/headers/ETag" } },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Section" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/Unprocessable" }
+        }
+      },
+      "get": {
+        "tags": ["sections"],
+        "summary": "One section, prose included",
+        "parameters": [
+          { "$ref": "#/components/parameters/Book" },
+          { "$ref": "#/components/parameters/Volume" },
+          { "$ref": "#/components/parameters/Section" }
+        ],
+        "responses": {
+          "200": {
+            "description": "The section.",
+            "headers": { "ETag": { "$ref": "#/components/headers/ETag" } },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Section" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "put": {
+        "tags": ["sections"],
+        "summary": "Replace a section, prose and all",
+        "description": "The document is replaced whole. There is no paragraph-level write.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Book" },
+          { "$ref": "#/components/parameters/Volume" },
+          { "$ref": "#/components/parameters/Section" },
+          { "$ref": "#/components/parameters/IfMatch" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/SectionBody" },
+        "responses": {
+          "200": {
+            "description": "The section.",
+            "headers": { "ETag": { "$ref": "#/components/headers/ETag" } },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Section" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/Unprocessable" },
+          "428": { "$ref": "#/components/responses/PreconditionRequired" }
+        }
+      },
+      "delete": {
+        "tags": ["sections"],
+        "summary": "Delete a section",
+        "description": "Its retained revisions stay recoverable until the manuscript itself is deleted.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Book" },
+          { "$ref": "#/components/parameters/Volume" },
+          { "$ref": "#/components/parameters/Section" },
+          { "$ref": "#/components/parameters/IfMatch" }
+        ],
+        "responses": {
+          "204": { "description": "Gone." },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "428": { "$ref": "#/components/responses/PreconditionRequired" }
+        }
+      }
+    },
+    "/books/{book}/volumes/{volume}/sections/{section}/versions": {
+      "get": {
+        "tags": ["sections"],
+        "summary": "The retained revisions of a section, newest first",
+        "parameters": [
+          { "$ref": "#/components/parameters/Book" },
+          { "$ref": "#/components/parameters/Volume" },
+          { "$ref": "#/components/parameters/Section" }
+        ],
+        "responses": {
+          "200": {
+            "description": "The history.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/VersionList" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/books/{book}/volumes/{volume}/sections/{section}/versions/{rev}": {
+      "get": {
+        "tags": ["sections"],
+        "summary": "One retained revision",
+        "parameters": [
+          { "$ref": "#/components/parameters/Book" },
+          { "$ref": "#/components/parameters/Volume" },
+          { "$ref": "#/components/parameters/Section" },
+          { "$ref": "#/components/parameters/Rev" }
+        ],
+        "responses": {
+          "200": {
+            "description": "The revision. A deletion carries no document.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SectionRevision" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "410": { "$ref": "#/components/responses/Gone" }
+        }
+      }
+    },
+    "/books/{book}/volumes/{volume}/sections/{section}/restore/{rev}": {
+      "post": {
+        "tags": ["sections"],
+        "summary": "Restore a retained revision as a new one",
+        "description": "History is never rewound: this writes a further revision holding the older document. The revision is revalidated on the way in, so restoring prose that names a since-deleted Chronos event is refused with `422`.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Book" },
+          { "$ref": "#/components/parameters/Volume" },
+          { "$ref": "#/components/parameters/Section" },
+          { "$ref": "#/components/parameters/Rev" },
+          { "$ref": "#/components/parameters/IfMatch" }
+        ],
+        "responses": {
+          "200": {
+            "description": "The section, at its new revision.",
+            "headers": { "ETag": { "$ref": "#/components/headers/ETag" } },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Section" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "410": { "$ref": "#/components/responses/Gone" },
+          "422": { "$ref": "#/components/responses/Unprocessable" },
+          "428": { "$ref": "#/components/responses/PreconditionRequired" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "session",
+        "description": "The shared login cookie. One session covers all four services."
+      }
+    },
+    "headers": {
+      "ETag": {
+        "description": "The resource's current revision, quoted. Send it back as `If-Match`.",
+        "schema": { "type": "string" }
+      }
+    },
+    "parameters": {
+      "Book": {
+        "name": "book",
+        "in": "path",
+        "required": true,
+        "description": "The Chronos book id.",
+        "schema": { "type": "string" }
+      },
+      "Volume": {
+        "name": "volume",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" }
+      },
+      "Section": {
+        "name": "section",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" }
+      },
+      "Rev": {
+        "name": "rev",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "integer", "minimum": 1 }
+      },
+      "IfMatch": {
+        "name": "If-Match",
+        "in": "header",
+        "required": true,
+        "description": "The revision the caller read. Required: Logos refuses unconditional writes.",
+        "schema": { "type": "string" }
+      },
+      "Cascade": {
+        "name": "cascade",
+        "in": "query",
+        "required": false,
+        "description": "Set `true` to accept deleting the prose this resource still holds.",
+        "schema": { "type": "boolean" }
+      }
+    },
+    "requestBodies": {
+      "VolumeBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/VolumeBody" }
+          }
+        }
+      },
+      "SectionBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/SectionBody" }
+          }
+        }
+      },
+      "VolumeOrder": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/VolumeOrder" }
+          }
+        }
+      },
+      "SectionOrder": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/SectionOrder" }
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "A malformed identifier, body, document, ordering or precondition.",
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+        }
+      },
+      "Unauthorized": {
+        "description": "Not signed in.",
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+        }
+      },
+      "Forbidden": {
+        "description": "No matching grant on the Chronos book. Returned before existence is checked, so it never reveals whether the book is there.",
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+        }
+      },
+      "NotFound": {
+        "description": "The Chronos book, manuscript, volume or section does not exist.",
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+        }
+      },
+      "Conflict": {
+        "description": "A stale revision, an id already taken, a second prologue/epilogue/glossary, or a delete that would take prose with it.",
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+        }
+      },
+      "Gone": {
+        "description": "That revision is no longer retained, or is a deletion with nothing to restore.",
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+        }
+      },
+      "Unprocessable": {
+        "description": "The prose names a Chronos event that does not exist in this book.",
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+        }
+      },
+      "PreconditionRequired": {
+        "description": "The mutation carried no `If-Match`.",
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+        }
+      }
+    },
+    "schemas": {
+      "Health": {
+        "type": "object",
+        "required": ["status", "service"],
+        "properties": {
+          "status": { "type": "string" },
+          "service": { "type": "string" }
+        },
+        "example": { "status": "ok", "service": "logos" }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": { "type": "string", "description": "Human-readable." },
+          "code": {
+            "type": "string",
+            "description": "Stable machine code.",
+            "enum": [
+              "ALREADY_EXISTS",
+              "BOOK_NOT_FOUND",
+              "CASCADE_REQUIRED",
+              "CHRONOS_EVENT_NOT_FOUND",
+              "FORBIDDEN",
+              "INVALID_DOCUMENT",
+              "INVALID_IDENTIFIER",
+              "INVALID_ORDER",
+              "INVALID_REVISION",
+              "INVALID_SECTION",
+              "INVALID_VOLUME",
+              "LOGOS_ERROR",
+              "MANUSCRIPT_NOT_FOUND",
+              "PRECONDITION_REQUIRED",
+              "REVISION_CONFLICT",
+              "REVISION_NOT_RETAINED",
+              "SECTION_KIND_IN_USE",
+              "SECTION_NOT_FOUND",
+              "VOLUME_NOT_FOUND"
+            ]
+          },
+          "evidence": {
+            "type": "object",
+            "description": "What the refusal was about, for a caller to act on."
+          }
+        },
+        "example": {
+          "error": "One or more referenced Chronos events do not exist in this book.",
+          "code": "CHRONOS_EVENT_NOT_FOUND",
+          "evidence": { "events": ["not-a-scene"] }
+        }
+      },
+      "ArticleRef": {
+        "type": "object",
+        "required": ["database", "collection", "id"],
+        "properties": {
+          "database": { "type": "string", "description": "The Akasha world." },
+          "collection": { "type": "string" },
+          "id": { "type": "string" }
+        }
+      },
+      "Mark": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": { "type": "string", "enum": ["em", "strong", "strike", "code"] }
+        }
+      },
+      "Node": {
+        "type": "object",
+        "description": "An inline node, or a `list_item` holding inline nodes.",
+        "required": ["type"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "hard_break",
+              "link",
+              "mention",
+              "article_link",
+              "list_item"
+            ]
+          },
+          "text": { "type": "string" },
+          "href": { "type": "string" },
+          "ref": { "$ref": "#/components/schemas/ArticleRef" },
+          "marks": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Mark" }
+          },
+          "content": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Node" }
+          }
+        }
+      },
+      "Block": {
+        "type": "object",
+        "description": "A top-level block. Its `id` is stable across edits and reordering.",
+        "required": ["type", "id", "content"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["paragraph", "heading", "bullet_list", "ordered_list"]
+          },
+          "id": { "type": "string" },
+          "level": { "type": "integer", "minimum": 1, "maximum": 3 },
+          "content": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Node" }
+          }
+        }
+      },
+      "Document": {
+        "type": "object",
+        "description": "A section's prose. Paragraphs are the blocks it is counted in.",
+        "required": ["version", "type", "content"],
+        "properties": {
+          "version": { "type": "integer", "enum": [1] },
+          "type": { "type": "string", "enum": ["doc"] },
+          "content": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Block" }
+          }
+        },
+        "example": {
+          "version": 1,
+          "type": "doc",
+          "content": [
+            {
+              "type": "paragraph",
+              "id": "p1",
+              "content": [
+                { "type": "text", "text": "The gate was already " },
+                { "type": "text", "text": "open", "marks": [{ "type": "em" }] },
+                { "type": "text", "text": "." }
+              ]
+            },
+            {
+              "type": "paragraph",
+              "id": "p2",
+              "content": [
+                {
+                  "type": "mention",
+                  "ref": {
+                    "database": "ember",
+                    "collection": "characters",
+                    "id": "lyra"
+                  },
+                  "text": "Lyra"
+                },
+                { "type": "text", "text": " did not slow down." }
+              ]
+            }
+          ]
+        }
+      },
+      "Audit": {
+        "type": "object",
+        "required": ["rev", "created_by", "updated_by", "updated_at"],
+        "properties": {
+          "rev": { "type": "integer" },
+          "created_by": { "type": "string", "nullable": true },
+          "updated_by": { "type": "string", "nullable": true },
+          "updated_at": { "type": "string", "nullable": true }
+        }
+      },
+      "Permissions": {
+        "type": "object",
+        "required": ["write", "delete"],
+        "properties": {
+          "write": { "type": "boolean" },
+          "delete": { "type": "boolean" }
+        }
+      },
+      "BookList": {
+        "type": "object",
+        "required": ["books"],
+        "properties": {
+          "books": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "book",
+                "title",
+                "has_manuscript",
+                "volume_count",
+                "_links"
+              ],
+              "properties": {
+                "book": { "type": "string" },
+                "title": { "type": "string", "nullable": true },
+                "has_manuscript": { "type": "boolean" },
+                "volume_count": { "type": "integer" },
+                "_links": { "type": "object" }
+              }
+            }
+          }
+        },
+        "example": {
+          "books": [
+            {
+              "book": "ember-pact",
+              "title": "The Ember Pact",
+              "has_manuscript": true,
+              "volume_count": 1,
+              "_links": { "self": "/books/ember-pact" }
+            }
+          ]
+        }
+      },
+      "SectionSummary": {
+        "type": "object",
+        "description": "A section without its prose, as listed inside a volume.",
+        "required": [
+          "book",
+          "volume",
+          "id",
+          "kind",
+          "number",
+          "title",
+          "overview",
+          "event_ids",
+          "paragraph_count",
+          "word_count",
+          "missing_refs",
+          "_links",
+          "rev",
+          "created_by",
+          "updated_by",
+          "updated_at"
+        ],
+        "properties": {
+          "book": { "type": "string" },
+          "volume": { "type": "string" },
+          "id": { "type": "string" },
+          "kind": {
+            "type": "string",
+            "enum": ["prologue", "chapter", "epilogue", "glossary"]
+          },
+          "number": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Chapters only; derived from chapter order."
+          },
+          "title": { "type": "string", "nullable": true },
+          "overview": { "type": "string" },
+          "event_ids": { "type": "array", "items": { "type": "string" } },
+          "paragraph_count": { "type": "integer" },
+          "word_count": { "type": "integer" },
+          "missing_refs": {
+            "type": "array",
+            "description": "Akasha articles this prose mentions that no longer exist.",
+            "items": { "$ref": "#/components/schemas/ArticleRef" }
+          },
+          "_links": { "type": "object" },
+          "rev": { "type": "integer" },
+          "created_by": { "type": "string", "nullable": true },
+          "updated_by": { "type": "string", "nullable": true },
+          "updated_at": { "type": "string", "nullable": true },
+          "permissions": { "$ref": "#/components/schemas/Permissions" }
+        },
+        "example": {
+          "book": "ember-pact",
+          "volume": "the-ember-pact",
+          "id": "the-broken-gate",
+          "kind": "chapter",
+          "number": 1,
+          "title": "The Broken Gate",
+          "overview": "Lyra reaches the gate.",
+          "event_ids": ["opening"],
+          "paragraph_count": 1,
+          "word_count": 4,
+          "missing_refs": [],
+          "_links": {
+            "self": "/books/ember-pact/volumes/the-ember-pact/sections/the-broken-gate",
+            "versions": "/books/ember-pact/volumes/the-ember-pact/sections/the-broken-gate/versions"
+          },
+          "rev": 1,
+          "created_by": "mara",
+          "updated_by": "mara",
+          "updated_at": "2026-01-01T00:00:00+00:00"
+        }
+      },
+      "Section": {
+        "allOf": [
+          { "$ref": "#/components/schemas/SectionSummary" },
+          {
+            "type": "object",
+            "required": ["document"],
+            "properties": {
+              "document": { "$ref": "#/components/schemas/Document" }
+            }
+          }
+        ]
+      },
+      "Volume": {
+        "type": "object",
+        "required": [
+          "book",
+          "id",
+          "number",
+          "title",
+          "overview",
+          "sections",
+          "section_count",
+          "word_count",
+          "_links",
+          "rev",
+          "created_by",
+          "updated_by",
+          "updated_at"
+        ],
+        "properties": {
+          "book": { "type": "string" },
+          "id": { "type": "string" },
+          "number": { "type": "integer", "description": "Derived from volume order." },
+          "title": { "type": "string" },
+          "overview": { "type": "string" },
+          "sections": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/SectionSummary" }
+          },
+          "section_count": { "type": "integer" },
+          "word_count": { "type": "integer" },
+          "_links": { "type": "object" },
+          "rev": { "type": "integer" },
+          "created_by": { "type": "string", "nullable": true },
+          "updated_by": { "type": "string", "nullable": true },
+          "updated_at": { "type": "string", "nullable": true },
+          "permissions": { "$ref": "#/components/schemas/Permissions" }
+        },
+        "example": {
+          "book": "ember-pact",
+          "id": "the-ember-pact",
+          "number": 1,
+          "title": "The Ember Pact",
+          "overview": "Volume one.",
+          "sections": [],
+          "section_count": 0,
+          "word_count": 0,
+          "_links": {
+            "self": "/books/ember-pact/volumes/the-ember-pact",
+            "manuscript": "/books/ember-pact/volumes/the-ember-pact/manuscript",
+            "section_order": "/books/ember-pact/volumes/the-ember-pact/section-order"
+          },
+          "rev": 1,
+          "created_by": "mara",
+          "updated_by": "mara",
+          "updated_at": "2026-01-01T00:00:00+00:00"
+        }
+      },
+      "VolumeManuscript": {
+        "allOf": [
+          { "$ref": "#/components/schemas/Volume" },
+          {
+            "type": "object",
+            "required": ["sections"],
+            "properties": {
+              "sections": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/Section" }
+              }
+            }
+          }
+        ]
+      },
+      "Manuscript": {
+        "type": "object",
+        "required": [
+          "book",
+          "title",
+          "overview",
+          "world",
+          "volumes",
+          "volume_count",
+          "word_count",
+          "_links",
+          "rev",
+          "created_by",
+          "updated_by",
+          "updated_at"
+        ],
+        "properties": {
+          "book": { "type": "string" },
+          "title": { "type": "string", "nullable": true, "description": "Read from Chronos, never copied." },
+          "overview": { "type": "string" },
+          "world": { "type": "string", "nullable": true },
+          "volumes": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Volume" }
+          },
+          "volume_count": { "type": "integer" },
+          "word_count": { "type": "integer" },
+          "_links": { "type": "object" },
+          "rev": { "type": "integer", "description": "0 when no manuscript exists yet." },
+          "created_by": { "type": "string", "nullable": true },
+          "updated_by": { "type": "string", "nullable": true },
+          "updated_at": { "type": "string", "nullable": true },
+          "permissions": { "$ref": "#/components/schemas/Permissions" }
+        },
+        "example": {
+          "book": "ember-pact",
+          "title": "The Ember Pact",
+          "overview": "",
+          "world": "ember",
+          "volumes": [],
+          "volume_count": 0,
+          "word_count": 0,
+          "_links": {
+            "self": "/books/ember-pact",
+            "volume_order": "/books/ember-pact/volume-order",
+            "report": "/books/ember-pact/report"
+          },
+          "rev": 0,
+          "created_by": null,
+          "updated_by": null,
+          "updated_at": null,
+          "permissions": { "write": true, "delete": true }
+        }
+      },
+      "RevisionMeta": {
+        "type": "object",
+        "required": ["rev", "op", "author", "timestamp", "deleted"],
+        "properties": {
+          "rev": { "type": "integer" },
+          "op": {
+            "type": "string",
+            "enum": ["create", "update", "delete", "restore"]
+          },
+          "author": { "type": "string", "nullable": true },
+          "timestamp": { "type": "string" },
+          "deleted": { "type": "boolean" }
+        }
+      },
+      "VersionList": {
+        "type": "object",
+        "required": ["book", "volume", "section", "versions"],
+        "properties": {
+          "book": { "type": "string" },
+          "volume": { "type": "string" },
+          "section": { "type": "string" },
+          "versions": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RevisionMeta" }
+          }
+        },
+        "example": {
+          "book": "ember-pact",
+          "volume": "the-ember-pact",
+          "section": "the-broken-gate",
+          "versions": [
+            {
+              "rev": 2,
+              "op": "update",
+              "author": "mara",
+              "timestamp": "2026-01-01T00:00:00+00:00",
+              "deleted": false
+            },
+            {
+              "rev": 1,
+              "op": "create",
+              "author": "mara",
+              "timestamp": "2026-01-01T00:00:00+00:00",
+              "deleted": false
+            }
+          ]
+        }
+      },
+      "SectionRevision": {
+        "type": "object",
+        "required": [
+          "book",
+          "volume",
+          "id",
+          "number",
+          "rev",
+          "op",
+          "author",
+          "timestamp",
+          "deleted"
+        ],
+        "properties": {
+          "book": { "type": "string" },
+          "volume": { "type": "string" },
+          "id": { "type": "string" },
+          "number": { "type": "integer", "nullable": true },
+          "rev": { "type": "integer" },
+          "op": {
+            "type": "string",
+            "enum": ["create", "update", "delete", "restore"]
+          },
+          "author": { "type": "string", "nullable": true },
+          "timestamp": { "type": "string" },
+          "deleted": { "type": "boolean" },
+          "kind": {
+            "type": "string",
+            "enum": ["prologue", "chapter", "epilogue", "glossary"]
+          },
+          "title": { "type": "string", "nullable": true },
+          "overview": { "type": "string" },
+          "event_ids": { "type": "array", "items": { "type": "string" } },
+          "paragraph_count": { "type": "integer" },
+          "word_count": { "type": "integer" },
+          "document": { "$ref": "#/components/schemas/Document" }
+        },
+        "example": {
+          "book": "ember-pact",
+          "volume": "the-ember-pact",
+          "id": "the-broken-gate",
+          "number": 1,
+          "rev": 1,
+          "op": "create",
+          "author": "mara",
+          "timestamp": "2026-01-01T00:00:00+00:00",
+          "deleted": false,
+          "kind": "chapter",
+          "title": "The Broken Gate",
+          "overview": "Lyra reaches the gate.",
+          "event_ids": ["opening"],
+          "paragraph_count": 1,
+          "word_count": 4,
+          "document": {
+            "version": 1,
+            "type": "doc",
+            "content": [
+              {
+                "type": "paragraph",
+                "id": "p1",
+                "content": [{ "type": "text", "text": "The gate was open." }]
+              }
+            ]
+          }
+        }
+      },
+      "Report": {
+        "type": "object",
+        "required": [
+          "book",
+          "volume_count",
+          "section_count",
+          "word_count",
+          "sections_with_missing_refs"
+        ],
+        "properties": {
+          "book": { "type": "string" },
+          "volume_count": { "type": "integer" },
+          "section_count": { "type": "integer" },
+          "word_count": { "type": "integer" },
+          "sections_with_missing_refs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["volume", "section", "missing_refs"],
+              "properties": {
+                "volume": { "type": "string" },
+                "section": { "type": "string" },
+                "missing_refs": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/ArticleRef" }
+                }
+              }
+            }
+          }
+        },
+        "example": {
+          "book": "ember-pact",
+          "volume_count": 1,
+          "section_count": 2,
+          "word_count": 1840,
+          "sections_with_missing_refs": [
+            {
+              "volume": "the-ember-pact",
+              "section": "the-broken-gate",
+              "missing_refs": [
+                {
+                  "database": "ember",
+                  "collection": "characters",
+                  "id": "lyra"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "VolumeBody": {
+        "type": "object",
+        "required": ["title"],
+        "additionalProperties": false,
+        "properties": {
+          "title": { "type": "string", "maxLength": 300 },
+          "overview": { "type": "string", "maxLength": 10000 }
+        },
+        "example": { "title": "The Ember Pact", "overview": "Volume one." }
+      },
+      "SectionBody": {
+        "type": "object",
+        "required": ["kind", "document"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["prologue", "chapter", "epilogue", "glossary"]
+          },
+          "title": { "type": "string", "nullable": true, "maxLength": 300 },
+          "overview": { "type": "string", "maxLength": 10000 },
+          "event_ids": {
+            "type": "array",
+            "description": "Chronos scenes this section realises. They must exist.",
+            "items": { "type": "string" }
+          },
+          "document": { "$ref": "#/components/schemas/Document" }
+        },
+        "example": {
+          "kind": "chapter",
+          "title": "The Broken Gate",
+          "overview": "Lyra reaches the gate.",
+          "event_ids": ["opening"],
+          "document": {
+            "version": 1,
+            "type": "doc",
+            "content": [
+              {
+                "type": "paragraph",
+                "id": "p1",
+                "content": [{ "type": "text", "text": "The gate was open." }]
+              }
+            ]
+          }
+        }
+      },
+      "VolumeOrder": {
+        "type": "object",
+        "required": ["volumes"],
+        "additionalProperties": false,
+        "properties": {
+          "volumes": { "type": "array", "items": { "type": "string" } }
+        },
+        "example": { "volumes": ["the-ember-pact", "the-second-pact"] }
+      },
+      "SectionOrder": {
+        "type": "object",
+        "required": ["sections"],
+        "additionalProperties": false,
+        "properties": {
+          "sections": { "type": "array", "items": { "type": "string" } }
+        },
+        "example": { "sections": ["before", "the-broken-gate", "the-oath"] }
+      }
+    }
+  }
+}

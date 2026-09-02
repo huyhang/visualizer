@@ -1,9 +1,9 @@
 # visualizer
 
 A small self-hosted stack for building and keeping track of fictional worlds.
-Three Flask + MongoDB services that ship and run together: one holds **what
-exists** in your world, one holds **what happens** in it, and one holds **where
-it happens**.
+Four Flask + MongoDB services that ship and run together: they hold **what
+exists** in your world, **what happens** in it, **where it happens**, and the
+prose that turns all of that into a novel.
 
 They share one MongoDB, one login, and one permission model, and are designed to
 run comfortably on a home NAS.
@@ -21,40 +21,48 @@ run comfortably on a home NAS.
 
 ## Services
 
-All three run in **one process behind a single origin** (port `5002`): akasha at
-`/`, chronos at `/timeline`, prithvi at `/prithvi` — one login, one
-reverse-proxy entry.
+All four run in **one process behind a single origin** (port `5002`): akasha at
+`/`, chronos at `/timeline`, prithvi at `/prithvi`, logos at `/logos` — one
+login, one reverse-proxy entry.
 
 | Service | Path | What it does | Docs |
 | --- | --- | --- | --- |
 | **akasha** | `/` | A Wikipedia-style article store and editor: characters, items, locations, lore — with linking, versioning and diffs. Has a web UI. | [README](docs/akasha/README.md) · [design](docs/akasha/editor-design.md) |
 | **chronos** | `/timeline` | A plotline & timeline API for fiction writers: books, events and plotlines, checked for continuity errors, with a plotline visualiser and editor. | [README](docs/chronos/README.md) · [getting started](docs/chronos/getting-started.md) · [plain-language overview](docs/chronos/OVERVIEW.md) · [design](docs/chronos/design.md) |
 | **prithvi** | `/prithvi` | An SVG map per region of a world, with Akasha articles pinned to points on it. Has a web UI: upload a map, place and move pins, and read a pin's article beside the map. | [README](docs/prithvi/README.md) · [openapi](docs/prithvi/openapi.json) |
+| **logos** | `/logos` | A versioned manuscript API: ordered volumes and sections for each Chronos book, structured rich text with stable paragraph ids, and links back to the scenes they were written from. API-only, no UI yet. | [README](docs/logos/README.md) · [permissions](docs/logos/permissions.md) · [openapi](docs/logos/openapi.json) |
 | **mongo** | *internal* | Shared storage. Deliberately not published to the host. | — |
 
 They are named for what they hold: **Akasha** (the aether said to record all
 things) is the canon; **Chronos** (time) is the sequence of events through it;
-**Prithvi** (earth) is the ground those events happen on.
+**Prithvi** (earth) is the ground those events happen on; **Logos** (the word) is
+what you finally write.
 
 **How they fit together.** Characters, items and locations are articles in
-Akasha. Neither of the others invents one — they *reference* articles, and
-refuse a reference to something that doesn't exist. So there is one canon, and
-both the timeline and the maps are checked against it.
+Akasha. None of the others invents one — they *reference* articles, and the
+timeline and the maps refuse a reference to something that doesn't exist. So
+there is one canon, checked against. Logos turns a Chronos book into ordered
+manuscript volumes and links its prose back to the scenes it realises; a mention
+of a vanished article is reported rather than refused, so drafting is never
+blocked by canon you haven't written yet.
 
 **One process, one origin.** In production the apps are served by a single
 gunicorn behind one origin (port `5002`) — akasha at `/`, chronos at
 `/timeline`, prithvi at `/prithvi` — composed with Werkzeug's
 `DispatcherMiddleware` (`visualizer.wsgi:application`, see
 [`src/visualizer/gateway.py`](src/visualizer/gateway.py)). They already share one
-MongoDB, one `_auth` store and one `SECRET_KEY`, and both chronos and prithvi
-call akasha in-process (no service-to-service HTTP), so co-mounting them changes
-nothing about how they work — it just gives **one reverse-proxy rule, one cookie
-and no CORS**, which is exactly what the Synology reverse-proxy deployment wants.
+MongoDB, one `_auth` store and one `SECRET_KEY`, and every cross-service question
+is asked in-process (no service-to-service HTTP): chronos and prithvi read
+akasha, logos reads both, and chronos asks logos whether prose depends on what it
+is about to delete. Co-mounting them changes nothing about how they work — it
+just gives **one reverse-proxy rule, one cookie and no CORS**, which is exactly
+what the Synology reverse-proxy deployment wants.
 It's a *front door*, not a merge: each app keeps its own factory and test suite,
 and the per-service entrypoints (`visualizer.akasha.wsgi` and its siblings) still
 run a single service on its own port for development. The service nav's `AKASHA_URL`,
 `CHRONOS_URL` and `PRITHVI_URL` default to the relative paths `/`, `/timeline`
-and `/prithvi`; set them if a proxy serves the services on different hosts.
+and `/prithvi`; set them if a proxy serves the browser services on different
+hosts. Logos is API-only and is not in the navigation yet.
 
 ---
 
@@ -77,8 +85,12 @@ docker compose -f docker/docker-compose.nas.yml up --build -d
   world you can write, pin articles to it, and click a pin to read its
   article beside the map. The API is under `…/prithvi/worlds/{world}/maps`,
   and a map with its pins drawn on is at `…/maps/{map}/render.svg`.
-- **http://localhost:5002/health** — akasha liveness; **/timeline/health** and
-  **/prithvi/health** — the other two.
+- **http://localhost:5002/logos/books** — the manuscript API: ordered volumes and
+  sections for each Chronos book. It uses the same book permissions and has no
+  browser editor yet, so `curl` and the [openapi](docs/logos/openapi.json) are
+  the way in.
+- **http://localhost:5002/health** — akasha liveness; **/timeline/health**,
+  **/prithvi/health** and **/logos/health** — the others.
 - **http://localhost:5002/admin/observability** — administrators only: NAS
   capacity, per-writer usage and API health. See **Observability** below.
 
@@ -91,7 +103,7 @@ install — including HTTPS, updating to a new commit, and backups — see
 Because the stack runs on a NAS, the admin console answers one question up
 front: **how long until the volume fills, and who is filling it.** No extra
 containers and no new dependencies — the data lives in a reserved `_ops`
-database beside `_auth` and `_chronos`.
+database beside `_auth`, `_chronos` and `_logos`.
 
 - **Capacity** — free disk, memory and MongoDB's own footprint, plus a
   projected fill date from the observed growth rate. A banner appears in the
@@ -171,7 +183,8 @@ src/visualizer/
   akasha/   articles, auth, grants, versioning, web UI
   chronos/           books, plotlines, events, story graph
   prithvi/           SVG maps, pins onto articles, sanitization
-  documents.py       the revision mechanics chronos and prithvi share
+  logos/             manuscript volumes, sections, rich text, history
+  documents.py       the revision mechanics the story services share
   static/js/         the few ES modules the *browser* services load
 tests/               one suite per service (in-memory MongoDB)
 docker/              Dockerfiles, the compose stack, demo seed + backup scripts

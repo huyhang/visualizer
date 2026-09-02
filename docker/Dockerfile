@@ -1,11 +1,11 @@
-# Combined image: both services behind one origin (single-port deployment).
+# Combined image: every service behind one origin (single-port deployment).
 #
-# akasha and chronos share one MongoDB, one auth store and one secret, and always
+# The four services share one MongoDB, one auth store and one secret, and always
 # ship together, so this runs them in a single gunicorn via
 # `visualizer.wsgi:application` (Werkzeug DispatcherMiddleware): akasha at `/`,
-# chronos at `/timeline`. One published port -> one Synology reverse-proxy entry,
-# one cookie, no CORS. (Dockerfile.akasha / Dockerfile.chronos still build the
-# services standalone for development.)
+# chronos at `/timeline`, prithvi at `/prithvi`, logos at `/logos`. One published
+# port -> one Synology reverse-proxy entry, one cookie, no CORS. (The
+# per-service Dockerfiles still build each one standalone for development.)
 #
 # Build context is the repo root (see docker-compose.nas.yml).
 FROM python:3.11-slim

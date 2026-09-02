@@ -29,6 +29,7 @@ from visualizer.shared_assets import register_shared_assets
 
 from .entity_gate import EntityGate
 from .errors import ChronosError, Forbidden, InvalidRevision, InvalidTimeframe
+from .manuscript_gate import ManuscriptGate, NullManuscriptGate
 from .presenters import with_permissions
 from .services import (
     BookService,
@@ -68,6 +69,9 @@ def create_app(
     # test cannot hold, and "the library is missing today" is not a state any
     # caller should be able to reach by accident.
     calendar_store: CalendarStore,
+    # Defaulted, unlike the seams above: a Chronos running without Logos has no
+    # prose to protect, and the null gate says exactly that.
+    manuscript_gate: ManuscriptGate | None = None,
     secure_cookies: bool = False,
     rate_limit_storage_uri: str = "memory://",
     akasha_url: str = "http://localhost:5002",
@@ -94,9 +98,10 @@ def create_app(
     )
     register_shared_assets(app)
 
-    books = BookService(story_store, entity_gate, calendar_store)
+    manuscripts = manuscript_gate or NullManuscriptGate()
+    books = BookService(story_store, entity_gate, calendar_store, manuscripts)
     plotlines = PlotlineService(story_store, entity_gate)
-    events = EventService(story_store, entity_gate)
+    events = EventService(story_store, entity_gate, manuscripts)
     goals = GoalService(story_store, entity_gate)
     visualizer = VisualizerService(story_store, entity_gate)
     calendars = CalendarService(calendar_store)
