@@ -19,6 +19,7 @@ from .conftest import BOOK, SECTION, VOLUME, login, section_payload
 
 VOLUME_URL = f"/books/{BOOK}/volumes/{VOLUME}"
 SCENES_URL = f"{VOLUME_URL}/ui/scenes"
+SECTION_SCENES_URL = f"{VOLUME_URL}/sections/{SECTION}/ui/scenes"
 
 _LOGOS = Path(__file__).resolve().parents[2] / "src" / "visualizer" / "logos"
 
@@ -35,6 +36,10 @@ def test_the_reader_is_the_authenticated_home(client):
     assert 'id="content"' in body
     assert 'id="mode-toggle"' in body
     assert 'id="reader-toolbar"' in body
+    assert 'id="reading-progress-meter"' in body
+    assert 'id="jump-open"' in body
+    assert 'id="section-jump"' in body
+    assert 'window.__READER_USER__ = "mara"' in body
     # The shared chrome, not a Logos reinvention of it.
     assert 'id="font-toggle"' in body and 'id="theme-toggle"' in body
     assert "prefs.js" in body
@@ -69,7 +74,7 @@ def test_the_reader_sits_in_the_nav_as_the_current_service(client):
 
 
 def test_the_display_choices_live_in_a_dialog_not_on_the_strip(client):
-    """The toolbar is two buttons. Five selects in a row beside the prose is a
+    """The toolbar is three buttons. Four selects in a row beside the prose is a
     control panel you read past every time you read a chapter."""
     html = client.get("/").get_data(as_text=True)
     toolbar = html.split('id="reader-toolbar"', 1)[1].split("</div>", 1)[0]
@@ -77,19 +82,37 @@ def test_the_display_choices_live_in_a_dialog_not_on_the_strip(client):
 
     assert 'id="mode-toggle"' in toolbar
     assert 'id="settings-open"' in toolbar
-    for field in ("flow", "typeface", "leading", "measure", "align"):
+    assert 'id="jump-open"' in toolbar
+    for field in ("typeface", "leading", "measure", "align"):
         assert f'id="display-{field}"' not in toolbar, field
         assert f'id="display-{field}"' in dialog, field
+    assert 'id="display-flow"' not in html
     assert 'id="display-reset"' in dialog
     # Native dialog semantics: labelled, and closable without JavaScript.
     assert 'aria-labelledby="settings-title"' in html
     assert 'method="dialog"' in dialog
 
 
-def test_reading_flow_offers_one_section_at_a_time(client):
-    flow = client.get("/").get_data(as_text=True)
-    flow = flow.split('id="display-flow"', 1)[1].split("</select>", 1)[0]
-    assert re.findall(r'value="([^"]+)"', flow) == ["continuous", "section"]
+def test_the_reader_has_no_whole_volume_flow(client):
+    html = client.get("/").get_data(as_text=True)
+    assert "The whole volume" not in html
+    assert "Reading flow" not in html
+
+    app = (_LOGOS / "static" / "js" / "app.js").read_text()
+    assert "api.section(" in app
+    assert "api.volume(" not in app
+
+
+def test_the_reader_offers_search_and_jump_controls(client):
+    html = client.get("/").get_data(as_text=True)
+    assert 'id="jump-open"' in html
+    assert 'id="section-jump"' in html
+    assert 'id="jump-search"' in html
+
+    app = (_LOGOS / "static" / "js" / "app.js").read_text()
+    assert "filterOutline" in app
+    assert "SECTION_PAGE_SIZE" in app
+    assert 'class: "volume-card"' in app and "pagedSectionList" in app
 
 
 def test_what_a_mode_shows_is_a_tooltip_not_standing_text(client):
@@ -204,7 +227,7 @@ def test_every_stored_choice_actually_changes_something():
     allowlist = (js / "preferences.js").read_text()
     allowlist = allowlist.split("CHOICES = Object.freeze(", 1)[1].split("});", 1)[0]
     fields = re.findall(r"^\s+(\w+): \[", allowlist, re.MULTILINE)
-    assert "mode" in fields and "flow" in fields
+    assert "mode" in fields and "flow" not in fields
 
     sheet = (_LOGOS / "static" / "reader.css").read_text()
     for field in fields:
@@ -241,6 +264,10 @@ def test_the_reader_assets_are_served(client):
         "/static/js/dom.js",
         "/static/js/prose.js",
         "/static/js/preferences.js",
+        "/static/js/position.js",
+        "/static/js/progress.js",
+        "/static/js/navigation.js",
+        "/static/js/outline.js",
         "/static/js/shared/prefs.js",
         "/static/shared/service-nav.css",
     ):
@@ -272,6 +299,31 @@ def test_full_view_shows_only_the_scenes_the_sections_name(section, chronos_gate
                         "missing": False,
                     }
                 ],
+            }
+        ],
+    }
+
+
+def test_section_view_fetches_only_its_own_linked_scenes(section, chronos_gateway):
+    chronos_gateway.add_event(BOOK, "opening", title="The gate opens", when="Day 5")
+    chronos_gateway.add_event(BOOK, "climax", title="The final clash", when="Day 9")
+    assert section.post(
+        f"{VOLUME_URL}/sections/finale",
+        json=section_payload(title="Finale", events=("climax",)),
+    ).status_code == 201
+
+    body = section.get(SECTION_SCENES_URL).get_json()
+
+    assert body == {
+        "book": BOOK,
+        "volume": VOLUME,
+        "section": SECTION,
+        "scenes": [
+            {
+                "id": "opening",
+                "title": "The gate opens",
+                "when": "Day 5",
+                "missing": False,
             }
         ],
     }
@@ -344,6 +396,7 @@ def test_scenes_need_the_same_book_grant_the_prose_needs(app, auth_store):
     assert login(browser, "solo").status_code == 200
 
     assert browser.get(SCENES_URL).status_code == 403
+    assert browser.get(SECTION_SCENES_URL).status_code == 403
     # No grant means forbidden even where there would be nothing to find, so
     # the reader cannot be used to discover which books exist.
     assert browser.get("/books/no-such-book/volumes/one/ui/scenes").status_code == 403
@@ -370,9 +423,13 @@ def test_scenes_need_a_login(app):
     assert app.test_client().get(
         SCENES_URL, headers={"Accept": "application/json"}
     ).status_code == 401
+    assert app.test_client().get(
+        SECTION_SCENES_URL, headers={"Accept": "application/json"}
+    ).status_code == 401
 
 
 def test_a_read_only_collaborator_may_open_the_reader_and_its_scenes(reader, section):
     assert reader.get("/").status_code == 200
     assert reader.get(f"{VOLUME_URL}/manuscript").status_code == 200
     assert reader.get(SCENES_URL).status_code == 200
+    assert reader.get(SECTION_SCENES_URL).status_code == 200

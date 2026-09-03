@@ -269,7 +269,7 @@
       "get": {
         "tags": ["reader"],
         "summary": "The Chronos scenes this volume's sections say they realise",
-        "description": "A projection for the browser reader's Full View, grouped by section and in section order. It carries only the scenes named by each section's own `event_ids` — there is no parameter to widen it — and only a title and a timeframe for each. A scene a section still names but Chronos no longer has comes back flagged rather than dropped. Focused mode never calls this.",
+        "description": "A compatibility projection grouped by section and in section order. It carries only the scenes named by each section's own `event_ids` — there is no parameter to widen it — and only a title and a timeframe for each. A scene a section still names but Chronos no longer has comes back flagged rather than dropped. The section-only browser uses the narrower section projection.",
         "parameters": [
           { "$ref": "#/components/parameters/Book" },
           { "$ref": "#/components/parameters/Volume" }
@@ -419,6 +419,31 @@
           "404": { "$ref": "#/components/responses/NotFound" },
           "409": { "$ref": "#/components/responses/Conflict" },
           "428": { "$ref": "#/components/responses/PreconditionRequired" }
+        }
+      }
+    },
+    "/books/{book}/volumes/{volume}/sections/{section}/ui/scenes": {
+      "get": {
+        "tags": ["reader"],
+        "summary": "The Chronos scenes this section says it realises",
+        "description": "The section-only reader's Full View projection. It carries only scenes named by this section's own `event_ids`; Focused mode never calls it.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Book" },
+          { "$ref": "#/components/parameters/Volume" },
+          { "$ref": "#/components/parameters/Section" }
+        ],
+        "responses": {
+          "200": {
+            "description": "The current section's linked scenes.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SingleSectionScenes" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
     },
@@ -1030,6 +1055,19 @@
           "sections": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/SectionScenes" }
+          }
+        }
+      },
+      "SingleSectionScenes": {
+        "type": "object",
+        "required": ["book", "volume", "section", "scenes"],
+        "properties": {
+          "book": { "type": "string" },
+          "volume": { "type": "string" },
+          "section": { "type": "string" },
+          "scenes": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/LinkedScene" }
           }
         }
       },

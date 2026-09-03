@@ -1,20 +1,31 @@
-// The reader, wired up.
-//
-// Two pages, both real URLs: the shelf at `/`, and one volume at
-// `/?book=…&volume=…`. Navigation between them is plain links and full loads
-// rather than a client-side router, so the back button, bookmarks and
-// "open in new tab" all work without this file owning any history state. The
-// one exception is moving between sections of the volume you already have,
-// which only rewrites the address bar.
-//
-// Everything that turns manuscript data into elements lives in `prose.js`
-// (rich text) or below (chrome), and both go through the node factory. No
-// string of markup is built anywhere in this reader.
+// Logos' three-page reader: manuscript shelf, book contents, and one section.
+// Navigation uses ordinary links and full page loads so bookmarks, new tabs,
+// and the browser's back button work without a client-side router.
 
 import { ApiError, BASE, api } from "./api.js";
 import { el, fill, nodeFactory } from "./dom.js";
-import { neighbours, sectionLabel, sectionName } from "./navigation.js";
-import { RenderError, renderDocument } from "./prose.js";
+import {
+  findSection,
+  sectionLabel,
+  sectionName,
+  sectionNeighbours,
+} from "./navigation.js";
+import {
+  defaultOpenVolume,
+  filterOutline,
+  pageForSection,
+  SECTION_PAGE_SIZE,
+  sectionCount,
+  sectionPage,
+} from "./outline.js";
+import {
+  blockAnchor,
+  forgetPosition,
+  prunePositions,
+  readPosition,
+  scrollForAnchor,
+  writePosition,
+} from "./position.js";
 import {
   DISPLAY_FIELDS,
   FULL,
@@ -24,64 +35,108 @@ import {
   showsChronos,
   writePreferences,
 } from "./preferences.js";
+import { sectionProgress, scrollForProgress } from "./progress.js";
+import { RenderError, renderDocument } from "./prose.js";
 
 const root = document.documentElement;
 const content = document.getElementById("content");
 const toolbar = document.getElementById("reader-toolbar");
 const modeButton = document.getElementById("mode-toggle");
 const settings = document.getElementById("reading-settings");
+const progressRegion = document.getElementById("reading-progress");
+const progressMeter = document.getElementById("reading-progress-meter");
+const progressValue = document.getElementById("reading-progress-value");
+const jumpButton = document.getElementById("jump-open");
+const jumpDialog = document.getElementById("section-jump");
+const jumpSearch = document.getElementById("jump-search");
+const jumpStatus = document.getElementById("jump-status");
+const jumpResults = document.getElementById("jump-results");
 const nodes = nodeFactory();
-const scenePanels = new Map();
-const sectionNodes = new Map();
-const contentsLinks = new Map();
+const storage = window.localStorage;
+const readerUser = window.__READER_USER__ || "";
 
-let preferences = readPreferences(window.localStorage);
+let preferences = readPreferences(storage);
 let open = null;
-let pager = null;
+let scenePanelNode = null;
+let saveTimer = null;
+let measureFrame = null;
+let measureShouldSave = false;
+let jumpPages = new Map();
 
 const MODE_TEXT = {
   focused: ["Focused", "Prose alone — nothing from any other service. Switch to Full view."],
-  full: ["Full view", "With the Chronos scenes each section was written from. Switch to Focused."],
+  full: ["Full view", "With the Chronos scenes this section was written from. Switch to Focused."],
 };
 
-// The one width where the contents can be a column of its own. Below it the
-// panel is a disclosure the reader opens when they want it.
-const ROOMY = window.matchMedia("(min-width: 1101px)");
-
-// -- addresses ----------------------------------------------------------------
-
+// A stable line near the top of the viewport is anchored to a manuscript block
+// so a typeface or window-width change can still restore the same words.
+const markerLine = () => Math.min(96, window.innerHeight / 3);
 const home = () => `${BASE}/`;
 
-function readerUrl(book, volume, section) {
-  const query = new URLSearchParams({ book });
-  if (volume) query.set("volume", volume);
-  if (section) query.set("section", section);
-  return `${home()}?${query}`;
+function bookUrl(book) {
+  return `${home()}?${new URLSearchParams({ book })}`;
 }
 
-// -- shelf --------------------------------------------------------------------
+function readerUrl(book, volume, section) {
+  return `${home()}?${new URLSearchParams({ book, volume, section })}`;
+}
+
+function words(count) {
+  return `${count.toLocaleString()} ${count === 1 ? "word" : "words"}`;
+}
+
+function percent(value) {
+  return `${Math.round(value * 100)}%`;
+}
+
+function hideReaderChrome() {
+  toolbar.hidden = true;
+  progressRegion.hidden = true;
+  open = null;
+}
+
+// -- shelf -------------------------------------------------------------------
+
+function continueLink(book, position, label = "Continue reading") {
+  return el("a", {
+    class: "continue-link",
+    href: readerUrl(book, position.volume, position.section),
+  }, [
+    el("span", { text: label }),
+    el("span", { class: "continue-progress", text: percent(position.progress) }),
+  ]);
+}
 
 function bookCard(row) {
+  const position = row.has_manuscript
+    ? readPosition(storage, readerUser, row.book) : null;
   const meta = row.has_manuscript
     ? `${row.volume_count} ${row.volume_count === 1 ? "volume" : "volumes"}`
     : "No manuscript yet";
   const heading = el("h2", { text: row.title || row.book });
   return el("article", { class: `card${row.has_manuscript ? "" : " inert"}` }, [
     row.has_manuscript
-      ? el("a", { class: "card-link", href: readerUrl(row.book) }, [heading])
+      ? el("a", { class: "card-link", href: bookUrl(row.book) }, [heading])
       : heading,
     el("p", { class: "card-sub", text: row.book }),
     el("p", { class: "card-meta", text: meta }),
+    position ? continueLink(row.book, position) : null,
   ]);
 }
 
 function renderShelf(books) {
+  hideReaderChrome();
   document.title = "Logos — manuscripts";
+  prunePositions(
+    storage,
+    readerUser,
+    books.filter((book) => book.has_manuscript).map((book) => book.book),
+  );
   fill(content, [
     el("div", { class: "page-heading" }, [
       el("p", { class: "eyebrow", text: "Read-only library" }),
       el("h1", { text: "Manuscripts" }),
-      el("p", { class: "lead", text: "Choose a manuscript and read it one volume at a time." }),
+      el("p", { class: "lead", text: "Choose a book to browse its volumes and sections." }),
     ]),
     books.length
       ? el("div", { class: "card-grid" }, books.map(bookCard))
@@ -89,7 +144,236 @@ function renderShelf(books) {
   ]);
 }
 
-// -- one volume ---------------------------------------------------------------
+// -- book contents -----------------------------------------------------------
+
+function validResume(manuscript) {
+  const position = readPosition(storage, readerUser, manuscript.book);
+  if (!position) return null;
+  const entry = findSection(manuscript, position.volume, position.section);
+  if (entry) return { position, entry };
+  forgetPosition(storage, readerUser, manuscript.book);
+  return null;
+}
+
+function sectionRow(manuscript, volume, section, resume) {
+  const isResume = resume
+    && resume.position.volume === volume.id
+    && resume.position.section === section.id;
+  const titled = Boolean(section.title);
+  return el("li", { class: `section-row${isResume ? " resume" : ""}` }, [
+    el("a", {
+      class: "section-link",
+      href: readerUrl(manuscript.book, volume.id, section.id),
+    }, [
+      el("span", { class: "section-name" }, [
+        titled ? el("span", { class: "section-kind", text: sectionLabel(section) }) : null,
+        el("strong", { text: sectionName(section) }),
+      ]),
+      el("span", { class: "section-stats", text: words(section.word_count) }),
+      isResume
+        ? el("span", {
+            class: "resume-marker",
+            text: `Continue here · ${percent(resume.position.progress)}`,
+          })
+        : null,
+    ]),
+  ]);
+}
+
+function pagedSectionList(
+  sections, initialPage, rowFactory, label, onPage, listClass = "section-list",
+) {
+  const list = el("ol", { class: listClass });
+  if (sections.length <= SECTION_PAGE_SIZE) {
+    fill(list, sections.map(rowFactory));
+    onPage(0);
+    return list;
+  }
+
+  let current = null;
+  const status = el("span", { class: "page-range" });
+  const previous = el("button", {
+    class: "page-btn", type: "button", text: "← Previous",
+    "aria-label": `Previous sections in ${label}`,
+    onclick: () => turn(current.page - 1),
+  });
+  const next = el("button", {
+    class: "page-btn", type: "button", text: "Next →",
+    "aria-label": `Next sections in ${label}`,
+    onclick: () => turn(current.page + 1),
+  });
+  const paint = (requested) => {
+    current = sectionPage(sections, requested);
+    fill(list, current.sections.map(rowFactory));
+    previous.disabled = current.page === 0;
+    next.disabled = current.page === current.pages - 1;
+    status.textContent = `Sections ${current.start + 1}–${current.end} of ${current.total}`;
+    onPage(current.page);
+  };
+  const turn = (page) => {
+    paint(page);
+    const first = list.querySelector("a");
+    if (first) first.focus();
+  };
+  const pager = el("nav", { class: "section-pages", "aria-label": `Browse ${label}` }, [
+    previous,
+    status,
+    next,
+  ]);
+  paint(initialPage);
+  return el("div", { class: "section-window" }, [list, pager]);
+}
+
+function volumeCard(
+  manuscript, volume, resume, expanded, searching, page, rememberPage, rememberOpen,
+) {
+  const summary = searching
+    ? `${volume.sections.length} matching ${volume.sections.length === 1 ? "section" : "sections"}`
+    : `${volume.section_count} ${volume.section_count === 1 ? "section" : "sections"}`
+      + ` · ${words(volume.word_count)}`;
+  const sectionList = searching
+    ? el("ol", { class: "section-list" },
+        volume.sections.map((section) => sectionRow(manuscript, volume, section, resume)))
+    : pagedSectionList(
+        volume.sections,
+        page,
+        (section) => sectionRow(manuscript, volume, section, resume),
+        volume.title,
+        rememberPage,
+      );
+  return el("details", {
+    class: "volume-card",
+    open: expanded,
+    ontoggle: (event) => rememberOpen(event.currentTarget.open),
+  }, [
+    el("summary", { class: "volume-summary" }, [
+      el("span", { class: "volume-summary-copy" }, [
+        el("span", { class: "eyebrow", text: `Volume ${volume.number}` }),
+        el("strong", {
+          class: "volume-title", role: "heading", "aria-level": "2", text: volume.title,
+        }),
+        volume.overview
+          ? el("span", { class: "volume-overview", text: volume.overview }) : null,
+      ]),
+      el("span", {
+        class: "volume-summary-meta",
+        text: summary,
+      }),
+      el("span", { class: "volume-chevron", "aria-hidden": "true", text: "⌄" }),
+    ]),
+    volume.sections.length
+      ? sectionList
+      : el("p", { class: "volume-empty", text: "No sections yet." }),
+  ]);
+}
+
+function outlineBrowser(manuscript, resume) {
+  const total = sectionCount(manuscript.volumes);
+  const list = el("div", { class: "volume-list" });
+  const opened = defaultOpenVolume(manuscript, resume && resume.position);
+  const expanded = new Map(
+    manuscript.volumes.map((volume) => [volume.id, volume.id === opened]),
+  );
+  const pages = new Map();
+  if (resume) {
+    pages.set(
+      resume.entry.volume.id,
+      pageForSection(resume.entry.volume.sections, resume.entry.section.id),
+    );
+  }
+  const status = el("p", { class: "outline-search-status muted", "aria-live": "polite" });
+
+  const render = (query) => {
+    const filtered = filterOutline(manuscript, query);
+    const searching = Boolean(query.trim());
+    const found = sectionCount(filtered);
+    status.textContent = searching
+      ? `${found} ${found === 1 ? "section" : "sections"} found`
+      : "";
+    fill(list, filtered.length
+      ? filtered.map((volume) => volumeCard(
+          manuscript,
+          volume,
+          resume,
+          searching || expanded.get(volume.id),
+          searching,
+          pages.get(volume.id) || 0,
+          (page) => pages.set(volume.id, page),
+          (isOpen) => {
+            if (!searching) expanded.set(volume.id, isOpen);
+          },
+        ))
+      : [el("p", { class: "empty outline-empty", text: "No sections match your search." })]);
+  };
+
+  if (!total) {
+    render("");
+    return list;
+  }
+  const search = el("input", {
+    id: "outline-search",
+    class: "outline-search",
+    type: "search",
+    placeholder: "Title, chapter, type, or volume",
+    autocomplete: "off",
+    oninput: (event) => render(event.target.value),
+  });
+  render("");
+  return el("div", { class: "outline-browser" }, [
+    el("div", { class: "outline-search-row", role: "search" }, [
+      el("label", { for: "outline-search", text: "Find a section" }),
+      search,
+      status,
+    ]),
+    list,
+  ]);
+}
+
+function resumeCallout(manuscript, resume) {
+  if (!resume) return null;
+  const { position, entry } = resume;
+  return el("a", {
+    class: "resume-callout",
+    href: readerUrl(manuscript.book, position.volume, position.section),
+  }, [
+    el("span", { class: "resume-icon", "aria-hidden": "true", text: "▶" }),
+    el("span", { class: "resume-copy" }, [
+      el("strong", { text: "Continue reading" }),
+      el("span", {
+        text: `${entry.volume.title} · ${sectionName(entry.section)}`,
+      }),
+    ]),
+    el("span", { class: "resume-percent", text: percent(position.progress) }),
+  ]);
+}
+
+function renderBook(manuscript, notice = null) {
+  hideReaderChrome();
+  const resume = validResume(manuscript);
+  const totalSections = sectionCount(manuscript.volumes);
+  document.title = `${manuscript.title || manuscript.book} — Logos`;
+  fill(content, [
+    el("div", { class: "book-heading" }, [
+      el("a", { class: "back-link", href: home(), text: "← Manuscripts" }),
+      el("p", { class: "eyebrow", text: "Book contents" }),
+      el("h1", { text: manuscript.title || manuscript.book }),
+      manuscript.overview ? el("p", { class: "lead book-overview", text: manuscript.overview }) : null,
+      el("p", {
+        class: "book-meta",
+        text: `${manuscript.volume_count} ${manuscript.volume_count === 1 ? "volume" : "volumes"}`
+          + ` · ${totalSections} ${totalSections === 1 ? "section" : "sections"}`
+          + ` · ${words(manuscript.word_count)}`,
+      }),
+    ]),
+    notice ? el("p", { class: "reader-notice", role: "status", text: notice }) : null,
+    resumeCallout(manuscript, resume),
+    manuscript.volumes.length
+      ? outlineBrowser(manuscript, resume)
+      : el("p", { class: "empty", text: "This book has no manuscript volumes yet." }),
+  ]);
+}
+
+// -- section reader ----------------------------------------------------------
 
 function prose(section) {
   try {
@@ -99,7 +383,7 @@ function prose(section) {
     return el("div", { class: "prose" }, [
       el("p", {
         class: "prose-error",
-        text: "This section is written with features this reader does not know yet."
+        text: "This section uses features this reader does not know yet."
           + " Read it through the API until Logos is updated.",
       }),
     ]);
@@ -107,165 +391,130 @@ function prose(section) {
 }
 
 function scenePanel(section) {
+  scenePanelNode = null;
   if (!(section.event_ids || []).length) return null;
-  const panel = el("aside", {
+  scenePanelNode = el("aside", {
     class: "scenes",
     "aria-label": `Chronos scenes behind ${sectionName(section)}`,
   }, [el("p", { class: "scenes-status", text: "Loading linked scenes…" })]);
-  scenePanels.set(section.id, panel);
-  return panel;
+  return scenePanelNode;
 }
 
-function sectionArticle(section) {
-  const article = el("article", { class: "section", id: `section-${section.id}` }, [
-    el("header", { class: "section-head" }, [
-      section.title ? el("p", { class: "eyebrow", text: sectionLabel(section) }) : null,
-      el("h2", { text: sectionName(section) }),
-    ]),
-    el("div", { class: "section-body" }, [prose(section), scenePanel(section)]),
-  ]);
-  sectionNodes.set(section.id, article);
-  return article;
-}
-
-// -- contents -----------------------------------------------------------------
-
-let contents = null;
-
-function contentsLink(section) {
-  const link = el("a", {
-    href: `#section-${section.id}`,
-    text: sectionName(section),
-    onclick: (event) => {
-      // Continuous reading wants the anchor jump the browser already does.
-      // One-section reading has nowhere to jump to, so this *is* the move.
-      if (preferences.flow !== "section") return;
-      event.preventDefault();
-      selectSection(section.id);
-      if (!ROOMY.matches) contents.open = false;
-    },
-  });
-  contentsLinks.set(section.id, link);
-  return el("li", {}, [link]);
-}
-
-function contentsPanel(volume) {
-  contents = el("details", {
-    class: "contents",
-    open: ROOMY.matches,
-    "aria-label": "Contents",
-  }, [
-    el("summary", { class: "contents-summary", text: "Contents" }),
-    el("nav", { class: "contents-body", "aria-label": "Sections in this volume" }, [
-      el("ol", {}, volume.sections.map(contentsLink)),
-    ]),
-  ]);
-  return contents;
-}
-
-/** Wide enough for a column: open it. Narrow: let the reader decide. */
-function followWidth(event) {
-  if (contents && event.matches) contents.open = true;
-}
-
-// -- moving through the volume ------------------------------------------------
-
-function sectionPager() {
-  pager = el("nav", { class: "section-pager", "aria-label": "Adjacent sections" });
-  return pager;
-}
-
-function pagerLink(section, arrow) {
-  if (!section) return el("span");
+function pagerLink(entry, direction) {
+  if (!entry) return el("span");
+  const backwards = direction === "previous";
   return el("a", {
-    href: readerUrl(open.book, open.volume, section.id),
-    text: arrow === "back" ? `← ${sectionName(section)}` : `${sectionName(section)} →`,
-    onclick: (event) => {
-      event.preventDefault();
-      selectSection(section.id);
-    },
-  });
-}
-
-function paintPager() {
-  if (!pager || !open) return;
-  const { previous, next } = neighbours(open.sections, open.section);
-  fill(pager, [pagerLink(previous, "back"), pagerLink(next, "on")]);
-}
-
-function selectSection(id) {
-  if (!open || !sectionNodes.has(id)) return;
-  open.section = id;
-  for (const [key, node] of sectionNodes) node.classList.toggle("current", key === id);
-  for (const [key, link] of contentsLinks) {
-    // Only in one-section reading is there a section you are *on*. Scrolling
-    // past a heading is not the same claim, and this reader does not make it.
-    const here = key === id && preferences.flow === "section";
-    link.classList.toggle("current", here);
-    if (here) link.setAttribute("aria-current", "location");
-    else link.removeAttribute("aria-current");
-  }
-  paintPager();
-  if (preferences.flow === "section") {
-    window.history.replaceState(null, "", readerUrl(open.book, open.volume, id));
-    window.scrollTo({ top: 0 });
-  }
-}
-
-function volumeStrip(manuscript, current) {
-  if (manuscript.volumes.length < 2) return null;
-  return el("nav", { class: "volume-strip", "aria-label": "Volumes" },
-    manuscript.volumes.map((row) => el("a", {
-      class: `volume-chip${row.id === current ? " current" : ""}`,
-      href: readerUrl(manuscript.book, row.id),
-      text: row.title,
-      ...(row.id === current ? { "aria-current": "page" } : {}),
-    })),
-  );
-}
-
-function volumePager(manuscript, volume) {
-  const { previous, next } = neighbours(manuscript.volumes, volume.id);
-  const link = (row, text) =>
-    row ? el("a", { href: readerUrl(manuscript.book, row.id), text }) : el("span");
-  return el("nav", { class: "volume-pager", "aria-label": "Adjacent volumes" }, [
-    link(previous, previous ? `← ${previous.title}` : ""),
-    link(next, next ? `${next.title} →` : ""),
+    href: readerUrl(open.manuscript.book, entry.volume.id, entry.section.id),
+    class: `pager-link ${direction}`,
+    "aria-label": `${backwards ? "Previous" : "Next"}: ${sectionName(entry.section)}`,
+  }, [
+    el("span", { class: "pager-direction", text: backwards ? "← Previous" : "Next →" }),
+    el("strong", { text: sectionName(entry.section) }),
+    el("span", { class: "pager-volume", text: entry.volume.title }),
   ]);
 }
 
-function renderReader(manuscript, volume) {
-  document.title = `${volume.title} — Logos`;
-  scenePanels.clear();
-  sectionNodes.clear();
-  contentsLinks.clear();
+function sectionPager(manuscript, volume, section) {
+  const adjacent = sectionNeighbours(manuscript, volume.id, section.id);
+  return el("nav", { class: "section-pager", "aria-label": "Adjacent sections" }, [
+    pagerLink(adjacent.previous, "previous"),
+    pagerLink(adjacent.next, "next"),
+  ]);
+}
+
+function renderReader(manuscript, entry, section) {
   toolbar.hidden = false;
-  fill(content, [
-    el("div", { class: "reader-heading" }, [
-      el("a", { class: "back-link", href: home(), text: "← Manuscripts" }),
-      el("p", { class: "eyebrow", text: manuscript.title || manuscript.book }),
-      el("h1", { text: volume.title }),
+  progressRegion.hidden = false;
+  document.title = `${sectionName(section)} — ${manuscript.title || manuscript.book}`;
+  const proseNode = prose(section);
+  const article = el("article", { class: "section reading-section" }, [
+    el("header", { class: "section-head" }, [
       el("p", {
-        class: "volume-meta",
-        text: `Volume ${volume.number} · ${volume.section_count} sections`
-          + ` · ${volume.word_count.toLocaleString()} words`,
+        class: "eyebrow",
+        text: `Volume ${entry.volume.number} · ${entry.volume.title}`,
       }),
-      volumeStrip(manuscript, volume.id),
+      el("h1", { text: sectionName(section) }),
+      el("p", {
+        class: "section-meta",
+        text: `${sectionLabel(section)} · ${words(section.word_count)}`,
+      }),
     ]),
-    volume.sections.length
-      ? el("div", { class: "reader-layout" }, [
-          contentsPanel(volume),
-          el("div", { class: "manuscript" }, [
-            ...volume.sections.map(sectionArticle),
-            sectionPager(),
-          ]),
-        ])
-      : el("p", { class: "empty", text: "This volume has no prose yet." }),
-    volumePager(manuscript, volume),
+    el("div", { class: "section-body" }, [proseNode, scenePanel(section)]),
+  ]);
+  open.article = article;
+  open.prose = proseNode;
+  fill(content, [
+    el("a", {
+      class: "back-link",
+      href: bookUrl(manuscript.book),
+      text: `← Contents for ${manuscript.title || manuscript.book}`,
+    }),
+    article,
+    sectionPager(manuscript, entry.volume, section),
   ]);
 }
 
-// -- full view ----------------------------------------------------------------
+// -- jump to section ---------------------------------------------------------
+
+function jumpSectionLink(volume, section) {
+  const current = open.volume.id === volume.id && open.section.id === section.id;
+  return el("li", {}, [
+    el("a", {
+      class: `jump-section${current ? " current" : ""}`,
+      href: readerUrl(open.manuscript.book, volume.id, section.id),
+      ...(current ? { "aria-current": "page" } : {}),
+    }, [
+      el("span", { text: sectionName(section) }),
+      section.title
+        ? el("span", { class: "jump-kind", text: sectionLabel(section) }) : null,
+    ]),
+  ]);
+}
+
+function jumpVolume(volume, searching) {
+  const row = (section) => jumpSectionLink(volume, section);
+  const sections = searching
+    ? el("ol", { class: "jump-section-list" }, volume.sections.map(row))
+    : pagedSectionList(
+        volume.sections,
+        jumpPages.get(volume.id) || 0,
+        row,
+        volume.title,
+        (page) => jumpPages.set(volume.id, page),
+        "jump-section-list",
+      );
+  return el("section", { class: "jump-volume" }, [
+    el("h3", { text: `Volume ${volume.number} · ${volume.title}` }),
+    sections,
+  ]);
+}
+
+function renderJumpResults(query) {
+  if (!open) return;
+  const volumes = filterOutline(open.manuscript, query);
+  const searching = Boolean(query.trim());
+  const found = sectionCount(volumes);
+  jumpStatus.textContent = `${found} ${found === 1 ? "section" : "sections"}`;
+  fill(jumpResults, volumes.length
+    ? volumes.map((volume) => jumpVolume(volume, searching))
+    : [el("p", { class: "empty jump-empty", text: "No sections match your search." })]);
+}
+
+function openJump() {
+  if (!open) return;
+  jumpPages = new Map([[
+    open.volume.id,
+    pageForSection(open.volume.sections, open.section.id),
+  ]]);
+  jumpSearch.value = "";
+  renderJumpResults("");
+  jumpDialog.showModal();
+  jumpSearch.focus();
+  const current = jumpResults.querySelector('[aria-current="page"]');
+  if (current) current.scrollIntoView({ block: "nearest" });
+}
+
+// -- full view ---------------------------------------------------------------
 
 function sceneCard(scene) {
   if (scene.missing) {
@@ -281,36 +530,124 @@ function sceneCard(scene) {
 }
 
 function fillScenes(payload) {
-  const bySection = new Map(payload.sections.map((row) => [row.section, row.scenes]));
-  for (const [section, panel] of scenePanels) {
-    fill(panel, [
-      el("h3", { text: "Linked scenes" }),
-      el("ul", { class: "scene-list" }, (bySection.get(section) || []).map(sceneCard)),
-    ]);
-  }
+  if (!scenePanelNode) return;
+  fill(scenePanelNode, [
+    el("h2", { text: "Linked scenes" }),
+    el("ul", { class: "scene-list" }, payload.scenes.map(sceneCard)),
+  ]);
 }
 
 function sceneLoadFailed(error) {
+  if (!scenePanelNode) return;
   const detail = error instanceof ApiError && error.status === 403
     ? "You may read this prose but not the timeline behind it."
     : "The linked scenes could not be loaded.";
-  for (const panel of scenePanels.values()) {
-    fill(panel, [el("p", { class: "scenes-status", text: detail })]);
-  }
+  fill(scenePanelNode, [el("p", { class: "scenes-status", text: detail })]);
 }
 
 async function loadScenes() {
-  if (!open || open.scenesLoaded || !scenePanels.size) return;
+  if (!open || open.scenesLoaded || !scenePanelNode) return;
   open.scenesLoaded = true;
   try {
-    fillScenes(await api.scenes(open.book, open.volume));
+    fillScenes(await api.scenes(open.manuscript.book, open.volume.id, open.section.id));
   } catch (error) {
     open.scenesLoaded = false;
     sceneLoadFailed(error);
   }
 }
 
-// -- preferences --------------------------------------------------------------
+// -- reading position and progress ------------------------------------------
+
+function readingGeometry() {
+  const article = open.article.getBoundingClientRect();
+  const prose = open.prose.getBoundingClientRect();
+  const top = article.top + window.scrollY;
+  return {
+    top,
+    height: prose.bottom + window.scrollY - top,
+    scrollY: window.scrollY,
+    viewportHeight: window.innerHeight,
+  };
+}
+
+function paintProgress(value) {
+  const rounded = Math.round(value * 100);
+  progressMeter.value = rounded;
+  progressValue.textContent = `${rounded}%`;
+}
+
+function blockSnapshot() {
+  const marker = window.scrollY + markerLine();
+  const blocks = Array.from(open.prose.querySelectorAll("[data-block-id]"))
+    .map((node) => ({
+      id: node.dataset.blockId,
+      top: node.getBoundingClientRect().top + window.scrollY,
+    }));
+  return blockAnchor(blocks, marker);
+}
+
+function savePosition() {
+  if (!open || open.restoring) return;
+  if (saveTimer !== null) window.clearTimeout(saveTimer);
+  saveTimer = null;
+  const progress = sectionProgress(readingGeometry());
+  writePosition(storage, readerUser, open.manuscript.book, {
+    volume: open.volume.id,
+    section: open.section.id,
+    ...blockSnapshot(),
+    progress,
+  });
+}
+
+function queueSave() {
+  if (saveTimer !== null) window.clearTimeout(saveTimer);
+  saveTimer = window.setTimeout(savePosition, 200);
+}
+
+function measure(save = true) {
+  if (!open) return;
+  paintProgress(sectionProgress(readingGeometry()));
+  if (save && !open.restoring) queueSave();
+}
+
+function scheduleMeasure(save = true) {
+  measureShouldSave ||= save;
+  if (measureFrame !== null) return;
+  measureFrame = window.requestAnimationFrame(() => {
+    measureFrame = null;
+    const shouldSave = measureShouldSave;
+    measureShouldSave = false;
+    measure(shouldSave);
+  });
+}
+
+const nextFrame = () => new Promise((resolve) => window.requestAnimationFrame(resolve));
+
+function findBlock(id) {
+  if (!id) return null;
+  return Array.from(open.prose.querySelectorAll("[data-block-id]"))
+    .find((node) => node.dataset.blockId === id) || null;
+}
+
+async function restorePosition(position) {
+  open.restoring = true;
+  await nextFrame();
+  await nextFrame();
+  const block = position && findBlock(position.block);
+  const target = block
+    ? scrollForAnchor(
+        block.getBoundingClientRect().top + window.scrollY,
+        position.offset,
+        markerLine(),
+      )
+    : scrollForProgress(readingGeometry(), position ? position.progress : 0);
+  window.scrollTo({ top: Math.max(0, target), behavior: "auto" });
+  await nextFrame();
+  open.restoring = false;
+  measure(true);
+}
+
+// -- preferences and entry ---------------------------------------------------
 
 function applyPreferences() {
   for (const field of DISPLAY_FIELDS) {
@@ -326,21 +663,15 @@ function applyPreferences() {
 }
 
 function update(patch) {
-  const wasFlow = preferences.flow;
-  preferences = writePreferences(window.localStorage, patch);
+  preferences = writePreferences(storage, patch);
   applyPreferences();
-  // Leaving one-section reading puts the whole volume back and takes the
-  // section out of the address; entering it has to choose one to be on.
-  if (preferences.flow !== wasFlow && open) selectSection(open.section);
-  if (preferences.flow === "continuous" && open) {
-    window.history.replaceState(null, "", readerUrl(open.book, open.volume));
-  }
+  scheduleMeasure(false);
 }
 
 function wire() {
   modeButton.addEventListener("click", () => {
     update({ mode: otherMode(preferences.mode) });
-    if (showsChronos(preferences)) loadScenes();
+    if (showsChronos(preferences)) loadScenes().then(() => scheduleMeasure(false));
   });
   for (const field of DISPLAY_FIELDS) {
     document.getElementById(`display-${field}`)
@@ -350,13 +681,20 @@ function wire() {
     .addEventListener("click", () => update(resetDisplay(preferences)));
   document.getElementById("settings-open")
     .addEventListener("click", () => settings.showModal());
-  ROOMY.addEventListener("change", followWidth);
+  jumpButton.addEventListener("click", openJump);
+  jumpSearch.addEventListener("input", (event) => renderJumpResults(event.target.value));
+  window.addEventListener("scroll", () => scheduleMeasure(), { passive: true });
+  window.addEventListener("resize", () => scheduleMeasure(false));
+  window.addEventListener("pagehide", savePosition);
+  document.addEventListener("prefs:fontscale", () => scheduleMeasure(false));
 }
 
-// -- entry --------------------------------------------------------------------
-
 function showFailure(error) {
-  toolbar.hidden = true;
+  if (error instanceof ApiError && error.status === 403) {
+    const book = new URLSearchParams(window.location.search).get("book");
+    if (book) forgetPosition(storage, readerUser, book);
+  }
+  hideReaderChrome();
   fill(content, [
     el("div", { class: "page-heading" }, [
       el("p", { class: "eyebrow", text: "Logos" }),
@@ -367,29 +705,29 @@ function showFailure(error) {
   ]);
 }
 
-async function openVolume(book, requested, section) {
-  const manuscript = await api.manuscript(book);
-  const chosen = manuscript.volumes.find((row) => row.id === requested)
-    || manuscript.volumes[0];
-  if (!chosen) {
-    showFailure(new Error(`"${manuscript.title || book}" has no volumes yet.`));
-    return;
-  }
-  const volume = await api.volume(book, chosen.id);
+async function openSection(manuscript, entry) {
+  const section = await api.section(
+    manuscript.book, entry.volume.id, entry.section.id,
+  );
   open = {
-    book,
-    volume: chosen.id,
-    sections: volume.sections,
-    section: null,
+    manuscript,
+    volume: entry.volume,
+    section,
+    article: null,
+    prose: null,
     scenesLoaded: false,
+    restoring: true,
   };
-  renderReader(manuscript, volume);
-  const first = volume.sections[0] && volume.sections[0].id;
-  selectSection(sectionNodes.has(section) ? section : first);
+  renderReader(manuscript, entry, section);
   if (showsChronos(preferences)) await loadScenes();
+  const saved = readPosition(storage, readerUser, manuscript.book);
+  const position = saved && saved.volume === entry.volume.id
+    && saved.section === section.id ? saved : null;
+  await restorePosition(position);
 }
 
 async function start() {
+  if ("scrollRestoration" in window.history) window.history.scrollRestoration = "manual";
   wire();
   applyPreferences();
   const query = new URLSearchParams(window.location.search);
@@ -398,7 +736,25 @@ async function start() {
     renderShelf((await api.books()).books);
     return;
   }
-  await openVolume(book, query.get("volume"), query.get("section"));
+
+  const manuscript = await api.manuscript(book);
+  const volume = query.get("volume");
+  const section = query.get("section");
+  if (!volume || !section) {
+    renderBook(manuscript);
+    return;
+  }
+
+  const entry = findSection(manuscript, volume, section);
+  if (!entry) {
+    const saved = readPosition(storage, readerUser, book);
+    if (saved && saved.volume === volume && saved.section === section) {
+      forgetPosition(storage, readerUser, book);
+    }
+    renderBook(manuscript, "That section is no longer available. Choose another section.");
+    return;
+  }
+  await openSection(manuscript, entry);
 }
 
 start().catch(showFailure);

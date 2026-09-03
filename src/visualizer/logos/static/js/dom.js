@@ -25,13 +25,17 @@ export function nodeFactory(owner = document) {
     },
     fragment(children = []) {
       const fragment = owner.createDocumentFragment();
-      for (const child of children.flat()) fragment.appendChild(child);
+      for (const child of children.flat()) {
+        if (child !== null && child !== undefined) fragment.appendChild(child);
+      }
       return fragment;
     },
   };
 }
 
-const browser = nodeFactory();
+// Keep the adapter importable under Node so its edge cases can be exercised
+// without manufacturing a global browser document.
+const browser = typeof document === "undefined" ? null : nodeFactory(document);
 
 export function el(tag, attrs = {}, children = []) {
   return browser.element(tag, attrs, children);

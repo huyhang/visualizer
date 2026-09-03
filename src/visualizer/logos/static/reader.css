@@ -88,14 +88,30 @@ h1, h2, h3, p { margin-top: 0; }
   border-bottom: 1px solid var(--border); font-size: .82rem;
 }
 
+.reading-progress {
+  position: sticky; top: 0; z-index: 5;
+  display: grid; grid-template-columns: auto minmax(5rem, 1fr) 2.4rem;
+  align-items: center; gap: .7rem; padding: .35rem 1.5rem;
+  color: var(--muted); background: var(--surface);
+  border-bottom: 1px solid var(--border); font-size: .72rem; font-weight: 700;
+}
+.reading-progress progress {
+  width: 100%; height: 5px; appearance: none;
+  border: 0; border-radius: 999px; overflow: hidden; background: var(--surface-2);
+}
+.reading-progress progress::-webkit-progress-bar { background: var(--surface-2); }
+.reading-progress progress::-webkit-progress-value { background: var(--accent); }
+.reading-progress progress::-moz-progress-bar { background: var(--accent); }
+.reading-progress output { text-align: right; font-variant-numeric: tabular-nums; }
+
 /* reading settings */
-.settings {
+.settings, .jump {
   width: min(26rem, calc(100vw - 2rem)); padding: 0;
   color: var(--text); background: var(--surface);
   border: 1px solid var(--border); border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
-.settings::backdrop { background: rgb(0 0 0 / .45); }
+.settings::backdrop, .jump::backdrop { background: rgb(0 0 0 / .45); }
 .settings form { padding: 1rem 1.15rem 1.15rem; }
 .settings-head {
   display: flex; align-items: center; justify-content: space-between;
@@ -115,6 +131,37 @@ h1, h2, h3, p { margin-top: 0; }
 .settings-actions {
   display: flex; justify-content: space-between; gap: .6rem; margin-top: 1rem;
 }
+
+/* searchable book contents inside the section reader */
+.jump { width: min(34rem, calc(100vw - 2rem)); }
+.jump-shell { padding: 1rem 1.15rem 1.15rem; }
+.jump-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.jump-head h2 { margin: 0; font-size: 1.1rem; }
+.jump-head form { margin: 0; }
+.jump-search-label {
+  display: block; margin-top: .9rem; color: var(--muted);
+  font-size: .76rem; font-weight: 700;
+}
+.jump-search, .outline-search {
+  width: 100%; padding: .55rem .7rem; color: var(--text); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 9px;
+}
+.jump-search:focus, .outline-search:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.jump-status { margin: .45rem 0; font-size: .75rem; }
+.jump-results { max-height: min(60vh, 34rem); overflow-y: auto; }
+.jump-volume + .jump-volume { margin-top: 1rem; }
+.jump-volume h3 { margin: 0 0 .35rem; font-size: .8rem; color: var(--muted); }
+.jump-section-list { margin: 0; padding: 0; list-style: none; }
+.jump-section {
+  display: flex; justify-content: space-between; gap: 1rem;
+  padding: .45rem .55rem; border-radius: 8px; color: var(--text);
+}
+.jump-section:hover, .jump-section.current {
+  color: var(--accent-strong); background: var(--accent-soft); text-decoration: none;
+}
+.jump-section.current { font-weight: 700; }
+.jump-kind { color: var(--muted); font-size: .72rem; white-space: nowrap; }
+.jump-empty { padding: 1rem 0; }
 
 /* page frame */
 .content {
@@ -147,63 +194,116 @@ h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.
 .card-sub, .card-meta { color: var(--muted); font-size: .8rem; }
 .card-meta { margin: auto 0 0; }
 
-/* the volume itself */
-.reader-heading { margin-bottom: 1.75rem; }
-.volume-meta { color: var(--muted); font-size: .85rem; margin: 0; }
-.volume-strip { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .9rem; }
-.volume-chip {
-  padding: .25rem .6rem; border: 1px solid var(--border); border-radius: 999px;
-  background: var(--surface); color: var(--muted); font-size: .8rem; font-weight: 600;
+.continue-link {
+  display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+  margin-top: .65rem; padding-top: .6rem; border-top: 1px solid var(--border);
+  font-size: .8rem; font-weight: 700;
 }
-.volume-chip:hover { border-color: var(--accent); text-decoration: none; }
-.volume-chip.current {
-  color: var(--accent-strong); background: var(--accent-soft); border-color: transparent;
-}
-.volume-pager {
-  display: flex; justify-content: space-between; gap: 1rem;
-  margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--border);
-  font-size: .88rem; font-weight: 600;
-}
+.continue-link:hover { text-decoration: none; }
+.continue-progress { color: var(--muted); font-variant-numeric: tabular-nums; }
 
-/* contents beside the prose; a disclosure once there is no room for a column */
-.reader-layout { display: grid; grid-template-columns: 11rem minmax(0, 1fr); gap: 2rem; }
-.contents { align-self: start; position: sticky; top: 1.5rem; font-size: .84rem; }
-.contents-summary {
-  color: var(--muted); font-size: .72rem; font-weight: 700;
-  text-transform: uppercase; letter-spacing: .06em;
-  list-style: none; cursor: default;
+/* one book's complete, readable outline */
+.book-heading { margin-bottom: 1.25rem; }
+.book-overview { max-width: 44rem; }
+.book-meta, .section-meta, .volume-meta {
+  margin: .5rem 0 0; color: var(--muted); font-size: .82rem;
 }
-.contents-summary::-webkit-details-marker { display: none; }
-.contents ol {
-  margin: .5rem 0 0; padding: 0 0 0 1.9rem;
-  counter-reset: contents-item; list-style: none;
+.reader-notice {
+  padding: .7rem .9rem; border: 1px solid var(--border); border-radius: 10px;
+  color: var(--muted); background: var(--surface-2);
 }
-.contents li { position: relative; counter-increment: contents-item; margin-bottom: .35rem; }
-/* The number sits in its own gutter, so a wrapped title stays in one column
-   and a two-digit chapter cannot push into the text. */
-.contents li::before {
-  content: counter(contents-item);
-  position: absolute; margin-left: -1.9rem; width: 1.5rem;
-  color: var(--muted); font-variant-numeric: tabular-nums; text-align: right;
+.resume-callout {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center; gap: .8rem; margin: 1.25rem 0;
+  padding: .8rem 1rem; border: 1px solid transparent; border-radius: var(--radius);
+  color: var(--accent-strong); background: var(--accent-soft);
 }
-.contents a { display: block; color: var(--muted); overflow-wrap: anywhere; }
-.contents a:hover { color: var(--accent-strong); text-decoration: none; }
-.contents a.current { color: var(--accent-strong); font-weight: 700; }
+.resume-callout:hover { border-color: var(--accent); text-decoration: none; }
+.resume-icon {
+  width: 2rem; height: 2rem; display: grid; place-items: center;
+  border-radius: 50%; color: #fff; background: var(--accent); font-size: .7rem;
+}
+.resume-copy { display: grid; min-width: 0; }
+.resume-copy span { color: var(--muted); font-size: .8rem; overflow-wrap: anywhere; }
+.resume-percent { font-weight: 800; font-variant-numeric: tabular-nums; }
+.outline-browser { display: grid; gap: .8rem; }
+.outline-search-row {
+  display: grid; grid-template-columns: auto minmax(12rem, 1fr) 7rem;
+  align-items: center; gap: .65rem;
+}
+.outline-search-row label { color: var(--muted); font-size: .78rem; font-weight: 700; }
+.outline-search-status { margin: 0; font-size: .75rem; text-align: right; }
+.outline-empty { margin: 0; }
+.volume-list { display: grid; gap: 1rem; }
+.volume-card {
+  overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); box-shadow: var(--shadow);
+}
+.volume-summary {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center; gap: 1rem; padding: 1rem 1.1rem;
+  cursor: pointer; list-style: none;
+}
+.volume-summary::-webkit-details-marker { display: none; }
+.volume-summary:hover { background: var(--surface-2); }
+.volume-summary-copy { display: grid; min-width: 0; }
+.volume-title { font-size: 1.15rem; overflow-wrap: anywhere; }
+.volume-overview { margin-top: .25rem; color: var(--muted); font-size: .82rem; }
+.volume-summary-meta { color: var(--muted); font-size: .78rem; white-space: nowrap; }
+.volume-chevron {
+  color: var(--muted); font-size: 1.2rem; line-height: 1;
+  transform: rotate(-90deg); transition: transform .15s ease;
+}
+.volume-card[open] .volume-chevron { transform: rotate(0); }
+.section-list { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--border); }
+.section-row + .section-row { border-top: 1px solid var(--border); }
+.section-row.resume { box-shadow: inset 3px 0 var(--accent); }
+.section-link {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center; gap: .2rem 1rem; padding: .75rem 1.1rem;
+  color: var(--text);
+}
+.section-link:hover { background: var(--surface-2); text-decoration: none; }
+.section-name { display: grid; overflow-wrap: anywhere; }
+.section-kind {
+  color: var(--muted); font-size: .68rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .05em;
+}
+.section-stats, .resume-marker { color: var(--muted); font-size: .78rem; }
+.resume-marker { grid-column: 1 / -1; color: var(--accent-strong); font-weight: 700; }
+.volume-empty { margin: 0; padding: .8rem 1.1rem; border-top: 1px solid var(--border); color: var(--muted); }
+.section-pages {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: .7rem;
+  padding: .65rem 1.1rem; border-top: 1px solid var(--border);
+  color: var(--muted); background: var(--surface-2); font-size: .75rem;
+}
+.page-btn {
+  width: max-content; padding: .25rem .45rem; border: 0; border-radius: 7px;
+  color: var(--accent-strong); background: transparent; font-weight: 700;
+}
+.page-btn:last-child { justify-self: end; }
+.page-btn:hover:not(:disabled) { background: var(--accent-soft); }
+.page-btn:disabled { color: var(--muted); cursor: default; opacity: .45; }
+.page-range { text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.jump-volume .section-pages { padding: .45rem 0; background: transparent; }
 
-.section { padding: 1.75rem 0; border-top: 1px solid var(--border); }
-.section:first-child { border-top: 0; padding-top: .5rem; }
-.section-head h2 { margin: 0 0 .9rem; font-size: 1.3rem; letter-spacing: -.01em; }
+/* one section, and only one section */
+.reading-section { padding-top: .4rem; }
+.section-head { margin-bottom: 1.5rem; }
+.section-head h1 { margin-bottom: 0; }
 .section-body { display: grid; gap: 1.5rem; }
-
-/* one section at a time */
-[data-flow="section"] .section:not(.current) { display: none; }
-[data-flow="section"] .section { border-top: 0; padding-top: .5rem; }
-[data-flow="continuous"] .section-pager { display: none; }
 .section-pager {
-  display: flex; justify-content: space-between; gap: 1rem;
-  margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border);
-  font-size: .86rem; font-weight: 600;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;
+  margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border);
 }
+.pager-link {
+  display: grid; padding: .7rem .8rem; border: 1px solid var(--border);
+  border-radius: 10px; color: var(--text); background: var(--surface);
+}
+.pager-link.next { text-align: right; }
+.pager-link:hover { border-color: var(--accent); text-decoration: none; }
+.pager-direction { color: var(--accent-strong); font-size: .75rem; font-weight: 700; }
+.pager-volume { color: var(--muted); font-size: .72rem; }
 
 /* Focused is the whole promise of this page, so it is one rule and it is the
    default state of the markup: the panels are not merely hidden, they are
@@ -220,7 +320,7 @@ h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.
   hyphens: auto;
 }
 .prose p { margin: 0 0 1em; }
-.prose h3, .prose h4, .prose h5 { margin: 1.6em 0 .5em; line-height: 1.3; text-align: left; }
+.prose h2, .prose h3, .prose h4 { margin: 1.6em 0 .5em; line-height: 1.3; text-align: left; }
 .prose ul, .prose ol { margin: 0 0 1em; padding-left: 1.4rem; }
 .prose li { margin-bottom: .35em; }
 .prose code {
@@ -235,7 +335,7 @@ h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.
 
 /* full view: the scenes each section was written from */
 .scenes { align-self: start; font-size: .84rem; }
-.scenes h3 {
+.scenes h2 {
   margin: 0 0 .5rem; color: var(--muted);
   font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
 }
@@ -251,21 +351,9 @@ h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.
 .scene.gone .scene-title { color: var(--danger); }
 
 @media (max-width: 1100px) {
-  /* One column throughout: at this width the rail has already collapsed to
-     glyphs, and neither an 11rem contents nor a 15rem aside has room beside a
-     38rem measure. The contents becomes a disclosure -- `app.js` leaves it
-     closed here and opens it again above this width. */
+  /* One column once a scene aside no longer fits beside the prose. */
   [data-mode="full"] .section-body { grid-template-columns: minmax(0, 1fr); }
   .scenes { max-width: var(--prose-measure); }
-  .reader-layout { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
-  .contents {
-    position: static; padding: .6rem .8rem;
-    border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
-  }
-  .contents-summary { cursor: pointer; }
-  /* A disclosure you can actually hit, and one that says which way it goes. */
-  .contents-summary::after { content: " ▾"; }
-  .contents[open] .contents-summary::after { content: " ▴"; }
 }
 
 @media (max-width: 820px) {
@@ -273,7 +361,18 @@ h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.
   .header-actions { flex-wrap: nowrap; gap: .4rem; min-width: 0; }
   .username, .userchip { display: none; }
   .reader-toolbar { padding: .55rem .9rem; }
+  .reading-progress { padding: .35rem .9rem; }
   .content { padding: 1.25rem .9rem 3rem; }
+  .outline-search-row { grid-template-columns: 1fr; gap: .3rem; }
+  .outline-search-status { text-align: left; }
+  .volume-summary { grid-template-columns: minmax(0, 1fr) auto; gap: .5rem; }
+  .volume-summary-meta { grid-column: 1; }
+  .volume-chevron { grid-column: 2; grid-row: 1 / span 2; }
+  .section-link { grid-template-columns: minmax(0, 1fr); }
+  .section-stats { grid-row: 2; }
+  .section-pages { gap: .25rem; padding-inline: .65rem; }
+  .page-btn { font-size: .72rem; }
+  .section-pager { gap: .6rem; }
   .settings form { padding: .9rem 1rem 1rem; }
   .setting-row { flex-wrap: wrap; gap: .3rem; }
   .setting-row select { min-width: 100%; }

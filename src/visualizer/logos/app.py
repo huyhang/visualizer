@@ -198,11 +198,10 @@ def _register_routes(app, csrf, auth_store, manuscripts, volumes, sections):
     @csrf.exempt
     @login_required
     def ui_volume_scenes(book, volume):
-        """The reader's Full View, in the ``/ui`` tradition its siblings set.
+        """The original volume projection, retained for API compatibility.
 
         Separate from the volume manuscript rather than folded into it, so
-        Focused mode is a guarantee and not a promise: it never calls this,
-        which is the only place Logos reads Chronos on a page load.
+        clients can read prose without implicitly reading Chronos.
         """
         _authorize(auth_store, "read", book)
         return jsonify(volumes.scenes(book, volume))
@@ -234,6 +233,14 @@ def _register_routes(app, csrf, auth_store, manuscripts, volumes, sections):
         _authorize(auth_store, "read", book)
         result = sections.get(book, volume, section)
         return _resource(_with_permissions(result, auth_store, book))
+
+    @app.get(_SECTION + "/ui/scenes")
+    @csrf.exempt
+    @login_required
+    def ui_section_scenes(book, volume, section):
+        """The reader's Full View projection for the one open section."""
+        _authorize(auth_store, "read", book)
+        return jsonify(sections.scenes(book, volume, section))
 
     @app.put(_SECTION)
     @csrf.exempt

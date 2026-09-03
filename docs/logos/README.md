@@ -6,17 +6,29 @@ of prose sections.
 
 Writing is API-first and stays that way: there is no editor UI. Reading has a
 browser. In the combined deployment Logos is mounted at `/logos`: `/logos/`
-opens the reader, and the paths in [`openapi.json`](openapi.json) are relative
+opens the library, and the paths in [`openapi.json`](openapi.json) are relative
 to that mount.
 
 ## The reader
 
-A read-only page over the existing reads. It opens a manuscript one volume at a
-time and preserves the document's headings, lists, marks, links and stable block
-ids. Two modes, remembered per browser:
+A read-only browser over the existing reads. The library opens a book contents
+page where every volume and section is visible, and a section link opens that
+section alone. Previous and next links follow book order across volume
+boundaries. The reader preserves the document's headings, lists, marks, links
+and stable block ids. Two modes are remembered per browser:
 
-- **Focused**, the default: the volume's structure and prose, and nothing else.
-- **Full view**: the same prose, beside the Chronos scenes each section names in
+Volumes on the contents page are collapsible so a long manuscript stays
+scannable. The volume containing the saved reading position opens initially, or
+the first volume when there is no saved position; manual expansion is reset on
+the next visit. An expanded volume shows 25 sections at a time, opens on the
+batch containing the saved position when applicable, and provides previous and
+next batch controls. A book-wide search filters by section title, chapter
+number, section type and volume title and shows all matches without paging.
+While reading, **Contents** opens the same searchable, paged outline in a
+compact jump dialog.
+
+- **Focused**, the default: the section's structure and prose, and nothing else.
+- **Full view**: the same prose, beside the Chronos scenes that section names in
   its `event_ids` — a title and a timeframe in the book's own calendar, and no
   more. It does not expand neighbouring scenes, plotlines or Akasha articles.
 
@@ -34,29 +46,32 @@ site-relative renders as its own words instead. Prose written with a node type
 this reader does not know degrades to a note on that section rather than a
 guess.
 
-The toolbar above the prose holds two buttons: the mode switch, whose tooltip
-says what that mode shows, and **Reading settings**. The settings are a dialog
-rather than a strip of controls you read past on the way to every chapter:
+The toolbar above the prose holds the mode switch, **Reading settings**, and the
+**Contents** button. The settings are a dialog rather than a strip of controls
+you read past on the way to every chapter:
 
 | | |
 | --- | --- |
-| Reading flow | the whole volume, or one section at a time |
 | Typeface | serif or sans |
 | Line spacing | normal or relaxed |
 | Column width | narrow, medium or wide |
 | Alignment | left or justified |
 
-All five are remembered per browser and never touch the manuscript. "Reset
-reading" restores those five. Theme and text size are *not* here: they are
+All four are remembered per browser and never touch the manuscript. "Reset
+reading" restores those four. Theme and text size are *not* here: they are
 shared across all four services and the header already owns them, so nothing in
 this reader can undo a choice made in Articles.
 
-A **contents** panel lists the volume's sections. Above 1100px it is a column
-beside the prose; below that it collapses to a disclosure the reader opens when
-they want it. Reading one section at a time also gives previous/next links, puts
-the section in the address bar so a section is linkable, and marks the current
-entry in the contents — reading the whole volume does not, because scrolling
-past a heading is not the same claim as being on a section.
+The reader stores one last position per book and account in that browser. The
+library and book contents page offer an explicit **Continue reading** link; they
+never redirect automatically. A stable block id and offset restore the same
+passage after a browser restart or layout change, with section percentage as a
+fallback if that block was edited away. Invalid positions are discarded. This
+state never touches the server and does not follow an account to another device.
+
+A sticky progress bar reports the current viewport position through the open
+section. It may move backward while rereading; a section that fits entirely in
+the viewport reports 100%.
 
 `LOGOS_URL` tells the shared navigation where the reader is. It defaults to
 `/logos` in the combined stack and `http://localhost:5005` standalone.

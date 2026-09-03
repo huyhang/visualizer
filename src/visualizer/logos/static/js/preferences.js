@@ -25,12 +25,8 @@ export const FULL = "full";
 // another service is the safe answer, so Full View is always something you
 // chose rather than something you were given.
 //
-// `flow` is how much of the volume is on screen at once, not what it looks
-// like -- but it sits with the display choices because that is where a reader
-// looks for it, and because "reset" should undo it like the rest.
 export const CHOICES = Object.freeze({
   mode: [FOCUSED, FULL],
-  flow: ["continuous", "section"],
   typeface: ["serif", "sans"],
   leading: ["normal", "relaxed"],
   measure: ["medium", "narrow", "wide"],

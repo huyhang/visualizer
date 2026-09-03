@@ -16,6 +16,32 @@ export function neighbours(items, id) {
   };
 }
 
+/** One ordered list of section entries, with their parent volume attached. */
+export function readingOrder(manuscript) {
+  return (manuscript.volumes || []).flatMap((volume) =>
+    (volume.sections || []).map((section) => ({ section, volume })),
+  );
+}
+
+export function findSection(manuscript, volumeId, sectionId) {
+  return readingOrder(manuscript).find(
+    (entry) => entry.volume.id === volumeId && entry.section.id === sectionId,
+  ) || null;
+}
+
+/** Previous and next sections in book order, including volume boundaries. */
+export function sectionNeighbours(manuscript, volumeId, sectionId) {
+  const ordered = readingOrder(manuscript);
+  const at = ordered.findIndex(
+    (entry) => entry.volume.id === volumeId && entry.section.id === sectionId,
+  );
+  if (at === -1) return { previous: null, next: null };
+  return {
+    previous: ordered[at - 1] || null,
+    next: ordered[at + 1] || null,
+  };
+}
+
 /** What kind of section this is: "Chapter 4", "Prologue", "Glossary". */
 export function sectionLabel(section) {
   if (section.kind === "chapter") return `Chapter ${section.number}`;

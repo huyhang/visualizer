@@ -20,9 +20,9 @@ const BLOCKS = new Set(["paragraph", "heading", "bullet_list", "ordered_list"]);
 const INLINES = new Set(["text", "hard_break", "link", "mention", "article_link"]);
 const MARK_TAGS = { em: "em", strong: "strong", strike: "del", code: "code" };
 const LIST_TAGS = { bullet_list: "ul", ordered_list: "ol" };
-// The page owns h1 and each section owns h2, so the document's own levels
-// start below them and the outline a screen reader builds stays in order.
-const HEADING_TAGS = { 1: "h3", 2: "h4", 3: "h5" };
+// The open section owns h1, so its document headings start immediately below
+// it and the outline a screen reader builds stays in order.
+const HEADING_TAGS = { 1: "h2", 2: "h3", 3: "h4" };
 
 export class RenderError extends Error {
   // Without this a subclass reports itself as "Error" in a console or a report,

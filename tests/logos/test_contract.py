@@ -172,6 +172,8 @@ def seeded(client):
         (f"/books/{BOOK}/volumes/{VOLUME}/manuscript", "VolumeManuscript"),
         (f"/books/{BOOK}/volumes/{VOLUME}/ui/scenes", "VolumeScenes"),
         (f"/books/{BOOK}/volumes/{VOLUME}/sections/{SECTION}", "Section"),
+        (f"/books/{BOOK}/volumes/{VOLUME}/sections/{SECTION}/ui/scenes",
+         "SingleSectionScenes"),
         (f"/books/{BOOK}/volumes/{VOLUME}/sections/{SECTION}/versions",
          "VersionList"),
         (f"/books/{BOOK}/volumes/{VOLUME}/sections/{SECTION}/versions/1",

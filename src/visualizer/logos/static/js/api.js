@@ -37,8 +37,10 @@ const volumePath = (book, volume) =>
 export const api = {
   books: () => get("/books"),
   manuscript: (book) => get(`/books/${enc(book)}`),
-  volume: (book, volume) => get(`${volumePath(book, volume)}/manuscript`),
+  section: (book, volume, section) =>
+    get(`${volumePath(book, volume)}/sections/${enc(section)}`),
   // Full View only. Focused never reaches this, which is what makes "no
   // entities from any other service" a property of the network trace.
-  scenes: (book, volume) => get(`${volumePath(book, volume)}/ui/scenes`),
+  scenes: (book, volume, section) =>
+    get(`${volumePath(book, volume)}/sections/${enc(section)}/ui/scenes`),
 };

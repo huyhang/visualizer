@@ -288,10 +288,8 @@ class VolumeService(_Service):
     def scenes(self, book: str, volume_id: str) -> dict:
         """The Chronos scenes each section of this volume says it realises.
 
-        The ids come from the sections themselves, never from the caller. That
-        is what makes the reader's Full View promise checkable rather than
-        merely intended: there is no parameter here through which a browser
-        could ask about a scene this volume's prose does not name.
+        The ids come from the sections themselves, never from the caller, so
+        there is no parameter through which a client could widen the result.
         """
         self._book(book)
         records = self._ordered_sections(book, self._require_volume(book, volume_id))
@@ -403,6 +401,22 @@ class SectionService(_Service):
         self._require_volume(book, volume_id)
         record = self._require_section(book, volume_id, section_id)
         return self._present_one(book, volume_id, record)
+
+    def scenes(self, book: str, volume_id: str, section_id: str) -> dict:
+        """Only the Chronos scenes named by the section the reader opened."""
+        self._book(book)
+        self._require_volume(book, volume_id)
+        record = self._require_section(book, volume_id, section_id)
+        wanted = list(record.get("event_ids", []))
+        cards = {
+            card["id"]: card for card in self.chronos.scene_cards(book, wanted)
+        }
+        return {
+            "book": book,
+            "volume": volume_id,
+            "section": section_id,
+            "scenes": [cards[event] for event in wanted],
+        }
 
     def update(
         self,

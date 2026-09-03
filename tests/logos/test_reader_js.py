@@ -23,7 +23,10 @@ _JS_DIR = (
     Path(__file__).resolve().parents[2]
     / "src" / "visualizer" / "logos" / "static" / "js"
 )
-_MODULES = ("prose.js", "preferences.js", "navigation.js")
+_MODULES = (
+    "dom.js", "prose.js", "preferences.js", "navigation.js", "outline.js",
+    "position.js", "progress.js",
+)
 
 _PREAMBLE = """\
 import { RenderError, renderDocument, safeHref } from "./prose.js";
@@ -31,7 +34,19 @@ import {
   DEFAULTS, DISPLAY_FIELDS, otherMode, parsePreferences, readPreferences,
   resetDisplay, showsChronos, writePreferences,
 } from "./preferences.js";
-import { neighbours, sectionLabel, sectionName } from "./navigation.js";
+import {
+  findSection, neighbours, readingOrder, sectionLabel, sectionName, sectionNeighbours,
+} from "./navigation.js";
+import {
+  blockAnchor, forgetPosition, parsePositions, prunePositions, readPosition,
+  readPositions, scrollForAnchor, writePosition,
+} from "./position.js";
+import { sectionProgress, scrollForProgress } from "./progress.js";
+import { nodeFactory as createNodes } from "./dom.js";
+import {
+  defaultOpenVolume, filterOutline, pageForSection, SECTION_PAGE_SIZE,
+  sectionCount, sectionPage,
+} from "./outline.js";
 
 const INPUT = %s;
 
@@ -107,6 +122,22 @@ def _doc(*blocks):
 
 def _para(*content, node_id="p1"):
     return {"type": "paragraph", "id": node_id, "content": list(content)}
+
+
+def test_a_fragment_ignores_optional_children(run_js):
+    """Book contents has optional notices and resume cards; absent ones are
+    not DOM nodes and must not be handed to appendChild."""
+    assert run_js(
+        "const appended = [];"
+        "const owner = {createDocumentFragment: () => ({"
+        " appendChild: (node) => {"
+        "  if (node === null || node === undefined) throw new TypeError('not a Node');"
+        "  appended.push(node);"
+        " }"
+        "})};"
+        "createNodes(owner).fragment([{id: 1}, null, undefined, {id: 2}]);"
+        "emit(appended);"
+    ) == [{"id": 1}, {"id": 2}]
 
 
 # -- what the renderer refuses ------------------------------------------------
@@ -230,7 +261,7 @@ def test_headings_start_below_the_page_and_section_titles(run_js):
         ]),
     )
 
-    assert tree == ["h3", "h4", "h5"]
+    assert tree == ["h2", "h3", "h4"]
 
 
 def test_lists_and_breaks_render(run_js):
@@ -283,11 +314,11 @@ def test_unknown_choices_fall_back_and_focused_is_the_default(run_js):
         "emit([parsePreferences(INPUT), parsePreferences(undefined), DEFAULTS]);",
         {"mode": "peek", "typeface": "comic", "align": "justify", "future": True},
     ) == [
-        {"mode": "focused", "flow": "continuous", "typeface": "serif", "leading": "normal",
+        {"mode": "focused", "typeface": "serif", "leading": "normal",
          "measure": "medium", "align": "justify"},
-        {"mode": "focused", "flow": "continuous", "typeface": "serif", "leading": "normal",
+        {"mode": "focused", "typeface": "serif", "leading": "normal",
          "measure": "medium", "align": "left"},
-        {"mode": "focused", "flow": "continuous", "typeface": "serif", "leading": "normal",
+        {"mode": "focused", "typeface": "serif", "leading": "normal",
          "measure": "medium", "align": "left"},
     ]
 
@@ -308,7 +339,7 @@ def test_a_patch_merges_over_what_is_stored(run_js):
         "const merged = writePreferences(s, {mode: 'full'});"
         "emit([merged, JSON.parse(backing['logos-reader-preferences'])]);"
     ) == [
-        {"mode": "full", "flow": "continuous", "typeface": "sans", "leading": "normal",
+        {"mode": "full", "typeface": "sans", "leading": "normal",
          "measure": "medium", "align": "left"},
     ] * 2
 
@@ -318,10 +349,10 @@ def test_reset_restores_the_display_and_leaves_the_reading_mode_alone(run_js):
     and the mode is a place you are, not a display choice."""
     assert run_js(
         "emit(resetDisplay(INPUT));",
-        {"mode": "full", "flow": "continuous", "typeface": "sans", "leading": "relaxed",
+        {"mode": "full", "typeface": "sans", "leading": "relaxed",
          "measure": "wide", "align": "justify"},
     ) == {
-        "mode": "full", "flow": "continuous", "typeface": "serif",
+        "mode": "full", "typeface": "serif",
         "leading": "normal", "measure": "medium", "align": "left",
     }
 
@@ -331,9 +362,9 @@ def test_a_storage_that_refuses_still_reads(run_js):
     assert run_js(
         "emit([readPreferences(sealed), writePreferences(sealed, {mode: 'full'})]);"
     ) == [
-        {"mode": "focused", "flow": "continuous", "typeface": "serif", "leading": "normal",
+        {"mode": "focused", "typeface": "serif", "leading": "normal",
          "measure": "medium", "align": "left"},
-        {"mode": "full", "flow": "continuous", "typeface": "serif", "leading": "normal",
+        {"mode": "full", "typeface": "serif", "leading": "normal",
          "measure": "medium", "align": "left"},
     ]
 
@@ -341,7 +372,7 @@ def test_a_storage_that_refuses_still_reads(run_js):
 def test_corrupt_storage_reads_as_defaults(run_js):
     assert run_js(
         "emit(readPreferences(store({'logos-reader-preferences': 'not json'})));"
-    ) == {"mode": "focused", "flow": "continuous", "typeface": "serif", "leading": "normal",
+    ) == {"mode": "focused", "typeface": "serif", "leading": "normal",
           "measure": "medium", "align": "left"}
 
 
@@ -350,7 +381,7 @@ def test_the_display_fields_are_every_choice_but_the_mode(run_js):
     the rows appear in -- and `mode` must stay out of it: the mode is a button
     in the toolbar, not a row in a dialog."""
     assert run_js("emit(DISPLAY_FIELDS);") == [
-        "flow", "typeface", "leading", "measure", "align",
+        "typeface", "leading", "measure", "align",
     ]
 
 
@@ -394,3 +425,200 @@ def test_sections_are_named_for_the_contents_and_the_heading(run_js):
         "The Harbour Exchange", "Chapter 4", "Prologue", "Glossary",
         "Chapter 12", "Epilogue",
     ]
+
+
+def test_section_navigation_crosses_volume_boundaries(run_js):
+    manuscript = {
+        "volumes": [
+            {"id": "one", "title": "One", "sections": [{"id": "same"}]},
+            {"id": "two", "title": "Two", "sections": [
+                {"id": "same"}, {"id": "last"},
+            ]},
+        ]
+    }
+    assert run_js(
+        "emit([readingOrder(INPUT).map((e) => [e.volume.id, e.section.id]),"
+        " findSection(INPUT, 'two', 'same').volume.title,"
+        " sectionNeighbours(INPUT, 'two', 'same')]);",
+        manuscript,
+    ) == [
+        [["one", "same"], ["two", "same"], ["two", "last"]],
+        "Two",
+        {
+            "previous": {
+                "section": {"id": "same"},
+                "volume": {"id": "one", "title": "One", "sections": [{"id": "same"}]},
+            },
+            "next": {
+                "section": {"id": "last"},
+                "volume": {
+                    "id": "two", "title": "Two",
+                    "sections": [{"id": "same"}, {"id": "last"}],
+                },
+            },
+        },
+    ]
+
+
+def test_outline_search_matches_section_metadata_and_volume_titles(run_js):
+    manuscript = {
+        "volumes": [
+            {
+                "id": "one", "number": 1, "title": "Beginnings",
+                "sections": [
+                    {"id": "before", "kind": "prologue", "number": None,
+                     "title": None},
+                    {"id": "gate", "kind": "chapter", "number": 1,
+                     "title": "The Broken Gate"},
+                ],
+            },
+            {
+                "id": "two", "number": 2, "title": "The Long Road",
+                "sections": [
+                    {"id": "harbour", "kind": "chapter", "number": 2,
+                     "title": "Harbour Exchange"},
+                ],
+            },
+        ]
+    }
+    assert run_js(
+        "const ids = (query) => filterOutline(INPUT, query)"
+        " .map((v) => [v.id, v.sections.map((s) => s.id)]);"
+        "emit([ids(''), ids('chapter 2'), ids('long road'), ids('PROLOGUE'),"
+        " ids('missing'), sectionCount(filterOutline(INPUT, 'chapter'))]);",
+        manuscript,
+    ) == [
+        [["one", ["before", "gate"]], ["two", ["harbour"]]],
+        [["two", ["harbour"]]],
+        [["two", ["harbour"]]],
+        [["one", ["before"]]],
+        [],
+        2,
+    ]
+
+
+def test_default_volume_is_the_resume_volume_or_the_first(run_js):
+    manuscript = {
+        "volumes": [
+            {"id": "one", "sections": [{"id": "opening"}]},
+            {"id": "two", "sections": [{"id": "ending"}]},
+        ]
+    }
+    assert run_js(
+        "emit([defaultOpenVolume(INPUT, {volume: 'two', section: 'ending'}),"
+        " defaultOpenVolume(INPUT, {volume: 'two', section: 'gone'}),"
+        " defaultOpenVolume(INPUT, null), defaultOpenVolume({volumes: []}, null)]);",
+        manuscript,
+    ) == ["two", "one", "one", None]
+
+
+def test_long_section_lists_are_split_at_the_configured_threshold(run_js):
+    assert run_js(
+        "const sections = Array.from({length: 58}, (_, n) => ({id: `s${n + 1}`}));"
+        "const view = (requested) => { const p = sectionPage(sections, requested);"
+        " return {page: p.page, pages: p.pages, start: p.start, end: p.end,"
+        " first: p.sections[0].id, last: p.sections.at(-1).id}; };"
+        "emit([SECTION_PAGE_SIZE, view(0), view(1), view(99), view(-4),"
+        " pageForSection(sections, 's26'), pageForSection(sections, 's58'),"
+        " pageForSection(sections, 'missing')]);"
+    ) == [
+        25,
+        {"page": 0, "pages": 3, "start": 0, "end": 25,
+         "first": "s1", "last": "s25"},
+        {"page": 1, "pages": 3, "start": 25, "end": 50,
+         "first": "s26", "last": "s50"},
+        {"page": 2, "pages": 3, "start": 50, "end": 58,
+         "first": "s51", "last": "s58"},
+        {"page": 0, "pages": 3, "start": 0, "end": 25,
+         "first": "s1", "last": "s25"},
+        1,
+        2,
+        0,
+    ]
+
+
+# -- position persistence and progress ---------------------------------------
+
+
+def test_positions_are_isolated_by_account_and_book(run_js):
+    assert run_js(
+        "const backing = {}; const s = store(backing);"
+        "writePosition(s, 'mara', 'ember',"
+        " {volume: 'one', section: 'opening', block: 'p4', offset: 12, progress: .42});"
+        "writePosition(s, 'mara', 'other',"
+        " {volume: 'two', section: 'end', block: null, offset: 0, progress: 2});"
+        "emit([readPosition(s, 'mara', 'ember'), readPosition(s, 'mara', 'other'),"
+        " readPosition(s, 'devi', 'ember'), Object.keys(backing).sort()]);"
+    ) == [
+        {"volume": "one", "section": "opening", "block": "p4",
+         "offset": 12, "progress": .42},
+        {"volume": "two", "section": "end", "block": None,
+         "offset": 0, "progress": 1},
+        None,
+        ["logos-reader-positions:mara"],
+    ]
+
+
+def test_a_book_id_that_is_an_object_property_is_not_a_phantom_position(run_js):
+    assert run_js(
+        "emit([readPosition(store({}), 'mara', 'toString'),"
+        " readPosition(store({}), 'mara', 'constructor')]);"
+    ) == [None, None]
+
+
+def test_bad_or_unavailable_position_storage_fails_open(run_js):
+    assert run_js(
+        "emit([parsePositions(null), parsePositions({version: 9, books: {x: {}}}),"
+        " readPositions(store({'logos-reader-positions:mara': 'bad'}), 'mara'),"
+        " readPositions(sealed, 'mara'),"
+        " writePosition(sealed, 'mara', 'b',"
+        "  {volume: 'v', section: 's', block: null, offset: 0, progress: .1})]);"
+    ) == [
+        {"version": 1, "books": {}},
+        {"version": 1, "books": {}},
+        {"version": 1, "books": {}},
+        {"version": 1, "books": {}},
+        {"volume": "v", "section": "s", "block": None,
+         "offset": 0, "progress": .1},
+    ]
+
+
+def test_stale_positions_can_be_pruned_or_forgotten(run_js):
+    assert run_js(
+        "const backing = {}; const s = store(backing);"
+        "for (const book of ['keep', 'lost']) writePosition(s, 'mara', book,"
+        " {volume: 'v', section: 's', block: null, offset: 0, progress: .2});"
+        "prunePositions(s, 'mara', ['keep']);"
+        "const pruned = readPositions(s, 'mara');"
+        "forgetPosition(s, 'mara', 'keep');"
+        "emit([pruned, readPositions(s, 'mara')]);"
+    ) == [
+        {"version": 1, "books": {
+            "keep": {"volume": "v", "section": "s", "block": None,
+                     "offset": 0, "progress": .2},
+        }},
+        {"version": 1, "books": {}},
+    ]
+
+
+def test_a_stable_block_anchor_round_trips_its_scroll_position(run_js):
+    assert run_js(
+        "const anchor = blockAnchor(["
+        " {id: 'p1', top: 100}, {id: 'p2', top: 350}, {id: 'p3', top: 700}], 410);"
+        "emit([anchor, scrollForAnchor(350, anchor.offset, 96),"
+        " blockAnchor([], 410)]);"
+    ) == [
+        {"block": "p2", "offset": 60},
+        314,
+        {"block": None, "offset": 0},
+    ]
+
+
+def test_section_progress_tracks_the_current_viewport(run_js):
+    assert run_js(
+        "const at = (scrollY) => sectionProgress("
+        " {top: 200, height: 1400, viewportHeight: 600, scrollY});"
+        "emit([at(0), at(200), at(600), at(1000), at(1400),"
+        " sectionProgress({top: 200, height: 500, viewportHeight: 600, scrollY: 0}),"
+        " scrollForProgress({top: 200, height: 1400, viewportHeight: 600}, .5)]);"
+    ) == [0, 0, .5, 1, 1, 1, 600]

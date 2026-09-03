@@ -14,6 +14,9 @@
     // The mount point, so `api.js` works at `/logos` behind the gateway and
     // at `/` when logos runs on its own port.
     window.__BASE__ = {{ request.script_root | tojson }};
+    // Reading positions stay in this browser, but are isolated between the
+    // accounts that may use it.
+    window.__READER_USER__ = {{ current_user.username | tojson }};
   </script>
   <script src="{{ url_for('shared_js', filename='prefs.js') }}"></script>
 </head>
@@ -55,7 +58,7 @@
       </header>
 
       {#
-        Two buttons, no settings on the strip itself. What each mode shows is
+        Three buttons, no settings on the strip itself. What each mode shows is
         the button's `title`, written by `app.js` as the mode changes: it is an
         explanation you want on the way in and never again, which is a tooltip
         rather than a line of standing text beside the prose.
@@ -66,6 +69,17 @@
         <button class="btn ghost sm" id="settings-open" type="button">
           Reading settings
         </button>
+        <button class="btn ghost sm" id="jump-open" type="button"
+                aria-label="Jump to section" title="Jump to section">
+          Contents
+        </button>
+      </div>
+
+      <div class="reading-progress" id="reading-progress" hidden>
+        <span id="reading-progress-label">Section progress</span>
+        <progress id="reading-progress-meter" aria-labelledby="reading-progress-label"
+                  max="100" value="0"></progress>
+        <output id="reading-progress-value" for="reading-progress-meter">0%</output>
       </div>
 
       <main class="content" id="content">
@@ -91,13 +105,6 @@
         <button class="icon-btn" value="close" aria-label="Close reading settings">×</button>
       </div>
 
-      <label class="setting-row">
-        <span>Reading flow</span>
-        <select id="display-flow">
-          <option value="continuous">The whole volume</option>
-          <option value="section">One section at a time</option>
-        </select>
-      </label>
       <label class="setting-row">
         <span>Typeface</span>
         <select id="display-typeface">
@@ -138,6 +145,22 @@
         <button class="btn" value="close">Done</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog class="jump" id="section-jump" aria-labelledby="jump-title">
+    <div class="jump-shell">
+      <div class="jump-head">
+        <h2 id="jump-title">Jump to section</h2>
+        <form method="dialog">
+          <button class="icon-btn" value="close" aria-label="Close section list">×</button>
+        </form>
+      </div>
+      <label class="jump-search-label" for="jump-search">Find a section</label>
+      <input id="jump-search" class="jump-search" type="search"
+             placeholder="Title, chapter, type, or volume" autocomplete="off">
+      <p class="jump-status muted" id="jump-status" aria-live="polite"></p>
+      <div class="jump-results" id="jump-results"></div>
+    </div>
   </dialog>
 
   <script type="module" src="{{ url_for('static', filename='js/app.js') }}"></script>
