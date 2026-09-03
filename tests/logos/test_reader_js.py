@@ -35,11 +35,12 @@ import {
   resetDisplay, showsChronos, writePreferences,
 } from "./preferences.js";
 import {
-  findSection, neighbours, readingOrder, sectionLabel, sectionName, sectionNeighbours,
+  findSection, neighbours, readingOrder, sectionAhead, sectionLabel, sectionName,
+  sectionNeighbours,
 } from "./navigation.js";
 import {
-  blockAnchor, forgetPosition, parsePositions, prunePositions, readPosition,
-  readPositions, scrollForAnchor, writePosition,
+  advance, blockAnchor, forgetPosition, parsePositions, prunePositions,
+  readPosition, readPositions, scrollForAnchor, writePosition,
 } from "./position.js";
 import { sectionProgress, scrollForProgress } from "./progress.js";
 import { nodeFactory as createNodes } from "./dom.js";
@@ -550,13 +551,34 @@ def test_positions_are_isolated_by_account_and_book(run_js):
         "emit([readPosition(s, 'mara', 'ember'), readPosition(s, 'mara', 'other'),"
         " readPosition(s, 'devi', 'ember'), Object.keys(backing).sort()]);"
     ) == [
-        {"volume": "one", "section": "opening", "block": "p4",
-         "offset": 12, "progress": .42},
-        {"volume": "two", "section": "end", "block": None,
-         "offset": 0, "progress": 1},
+        {
+            "last": {"volume": "one", "section": "opening", "block": "p4",
+                     "offset": 12, "progress": .42},
+            "furthest": {"volume": "one", "section": "opening", "progress": .42},
+        },
+        {
+            "last": {"volume": "two", "section": "end", "block": None,
+                     "offset": 0, "progress": 1},
+            "furthest": {"volume": "two", "section": "end", "progress": 1},
+        },
         None,
         ["logos-reader-positions:mara"],
     ]
+
+
+def test_a_record_written_before_there_were_two_marks_still_reads(run_js):
+    """The v1 shape was a bare spot. It is where the reader was *and* the best
+    evidence of how far they got, so it seeds both marks rather than being
+    dropped -- an upgrade must not lose somebody's place."""
+    assert run_js(
+        "emit(readPosition(store({'logos-reader-positions:mara': JSON.stringify("
+        " {version: 1, books: {ember: {volume: 'one', section: 'ch4',"
+        "  block: 'p9', offset: 30, progress: .6}}})}), 'mara', 'ember'));"
+    ) == {
+        "last": {"volume": "one", "section": "ch4", "block": "p9",
+                 "offset": 30, "progress": .6},
+        "furthest": {"volume": "one", "section": "ch4", "progress": .6},
+    }
 
 
 def test_a_book_id_that_is_an_object_property_is_not_a_phantom_position(run_js):
@@ -578,8 +600,11 @@ def test_bad_or_unavailable_position_storage_fails_open(run_js):
         {"version": 1, "books": {}},
         {"version": 1, "books": {}},
         {"version": 1, "books": {}},
-        {"volume": "v", "section": "s", "block": None,
-         "offset": 0, "progress": .1},
+        {
+            "last": {"volume": "v", "section": "s", "block": None,
+                     "offset": 0, "progress": .1},
+            "furthest": {"volume": "v", "section": "s", "progress": .1},
+        },
     ]
 
 
@@ -594,8 +619,11 @@ def test_stale_positions_can_be_pruned_or_forgotten(run_js):
         "emit([pruned, readPositions(s, 'mara')]);"
     ) == [
         {"version": 1, "books": {
-            "keep": {"volume": "v", "section": "s", "block": None,
-                     "offset": 0, "progress": .2},
+            "keep": {
+                "last": {"volume": "v", "section": "s", "block": None,
+                         "offset": 0, "progress": .2},
+                "furthest": {"volume": "v", "section": "s", "progress": .2},
+            },
         }},
         {"version": 1, "books": {}},
     ]
@@ -622,3 +650,74 @@ def test_section_progress_tracks_the_current_viewport(run_js):
         " sectionProgress({top: 200, height: 500, viewportHeight: 600, scrollY: 0}),"
         " scrollForProgress({top: 200, height: 1400, viewportHeight: 600}, .5)]);"
     ) == [0, 0, .5, 1, 1, 1, 600]
+
+
+# -- how far you got, as against where you are --------------------------------
+
+
+BOOK_ORDER = {
+    "volumes": [
+        {"id": "one", "sections": [{"id": "a"}, {"id": "b"}]},
+        {"id": "two", "sections": [{"id": "c"}]},
+    ]
+}
+
+
+def test_book_order_decides_what_counts_as_further_on(run_js):
+    """Across volumes as well as within one, and never for an id the
+    manuscript no longer has -- a deleted section must not be able to claim
+    it is ahead of everything."""
+    assert run_js(
+        "const ahead = (f, s) => sectionAhead(INPUT, f, s);"
+        "const at = (volume, section) => ({volume, section});"
+        "emit([ahead(at('one', 'b'), at('one', 'a')),"
+        " ahead(at('one', 'a'), at('one', 'b')),"
+        " ahead(at('one', 'a'), at('one', 'a')),"
+        " ahead(at('two', 'c'), at('one', 'b')),"
+        " ahead(at('one', 'b'), at('two', 'c')),"
+        " ahead(at('gone', 'a'), at('one', 'a')),"
+        " ahead(at('one', 'gone'), at('one', 'a')),"
+        " ahead(null, at('one', 'a')), ahead(at('one', 'b'), null)]);",
+        BOOK_ORDER,
+    ) == [True, False, False, True, False, False, False, False, False]
+
+
+def test_looking_back_cannot_lose_the_way_forward(run_js):
+    """Skipping ahead moves the mark; going back to re-read leaves it where it
+    was, so "Continue reading" still offers the furthest point. Within one
+    section the deeper read wins, so reopening it at the top cannot regress."""
+    assert run_js(
+        "const mark = (section, progress) =>"
+        " ({volume: 'one', section, progress});"
+        "emit([advance(null, mark('a', .3), false),"
+        " advance(mark('a', .3), mark('b', .1), true),"
+        " advance(mark('b', .1), mark('a', .9), false),"
+        " advance(mark('a', .2), mark('a', .7), false),"
+        " advance(mark('a', .7), mark('a', .2), false),"
+        " advance(mark('a', .4), {volume: '', section: ''}, true)]);"
+    ) == [
+        {"volume": "one", "section": "a", "progress": .3},
+        {"volume": "one", "section": "b", "progress": .1},
+        {"volume": "one", "section": "b", "progress": .1},
+        {"volume": "one", "section": "a", "progress": .7},
+        {"volume": "one", "section": "a", "progress": .7},
+        {"volume": "one", "section": "a", "progress": .4},
+    ]
+
+
+def test_where_you_are_still_moves_when_how_far_you_got_does_not(run_js):
+    """The whole point of two marks: re-reading chapter one keeps the anchor
+    that reopens chapter one, without dragging the Continue target back."""
+    assert run_js(
+        "const backing = {}; const s = store(backing);"
+        "writePosition(s, 'mara', 'ember',"
+        " {volume: 'two', section: 'c', block: 'p2', offset: 5, progress: .8}, true);"
+        "const back = writePosition(s, 'mara', 'ember',"
+        " {volume: 'one', section: 'a', block: 'p1', offset: 9, progress: .1}, false);"
+        "emit([back.last, back.furthest]);"
+    ) == [
+        {"volume": "one", "section": "a", "block": "p1", "offset": 9, "progress": .1},
+        {"volume": "two", "section": "c", "progress": .8},
+    ]
+
+

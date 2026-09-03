@@ -42,6 +42,26 @@ export function sectionNeighbours(manuscript, volumeId, sectionId) {
   };
 }
 
+/**
+ * Whether ``first`` names a strictly later section than ``second`` in book
+ * order -- volumes in outline order, sections in theirs.
+ *
+ * Both arguments are `{volume, section}` ids rather than entries, because the
+ * caller is comparing a saved mark against where the reader now is. An id this
+ * manuscript no longer has is never ahead, so a section deleted out from under
+ * a saved position can neither win the comparison nor lose it.
+ */
+export function sectionAhead(manuscript, first, second) {
+  if (!first || !second) return false;
+  const ordered = readingOrder(manuscript);
+  const at = (spot) => ordered.findIndex(
+    (entry) => entry.volume.id === spot.volume && entry.section.id === spot.section,
+  );
+  const here = at(first);
+  const there = at(second);
+  return here !== -1 && there !== -1 && here > there;
+}
+
 /** What kind of section this is: "Chapter 4", "Prologue", "Glossary". */
 export function sectionLabel(section) {
   if (section.kind === "chapter") return `Chapter ${section.number}`;

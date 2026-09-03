@@ -250,11 +250,17 @@ h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.
 .volume-title { font-size: 1.15rem; overflow-wrap: anywhere; }
 .volume-overview { margin-top: .25rem; color: var(--muted); font-size: .82rem; }
 .volume-summary-meta { color: var(--muted); font-size: .78rem; white-space: nowrap; }
-.volume-chevron {
-  color: var(--muted); font-size: 1.2rem; line-height: 1;
-  transform: rotate(-90deg); transition: transform .15s ease;
+/* The same twisty Akasha's tree browser and Chronos's story graph use: `+` to
+   open, `−` to close, so there is one way to fold a thing across the stack.
+   Driven off `[open]` rather than from script, so nothing has to be kept in
+   sync when a disclosure is opened for the reader instead of by them. */
+.twisty {
+  width: 1.15rem; flex: none; color: var(--muted);
+  font-size: 1rem; line-height: 1; font-weight: 600; text-align: center;
 }
-.volume-card[open] .volume-chevron { transform: rotate(0); }
+.twisty::after { content: "+"; }
+.volume-card[open] .twisty::after { content: "−"; }
+.volume-summary:hover .twisty { color: var(--accent); }
 .section-list { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--border); }
 .section-row + .section-row { border-top: 1px solid var(--border); }
 .section-row.resume { box-shadow: inset 3px 0 var(--accent); }
@@ -367,7 +373,7 @@ h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.
   .outline-search-status { text-align: left; }
   .volume-summary { grid-template-columns: minmax(0, 1fr) auto; gap: .5rem; }
   .volume-summary-meta { grid-column: 1; }
-  .volume-chevron { grid-column: 2; grid-row: 1 / span 2; }
+  .volume-summary .twisty { grid-column: 2; grid-row: 1 / span 2; }
   .section-link { grid-template-columns: minmax(0, 1fr); }
   .section-stats { grid-row: 2; }
   .section-pages { gap: .25rem; padding-inline: .65rem; }

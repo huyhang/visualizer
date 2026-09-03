@@ -17,16 +17,6 @@ section alone. Previous and next links follow book order across volume
 boundaries. The reader preserves the document's headings, lists, marks, links
 and stable block ids. Two modes are remembered per browser:
 
-Volumes on the contents page are collapsible so a long manuscript stays
-scannable. The volume containing the saved reading position opens initially, or
-the first volume when there is no saved position; manual expansion is reset on
-the next visit. An expanded volume shows 25 sections at a time, opens on the
-batch containing the saved position when applicable, and provides previous and
-next batch controls. A book-wide search filters by section title, chapter
-number, section type and volume title and shows all matches without paging.
-While reading, **Contents** opens the same searchable, paged outline in a
-compact jump dialog.
-
 - **Focused**, the default: the section's structure and prose, and nothing else.
 - **Full view**: the same prose, beside the Chronos scenes that section names in
   its `event_ids` — a title and a timeframe in the book's own calendar, and no
@@ -38,6 +28,19 @@ to `…/ui/scenes` at all, so nothing from another service can reach the page. I
 Full view the scene ids come from the sections themselves; the endpoint takes no
 parameter through which the browser could widen the set. A scene a section still
 names but Chronos no longer has is shown as removed rather than dropped.
+
+Volumes on the contents page are collapsible so a long manuscript stays
+scannable, and they fold with the same `+` / `−` twisty Akasha's tree browser
+and Chronos's story graph use. The volume you were last reading in opens
+initially, or the first volume when there is no saved position; manual
+expansion is reset on the next visit. An expanded volume shows 25 sections at a
+time with previous and next batch controls, and opens on the batch holding your
+place. Every row names its own kind — "Chapter 4" over a titled chapter, and an
+untitled prologue simply reads "Prologue" — so the outline needs no headings
+grouping the rows above that. A book-wide search filters by section title,
+chapter number, section type and volume title and shows all matches without
+paging. While reading, **Contents** opens the same searchable, paged outline in
+a compact jump dialog.
 
 Akasha mentions and article links render as ordinary prose in both modes. The
 browser builds DOM nodes from the validated rich-text vocabulary and never
@@ -62,12 +65,24 @@ reading" restores those four. Theme and text size are *not* here: they are
 shared across all four services and the header already owns them, so nothing in
 this reader can undo a choice made in Articles.
 
-The reader stores one last position per book and account in that browser. The
-library and book contents page offer an explicit **Continue reading** link; they
-never redirect automatically. A stable block id and offset restore the same
-passage after a browser restart or layout change, with section percentage as a
-fallback if that block was edited away. Invalid positions are discarded. This
-state never touches the server and does not follow an account to another device.
+The reader keeps two marks per book and account in that browser, because they
+answer different questions. *Where you are* moves every time you scroll and
+carries a stable block id and offset, so reopening that section puts the same
+passage back under your eyes after a browser restart or a layout change, with
+section percentage as a fallback if that block was edited away. *How far you
+got* only ever moves forward: going back to check a detail in chapter two
+leaves it at chapter twenty-seven, and within one section only a deeper read
+advances it.
+
+**Continue reading**, on the library card and at the top of the book contents,
+offers the furthest mark. The volume that opens on the contents page follows
+the other one — you are shown where you are, and offered the way forward, which
+are not always the same place. Nothing redirects automatically. A mark whose
+section no longer exists is discarded, and the book is forgotten only when
+neither mark lands. The position is written on scroll, when the page is hidden
+and when it is unloaded, so closing the browser — or a phone killing a
+backgrounded tab, which never fires an unload — keeps it. This state never
+touches the server and does not follow an account to another device.
 
 A sticky progress bar reports the current viewport position through the open
 section. It may move backward while rereading; a section that fits entirely in

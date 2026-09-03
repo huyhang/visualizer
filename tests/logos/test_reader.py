@@ -115,6 +115,33 @@ def test_the_reader_offers_search_and_jump_controls(client):
     assert 'class: "volume-card"' in app and "pagedSectionList" in app
 
 
+def test_logos_folds_a_thing_the_way_its_siblings_do():
+    """Akasha's tree browser and Chronos's story graph both mark a closed
+    disclosure `+` and an open one `−`. A fourth service inventing its own
+    glyph is the kind of drift that makes four services feel like four apps."""
+    sheet = (_LOGOS / "static" / "reader.css").read_text()
+    twisty = sheet.split(".twisty {", 1)[1].split(".volume-summary:hover", 1)[0]
+    assert 'content: "+";' in twisty
+    assert 'content: "−";' in twisty
+
+    # Driven off `[open]`, so opening a volume *for* the reader -- the one
+    # holding their place -- shows the same mark as opening it themselves.
+    assert ".volume-card[open] .twisty::after" in sheet
+    app = (_LOGOS / "static" / "js" / "app.js").read_text()
+    assert 'class: "twisty"' in app
+
+
+def test_the_book_page_offers_the_furthest_read_and_opens_where_you_are():
+    """Two marks, two jobs. Continue points at the furthest section reached;
+    the volume that opens is the one you were last in, so going back to
+    re-read shows you where you are without losing the way forward."""
+    app = (_LOGOS / "static" / "js" / "app.js").read_text()
+    assert "sectionAhead(" in app
+    assert "marks.furthest" in app and "marks.last" in app
+    position = (_LOGOS / "static" / "js" / "position.js").read_text()
+    assert "export function advance(" in position
+
+
 def test_what_a_mode_shows_is_a_tooltip_not_standing_text(client):
     """It is an explanation you want on the way in and never again."""
     html = client.get("/").get_data(as_text=True)

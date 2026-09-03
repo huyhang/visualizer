@@ -6,6 +6,7 @@ import { ApiError, BASE, api } from "./api.js";
 import { el, fill, nodeFactory } from "./dom.js";
 import {
   findSection,
+  sectionAhead,
   sectionLabel,
   sectionName,
   sectionNeighbours,
@@ -82,8 +83,12 @@ function readerUrl(book, volume, section) {
 }
 
 function words(count) {
+  if (!Number.isFinite(count)) return "";
   return `${count.toLocaleString()} ${count === 1 ? "word" : "words"}`;
 }
+
+/** Join the parts of a meta line that are actually there. */
+const meta = (...parts) => parts.filter(Boolean).join(" · ");
 
 function percent(value) {
   return `${Math.round(value * 100)}%`;
@@ -108,9 +113,10 @@ function continueLink(book, position, label = "Continue reading") {
 }
 
 function bookCard(row) {
-  const position = row.has_manuscript
+  const saved = row.has_manuscript
     ? readPosition(storage, readerUser, row.book) : null;
-  const meta = row.has_manuscript
+  const furthest = saved && saved.furthest;
+  const summary = row.has_manuscript
     ? `${row.volume_count} ${row.volume_count === 1 ? "volume" : "volumes"}`
     : "No manuscript yet";
   const heading = el("h2", { text: row.title || row.book });
@@ -119,8 +125,8 @@ function bookCard(row) {
       ? el("a", { class: "card-link", href: bookUrl(row.book) }, [heading])
       : heading,
     el("p", { class: "card-sub", text: row.book }),
-    el("p", { class: "card-meta", text: meta }),
-    position ? continueLink(row.book, position) : null,
+    el("p", { class: "card-meta", text: summary }),
+    furthest ? continueLink(row.book, furthest) : null,
   ]);
 }
 
@@ -146,34 +152,62 @@ function renderShelf(books) {
 
 // -- book contents -----------------------------------------------------------
 
-function validResume(manuscript) {
-  const position = readPosition(storage, readerUser, manuscript.book);
-  if (!position) return null;
-  const entry = findSection(manuscript, position.volume, position.section);
-  if (entry) return { position, entry };
-  forgetPosition(storage, readerUser, manuscript.book);
-  return null;
+/**
+ * The saved marks that still name sections this manuscript has.
+ *
+ * `last` says which volume to open and where to put the scroll; `furthest` is
+ * what "Continue reading" points at. Either can outlive the other -- an edit
+ * can delete the section you were last in without touching the one you got to
+ * -- so they are located separately, and the book is only forgotten when
+ * neither lands.
+ */
+function bookmarks(manuscript) {
+  const saved = readPosition(storage, readerUser, manuscript.book);
+  if (!saved) return null;
+  const locate = (mark) => {
+    const entry = mark && findSection(manuscript, mark.volume, mark.section);
+    return entry ? { mark, entry } : null;
+  };
+  const last = locate(saved.last);
+  const furthest = locate(saved.furthest);
+  if (!last && !furthest) {
+    forgetPosition(storage, readerUser, manuscript.book);
+    return null;
+  }
+  return { last: last || furthest, furthest: furthest || last };
 }
 
-function sectionRow(manuscript, volume, section, resume) {
+/**
+ * The kind to print above a row's name, or null when it would say nothing.
+ *
+ * An untitled section is *named* for its kind already, and a row under a run
+ * heading has just been told what kind it is -- unless the label carries a
+ * number the heading does not.
+ */
+function sectionRow(manuscript, volume, section, marks) {
+  const resume = marks && marks.furthest;
   const isResume = resume
-    && resume.position.volume === volume.id
-    && resume.position.section === section.id;
-  const titled = Boolean(section.title);
+    && resume.mark.volume === volume.id
+    && resume.mark.section === section.id;
+  // An untitled section is named for its kind already, so the label would only
+  // say it twice. Nothing else in the outline names a kind: every row carries
+  // its own, which is why a heading above a run of them has nothing to add.
+  const kind = section.title ? sectionLabel(section) : null;
+  const count = words(section.word_count);
   return el("li", { class: `section-row${isResume ? " resume" : ""}` }, [
     el("a", {
       class: "section-link",
       href: readerUrl(manuscript.book, volume.id, section.id),
     }, [
       el("span", { class: "section-name" }, [
-        titled ? el("span", { class: "section-kind", text: sectionLabel(section) }) : null,
+        kind ? el("span", { class: "section-kind", text: kind }) : null,
         el("strong", { text: sectionName(section) }),
       ]),
-      el("span", { class: "section-stats", text: words(section.word_count) }),
+      count ? el("span", { class: "section-stats", text: count }) : null,
       isResume
         ? el("span", {
             class: "resume-marker",
-            text: `Continue here · ${percent(resume.position.progress)}`,
+            text: `Continue here · ${percent(resume.mark.progress)}`,
           })
         : null,
     ]),
@@ -225,22 +259,20 @@ function pagedSectionList(
 }
 
 function volumeCard(
-  manuscript, volume, resume, expanded, searching, page, rememberPage, rememberOpen,
+  manuscript, volume, marks, expanded, searching, page, rememberPage, rememberOpen,
 ) {
   const summary = searching
     ? `${volume.sections.length} matching ${volume.sections.length === 1 ? "section" : "sections"}`
-    : `${volume.section_count} ${volume.section_count === 1 ? "section" : "sections"}`
-      + ` · ${words(volume.word_count)}`;
-  const sectionList = searching
-    ? el("ol", { class: "section-list" },
-        volume.sections.map((section) => sectionRow(manuscript, volume, section, resume)))
-    : pagedSectionList(
-        volume.sections,
-        page,
-        (section) => sectionRow(manuscript, volume, section, resume),
-        volume.title,
-        rememberPage,
+    : meta(
+        `${volume.section_count} ${volume.section_count === 1 ? "section" : "sections"}`,
+        words(volume.word_count),
       );
+  // One argument on purpose: `Array.map` would otherwise hand the row builder
+  // an index as its second.
+  const row = (section) => sectionRow(manuscript, volume, section, marks);
+  const sectionList = searching
+    ? el("ol", { class: "section-list" }, volume.sections.map(row))
+    : pagedSectionList(volume.sections, page, row, volume.title, rememberPage);
   return el("details", {
     class: "volume-card",
     open: expanded,
@@ -259,7 +291,7 @@ function volumeCard(
         class: "volume-summary-meta",
         text: summary,
       }),
-      el("span", { class: "volume-chevron", "aria-hidden": "true", text: "⌄" }),
+      el("span", { class: "twisty", "aria-hidden": "true" }),
     ]),
     volume.sections.length
       ? sectionList
@@ -267,19 +299,25 @@ function volumeCard(
   ]);
 }
 
-function outlineBrowser(manuscript, resume) {
+function outlineBrowser(manuscript, marks) {
   const total = sectionCount(manuscript.volumes);
   const list = el("div", { class: "volume-list" });
-  const opened = defaultOpenVolume(manuscript, resume && resume.position);
+  // The volume that opens is the one you were last in, not the one you got
+  // furthest into: after going back to re-read, the page should show you
+  // where you are and leave "Continue reading" to offer the way forward.
+  const here = marks && marks.last;
+  const opened = defaultOpenVolume(manuscript, here && here.mark);
   const expanded = new Map(
     manuscript.volumes.map((volume) => [volume.id, volume.id === opened]),
   );
   const pages = new Map();
-  if (resume) {
-    pages.set(
-      resume.entry.volume.id,
-      pageForSection(resume.entry.volume.sections, resume.entry.section.id),
-    );
+  for (const at of [marks && marks.furthest, here]) {
+    if (at) {
+      pages.set(
+        at.entry.volume.id,
+        pageForSection(at.entry.volume.sections, at.entry.section.id),
+      );
+    }
   }
   const status = el("p", { class: "outline-search-status muted", "aria-live": "polite" });
 
@@ -294,7 +332,7 @@ function outlineBrowser(manuscript, resume) {
       ? filtered.map((volume) => volumeCard(
           manuscript,
           volume,
-          resume,
+          marks,
           searching || expanded.get(volume.id),
           searching,
           pages.get(volume.id) || 0,
@@ -329,12 +367,12 @@ function outlineBrowser(manuscript, resume) {
   ]);
 }
 
-function resumeCallout(manuscript, resume) {
-  if (!resume) return null;
-  const { position, entry } = resume;
+function resumeCallout(manuscript, marks) {
+  if (!marks || !marks.furthest) return null;
+  const { mark, entry } = marks.furthest;
   return el("a", {
     class: "resume-callout",
-    href: readerUrl(manuscript.book, position.volume, position.section),
+    href: readerUrl(manuscript.book, mark.volume, mark.section),
   }, [
     el("span", { class: "resume-icon", "aria-hidden": "true", text: "▶" }),
     el("span", { class: "resume-copy" }, [
@@ -343,13 +381,13 @@ function resumeCallout(manuscript, resume) {
         text: `${entry.volume.title} · ${sectionName(entry.section)}`,
       }),
     ]),
-    el("span", { class: "resume-percent", text: percent(position.progress) }),
+    el("span", { class: "resume-percent", text: percent(mark.progress) }),
   ]);
 }
 
 function renderBook(manuscript, notice = null) {
   hideReaderChrome();
-  const resume = validResume(manuscript);
+  const marks = bookmarks(manuscript);
   const totalSections = sectionCount(manuscript.volumes);
   document.title = `${manuscript.title || manuscript.book} — Logos`;
   fill(content, [
@@ -360,15 +398,17 @@ function renderBook(manuscript, notice = null) {
       manuscript.overview ? el("p", { class: "lead book-overview", text: manuscript.overview }) : null,
       el("p", {
         class: "book-meta",
-        text: `${manuscript.volume_count} ${manuscript.volume_count === 1 ? "volume" : "volumes"}`
-          + ` · ${totalSections} ${totalSections === 1 ? "section" : "sections"}`
-          + ` · ${words(manuscript.word_count)}`,
+        text: meta(
+          `${manuscript.volume_count} ${manuscript.volume_count === 1 ? "volume" : "volumes"}`,
+          `${totalSections} ${totalSections === 1 ? "section" : "sections"}`,
+          words(manuscript.word_count),
+        ),
       }),
     ]),
     notice ? el("p", { class: "reader-notice", role: "status", text: notice }) : null,
-    resumeCallout(manuscript, resume),
+    resumeCallout(manuscript, marks),
     manuscript.volumes.length
-      ? outlineBrowser(manuscript, resume)
+      ? outlineBrowser(manuscript, marks)
       : el("p", { class: "empty", text: "This book has no manuscript volumes yet." }),
   ]);
 }
@@ -436,7 +476,7 @@ function renderReader(manuscript, entry, section) {
       el("h1", { text: sectionName(section) }),
       el("p", {
         class: "section-meta",
-        text: `${sectionLabel(section)} · ${words(section.word_count)}`,
+        text: meta(sectionLabel(section), words(section.word_count)),
       }),
     ]),
     el("div", { class: "section-body" }, [proseNode, scenePanel(section)]),
@@ -458,6 +498,7 @@ function renderReader(manuscript, entry, section) {
 
 function jumpSectionLink(volume, section) {
   const current = open.volume.id === volume.id && open.section.id === section.id;
+  const kind = section.title ? sectionLabel(section) : null;
   return el("li", {}, [
     el("a", {
       class: `jump-section${current ? " current" : ""}`,
@@ -465,8 +506,7 @@ function jumpSectionLink(volume, section) {
       ...(current ? { "aria-current": "page" } : {}),
     }, [
       el("span", { text: sectionName(section) }),
-      section.title
-        ? el("span", { class: "jump-kind", text: sectionLabel(section) }) : null,
+      kind ? el("span", { class: "jump-kind", text: kind }) : null,
     ]),
   ]);
 }
@@ -590,13 +630,17 @@ function savePosition() {
   if (!open || open.restoring) return;
   if (saveTimer !== null) window.clearTimeout(saveTimer);
   saveTimer = null;
-  const progress = sectionProgress(readingGeometry());
-  writePosition(storage, readerUser, open.manuscript.book, {
+  const book = open.manuscript.book;
+  const spot = {
     volume: open.volume.id,
     section: open.section.id,
     ...blockSnapshot(),
-    progress,
-  });
+    progress: sectionProgress(readingGeometry()),
+  };
+  // Where you are always moves; how far you got only moves forward.
+  const held = readPosition(storage, readerUser, book);
+  writePosition(storage, readerUser, book, spot,
+    sectionAhead(open.manuscript, spot, held && held.furthest));
 }
 
 function queueSave() {
@@ -686,6 +730,11 @@ function wire() {
   window.addEventListener("scroll", () => scheduleMeasure(), { passive: true });
   window.addEventListener("resize", () => scheduleMeasure(false));
   window.addEventListener("pagehide", savePosition);
+  // A phone that backgrounds the tab and kills it later may never fire
+  // `pagehide`, and "closes their browser" is the whole point of the mark.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") savePosition();
+  });
   document.addEventListener("prefs:fontscale", () => scheduleMeasure(false));
 }
 
@@ -720,10 +769,12 @@ async function openSection(manuscript, entry) {
   };
   renderReader(manuscript, entry, section);
   if (showsChronos(preferences)) await loadScenes();
-  const saved = readPosition(storage, readerUser, manuscript.book);
-  const position = saved && saved.volume === entry.volume.id
-    && saved.section === section.id ? saved : null;
-  await restorePosition(position);
+  // Only the spot you actually left carries an anchor, and only if it is in
+  // this section: opening any other section starts it at the top.
+  const spot = (readPosition(storage, readerUser, manuscript.book) || {}).last;
+  const here = spot && spot.volume === entry.volume.id
+    && spot.section === section.id ? spot : null;
+  await restorePosition(here);
 }
 
 async function start() {
@@ -747,10 +798,8 @@ async function start() {
 
   const entry = findSection(manuscript, volume, section);
   if (!entry) {
-    const saved = readPosition(storage, readerUser, book);
-    if (saved && saved.volume === volume && saved.section === section) {
-      forgetPosition(storage, readerUser, book);
-    }
+    // `bookmarks` drops whichever marks no longer land, so a link to a deleted
+    // section needs no cleanup here beyond showing the outline again.
     renderBook(manuscript, "That section is no longer available. Choose another section.");
     return;
   }
