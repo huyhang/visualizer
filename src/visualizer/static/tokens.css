@@ -1,0 +1,84 @@
+/* The palette every page in this stack is drawn in. One file, six former copies.
+ *
+ * Served from the package root by ``shared_assets.py`` the same way
+ * ``service-nav.css`` and ``prefs.js`` are, so each app links it beneath its own
+ * static path and no build step is involved:
+ *
+ *     <link rel="stylesheet" href="{{ url_for('shared_static', filename='tokens.css') }}">
+ *
+ * **Link this first.** A page's own sheet comes after, so it can still override
+ * a token for itself; ``service-nav.css`` comes last, because it only reads.
+ *
+ * Why it exists. Until this file, akasha's editor, akasha's account shell,
+ * chronos, prithvi, logos and the auth pages each declared their own copy of
+ * these thirty-odd values -- and ``service-nav.css``, which is shared, is drawn
+ * entirely in them. A service that spelled the palette its own way got a
+ * navigation rail with no surface behind it and white glyphs on white: invisible
+ * in light mode, perfect in dark, which is to say it looked finished on the
+ * machine that made it. Adding a fourth service found that out the hard way.
+ * With one file there is nothing to spell differently -- a page either links it
+ * or has no colour at all, and the second is not a mistake anyone ships.
+ *
+ * ``test_every_page_links_the_shared_tokens`` holds every shell to that, and
+ * ``test_the_tokens_cover_the_nav_contract`` holds this file to what the nav
+ * spends.
+ *
+ * Anything genuinely one service's own -- akasha's diff greens, chronos's
+ * attention amber, prithvi's paper and ink, logos's prose measure -- stays in
+ * that service's sheet. This is the shared vocabulary, not every colour used.
+ */
+
+:root, [data-theme="light"] {
+  /* surfaces, from the page backwards */
+  --bg: #f5f6fb;
+  --surface: #ffffff;
+  --surface-2: #f9fafc;
+  --surface-3: #eef0f6;
+  --border: #e7e9f1;
+
+  /* type */
+  --text: #1f2430;
+  --muted: #6b7280;
+
+  /* one hue carries every interactive affordance in the stack */
+  --accent: #6366f1;
+  --accent-strong: #4f46e5;
+  --accent-soft: #eef1ff;
+
+  /* status: a strong pair for text and a soft pair for the field behind it */
+  --danger: #dc2626;
+  --danger-soft: #fdecec;
+  --warn: #b45309;
+  --warn-soft: #fef3c7;
+  --ok: #16a34a;
+  --ok-soft: #e5f6ec;
+
+  --shadow: 0 1px 2px rgba(16,24,40,.04), 0 6px 20px rgba(16,24,40,.06);
+  --radius: 14px;
+}
+
+/* Dark is selected rather than flipped: the accent gets *lighter* so it still
+   reads against a dark surface, which an inversion would not do. */
+[data-theme="dark"] {
+  --bg: #0e1016;
+  --surface: #171a22;
+  --surface-2: #1d212b;
+  --surface-3: #232838;
+  --border: #282d3a;
+
+  --text: #e6e8ee;
+  --muted: #98a1b2;
+
+  --accent: #818cf8;
+  --accent-strong: #a5b4fc;
+  --accent-soft: #1c2140;
+
+  --danger: #f87171;
+  --danger-soft: #3a1f24;
+  --warn: #fbbf24;
+  --warn-soft: #37300f;
+  --ok: #4ade80;
+  --ok-soft: #16311f;
+
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 28px rgba(0,0,0,.4);
+}

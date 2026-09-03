@@ -1,22 +1,18 @@
-/* Akasha editor — light/dark via [data-theme] on <html>. */
+/* Akasha editor — light/dark via [data-theme] on <html>.
+   The stack's shared palette comes from `tokens.css`, linked before this file;
+   the diff greens and reds below are this page's alone. */
 :root, [data-theme="light"] {
-  --bg: #f5f6fb; --surface: #ffffff; --surface-2: #f9fafc; --surface-3: #eef0f6;
-  --border: #e7e9f1; --text: #1f2430; --muted: #6b7280;
-  --accent: #6366f1; --accent-strong: #4f46e5; --accent-soft: #eef1ff;
-  --danger: #dc2626; --danger-soft: #fdecec; --ok: #16a34a; --ok-soft: #e5f6ec;
-  --warn: #b45309; --warn-soft: #fef3c7;
-  --add: #16a34a; --add-soft: #e5f6ec; --del: #dc2626; --del-soft: #fdecec;
-  --shadow: 0 1px 2px rgba(16,24,40,.04), 0 6px 20px rgba(16,24,40,.06);
-  --radius: 14px;
+  --add: #16a34a;
+  --add-soft: #e5f6ec;
+  --del: #dc2626;
+  --del-soft: #fdecec;
 }
+
 [data-theme="dark"] {
-  --bg: #0e1016; --surface: #171a22; --surface-2: #1d212b; --surface-3: #232838;
-  --border: #282d3a; --text: #e6e8ee; --muted: #98a1b2;
-  --accent: #818cf8; --accent-strong: #a5b4fc; --accent-soft: #1c2140;
-  --danger: #f87171; --danger-soft: #3a1f24; --ok: #4ade80; --ok-soft: #16311f;
-  --warn: #fbbf24; --warn-soft: #37300f;
-  --add: #4ade80; --add-soft: #16311f; --del: #f87171; --del-soft: #3a1f24;
-  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 28px rgba(0,0,0,.4);
+  --add: #4ade80;
+  --add-soft: #16311f;
+  --del: #f87171;
+  --del-soft: #3a1f24;
 }
 
 * { box-sizing: border-box; }
@@ -66,7 +62,10 @@ a.brand:hover { text-decoration: none; opacity: .85; }
 
 /* layout */
 .app-body { flex: 1; display: flex; min-height: 0; position: relative; }
-:root { --sidebar-w: 300px; }
+:root {
+  --sidebar-w: 300px;
+}
+
 .sidebar {
   width: var(--sidebar-w); flex-shrink: 0; border-right: 1px solid var(--border);
   background: var(--surface); display: flex; flex-direction: column; min-height: 0;

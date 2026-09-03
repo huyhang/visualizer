@@ -14,11 +14,14 @@
 
    Deliberately plain, and deliberately not branded: it is whichever service you
    are logged out of. No header (there is nothing to navigate to yet) and no
-   favicon, because the two apps name theirs differently and a broken icon link
-   is worse than none. Only the blocks and classes the auth templates actually
+   favicon, because the apps name theirs differently and a broken icon link is
+   worse than none. Only the blocks and classes the auth templates actually
    use — `title`, `content`, and `card narrow` / `error` / `notice` / `muted` /
-   `btn-full` — plus the theme variables they inherit elsewhere, so the page does
-   not flash white on a dark install.
+   `btn-full`.
+
+   Its rules live in `static/auth.css` and its palette in `static/tokens.css`,
+   both served from the package root, because this shell is reachable through
+   any of the four apps.
 #}<!doctype html>
 <html lang="en">
 <head>
@@ -26,70 +29,28 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Sign in{% endblock %}</title>
   <script>
-    // Before first paint, from the same key both services already use.
+    // Before first paint, from the same keys `prefs.js` uses -- current one
+    // first, then the pre-rename ones it still honours. This read `akasha-theme`
+    // alone, so a theme chosen anywhere in the stack after the keys were shared
+    // did not survive as far as the login page.
     (function () {
+      var keys = ["visualizer-theme", "akasha-theme", "chronos-theme",
+                  "prithvi-theme", "kb-theme"];
       try {
-        var saved = localStorage.getItem("akasha-theme") || localStorage.getItem("kb-theme");
+        var saved = null;
+        for (var i = 0; i < keys.length && saved === null; i++) {
+          saved = localStorage.getItem(keys[i]);
+        }
         var dark = saved ? saved === "dark"
           : window.matchMedia("(prefers-color-scheme: dark)").matches;
         document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
       } catch (e) { document.documentElement.setAttribute("data-theme", "light"); }
     })();
   </script>
-  <style>
-    :root, [data-theme="light"] {
-      --bg: #f5f6fb; --surface: #ffffff; --surface-2: #f9fafc;
-      --border: #e7e9f1; --text: #1f2430;
-      --muted: #6b7280; --accent: #6366f1; --accent-strong: #4f46e5;
-      --accent-soft: #eef1ff;
-      --danger: #dc2626; --danger-soft: #fdecec; --ok-soft: #e5f6ec;
-      --shadow: 0 1px 2px rgba(16,24,40,.04), 0 6px 20px rgba(16,24,40,.06);
-      --radius: 14px;
-    }
-    [data-theme="dark"] {
-      --bg: #0e1016; --surface: #171a22; --surface-2: #1d212b;
-      --border: #282d3a; --text: #e6e8ee;
-      --muted: #98a1b2; --accent: #818cf8; --accent-strong: #a5b4fc;
-      --accent-soft: #1c2140;
-      --danger: #f87171; --danger-soft: #3a1f24; --ok-soft: #16311f;
-      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 28px rgba(0,0,0,.4);
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0; min-height: 100vh; display: grid; place-items: center;
-      padding: 2rem 1rem; background: var(--bg); color: var(--text);
-      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    }
-    body.has-service-nav { display: block; min-height: 0; padding: 0; }
-    .app-shell-main.auth-surface { display: grid; place-items: center; padding: 2rem 1rem; }
-    main { width: 100%; max-width: 420px; }
-    .card {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); box-shadow: var(--shadow); padding: 1.6rem 1.7rem;
-    }
-    .card h1 { margin: 0 0 1.1rem; font-size: 1.35rem; }
-    label { display: block; margin: .8rem 0 .3rem; font-size: .8rem;
-            font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
-    input[type="text"], input[type="password"], input[type="email"] {
-      width: 100%; padding: .55rem .7rem; border-radius: 10px; font: inherit;
-      border: 1px solid var(--border); background: var(--surface); color: var(--text);
-    }
-    input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-    .btn-full {
-      width: 100%; margin-top: 1.2rem; padding: .6rem 1rem; border: 0; cursor: pointer;
-      border-radius: 10px; font: inherit; font-weight: 600;
-      background: var(--accent); color: #fff;
-    }
-    .btn-full:hover { background: var(--accent-strong); }
-    .error, .notice {
-      padding: .6rem .8rem; border-radius: 10px; margin-bottom: 1rem; font-size: .9rem;
-    }
-    .error { background: var(--danger-soft); color: var(--danger); }
-    .notice { background: var(--ok-soft); }
-    .muted { color: var(--muted); font-size: .88rem; }
-    a { color: var(--accent-strong); }
-  </style>
-  {# After this page's own rules: the shared nav owns the geometry it introduces. #}
+  {# Palette first, this shell's own rules next, the shared nav last: it only
+     reads the tokens and owns the geometry it introduces. #}
+  <link rel="stylesheet" href="{{ url_for('shared_static', filename='tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('shared_static', filename='auth.css') }}">
   <link rel="stylesheet" href="{{ url_for('shared_static', filename='service-nav.css') }}">
 </head>
 <body{% if current_user.is_authenticated %} class="has-service-nav"{% endif %}>

@@ -1,30 +1,20 @@
 /* Chronos plotline visualiser — light/dark via [data-theme] on <html>.
-   Shares akasha's design tokens so the two services feel like one stack. */
+   The stack's shared palette comes from `tokens.css`, linked before this file;
+   only the tokens this page alone needs are declared here. */
 :root, [data-theme="light"] {
-  --bg: #f5f6fb; --surface: #ffffff; --surface-2: #f9fafc; --surface-3: #eef0f6;
-  --border: #e7e9f1; --text: #1f2430; --muted: #6b7280;
-  --accent: #6366f1; --accent-strong: #4f46e5; --accent-soft: #eef1ff;
-  --danger: #dc2626; --danger-soft: #fdecec; --ok: #16a34a; --ok-soft: #e5f6ec;
-  --warn: #b45309; --warn-soft: #fef3c7;
-  /* Between danger and warn: "fix this" without the alarm of a hard error.
-     The book report's problems use it — a page that is nothing but problems
-     should not be a page of red. Dark enough in this theme to carry small
-     bold text at AA, so the edge and its tally can share one token. */
-  --attention: #c2410c; --attention-soft: #ffefe4;
-  --shadow: 0 1px 2px rgba(16,24,40,.04), 0 6px 20px rgba(16,24,40,.06);
+  /* Between danger and warn: "fix this" without the alarm of a hard error. The
+     book report's problems use it — a page that is nothing but problems should
+     not be a page of red. Dark enough in this theme to carry small bold text at
+     AA, so the edge and its tally can share one token. */
+  --attention: #c2410c;
+  --attention-soft: #ffefe4;
   --shadow-lg: 0 10px 40px rgba(16,24,40,.18);
-  --radius: 14px;
 }
+
 [data-theme="dark"] {
-  --bg: #0e1016; --surface: #171a22; --surface-2: #1d212b; --surface-3: #232838;
-  --border: #282d3a; --text: #e6e8ee; --muted: #98a1b2;
-  --accent: #818cf8; --accent-strong: #a5b4fc; --accent-soft: #1c2140;
-  --danger: #f87171; --danger-soft: #3a1f24; --ok: #4ade80; --ok-soft: #16311f;
-  --warn: #fbbf24; --warn-soft: #37300f;
-  --attention: #fb923c; --attention-soft: #3a2515;
-  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 28px rgba(0,0,0,.4);
+  --attention: #fb923c;
+  --attention-soft: #3a2515;
   --shadow-lg: 0 12px 48px rgba(0,0,0,.55);
-  --radius: 14px;
 }
 
 * { box-sizing: border-box; }
@@ -953,7 +943,6 @@ body:not(.focus-mode) .scene-row.has-hint { border-color: color-mix(in srgb, var
    only where it is the last child, so it never shoves later controls along. */
 .pl-actions .focus-btn:last-child,
 .section-head .focus-btn:last-child { margin-left: auto; }
-
 
 /* A moment shared by several threads: one row, one y, a scene per line. Merged
    by default — a stack of separate rows would imply an order the story has not

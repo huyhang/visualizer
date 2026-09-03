@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Chronos — plotline visualiser</title>
   <link rel="icon" href="{{ url_for('static', filename='chronos-icon.svg') }}">
+  {# Palette first: the shared nav and this sheet are both drawn in it. #}
+  <link rel="stylesheet" href="{{ url_for('shared_static', filename='tokens.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='visualizer.css') }}">
   {# After the app's own sheet: the shared nav owns the geometry it introduces. #}
   <link rel="stylesheet" href="{{ url_for('shared_static', filename='service-nav.css') }}">

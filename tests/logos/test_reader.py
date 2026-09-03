@@ -215,14 +215,20 @@ def test_every_stored_choice_actually_changes_something():
             )
 
 
-def test_the_stylesheet_only_spends_tokens_it_defines():
-    """A typo'd `var(--surfce)` is silently transparent, and only in one rule."""
+def test_the_stylesheet_only_spends_tokens_that_exist():
+    """A typo'd `var(--surfce)` is silently transparent, and only in one rule.
+
+    Three legitimate sources: this sheet, the shared palette it links first, and
+    the two geometry tokens `service-nav.css` declares. Anything else is a typo.
+    """
+    shared = _LOGOS.parent / "static"
     sheet = (_LOGOS / "static" / "reader.css").read_text()
-    declared = set(re.findall(r"(--[a-z0-9-]+)\s*:", sheet))
-    used = set(re.findall(r"var\((--[a-z0-9-]+)", sheet))
-    # `service-nav.css` declares its own geometry; this sheet may read it.
-    undefined = sorted(used - declared - {"--service-nav-w", "--service-nav-h"})
-    assert not undefined, f"reader.css reads {undefined} but never defines them"
+    available = set(re.findall(r"(--[a-z0-9-]+)\s*:", sheet))
+    for name in ("tokens.css", "service-nav.css"):
+        available |= set(re.findall(r"(--[a-z0-9-]+)\s*:", (shared / name).read_text()))
+
+    undefined = sorted(set(re.findall(r"var\((--[a-z0-9-]+)", sheet)) - available)
+    assert not undefined, f"reader.css reads {undefined} but nothing defines them"
 
 
 def test_the_reader_assets_are_served(client):

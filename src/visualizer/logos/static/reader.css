@@ -1,37 +1,12 @@
 /* Logos' read-only manuscript reader.
  *
- * The same indigo tokens Articles, Timeline and Maps use, redeclared rather
- * than imported: there is no build step and no shared stylesheet, and the
- * alternative -- copying a sibling service's whole sheet -- is how two of them
- * drift. Only the tokens are shared vocabulary; every rule below is this
- * page's own.
- *
- * The eight tokens `service-nav.css` spends are part of that vocabulary, not
- * an optional extra: declare a different palette here and the shared nav loses
- * its background and its active state, and its white glyphs disappear against
- * a white rail. `test_every_service_defines_the_nav_tokens` holds this file
- * (and its three siblings) to that contract.
+ * The stack's palette comes from `tokens.css`, linked before this file. The
+ * only tokens declared here are the four the reading settings drive, and they
+ * are tokens rather than inline styles so that one `data-` attribute on <html>
+ * restyles the whole manuscript and the JavaScript never touches a style
+ * property.
  */
 
-:root, [data-theme="light"] {
-  --bg: #f5f6fb; --surface: #fff; --surface-2: #f9fafc;
-  --border: #e7e9f1; --text: #1f2430; --muted: #6b7280;
-  --accent: #6366f1; --accent-strong: #4f46e5; --accent-soft: #eef1ff;
-  --danger: #dc2626; --danger-soft: #fdecec;
-  --shadow: 0 1px 2px rgba(16,24,40,.04), 0 6px 20px rgba(16,24,40,.06);
-  --radius: 14px;
-}
-[data-theme="dark"] {
-  --bg: #0e1016; --surface: #171a22; --surface-2: #1d212b;
-  --border: #282d3a; --text: #e6e8ee; --muted: #98a1b2;
-  --accent: #818cf8; --accent-strong: #a5b4fc; --accent-soft: #1c2140;
-  --danger: #f87171; --danger-soft: #3a1f24;
-  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 28px rgba(0,0,0,.4);
-}
-
-/* The four reading choices, each a token the prose reads. Keeping them here
-   rather than in inline styles means one `data-` attribute on <html> restyles
-   the whole manuscript, and the JS never touches a style property. */
 [data-typeface="serif"] { --prose-font: Georgia, "Iowan Old Style", "Times New Roman", serif; }
 [data-typeface="sans"]  { --prose-font: ui-sans-serif, system-ui, -apple-system, sans-serif; }
 [data-leading="normal"]  { --prose-leading: 1.65; }

@@ -1,25 +1,18 @@
 /* Prithvi's map browser.
  *
- * The same indigo tokens Articles and Timeline use, redeclared rather than
- * imported: there is no build step and no shared stylesheet, and the alternative
- * -- copying a sibling service's whole sheet -- is how two of them drift.
- * Only the tokens are shared vocabulary; every rule below is this page's own.
+ * The stack's palette comes from `tokens.css`, linked before this file. Only
+ * the two tokens no other service has a use for are declared here; every rule
+ * below is this page's own.
  */
 
 :root, [data-theme="light"] {
-  --bg: #f5f6fb; --surface: #fff; --surface-2: #f9fafc;
-  --border: #e7e9f1; --text: #1f2430; --muted: #6b7280;
-  --accent: #6366f1; --accent-strong: #4f46e5; --accent-soft: #eef1ff;
-  --danger: #dc2626; --danger-soft: #fdecec; --paper: #fff7df; --ink: #2b2118;
-  --shadow: 0 1px 2px rgba(16,24,40,.04), 0 6px 20px rgba(16,24,40,.06);
-  --radius: 14px;
+  --paper: #fff7df;
+  --ink: #2b2118;
 }
+
 [data-theme="dark"] {
-  --bg: #0e1016; --surface: #171a22; --surface-2: #1d212b;
-  --border: #282d3a; --text: #e6e8ee; --muted: #98a1b2;
-  --accent: #818cf8; --accent-strong: #a5b4fc; --accent-soft: #1c2140;
-  --danger: #f87171; --danger-soft: #3a1f24; --paper: #fff7df; --ink: #2b2118;
-  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 28px rgba(0,0,0,.4);
+  --paper: #fff7df;
+  --ink: #2b2118;
 }
 
 * { box-sizing: border-box; }
