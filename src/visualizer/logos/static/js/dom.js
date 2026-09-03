@@ -1,0 +1,48 @@
+// The browser side of the node factory `prose.js` takes by injection, plus the
+// two helpers the rest of the page builds its own chrome with.
+//
+// `el` never accepts a string of markup, which is the point: there is no code
+// path in this reader that turns manuscript content into HTML, so there is no
+// code path to get wrong later.
+
+export function nodeFactory(owner = document) {
+  return {
+    text(value) {
+      return owner.createTextNode(value);
+    },
+    element(tag, attrs = {}, children = []) {
+      const node = owner.createElement(tag);
+      for (const [name, value] of Object.entries(attrs)) {
+        if (value === null || value === undefined || value === false) continue;
+        if (name === "text") node.textContent = value;
+        else if (name.startsWith("on")) node.addEventListener(name.slice(2), value);
+        else node.setAttribute(name, value === true ? "" : String(value));
+      }
+      for (const child of children.flat()) {
+        if (child !== null && child !== undefined) node.appendChild(child);
+      }
+      return node;
+    },
+    fragment(children = []) {
+      const fragment = owner.createDocumentFragment();
+      for (const child of children.flat()) fragment.appendChild(child);
+      return fragment;
+    },
+  };
+}
+
+const browser = nodeFactory();
+
+export function el(tag, attrs = {}, children = []) {
+  return browser.element(tag, attrs, children);
+}
+
+export function clear(node) {
+  while (node.firstChild) node.removeChild(node.firstChild);
+  return node;
+}
+
+export function fill(node, children) {
+  clear(node).appendChild(browser.fragment(children));
+  return node;
+}

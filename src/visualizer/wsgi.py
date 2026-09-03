@@ -43,7 +43,12 @@ from visualizer.prithvi.config import (
 )
 from visualizer.prithvi.store import PrithviStore
 
-from .gateway import DEFAULT_CHRONOS_PREFIX, DEFAULT_PRITHVI_PREFIX, combine
+from .gateway import (
+    DEFAULT_CHRONOS_PREFIX,
+    DEFAULT_LOGOS_PREFIX,
+    DEFAULT_PRITHVI_PREFIX,
+    combine,
+)
 
 _client = get_mongo_client()
 _auth_store = AuthStore(_client)
@@ -60,6 +65,7 @@ _observability = observability_runtime.start(_client, _auth_store)
 _akasha_url = os.environ.get("AKASHA_URL", "/")
 _chronos_url = os.environ.get("CHRONOS_URL", DEFAULT_CHRONOS_PREFIX)
 _prithvi_url = os.environ.get("PRITHVI_URL", DEFAULT_PRITHVI_PREFIX)
+_logos_url = os.environ.get("LOGOS_URL", DEFAULT_LOGOS_PREFIX)
 
 _story_store = StoryStore(_client)
 _logos_store = LogosStore(
@@ -90,6 +96,7 @@ _akasha_app = create_akasha_app(
     akasha_url=_akasha_url,
     chronos_url=_chronos_url,
     prithvi_url=_prithvi_url,
+    logos_url=_logos_url,
     observability=_observability,
 )
 _chronos_app = create_chronos_app(
@@ -104,6 +111,7 @@ _chronos_app = create_chronos_app(
     akasha_url=_akasha_url,
     chronos_url=_chronos_url,
     prithvi_url=_prithvi_url,
+    logos_url=_logos_url,
     observability=_observability,
 )
 _logos_app = create_logos_app(
@@ -117,6 +125,7 @@ _logos_app = create_logos_app(
     akasha_url=_akasha_url,
     chronos_url=_chronos_url,
     prithvi_url=_prithvi_url,
+    logos_url=_logos_url,
     observability=_observability,
 )
 _prithvi_app = create_prithvi_app(
@@ -134,6 +143,7 @@ _prithvi_app = create_prithvi_app(
     akasha_url=_akasha_url,
     chronos_url=_chronos_url,
     prithvi_url=_prithvi_url,
+    logos_url=_logos_url,
     observability=_observability,
 )
 

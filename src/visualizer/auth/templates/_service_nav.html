@@ -2,8 +2,8 @@
   The service navigation, in one place.
 
   It lives in the auth blueprint's template folder because that blueprint is
-  registered on all three apps, so every shell can `{% include %}` it. Before
-  this, five shells hand-wrote the same three links and had already drifted.
+  registered on all four apps, so every shell can `{% include %}` it. Before
+  this, five shells hand-wrote the same links and had already drifted.
 
   `service_links.active` is the service whose *page you are on*, or nothing at
   all on a utility page such as Access or Admin -- which is why `aria-current`
@@ -11,14 +11,19 @@
   which app is serving the request; the two differ everywhere but the SPA root.
 
   The glyphs are the same artwork as `<service>-glyph.svg`, inlined so the
-  navigation does not depend on three cross-service image requests. The copies
+  navigation does not depend on four cross-service image requests. The copies
   cannot drift silently: `test_the_nav_glyphs_match_the_service_marks` compares
   them against the canonical files.
+
+  Every branch below names its service; there is deliberately no `else`. A
+  fifth service added without its artwork then renders an empty square --
+  visibly unfinished -- rather than quietly wearing the last one's mark.
 #}
 {% set services = [
-     ('akasha',  'Articles', service_links.akasha),
-     ('chronos', 'Timeline', service_links.chronos),
-     ('prithvi', 'Maps',     service_links.prithvi),
+     ('akasha',  'Articles',    service_links.akasha),
+     ('chronos', 'Timeline',    service_links.chronos),
+     ('prithvi', 'Maps',        service_links.prithvi),
+     ('logos',   'Manuscripts', service_links.logos),
    ] %}
 <nav class="service-nav" aria-label="Applications">
   {% for slug, label, href in services %}
@@ -42,12 +47,21 @@
         </g>
         <path fill="#ffffff" d="M16 16.4 C 14 17.8, 12.9 20.4, 12.7 23.4 C 14.9 22.5, 17.1 22.5, 19.3 23.4 C 19.1 20.4, 18 17.8, 16 16.4 Z"/>
         <path fill="none" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" d="M16 16.6 L16 19.6"/>
-        {%- else %}
+        {%- elif slug == 'prithvi' %}
         <g fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">
           <path d="M5 24.2 C 9 22.2, 13 22.2, 16 23.2 C 19 24.2, 23 24.2, 27 22.4"/>
           <path d="M9.5 28.2 C 12.5 27, 15 27, 17.5 27.6 C 20 28.2, 22 28, 23.5 27.3"/>
         </g>
         <path fill="#ffffff" fill-rule="evenodd" d="M16 21.2 C 16 21.2, 21.2 14.4, 21.2 10.4 A 5.2 5.2 0 1 0 10.8 10.4 C 10.8 14.4, 16 21.2, 16 21.2 Z M17.9 10.2 A 1.9 1.9 0 1 1 14.1 10.2 A 1.9 1.9 0 1 1 17.9 10.2 Z"/>
+        {%- elif slug == 'logos' %}
+        <g fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">
+          <path d="M9 8.5 H23 V23.5 H9 Z"/>
+          <path d="M12.5 13 H19.5"/>
+          <path d="M12.5 16 H19.5"/>
+          <path d="M12.5 19 H17"/>
+        </g>
+        <path fill="#ffffff" d="M7 5.4 H25 A 1.6 1.6 0 0 1 25 8.6 H7 A 1.6 1.6 0 0 1 7 5.4 Z"/>
+        <path fill="#ffffff" d="M7 23.4 H25 A 1.6 1.6 0 0 1 25 26.6 H7 A 1.6 1.6 0 0 1 7 23.4 Z"/>
         {%- endif %}
       </svg>
     </span>

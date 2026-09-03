@@ -1,4 +1,4 @@
-# Lightweight image for the logos API (manuscript volumes, sections and prose).
+# Lightweight image for logos: the manuscript reader and the API behind it.
 #
 # Mirrors its three siblings: same slim base, same layout, same layer ordering.
 # Logos always ships alongside chronos and akasha and reads both in-process (a

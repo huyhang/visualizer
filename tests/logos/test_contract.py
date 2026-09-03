@@ -25,8 +25,12 @@ from .conftest import BOOK, SECTION, VOLUME, section_payload
 OPENAPI_PATH = Path(__file__).resolve().parents[2] / "docs" / "logos" / "openapi.json"
 HTTP_METHODS = {"get", "post", "put", "delete"}
 
-# Shared login pages and static assets: the auth blueprint's, not the API's.
+# Shared login pages, static assets, and the reader shell: HTML and asset
+# routes, not JSON operations. Note that the reader's *data* is not exempt --
+# `/ui/scenes` is specified below like any other read, because "the UI needs
+# it" is not a reason for an endpoint to go undocumented.
 NOT_API = {
+    "/",
     "/static/{filename}",
     "/static/js/shared/{filename}",
     "/static/shared/{filename}",
@@ -166,6 +170,7 @@ def seeded(client):
         (f"/books/{BOOK}/report", "Report"),
         (f"/books/{BOOK}/volumes/{VOLUME}", "Volume"),
         (f"/books/{BOOK}/volumes/{VOLUME}/manuscript", "VolumeManuscript"),
+        (f"/books/{BOOK}/volumes/{VOLUME}/ui/scenes", "VolumeScenes"),
         (f"/books/{BOOK}/volumes/{VOLUME}/sections/{SECTION}", "Section"),
         (f"/books/{BOOK}/volumes/{VOLUME}/sections/{SECTION}/versions",
          "VersionList"),

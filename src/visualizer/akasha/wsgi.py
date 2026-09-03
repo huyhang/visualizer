@@ -16,6 +16,7 @@ from .app import create_app
 from .config import (
     get_akasha_url,
     get_chronos_url,
+    get_logos_url,
     get_mongo_client,
     get_prithvi_url,
     get_rate_limit_storage_uri,
@@ -55,6 +56,7 @@ app = create_app(
     akasha_url=get_akasha_url(),
     chronos_url=get_chronos_url(),
     prithvi_url=get_prithvi_url(),
+    logos_url=get_logos_url(),
     observability=_observability,
 )
 

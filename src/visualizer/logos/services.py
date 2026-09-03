@@ -285,6 +285,36 @@ class VolumeService(_Service):
             book, self._require_volume(book, volume_id), include_documents=True
         )
 
+    def scenes(self, book: str, volume_id: str) -> dict:
+        """The Chronos scenes each section of this volume says it realises.
+
+        The ids come from the sections themselves, never from the caller. That
+        is what makes the reader's Full View promise checkable rather than
+        merely intended: there is no parameter here through which a browser
+        could ask about a scene this volume's prose does not name.
+        """
+        self._book(book)
+        records = self._ordered_sections(book, self._require_volume(book, volume_id))
+        cards = self._scene_cards(book, records)
+        return {
+            "book": book,
+            "volume": volume_id,
+            "sections": [
+                {
+                    "section": record["section"],
+                    "scenes": [cards[event] for event in record.get("event_ids", [])],
+                }
+                for record in records
+            ],
+        }
+
+    def _scene_cards(self, book: str, records: list[dict]) -> dict[str, dict]:
+        """One gateway round trip for every scene the whole volume names."""
+        wanted = [
+            event for record in records for event in record.get("event_ids", [])
+        ]
+        return {card["id"]: card for card in self.chronos.scene_cards(book, wanted)}
+
     def update(
         self, book: str, volume_id: str, payload, expected_rev: int, author: str
     ) -> dict:

@@ -32,6 +32,7 @@ SHARED = {
     "akasha_url": "/",
     "chronos_url": "/timeline",
     "prithvi_url": "/prithvi",
+    "logos_url": "/logos",
 }
 
 
@@ -93,6 +94,20 @@ def test_one_login_reaches_logos_and_chronos_then_refuses_to_orphan_prose(
         DEFAULT_LOGOS_PREFIX + f"/books/{BOOK}/volumes/one/sections/opening",
         json=section_payload(),
     ).status_code == 201
+
+    # The reader, mounted where the nav says it is, computing its own base.
+    reader = client.get(DEFAULT_LOGOS_PREFIX + "/")
+    assert reader.status_code == 200
+    assert 'window.__BASE__ = "/logos"' in reader.get_data(as_text=True)
+
+    # And its scenes resolved through the *real* Chronos store rather than a
+    # fake, which is the only place that pairing is exercised end to end.
+    scenes = client.get(
+        DEFAULT_LOGOS_PREFIX + f"/books/{BOOK}/volumes/one/ui/scenes"
+    )
+    (scene,) = _body(scenes)["sections"][0]["scenes"]
+    assert scene["id"] == "opening"
+    assert scene["missing"] is False
 
     blocked_book = client.delete(
         f"/timeline/books/{BOOK}", headers={"If-Match": '"1"'}

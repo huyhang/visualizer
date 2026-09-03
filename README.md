@@ -30,7 +30,7 @@ login, one reverse-proxy entry.
 | **akasha** | `/` | A Wikipedia-style article store and editor: characters, items, locations, lore — with linking, versioning and diffs. Has a web UI. | [README](docs/akasha/README.md) · [design](docs/akasha/editor-design.md) |
 | **chronos** | `/timeline` | A plotline & timeline API for fiction writers: books, events and plotlines, checked for continuity errors, with a plotline visualiser and editor. | [README](docs/chronos/README.md) · [getting started](docs/chronos/getting-started.md) · [plain-language overview](docs/chronos/OVERVIEW.md) · [design](docs/chronos/design.md) |
 | **prithvi** | `/prithvi` | An SVG map per region of a world, with Akasha articles pinned to points on it. Has a web UI: upload a map, place and move pins, and read a pin's article beside the map. | [README](docs/prithvi/README.md) · [openapi](docs/prithvi/openapi.json) |
-| **logos** | `/logos` | A versioned manuscript API: ordered volumes and sections for each Chronos book, structured rich text with stable paragraph ids, and links back to the scenes they were written from. API-only, no UI yet. | [README](docs/logos/README.md) · [permissions](docs/logos/permissions.md) · [openapi](docs/logos/openapi.json) |
+| **logos** | `/logos` | A versioned manuscript API: ordered volumes and sections for each Chronos book, structured rich text with stable paragraph ids, and links back to the scenes they were written from. Has a read-only web UI: read a volume in Focused (prose alone) or Full View (with those scenes). Writing stays on the API. | [README](docs/logos/README.md) · [permissions](docs/logos/permissions.md) · [openapi](docs/logos/openapi.json) |
 | **mongo** | *internal* | Shared storage. Deliberately not published to the host. | — |
 
 They are named for what they hold: **Akasha** (the aether said to record all
@@ -48,7 +48,7 @@ blocked by canon you haven't written yet.
 
 **One process, one origin.** In production the apps are served by a single
 gunicorn behind one origin (port `5002`) — akasha at `/`, chronos at
-`/timeline`, prithvi at `/prithvi` — composed with Werkzeug's
+`/timeline`, prithvi at `/prithvi`, logos at `/logos` — composed with Werkzeug's
 `DispatcherMiddleware` (`visualizer.wsgi:application`, see
 [`src/visualizer/gateway.py`](src/visualizer/gateway.py)). They already share one
 MongoDB, one `_auth` store and one `SECRET_KEY`, and every cross-service question
@@ -59,10 +59,10 @@ just gives **one reverse-proxy rule, one cookie and no CORS**, which is exactly
 what the Synology reverse-proxy deployment wants.
 It's a *front door*, not a merge: each app keeps its own factory and test suite,
 and the per-service entrypoints (`visualizer.akasha.wsgi` and its siblings) still
-run a single service on its own port for development. The service nav's `AKASHA_URL`,
-`CHRONOS_URL` and `PRITHVI_URL` default to the relative paths `/`, `/timeline`
-and `/prithvi`; set them if a proxy serves the browser services on different
-hosts. Logos is API-only and is not in the navigation yet.
+run a single service on its own port for development. The service nav's
+`AKASHA_URL`, `CHRONOS_URL`, `PRITHVI_URL` and `LOGOS_URL` default to the
+relative paths `/`, `/timeline`, `/prithvi` and `/logos`; set them if a proxy
+serves the services on different hosts.
 
 ---
 
@@ -85,10 +85,11 @@ docker compose -f docker/docker-compose.nas.yml up --build -d
   world you can write, pin articles to it, and click a pin to read its
   article beside the map. The API is under `…/prithvi/worlds/{world}/maps`,
   and a map with its pins drawn on is at `…/maps/{map}/render.svg`.
-- **http://localhost:5002/logos/books** — the manuscript API: ordered volumes and
-  sections for each Chronos book. It uses the same book permissions and has no
-  browser editor yet, so `curl` and the [openapi](docs/logos/openapi.json) are
-  the way in.
+- **http://localhost:5002/logos/** — the manuscript reader: pick a book and read
+  a volume end to end. Focused shows prose alone; Full View adds the Chronos
+  scenes each section was written from. It uses the same book permissions as
+  the API, and there is still no browser editor, so `curl` and the
+  [openapi](docs/logos/openapi.json) remain the way to write.
 - **http://localhost:5002/health** — akasha liveness; **/timeline/health**,
   **/prithvi/health** and **/logos/health** — the others.
 - **http://localhost:5002/admin/observability** — administrators only: NAS

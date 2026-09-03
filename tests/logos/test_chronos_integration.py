@@ -12,7 +12,7 @@ from visualizer.chronos.errors import EventInManuscript, ManuscriptInUse
 from visualizer.chronos.models import Book, EntityRef, Event
 from visualizer.chronos.services import BookService, EventService
 from visualizer.chronos.store import CalendarStore, StoryStore
-from visualizer.logos.gateways import LogosReferenceGate
+from visualizer.logos.gateways import InProcessChronosGateway, LogosReferenceGate
 
 from .conftest import BOOK, SECTION, VOLUME, section_payload
 
@@ -130,3 +130,43 @@ def test_a_book_that_has_no_manuscript_still_deletes_cleanly(
     guarded.delete(BOOK, expected_rev=1, author="mara")
 
     assert stories.list_books() == []
+
+
+def test_the_reader_gets_a_scene_title_and_a_date_in_the_book_s_own_calendar(
+    mongo_client,
+):
+    """The seam the Fake stands in for, against a real Chronos store.
+
+    The Fake hands back whatever a test put in it, so nothing else proves that
+    `scene_cards` reads the same shapes Chronos actually stores -- or that the
+    timeframe is formatted through the book's calendar rather than printed as
+    a raw tick.
+    """
+    gateway = InProcessChronosGateway(_stories(mongo_client))
+
+    (card,) = gateway.scene_cards(BOOK, ["opening"])
+
+    assert card["id"] == "opening"
+    assert card["title"] == "Opening"
+    assert card["missing"] is False
+    assert card["when"], "a scheduled scene should say when it happens"
+
+
+def test_the_reader_is_told_which_scenes_are_gone(mongo_client):
+    gateway = InProcessChronosGateway(_stories(mongo_client))
+
+    assert gateway.scene_cards(BOOK, ["ghost"]) == [
+        {"id": "ghost", "title": "ghost", "when": "", "missing": True}
+    ]
+    # A book Chronos no longer has is every scene absent, not an exception:
+    # the prose is still readable and still names them.
+    assert gateway.scene_cards("no-such-book", ["opening"]) == [
+        {"id": "opening", "title": "opening", "when": "", "missing": True}
+    ]
+
+
+def test_one_scene_asked_for_twice_is_answered_once(mongo_client):
+    gateway = InProcessChronosGateway(_stories(mongo_client))
+
+    assert len(gateway.scene_cards(BOOK, ["opening", "opening"])) == 1
+    assert gateway.scene_cards(BOOK, []) == []

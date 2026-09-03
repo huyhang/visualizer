@@ -134,28 +134,29 @@ def register_service_links(
     chronos_url: str,
     current: str,
     prithvi_url: str,
+    logos_url: str,
     home_endpoint: str = "index",
 ) -> None:
     """Expose cross-service nav links to every template (the service nav).
 
-    The three services share one login (one cookie across ports/origins), so
+    The four services share one login (one cookie across ports/origins), so
     these are plain links between the apps. The URLs are injected here rather
     than hard-coded in templates, so a reverse-proxy deployment can point them
     wherever it serves each service. ``current`` (``"akasha"``/``"chronos"``/
-    ``"prithvi"``) says which app this is; ``active`` says which service the
-    page belongs to, and is ``None`` on the shared utility pages.
+    ``"prithvi"``/``"logos"``) says which app this is; ``active`` says which
+    service the page belongs to, and is ``None`` on the shared utility pages.
 
-    ``prithvi_url`` is required rather than defaulted, for the same reason the
-    other two are: a nav whose links depend on which caller remembered to
-    pass an argument is a nav that silently points somewhere wrong.
-    ``home_endpoint`` may default, because all three services name their own
-    surface ``index`` and a wrong value highlights nothing at all -- loud
-    rather than silent, and asserted per service.
+    Every service URL is required rather than defaulted: a nav whose links
+    depend on which caller remembered to pass an argument is a nav that
+    silently points somewhere wrong. ``home_endpoint`` may default, because all
+    four services name their own surface ``index`` and a wrong value highlights
+    nothing at all -- loud rather than silent, and asserted per service.
     """
     links = {
         "akasha": akasha_url,
         "chronos": chronos_url,
         "prithvi": prithvi_url,
+        "logos": logos_url,
         # Account and Admin are akasha-owned pages; expose them so either service's
         # header can link to them under the shared origin.
         "account": akasha_url.rstrip("/") + "/account",
@@ -164,9 +165,9 @@ def register_service_links(
         # The same service, spelled for a human. The shared auth pages are served
         # by *both* apps, so their titles cannot name one of them: a page reached
         # at /timeline/login used to call itself "Akasha". The nav says
-        # "Articles"/"Timeline"/"Maps" because those describe what you would go
-        # and do; a page title says which service you are signing in to, which
-        # is the name the docs and the URLs use.
+        # "Articles"/"Timeline"/"Maps"/"Manuscripts" because those describe what
+        # you would go and do; a page title says which service you are signing
+        # in to, which is the name the docs and the URLs use.
         "name": SERVICE_NAMES.get(current, current.title()),
     }
 
@@ -260,8 +261,8 @@ def register_auth_routes(
     """Register the shared auth routes on ``app`` as an ``auth`` blueprint.
 
     The blueprint carries its own templates (login / register / change-password).
-    ``home_endpoint`` is where a successful *browser* login lands -- akasha's
-    ``index``. Pass ``None`` for an API-only host (e.g. chronos), where the HTML
+    ``home_endpoint`` is where a successful *browser* login lands -- each
+    service's own ``index``. Pass ``None`` for an API-only host, where the HTML
     redirect paths are never exercised; it then falls back to ``/``.
     """
     bp = Blueprint("auth", __name__, template_folder="templates")

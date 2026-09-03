@@ -16,7 +16,7 @@ Same concern, same widths, same login.
 
 So this measures. Three widths, one per state the CSS defines:
 
-    1280x800   left rail, glyph + label      176px
+    1280x800   left rail, glyph + label      216px
      980x800   left rail, glyph only          64px
      320x700   bottom tab bar                 56px of height
 
@@ -49,6 +49,7 @@ PAGES = (
     ("Articles", "/", "Articles"),
     ("Timeline", "/timeline/", "Timeline"),
     ("Maps", "/prithvi/", "Maps"),
+    ("Manuscripts", "/logos/", "Manuscripts"),
     ("Access", "/account", None),
     ("Admin", "/admin", None),
     ("Change password", "/change-password", None),
@@ -56,7 +57,7 @@ PAGES = (
 
 WIDTHS = (
     # width, height, expected rail width, labels visible, orientation
-    (1280, 800, 176, True, "left"),
+    (1280, 800, 216, True, "left"),
     (980, 800, 64, False, "left"),
     (320, 700, None, True, "bottom"),
 )
@@ -107,6 +108,15 @@ def measure(page):
             viewportHeight: window.innerHeight,
             labelsVisible: [...nav.querySelectorAll('.service-nav-label')]
               .every(l => l.getBoundingClientRect().width > 1),
+            // Labels that reach the rail's own edge. Not `scrollWidth`: these
+            // are not width-constrained, so a long one spills past the divider
+            // rather than being clipped, and clipping is what that would miss.
+            crowdedLabels: [...nav.querySelectorAll('.service-nav-label')]
+              .filter(l => {
+                const box = l.getBoundingClientRect();
+                return box.width > 1 && box.right > navBox.right - 8;
+              })
+              .map(l => l.textContent.trim()),
             linkCount: nav.querySelectorAll('.service-nav-link').length,
             smallestTarget: Math.min(...[...nav.querySelectorAll('.service-nav-link')]
               .map(a => Math.min(a.getBoundingClientRect().width,
@@ -144,7 +154,7 @@ def check_page(page, check, name, path, expect_current, rail_w, labels, side):
     tag = f"{name}"
 
     check(f"{tag}: loads", response.ok, str(response.status))
-    check(f"{tag}: all three services are present", m["linkCount"] == 3, str(m))
+    check(f"{tag}: all four services are present", m["linkCount"] == 4, str(m))
     # The user-visible criterion, and the strict one: the page itself must
     # never slide sideways. This is what the wrapping header used to cause.
     check(f"{tag}: the page does not scroll sideways",
@@ -158,6 +168,9 @@ def check_page(page, check, name, path, expect_current, rail_w, labels, side):
     check(f"{tag}: touch targets clear 44px", m["smallestTarget"] >= 44, str(m))
     check(f"{tag}: labels {'visible' if labels else 'hidden'}",
           m["labelsVisible"] is labels, str(m))
+    if labels:
+        check(f"{tag}: labels clear the rail edge",
+              not m["crowdedLabels"], str(m["crowdedLabels"]))
 
     # The point of the whole change: one row, never two.
     if m["headerHeight"] is not None:

@@ -74,6 +74,7 @@ def create_app(
     akasha_url: str = "http://localhost:5002",
     chronos_url: str = "http://localhost:5003",
     prithvi_url: str = "http://localhost:5004",
+    logos_url: str = "http://localhost:5005",
     observability: Observability | None = None,
 ) -> Flask:
     if not secret_key:
@@ -95,7 +96,12 @@ def create_app(
     # The map browser is this app's own HTML, so a browser login lands there.
     register_auth_routes(app, auth_store, csrf, limiter, home_endpoint="index")
     register_service_links(
-        app, akasha_url, chronos_url, current="prithvi", prithvi_url=prithvi_url
+        app,
+        akasha_url,
+        chronos_url,
+        current="prithvi",
+        prithvi_url=prithvi_url,
+        logos_url=logos_url,
     )
     register_shared_assets(app)
 

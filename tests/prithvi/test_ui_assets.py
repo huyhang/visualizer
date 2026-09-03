@@ -85,7 +85,7 @@ def test_the_service_ships_the_same_mark_its_siblings_do():
     that gets skipped: the page still works without them, it just quietly looks
     like it belongs to no one and shows the browser's default favicon.
     """
-    for service in ("akasha", "chronos", "prithvi"):
+    for service in ("akasha", "chronos", "prithvi", "logos"):
         for kind in ("glyph", "icon"):
             asset = _ROOT / service / "static" / f"{service}-{kind}.svg"
             assert asset.exists(), f"{service} has no {kind}"

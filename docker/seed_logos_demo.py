@@ -334,15 +334,15 @@ VOLUME_TWO = {
             terms(
                 "g-list",
                 ("The Ember Seal",
-                 "the royal sigil that makes a succession lawful; without its "
-                 "impression the charter is only ink"),
+                 ("the royal sigil that makes a succession lawful; without its "
+                  "impression the charter is only ink")),
                 ("Highkeep",
                  "the marcher fortress the Seal leaves at the start of volume one"),
                 ("Emberport",
                  "the harbour town where the Seal changes hands"),
                 ("The Throne Hall",
-                 "where the charter is sealed, and where every thread of the "
-                 "series ends"),
+                 ("where the charter is sealed, and where every thread of the "
+                  "series ends")),
                 ("Magister",
                  "a scholar of law entitled to be heard at a crowning"),
             ),

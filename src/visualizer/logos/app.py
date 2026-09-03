@@ -6,7 +6,7 @@ gateway, the auth store -- is injected, so the whole service runs against
 in-memory fakes with no network.
 """
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, render_template, request
 from flask_login import current_user, login_required
 from flask_wtf.csrf import CSRFProtect
 
@@ -49,6 +49,7 @@ def create_app(
     akasha_url: str = "http://localhost:5002",
     chronos_url: str = "http://localhost:5003",
     prithvi_url: str = "http://localhost:5004",
+    logos_url: str = "http://localhost:5005",
     observability: Observability | None = None,
 ) -> Flask:
     if not secret_key:
@@ -63,16 +64,15 @@ def create_app(
     csrf = CSRFProtect(app)
     limiter = build_limiter(app, rate_limit_storage_uri)
     init_login(app, auth_store)
-    # Logos has no browser UI yet, but it shares the login pages, so those pages
-    # still need the sibling-service links and a human name for this service.
-    register_auth_routes(app, auth_store, csrf, limiter, home_endpoint="list_books")
+    # The reader is this app's own HTML, so a browser login lands there.
+    register_auth_routes(app, auth_store, csrf, limiter, home_endpoint="index")
     register_service_links(
         app,
         akasha_url,
         chronos_url,
         current="logos",
         prithvi_url=prithvi_url,
-        home_endpoint="list_books",
+        logos_url=logos_url,
     )
     register_shared_assets(app)
 
@@ -87,6 +87,12 @@ def create_app(
 
 
 def _register_routes(app, csrf, auth_store, manuscripts, volumes, sections):
+    @app.get("/")
+    @login_required
+    def index():
+        """The read-only reader shell. The prose itself arrives as JSON."""
+        return render_template("reader.html")
+
     @app.get("/health")
     @csrf.exempt
     def health():
@@ -187,6 +193,19 @@ def _register_routes(app, csrf, auth_store, manuscripts, volumes, sections):
         _authorize(auth_store, "read", book)
         result = volumes.manuscript(book, volume)
         return _resource(_with_permissions(result, auth_store, book))
+
+    @app.get(_VOLUME + "/ui/scenes")
+    @csrf.exempt
+    @login_required
+    def ui_volume_scenes(book, volume):
+        """The reader's Full View, in the ``/ui`` tradition its siblings set.
+
+        Separate from the volume manuscript rather than folded into it, so
+        Focused mode is a guarantee and not a promise: it never calls this,
+        which is the only place Logos reads Chronos on a page load.
+        """
+        _authorize(auth_store, "read", book)
+        return jsonify(volumes.scenes(book, volume))
 
     @app.put(_VOLUME + "/section-order")
     @csrf.exempt

@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Logos — manuscripts</title>
+  <link rel="icon" href="{{ url_for('static', filename='logos-icon.svg') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='reader.css') }}">
+  {# After the app's own sheet: the shared nav owns the geometry it introduces. #}
+  <link rel="stylesheet" href="{{ url_for('shared_static', filename='service-nav.css') }}">
+  <script>
+    // The mount point, so `api.js` works at `/logos` behind the gateway and
+    // at `/` when logos runs on its own port.
+    window.__BASE__ = {{ request.script_root | tojson }};
+  </script>
+  <script src="{{ url_for('shared_js', filename='prefs.js') }}"></script>
+</head>
+<body>
+  <div class="app-shell">
+    {% include "_service_nav.html" %}
+    <div class="app-shell-main">
+      {#
+        The header is the sibling services' header, control for control: brand,
+        Access, text size, theme, userchip, log out. Nothing reader-specific
+        belongs here -- the mode switch and the display choices live in the
+        toolbar below, beside the prose they act on.
+      #}
+      <header class="app-header">
+        <a class="brand" href="{{ request.script_root or '/' }}">
+          <span class="mark"><img src="{{ url_for('static', filename='logos-glyph.svg') }}"
+            alt="" width="26" height="26"></span><span class="brand-name">Logos</span>
+        </a>
+        <div class="header-actions">
+          <a class="header-link access-link{% if not service_links.active %} active{% endif %}"
+             href="{{ service_links.account }}"
+             {%- if not service_links.active %} aria-current="true"{% endif %}>Access</a>
+          <button class="icon-btn font-btn" id="font-toggle" aria-label="Text size" title="Text size">A</button>
+          <button class="icon-btn" id="theme-toggle" aria-label="Toggle theme" title="Toggle light/dark">◐</button>
+          <span class="userchip">
+            <span class="avatar">{{ current_user.username[0] | upper }}</span>
+            <span class="username">{{ current_user.username }}</span>
+          </span>
+          <form class="inline-form" method="post" action="{{ url_for('auth.logout') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="icon-btn logout-btn" type="submit"
+                    aria-label="Log out" title="Log out"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+            </svg></button>
+          </form>
+        </div>
+      </header>
+
+      {#
+        Two buttons, no settings on the strip itself. What each mode shows is
+        the button's `title`, written by `app.js` as the mode changes: it is an
+        explanation you want on the way in and never again, which is a tooltip
+        rather than a line of standing text beside the prose.
+      #}
+      <div class="reader-toolbar" id="reader-toolbar" hidden>
+        <button class="btn ghost" id="mode-toggle" type="button"
+                aria-pressed="false">Focused</button>
+        <button class="btn ghost sm" id="settings-open" type="button">
+          Reading settings
+        </button>
+      </div>
+
+      <main class="content" id="content">
+        <p class="empty" role="status">Opening your manuscripts…</p>
+      </main>
+    </div>
+  </div>
+
+  {#
+    The options are written out here rather than built in JavaScript so the
+    page has its controls before the module loads and the served HTML can be
+    asserted on. They cannot drift from the allowlist that validates them:
+    `test_the_toolbar_offers_exactly_the_stored_choices` compares this markup
+    against `CHOICES` in `preferences.js`.
+
+    A native <dialog>: it is modal, it traps focus, Escape closes it and the
+    backdrop is the browser's -- none of which this reader has to own.
+  #}
+  <dialog class="settings" id="reading-settings" aria-labelledby="settings-title">
+    <form method="dialog">
+      <div class="settings-head">
+        <h2 id="settings-title">Reading settings</h2>
+        <button class="icon-btn" value="close" aria-label="Close reading settings">×</button>
+      </div>
+
+      <label class="setting-row">
+        <span>Reading flow</span>
+        <select id="display-flow">
+          <option value="continuous">The whole volume</option>
+          <option value="section">One section at a time</option>
+        </select>
+      </label>
+      <label class="setting-row">
+        <span>Typeface</span>
+        <select id="display-typeface">
+          <option value="serif">Serif</option>
+          <option value="sans">Sans serif</option>
+        </select>
+      </label>
+      <label class="setting-row">
+        <span>Line spacing</span>
+        <select id="display-leading">
+          <option value="normal">Normal</option>
+          <option value="relaxed">Relaxed</option>
+        </select>
+      </label>
+      <label class="setting-row">
+        <span>Column width</span>
+        <select id="display-measure">
+          <option value="medium">Medium</option>
+          <option value="narrow">Narrow</option>
+          <option value="wide">Wide</option>
+        </select>
+      </label>
+      <label class="setting-row">
+        <span>Alignment</span>
+        <select id="display-align">
+          <option value="left">Left</option>
+          <option value="justify">Justified</option>
+        </select>
+      </label>
+
+      <p class="settings-note muted">
+        Theme and text size are shared with Articles, Timeline and Maps — they
+        live in the header, and nothing here changes them.
+      </p>
+
+      <div class="settings-actions">
+        <button class="btn ghost" id="display-reset" type="button">Reset reading</button>
+        <button class="btn" value="close">Done</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

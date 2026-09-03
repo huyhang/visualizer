@@ -98,6 +98,7 @@ def create_app(
     akasha_url: str = "http://localhost:5002",
     chronos_url: str = "http://localhost:5003",
     prithvi_url: str = "http://localhost:5004",
+    logos_url: str = "http://localhost:5005",
     observability: Observability | None = None,
     # Resolves a Chronos book id to the world it is set in. Injected, because
     # sharing a book also shares its world and *this* app serves one of the two
@@ -124,7 +125,12 @@ def create_app(
     init_login(app, auth_store)
     register_auth_routes(app, auth_store, csrf, limiter)
     register_service_links(
-        app, akasha_url, chronos_url, current="akasha", prithvi_url=prithvi_url
+        app,
+        akasha_url,
+        chronos_url,
+        current="akasha",
+        prithvi_url=prithvi_url,
+        logos_url=logos_url,
     )
     register_shared_assets(app)
 

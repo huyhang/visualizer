@@ -16,7 +16,10 @@ deleted article and Prithvi takes for a pin.
 from typing import Protocol
 
 from visualizer.akasha.errors import AkashaError
+from visualizer.chronos.calendar import codec_for
 from visualizer.chronos.errors import BookNotFound as ChronosBookNotFound
+from visualizer.chronos.models import Book, Event
+from visualizer.chronos.presenters import event_when
 
 
 class ChronosGateway(Protocol):
@@ -28,6 +31,17 @@ class ChronosGateway(Protocol):
 
     def missing_events(self, book: str, event_ids: list[str]) -> list[str]:
         """Which of ``event_ids`` are not scenes in this book."""
+
+    def scene_cards(self, book: str, event_ids: list[str]) -> list[dict]:
+        """Reader-safe summaries of the named scenes, in the order asked.
+
+        One card per distinct id -- ``{"id", "title", "when", "missing"}`` --
+        carrying the scene's display title and its timeframe spelled in the
+        book's own calendar, and nothing else Chronos knows. An id with no
+        scene behind it comes back *flagged* rather than dropped: a section
+        that names a deleted scene should say so, not silently show one card
+        fewer than the prose claims.
+        """
 
 
 class ArticleGateway(Protocol):
@@ -53,6 +67,42 @@ class InProcessChronosGateway:
             return []
         known = {event["id"] for event in self._stories.list_events(book)}
         return [event for event in event_ids if event not in known]
+
+    def scene_cards(self, book: str, event_ids: list[str]) -> list[dict]:
+        wanted = _distinct(event_ids)
+        if not wanted:
+            return []
+        stored = self.get_book(book)
+        if stored is None:
+            # The book is gone but its prose is still readable, so every scene
+            # it named is absent rather than the whole request being an error.
+            return [_absent_scene(event_id) for event_id in wanted]
+        codec = codec_for(Book.from_storage(stored))
+        found = {
+            record["id"]: _scene_card(Event.from_storage(record), codec)
+            for record in self._stories.get_events(book, wanted)
+        }
+        return [found.get(event_id) or _absent_scene(event_id) for event_id in wanted]
+
+
+def _distinct(event_ids: list[str]) -> list[str]:
+    """First-seen order: two sections realising one scene ask for it once."""
+    return list(dict.fromkeys(event_ids))
+
+
+def _scene_card(event: Event, codec) -> dict:
+    """Only the two Chronos facts the Logos reader has agreed to show."""
+    return {
+        "id": event.id,
+        "title": event.display_title,
+        "when": event_when(event, codec),
+        "missing": False,
+    }
+
+
+def _absent_scene(event_id: str) -> dict:
+    """A scene a section still names but Chronos no longer has."""
+    return {"id": event_id, "title": event_id, "when": "", "missing": True}
 
 
 class InProcessArticleGateway:
@@ -86,12 +136,16 @@ class LogosReferenceGate:
         ]
 
 
+def _fake_scene(event_id: str, title: str | None = None, when: str = "unscheduled"):
+    return {"id": event_id, "title": title or event_id, "when": when, "missing": False}
+
+
 class FakeChronosGateway:
     """A deterministic Chronos stand-in for service and API tests."""
 
     def __init__(self):
         self._books: dict[str, dict] = {}
-        self._events: dict[str, set[str]] = {}
+        self._events: dict[str, dict[str, dict]] = {}
 
     def add_book(self, book: str, title: str | None = None, events=()) -> None:
         self._books[book] = {
@@ -100,7 +154,13 @@ class FakeChronosGateway:
             "overview": "",
             "world": None,
         }
-        self._events[book] = set(events)
+        self._events[book] = {event: _fake_scene(event) for event in events}
+
+    def add_event(
+        self, book: str, event: str, title: str | None = None, when: str = "unscheduled"
+    ) -> None:
+        """Give a scene the title and timeframe the reader will show for it."""
+        self._events.setdefault(book, {})[event] = _fake_scene(event, title, when)
 
     def get_book(self, book: str) -> dict | None:
         return self._books.get(book)
@@ -109,8 +169,15 @@ class FakeChronosGateway:
         return [self._books[key] for key in sorted(self._books)]
 
     def missing_events(self, book: str, event_ids: list[str]) -> list[str]:
-        known = self._events.get(book, set())
+        known = self._events.get(book, {})
         return [event for event in event_ids if event not in known]
+
+    def scene_cards(self, book: str, event_ids: list[str]) -> list[dict]:
+        known = self._events.get(book, {})
+        return [
+            dict(known[event_id]) if event_id in known else _absent_scene(event_id)
+            for event_id in _distinct(event_ids)
+        ]
 
 
 class FakeArticleGateway:

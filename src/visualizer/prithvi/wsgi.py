@@ -1,7 +1,7 @@
 """Standalone entrypoint: Prithvi alone, on its own port, for development.
 
 The combined deployment goes through ``visualizer.wsgi`` instead, where all
-three services share one client, one auth store and one origin. This exists for
+four services share one client, one auth store and one origin. This exists for
 the same reason the other two per-service entrypoints do: so one service can be
 run and watched without the others in the way.
 """
@@ -9,6 +9,7 @@ run and watched without the others in the way.
 from visualizer.akasha.config import (
     get_akasha_url,
     get_chronos_url,
+    get_logos_url,
     get_mongo_client,
     get_prithvi_url,
     get_rate_limit_storage_uri,
@@ -47,6 +48,7 @@ app = create_app(
     akasha_url=get_akasha_url(),
     chronos_url=get_chronos_url(),
     prithvi_url=get_prithvi_url(),
+    logos_url=get_logos_url(),
     observability=_observability,
 )
 

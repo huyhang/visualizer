@@ -4,9 +4,62 @@ Logos is the manuscript service. A Chronos book is a novel series; Logos gives
 that series ordered, numbered volumes, and gives each volume an ordered sequence
 of prose sections.
 
-It is API-first and has no editor UI yet. In the combined deployment it is
-mounted at `/logos`, and the paths in [`openapi.json`](openapi.json) are relative
+Writing is API-first and stays that way: there is no editor UI. Reading has a
+browser. In the combined deployment Logos is mounted at `/logos`: `/logos/`
+opens the reader, and the paths in [`openapi.json`](openapi.json) are relative
 to that mount.
+
+## The reader
+
+A read-only page over the existing reads. It opens a manuscript one volume at a
+time and preserves the document's headings, lists, marks, links and stable block
+ids. Two modes, remembered per browser:
+
+- **Focused**, the default: the volume's structure and prose, and nothing else.
+- **Full view**: the same prose, beside the Chronos scenes each section names in
+  its `event_ids` — a title and a timeframe in the book's own calendar, and no
+  more. It does not expand neighbouring scenes, plotlines or Akasha articles.
+
+Focused is a guarantee rather than an intention. It is the only mode the page
+loads in unless you have asked otherwise, and in it the reader issues no request
+to `…/ui/scenes` at all, so nothing from another service can reach the page. In
+Full view the scene ids come from the sections themselves; the endpoint takes no
+parameter through which the browser could widen the set. A scene a section still
+names but Chronos no longer has is shown as removed rather than dropped.
+
+Akasha mentions and article links render as ordinary prose in both modes. The
+browser builds DOM nodes from the validated rich-text vocabulary and never
+inserts manuscript content as HTML; a link whose URL is not http, https or
+site-relative renders as its own words instead. Prose written with a node type
+this reader does not know degrades to a note on that section rather than a
+guess.
+
+The toolbar above the prose holds two buttons: the mode switch, whose tooltip
+says what that mode shows, and **Reading settings**. The settings are a dialog
+rather than a strip of controls you read past on the way to every chapter:
+
+| | |
+| --- | --- |
+| Reading flow | the whole volume, or one section at a time |
+| Typeface | serif or sans |
+| Line spacing | normal or relaxed |
+| Column width | narrow, medium or wide |
+| Alignment | left or justified |
+
+All five are remembered per browser and never touch the manuscript. "Reset
+reading" restores those five. Theme and text size are *not* here: they are
+shared across all four services and the header already owns them, so nothing in
+this reader can undo a choice made in Articles.
+
+A **contents** panel lists the volume's sections. Above 1100px it is a column
+beside the prose; below that it collapses to a disclosure the reader opens when
+they want it. Reading one section at a time also gives previous/next links, puts
+the section in the address bar so a section is linkable, and marks the current
+entry in the contents — reading the whole volume does not, because scrolling
+past a heading is not the same claim as being on a section.
+
+`LOGOS_URL` tells the shared navigation where the reader is. It defaults to
+`/logos` in the combined stack and `http://localhost:5005` standalone.
 
 ## The model
 

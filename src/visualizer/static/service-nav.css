@@ -1,14 +1,14 @@
-/* The shared service navigation: Articles / Timeline / Maps.
+/* The shared service navigation: Articles / Timeline / Maps / Manuscripts.
  *
- * One stylesheet for all three services, served from the package root by
- * ``shared_assets.py`` for the same reason ``prefs.js`` is -- the three apps
+ * One stylesheet for all four services, served from the package root by
+ * ``shared_assets.py`` for the same reason ``prefs.js`` is -- the four apps
  * used to hand-write this and the copies drifted.
  *
  * Three states, all media queries. There is deliberately no JavaScript: a
  * navigation that is simply always on screen needs no toggle, no drawer and no
  * stored preference, which is the whole class of bugs this avoids.
  *
- *   >=1101px   left rail, glyph + label      176px
+ *   >=1101px   left rail, glyph + label      216px
  *   821-1100   left rail, glyph only          64px   (Prithvi's map runs out
  *                                                     of room around here)
  *   <=820px    bottom tab bar, glyph + label  56px of height
@@ -17,10 +17,20 @@
  * pinned to the viewport -- a toast, say -- can get out of the way with the
  * same numbers. Each is zero in the axis the navigation does not occupy, so a
  * single expression works at every width.
+ *
+ * **This sheet does not define colour.** It spends eight tokens each host
+ * stylesheet must declare -- ``--surface``, ``--surface-2``, ``--border``,
+ * ``--text``, ``--muted``, ``--accent``, ``--accent-strong``, ``--accent-soft``
+ * -- because the nav has to look like the app it is sitting in. A host that
+ * invents its own vocabulary instead gets a nav with no background and white
+ * glyphs on white: legible in dark mode, invisible in light. That is not a
+ * comment you can rely on, so ``test_every_service_defines_the_nav_tokens``
+ * asserts it for every service stylesheet in the repo.
  */
 
 :root {
-  --service-nav-w: 176px;
+  /* Wide enough for "Manuscripts" at the largest shared text setting. */
+  --service-nav-w: 216px;
   --service-nav-h: 0px;
 }
 
@@ -187,7 +197,7 @@
     font-size: 11px;
   }
 
-  /* The labels come back: a tab bar has room for them, and three abstract
+  /* The labels come back: a tab bar has room for them, and four abstract
      marks on their own do not say Articles from Timeline. */
   .service-nav-label {
     position: static;
@@ -217,7 +227,7 @@
   }
 
   /* The avatar says nothing the Access link does not, and it costs a column.
-     The three app stylesheets already drop it on a phone; the account shell
+     The app stylesheets already drop it on a phone; the account shell
      never had a narrow-screen rule at all, and now shares this geometry. */
   .app-shell-main .userchip { display: none; }
 }
@@ -229,7 +239,7 @@
   .app-shell-main > header { gap: .35rem; padding: .5rem .6rem; }
 
   /* The account shell's header is plain text links at full size. With the
-     three service links gone it is short, but at 320px and the largest text
+     service links gone it is short, but at 320px and the largest text
      setting the four that remain still do not fit side by side. */
   .app-shell-main > header nav { gap: .2rem; }
   .app-shell-main > header nav a,

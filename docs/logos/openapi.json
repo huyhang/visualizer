@@ -13,7 +13,8 @@
   "tags": [
     { "name": "manuscripts", "description": "One manuscript per Chronos book." },
     { "name": "volumes", "description": "Ordered, numbered entries in a series." },
-    { "name": "sections", "description": "Prologue, chapters, epilogue, glossary." }
+    { "name": "sections", "description": "Prologue, chapters, epilogue, glossary." },
+    { "name": "reader", "description": "Reads the browser reader needs and the JSON API does not." }
   ],
   "paths": {
     "/health": {
@@ -255,6 +256,30 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/VolumeManuscript" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/books/{book}/volumes/{volume}/ui/scenes": {
+      "get": {
+        "tags": ["reader"],
+        "summary": "The Chronos scenes this volume's sections say they realise",
+        "description": "A projection for the browser reader's Full View, grouped by section and in section order. It carries only the scenes named by each section's own `event_ids` — there is no parameter to widen it — and only a title and a timeframe for each. A scene a section still names but Chronos no longer has comes back flagged rather than dropped. Focused mode never calls this.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Book" },
+          { "$ref": "#/components/parameters/Volume" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Linked scenes, grouped by section.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/VolumeScenes" }
               }
             }
           },
@@ -972,6 +997,40 @@
           "created_by": "mara",
           "updated_by": "mara",
           "updated_at": "2026-01-01T00:00:00+00:00"
+        }
+      },
+      "LinkedScene": {
+        "type": "object",
+        "required": ["id", "title", "when", "missing"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string", "description": "The scene's Chronos title, or its id when it has none." },
+          "when": { "type": "string", "description": "The scene's timeframe in this book's own calendar; empty when the scene is missing." },
+          "missing": { "type": "boolean", "description": "True when the section still names this scene but Chronos no longer has it." }
+        },
+        "example": { "id": "opening", "title": "The gate opens", "when": "Day 5 – Day 7", "missing": false }
+      },
+      "SectionScenes": {
+        "type": "object",
+        "required": ["section", "scenes"],
+        "properties": {
+          "section": { "type": "string" },
+          "scenes": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/LinkedScene" }
+          }
+        }
+      },
+      "VolumeScenes": {
+        "type": "object",
+        "required": ["book", "volume", "sections"],
+        "properties": {
+          "book": { "type": "string" },
+          "volume": { "type": "string" },
+          "sections": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/SectionScenes" }
+          }
         }
       },
       "VolumeManuscript": {

@@ -13,12 +13,13 @@ DEFAULT_VERSIONS_KEEP = 20
 # In-memory rate-limit storage suits a single process; point this at Redis
 # (e.g. "redis://redis:6379") to share limits across multiple gunicorn workers.
 DEFAULT_RATELIMIT_STORAGE_URI = "memory://"
-# Browser-facing base URLs for the three services, used by the service nav.
-# Defaults match the standalone development ports; override all three
+# Browser-facing base URLs for the four services, used by the service nav.
+# Defaults match the standalone development ports; override all four
 # when serving behind a reverse proxy (e.g. https://myworld/akasha).
 DEFAULT_AKASHA_URL = "http://localhost:5002"
 DEFAULT_CHRONOS_URL = "http://localhost:5003"
 DEFAULT_PRITHVI_URL = "http://localhost:5004"
+DEFAULT_LOGOS_URL = "http://localhost:5005"
 
 
 def get_mongo_uri() -> str:
@@ -84,6 +85,11 @@ def get_chronos_url() -> str:
 def get_prithvi_url() -> str:
     """Browser-facing base URL of the prithvi service (for the service nav)."""
     return os.environ.get("PRITHVI_URL", DEFAULT_PRITHVI_URL)
+
+
+def get_logos_url() -> str:
+    """Browser-facing base URL of the logos service (for the service nav)."""
+    return os.environ.get("LOGOS_URL", DEFAULT_LOGOS_URL)
 
 
 def get_secure_cookies() -> bool:
