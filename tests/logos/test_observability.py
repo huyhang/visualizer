@@ -30,3 +30,28 @@ def test_a_revision_is_charged_to_whoever_wrote_it(mongo_client, logos_store):
 
     assert record.resource == ("book", BOOK)
     assert sorted(author for author, _ in record.history) == ["devi", "mara"]
+
+
+def test_private_reader_bytes_are_charged_to_the_account(mongo_client, logos_store):
+    logos_store.create_reader_item(
+        "mara",
+        BOOK,
+        {
+            "kind": "checklist",
+            "scope": "book",
+            "text": "Proofread",
+            "done": False,
+        },
+    )
+    logos_store.set_reader_settings("mara", {"sync_reading_position": True})
+    logos_store.set_reading_position(
+        "mara", BOOK, {"last": None, "furthest": None}, expected_rev=0
+    )
+
+    private = [
+        record
+        for record in MongoDocumentSource(mongo_client).documents()
+        if record.resource == ("reader", "mara")
+    ]
+    assert len(private) == 3
+    assert all(record.created_by == "mara" for record in private)

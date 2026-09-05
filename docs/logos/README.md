@@ -4,23 +4,26 @@ Logos is the manuscript service. A Chronos book is a novel series; Logos gives
 that series ordered, numbered volumes, and gives each volume an ordered sequence
 of prose sections.
 
-Writing is API-first and stays that way: there is no editor UI. Reading has a
-browser. In the combined deployment Logos is mounted at `/logos`: `/logos/`
+Manuscript writing is API-first and stays that way: there is no prose editor UI.
+The browser does let readers manage private notes, checklists and bookmarks,
+and lets writers manage publication settings. In the combined deployment Logos
+is mounted at `/logos`: `/logos/`
 opens the library, and the paths in [`openapi.json`](openapi.json) are relative
 to that mount.
 
 ## The reader
 
-A read-only browser over the existing reads. The library opens a book contents
+A book-like browser over the existing reads. The library opens a book contents
 page where every volume and section is visible, and a section link opens that
 section alone. Previous and next links follow book order across volume
 boundaries. The reader preserves the document's headings, lists, marks, links
 and stable block ids. Two modes are remembered per browser:
 
-- **Focused**, the default: the section's structure and prose, and nothing else.
-- **Full view**: the same prose, beside the Chronos scenes that section names in
-  its `event_ids` — a title and a timeframe in the book's own calendar, and no
-  more. It does not expand neighbouring scenes, plotlines or Akasha articles.
+- **Focused**, the default: the section's structure, prose and unobtrusive
+  personal bookmark controls, with no editorial or cross-service context.
+- **Full view**: the same prose beside the Chronos scenes that section names,
+  the reader's private paragraph notes, and private section/series checklists.
+  It does not expand neighbouring scenes, plotlines or Akasha articles.
 
 Focused is a guarantee rather than an intention. It is the only mode the page
 loads in unless you have asked otherwise, and in it the reader issues no request
@@ -37,10 +40,13 @@ expansion is reset on the next visit. An expanded volume shows 25 sections at a
 time with previous and next batch controls, and opens on the batch holding your
 place. Every row names its own kind — "Chapter 4" over a titled chapter, and an
 untitled prologue simply reads "Prologue" — so the outline needs no headings
-grouping the rows above that. A book-wide search filters by section title,
-chapter number, section type and volume title and shows all matches without
-paging. While reading, **Contents** opens the same searchable, paged outline in
-a compact jump dialog.
+grouping the rows above that. The contents filter matches section metadata. A
+separate series search covers visible manuscript text and volume/section titles
+across every volume, returns contextual snippets, and jumps to the matching
+stable block. It reads a projection that manuscript writes keep current, so
+searching is a read and nothing else: it issues no writes, and one reader's
+search cannot change what another reader finds. While reading, **Contents**
+opens the searchable, paged outline in a compact dialog.
 
 Akasha mentions and article links render as ordinary prose in both modes. The
 browser builds DOM nodes from the validated rich-text vocabulary and never
@@ -49,9 +55,9 @@ site-relative renders as its own words instead. Prose written with a node type
 this reader does not know degrades to a note on that section rather than a
 guess.
 
-The toolbar above the prose holds the mode switch, **Reading settings**, and the
-**Contents** button. The settings are a dialog rather than a strip of controls
-you read past on the way to every chapter:
+The toolbar above the prose holds the mode switch, **Reading settings**,
+**Contents**, **Search**, and **Bookmarks**. The settings are a dialog rather
+than a strip of controls you read past on the way to every chapter:
 
 | | |
 | --- | --- |
@@ -65,7 +71,7 @@ reading" restores those four. Theme and text size are *not* here: they are
 shared across all four services and the header already owns them, so nothing in
 this reader can undo a choice made in Articles.
 
-The reader keeps two marks per book and account in that browser, because they
+The reader keeps two marks per book and account, because they
 answer different questions. *Where you are* moves every time you scroll and
 carries a stable block id and offset, so reopening that section puts the same
 passage back under your eyes after a browser restart or a layout change, with
@@ -81,12 +87,62 @@ are not always the same place. Nothing redirects automatically. A mark whose
 section no longer exists is discarded, and the book is forgotten only when
 neither mark lands. The position is written on scroll, when the page is hidden
 and when it is unloaded, so closing the browser — or a phone killing a
-backgrounded tab, which never fires an unload — keeps it. This state never
-touches the server and does not follow an account to another device.
+backgrounded tab, which never fires an unload — keeps it. It stays in that
+browser by default. An account-wide setting opts into server sync; synchronized
+devices merge the furthest mark monotonically and use the newest current
+location. Turning sync off removes the server positions without affecting
+explicit notes, checklists or bookmarks.
 
 A sticky progress bar reports the current viewport position through the open
 section. It may move backward while rereading; a section that fits entirely in
 the viewport reports 100%.
+
+At the bottom of a section, continued downward scrolling (an upward finger
+swipe or downward wheel input) reveals a progress cue and opens the next ordered
+section after a deliberate threshold. The inverse works at the top. Navigation
+spans volume boundaries and includes every section kind.
+
+## Private reader data
+
+Paragraph notes and bookmarks use the stable block ids already carried by the
+prose. Checklists belong either to one section or to the whole series. These
+records are private to the signed-in account, are available on every device,
+and may be created by a read-only collaborator because they never alter the
+shared manuscript. An anchor removed by a prose edit is reported as unavailable
+instead of causing the private item to be discarded.
+
+A bookmarked paragraph is marked with a filled orange ribbon in the margin,
+which stays visible without hovering; the controls for a paragraph you have not
+marked stay faint until you reach for them. The margin controls are not
+selectable, so copying a passage copies the prose and nothing else.
+
+## Publication
+
+Publication settings hold a title, subtitle, author, language, publisher,
+copyright line and optional PNG/JPEG cover. An export includes every volume and
+section in reading order in one file. PDF output uses a 6×9-inch print layout,
+title and volume leaves, chapter openers, book typography and page numbers.
+EPUB output carries semantic XHTML, navigation, metadata and the same hierarchy.
+Private reader data, linked scenes and editorial overviews are never included.
+Metadata changes require manuscript write permission; anyone who can read the
+manuscript may download an export.
+
+The two formats cost very different amounts, so they are fetched differently.
+An EPUB is a zip of XHTML and arrives on the request that asked for it. A PDF is
+laid out page by page, which for a long series is minutes of work holding the
+whole book in memory, so it is started as a job and collected when it is ready:
+the reader can close the dialog while it runs. One render happens at a time —
+a second is turned away rather than queued — and a series too large to lay out
+inside the container's memory is refused with an explanation instead of being
+attempted and killed. A job belongs to the account that started it, is a
+one-shot download, and is swept if nobody collects it within thirty minutes.
+
+The shipped Docker images install WeasyPrint's native Pango libraries and a
+metric-compatible serif, without which the print stylesheet's Times silently
+falls back to the only font a slim image has and every line breaks differently.
+A local non-container installation also needs the platform packages required by
+WeasyPrint; EPUB export has no native dependency, and PDF export reports itself
+unavailable rather than failing obscurely when the renderer cannot load.
 
 `LOGOS_URL` tells the shared navigation where the reader is. It defaults to
 `/logos` in the combined stack and `http://localhost:5005` standalone.

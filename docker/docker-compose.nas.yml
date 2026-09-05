@@ -72,12 +72,24 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+    # Laying out a whole series for PDF costs roughly 10 KB of peak memory per
+    # word -- over a gigabyte for a long one. Logos turns away a second
+    # concurrent render, but a limit here is what stops an unforeseen leak in
+    # any of the four services from reaching the database's share.
+    mem_limit: ${APP_MEM_LIMIT:-4g}
     restart: unless-stopped
 
   mongo:
     # mongo:7 requires AVX — fine on the DS1621+ (Ryzen V1500B). On a CPU without
     # AVX (e.g. some Celeron models), change this to mongo:4.4.
     image: mongo:7
+    # Left alone, WiredTiger sizes its cache at half of *host* RAM minus a
+    # gigabyte -- about 9.5 GB on a 20 GB NAS -- because it cannot see the
+    # container's limit. It never needed that much here, and claiming it makes
+    # mongod the fattest process on the box, so the OOM killer takes the
+    # database first whenever anything else spikes.
+    command: ["mongod", "--wiredTigerCacheSizeGB", "${MONGO_CACHE_GB:-2}"]
+    mem_limit: ${MONGO_MEM_LIMIT:-4g}
     volumes:
       - mongo-data:/data/db
     healthcheck:

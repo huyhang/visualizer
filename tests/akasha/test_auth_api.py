@@ -3,6 +3,7 @@
 import mongomock
 import pytest
 from conftest import (
+    ADMIN_PASS,
     ADMIN_USER,
     COLLECTION,
     DB,
@@ -340,6 +341,26 @@ def test_cannot_demote_or_delete_last_admin(client):
     # The seeded admin is the only admin.
     assert client.post(f"/admin/users/{ADMIN_USER}/role", data={"role": "user"}).status_code == 403
     assert client.post(f"/admin/users/{ADMIN_USER}/delete").status_code == 403
+
+
+def test_deleting_an_account_runs_injected_service_cleanup():
+    mongo = mongomock.MongoClient()
+    auth = AuthStore(mongo)
+    auth.create_user(ADMIN_USER, _hash(ADMIN_PASS), role="admin")
+    auth.create_user("reader", _hash("correct-horse-battery"))
+    cleaned = []
+    app = create_app(
+        DocumentStore(mongo),
+        auth,
+        secret_key="test-secret",
+        user_cleanup=cleaned.append,
+    )
+    app.config.update(TESTING=True, WTF_CSRF_ENABLED=False, RATELIMIT_ENABLED=False)
+    admin = app.test_client()
+    assert login(admin, ADMIN_USER, ADMIN_PASS).status_code == 200
+
+    assert admin.post("/admin/users/reader/delete").status_code == 302
+    assert cleaned == ["reader"]
 
 
 def test_deactivated_user_is_locked_out(app, auth_store, client):

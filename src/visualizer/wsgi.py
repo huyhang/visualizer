@@ -91,6 +91,7 @@ _akasha_app = create_akasha_app(
     _auth_store,
     secret_key=_secret,
     book_world=_book_world,
+    user_cleanup=_logos_store.purge_user,
     secure_cookies=_secure,
     rate_limit_storage_uri=_ratelimit,
     akasha_url=_akasha_url,

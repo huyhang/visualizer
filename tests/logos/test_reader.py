@@ -149,7 +149,7 @@ def test_what_a_mode_shows_is_a_tooltip_not_standing_text(client):
     assert "nothing from any other service" not in html
     # …and it is not simply missing: `app.js` writes it onto the button.
     app = (_LOGOS / "static" / "js" / "app.js").read_text()
-    assert "Prose alone — nothing from any other service" in app
+    assert "Prose and bookmarks — nothing from any other service" in app
     assert "modeButton.title" in app
 
 
@@ -165,12 +165,8 @@ def test_the_mode_switch_is_not_in_the_header(client):
     assert 'id="display-typeface"' not in header
 
 
-def test_the_shell_offers_no_way_to_change_anything(client):
-    """Read-only is a property of the page, not just of the reader's intent.
-
-    Every form is either the shared log-out or ``method="dialog"``, which
-    submits nothing anywhere -- it is how a native dialog closes.
-    """
+def test_reader_forms_never_submit_to_an_implicit_endpoint(client):
+    """Reader writes are explicit JSON calls; forms only close native dialogs."""
     html = client.get("/").get_data(as_text=True)
     forms = re.findall(r"<form[^>]*>", html)
     assert forms, "expected at least the log-out form"

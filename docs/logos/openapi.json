@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Logos API",
-    "version": "1.0.0",
-    "description": "Versioned manuscripts for Chronos books: ordered volumes, ordered sections, and one structured rich-text document per section.\n\nPaths are relative to the service mount. In the combined deployment that is `/logos`; running Logos standalone it is `/`.\n\nEvery mutation of an existing resource requires an `If-Match` header carrying the `rev` from its last read. Unlike Chronos and Prithvi, Logos refuses an unconditional write: a lost update to prose cannot be reconstructed."
+    "version": "1.1.0",
+    "description": "Versioned manuscripts for Chronos books, private reader annotations, cross-volume search, and whole-series PDF/EPUB publication.\n\nPaths are relative to the service mount. In the combined deployment that is `/logos`; running Logos standalone it is `/`.\n\nUpdates to revisioned resources and reader items require an `If-Match` header carrying the `rev` from the last read."
   },
   "servers": [
     { "url": "/logos", "description": "Combined single-origin deployment" },
@@ -14,7 +14,8 @@
     { "name": "manuscripts", "description": "One manuscript per Chronos book." },
     { "name": "volumes", "description": "Ordered, numbered entries in a series." },
     { "name": "sections", "description": "Prologue, chapters, epilogue, glossary." },
-    { "name": "reader", "description": "Reads the browser reader needs and the JSON API does not." }
+    { "name": "reader", "description": "Private notes, checklists, bookmarks, progress, and search." },
+    { "name": "publication", "description": "Whole-series publication metadata and exports." }
   ],
   "paths": {
     "/health": {
@@ -497,6 +498,184 @@
         }
       }
     },
+    "/me/reader-settings": {
+      "get": {
+        "tags": ["reader"], "summary": "Current account's reader settings",
+        "responses": {
+          "200": { "description": "Settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReaderSettings" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "put": {
+        "tags": ["reader"], "summary": "Choose whether reading position syncs",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReaderSettings" } } } },
+        "responses": {
+          "200": { "description": "Saved settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReaderSettings" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/books/{book}/search": {
+      "get": {
+        "tags": ["reader"], "summary": "Search published text and titles across every volume",
+        "parameters": [
+          { "$ref": "#/components/parameters/Book" },
+          { "name": "q", "in": "query", "required": true, "schema": { "type": "string", "maxLength": 200 } },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 50, "default": 20 } }
+        ],
+        "responses": {
+          "200": { "description": "Matching sections in reading order.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SearchResults" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/books/{book}/me/items": {
+      "get": {
+        "tags": ["reader"], "summary": "Current account's private notes, checklists and bookmarks",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }],
+        "responses": {
+          "200": { "description": "Private reader items.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReaderItems" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "post": {
+        "tags": ["reader"], "summary": "Add a private reader item",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReaderItemBody" } } } },
+        "responses": {
+          "201": { "description": "Created.", "headers": { "ETag": { "$ref": "#/components/headers/ETag" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReaderItem" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/books/{book}/me/items/{item}": {
+      "put": {
+        "tags": ["reader"], "summary": "Edit one private reader item",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }, { "$ref": "#/components/parameters/Item" }, { "$ref": "#/components/parameters/IfMatch" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": {
+          "200": { "description": "Updated.", "headers": { "ETag": { "$ref": "#/components/headers/ETag" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReaderItem" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "428": { "$ref": "#/components/responses/PreconditionRequired" }
+        }
+      },
+      "delete": {
+        "tags": ["reader"], "summary": "Delete one private reader item",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }, { "$ref": "#/components/parameters/Item" }, { "$ref": "#/components/parameters/IfMatch" }],
+        "responses": {
+          "204": { "description": "Deleted." }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "428": { "$ref": "#/components/responses/PreconditionRequired" }
+        }
+      }
+    },
+    "/books/{book}/me/position": {
+      "get": {
+        "tags": ["reader"], "summary": "Current account's synced reading position",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }],
+        "responses": {
+          "200": { "description": "Position, or null when sync is disabled or no mark exists.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PositionEnvelope" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "put": {
+        "tags": ["reader"], "summary": "Merge a reading position without regressing its furthest mark",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReadingPosition" } } } },
+        "responses": {
+          "200": { "description": "Merged position.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PositionEnvelope" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/books/{book}/publication": {
+      "get": {
+        "tags": ["publication"], "summary": "Publication metadata for the whole series",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }],
+        "responses": {
+          "200": { "description": "Metadata, with defaults before it is first saved.", "headers": { "ETag": { "$ref": "#/components/headers/ETag" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Publication" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "post": {
+        "tags": ["publication"], "summary": "Create publication metadata",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }],
+        "requestBody": { "$ref": "#/components/requestBodies/PublicationBody" },
+        "responses": {
+          "201": { "description": "Created.", "headers": { "ETag": { "$ref": "#/components/headers/ETag" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Publication" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      },
+      "put": {
+        "tags": ["publication"], "summary": "Update publication metadata",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }, { "$ref": "#/components/parameters/IfMatch" }],
+        "requestBody": { "$ref": "#/components/requestBodies/PublicationBody" },
+        "responses": {
+          "200": { "description": "Updated.", "headers": { "ETag": { "$ref": "#/components/headers/ETag" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Publication" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "428": { "$ref": "#/components/responses/PreconditionRequired" }
+        }
+      }
+    },
+    "/books/{book}/publication/cover": {
+      "get": {
+        "tags": ["publication"], "summary": "Download the publication cover",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }],
+        "responses": {
+          "200": { "description": "PNG or JPEG cover.", "content": { "image/png": { "schema": { "type": "string", "format": "binary" } }, "image/jpeg": { "schema": { "type": "string", "format": "binary" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "put": {
+        "tags": ["publication"], "summary": "Set a PNG or JPEG publication cover",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }],
+        "requestBody": { "required": true, "content": { "image/png": { "schema": { "type": "string", "format": "binary" } }, "image/jpeg": { "schema": { "type": "string", "format": "binary" } } } },
+        "responses": {
+          "200": { "description": "Cover status.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CoverStatus" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "tags": ["publication"], "summary": "Remove the publication cover",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }],
+        "responses": { "204": { "description": "Removed." }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/books/{book}/exports/epub": {
+      "get": {
+        "tags": ["publication"], "summary": "Download the whole series as EPUB",
+        "description": "Answered on the request that asks for it: an EPUB is a zip of XHTML and costs almost nothing to build. PDF is started as a job instead.",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }],
+        "responses": {
+          "200": { "description": "The published series.", "content": { "application/epub+zip": { "schema": { "type": "string", "format": "binary" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/books/{book}/exports/pdf": {
+      "post": {
+        "tags": ["publication"], "summary": "Start a PDF of the whole series",
+        "description": "Laying out a series takes minutes and holds the whole book in memory, so it runs as a job rather than on the request. Poll the returned job to collect the file. One render at a time per service: a second start while one is running is accepted, but the render itself is refused with `503` until the first finishes.",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }],
+        "responses": {
+          "202": { "description": "The render has started.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ExportJob" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/books/{book}/exports/pdf/{job}": {
+      "get": {
+        "tags": ["publication"], "summary": "Collect a started PDF",
+        "description": "`202` while the render is still running, `200` with the file once it is done. Collecting the file retires the job, so it is a one-shot download. A job belongs to the account that started it, and one nobody collects is swept after thirty minutes.",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }, { "$ref": "#/components/parameters/ExportJobId" }],
+        "responses": {
+          "200": { "description": "The published series.", "content": { "application/pdf": { "schema": { "type": "string", "format": "binary" } } } },
+          "202": { "description": "Still rendering.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ExportJob" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "503": { "$ref": "#/components/responses/Unavailable" }
+        }
+      }
+    },
     "/books/{book}/volumes/{volume}/sections/{section}/restore/{rev}": {
       "post": {
         "tags": ["sections"],
@@ -566,6 +745,20 @@
         "required": true,
         "schema": { "type": "string" }
       },
+      "Item": {
+        "name": "item",
+        "in": "path",
+        "required": true,
+        "description": "A private reader item id.",
+        "schema": { "type": "string" }
+      },
+      "ExportJobId": {
+        "name": "job",
+        "in": "path",
+        "required": true,
+        "description": "A started PDF render, as returned by `POST .../exports/pdf`.",
+        "schema": { "type": "string" }
+      },
       "Rev": {
         "name": "rev",
         "in": "path",
@@ -619,6 +812,14 @@
             "schema": { "$ref": "#/components/schemas/SectionOrder" }
           }
         }
+      },
+      "PublicationBody": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/PublicationBody" }
+          }
+        }
       }
     },
     "responses": {
@@ -669,6 +870,12 @@
         "content": {
           "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
         }
+      },
+      "Unavailable": {
+        "description": "The configured export renderer is unavailable.",
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
+        }
       }
     },
     "schemas": {
@@ -694,16 +901,24 @@
               "BOOK_NOT_FOUND",
               "CASCADE_REQUIRED",
               "CHRONOS_EVENT_NOT_FOUND",
+              "EXPORT_JOB_NOT_FOUND",
+              "EXPORT_UNAVAILABLE",
               "FORBIDDEN",
               "INVALID_DOCUMENT",
               "INVALID_IDENTIFIER",
               "INVALID_ORDER",
+              "INVALID_PUBLICATION",
+              "INVALID_READER_ITEM",
+              "INVALID_READING_POSITION",
               "INVALID_REVISION",
+              "INVALID_SEARCH",
               "INVALID_SECTION",
               "INVALID_VOLUME",
               "LOGOS_ERROR",
               "MANUSCRIPT_NOT_FOUND",
               "PRECONDITION_REQUIRED",
+              "PUBLICATION_COVER_NOT_FOUND",
+              "READER_ITEM_NOT_FOUND",
               "REVISION_CONFLICT",
               "REVISION_NOT_RETAINED",
               "SECTION_KIND_IN_USE",
@@ -1303,6 +1518,109 @@
             }
           ]
         }
+      },
+      "ReaderSettings": {
+        "type": "object",
+        "required": ["sync_reading_position"],
+        "additionalProperties": false,
+        "properties": { "sync_reading_position": { "type": "boolean" } }
+      },
+      "ReaderItemBody": {
+        "type": "object",
+        "required": ["kind"],
+        "properties": {
+          "kind": { "type": "string", "enum": ["note", "checklist", "bookmark"] },
+          "scope": { "type": "string", "enum": ["book", "section"] },
+          "volume": { "type": "string" }, "section": { "type": "string" }, "block": { "type": "string" },
+          "text": { "type": "string", "maxLength": 10000 }, "done": { "type": "boolean" }
+        }
+      },
+      "ReaderItem": {
+        "type": "object",
+        "required": ["id", "book", "kind", "scope", "text", "rev", "created_at", "updated_at"],
+        "properties": {
+          "id": { "type": "string" }, "book": { "type": "string" },
+          "kind": { "type": "string", "enum": ["note", "checklist", "bookmark"] },
+          "scope": { "type": "string", "enum": ["book", "section", "paragraph"] },
+          "volume": { "type": "string" }, "section": { "type": "string" }, "block": { "type": "string" },
+          "text": { "type": "string" }, "done": { "type": "boolean" }, "available": { "type": "boolean" },
+          "excerpt": { "type": "string" }, "rev": { "type": "integer", "minimum": 1 },
+          "created_at": { "type": "string" }, "updated_at": { "type": "string" }
+        }
+      },
+      "ReaderItems": {
+        "type": "object", "required": ["book", "items"],
+        "properties": { "book": { "type": "string" }, "items": { "type": "array", "items": { "$ref": "#/components/schemas/ReaderItem" } } }
+      },
+      "ReadingSpot": {
+        "type": "object", "required": ["volume", "section", "progress"],
+        "properties": {
+          "volume": { "type": "string" }, "section": { "type": "string" },
+          "block": { "type": "string", "nullable": true }, "offset": { "type": "number" },
+          "progress": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      },
+      "ReadingPosition": {
+        "type": "object", "required": ["last", "furthest"],
+        "properties": {
+          "last": { "$ref": "#/components/schemas/ReadingSpot", "nullable": true },
+          "furthest": { "$ref": "#/components/schemas/ReadingSpot", "nullable": true },
+          "updated_at": { "type": "string" }
+        }
+      },
+      "PositionEnvelope": {
+        "type": "object", "required": ["book", "position"],
+        "properties": { "book": { "type": "string" }, "position": { "$ref": "#/components/schemas/ReadingPosition", "nullable": true } }
+      },
+      "SearchResult": {
+        "type": "object",
+        "required": ["volume", "volume_number", "volume_title", "section", "section_title", "section_label", "block", "snippet"],
+        "properties": {
+          "volume": { "type": "string" }, "volume_number": { "type": "integer" }, "volume_title": { "type": "string" },
+          "section": { "type": "string" }, "section_title": { "type": "string" }, "section_label": { "type": "string" },
+          "block": { "type": "string", "nullable": true }, "snippet": { "type": "string" }
+        }
+      },
+      "SearchResults": {
+        "type": "object", "required": ["book", "query", "results", "total", "next_offset"],
+        "properties": {
+          "book": { "type": "string" }, "query": { "type": "string" },
+          "results": { "type": "array", "items": { "$ref": "#/components/schemas/SearchResult" } },
+          "total": { "type": "integer" }, "next_offset": { "type": "integer", "nullable": true }
+        }
+      },
+      "PublicationBody": {
+        "type": "object", "required": ["title", "subtitle", "author", "language", "publisher", "copyright"],
+        "properties": {
+          "title": { "type": "string", "maxLength": 500 }, "subtitle": { "type": "string", "maxLength": 500 },
+          "author": { "type": "string", "maxLength": 500 }, "language": { "type": "string", "maxLength": 500 },
+          "publisher": { "type": "string", "maxLength": 500 }, "copyright": { "type": "string", "maxLength": 500 }
+        }
+      },
+      "Publication": {
+        "allOf": [
+          { "$ref": "#/components/schemas/PublicationBody" },
+          { "type": "object", "required": ["book", "has_cover", "rev", "created_by", "updated_by", "updated_at"],
+            "properties": {
+              "book": { "type": "string" }, "has_cover": { "type": "boolean" }, "rev": { "type": "integer" },
+              "created_by": { "type": "string", "nullable": true }, "updated_by": { "type": "string", "nullable": true },
+              "updated_at": { "type": "string", "nullable": true }
+            }
+          }
+        ]
+      },
+      "CoverStatus": {
+        "type": "object", "required": ["book", "has_cover", "mime"],
+        "properties": { "book": { "type": "string" }, "has_cover": { "type": "boolean" }, "mime": { "type": "string" } }
+      },
+      "ExportJob": {
+        "type": "object", "required": ["book", "job", "state"],
+        "properties": {
+          "book": { "type": "string" }, "job": { "type": "string" },
+          "state": { "type": "string", "enum": ["running", "ready", "failed"] },
+          "error": { "type": "string", "nullable": true }
+        },
+        "example": { "book": "ember-pact", "job": "0c9f1a2e-6b21-4f2b-9a0e-1d3c8f5b7a44", "state": "running" }
       },
       "VolumeBody": {
         "type": "object",

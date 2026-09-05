@@ -95,6 +95,24 @@ def visible_text(document: dict):
             yield text
 
 
+def block_text(block: dict) -> str:
+    """Visible text for one stable block, including list items and references."""
+    if block.get("type") in {"bullet_list", "ordered_list"}:
+        return " ".join(
+            "".join(
+                node.get("text", "")
+                for node in item.get("content", [])
+                if isinstance(node.get("text"), str)
+            )
+            for item in block.get("content", [])
+        )
+    return "".join(
+        node.get("text", "")
+        for node in block.get("content", [])
+        if isinstance(node.get("text"), str)
+    )
+
+
 def word_count(document: dict) -> int:
     return sum(len(text.split()) for text in visible_text(document))
 
@@ -252,7 +270,7 @@ def _href(value: Any, place: str) -> str:
     href = value.strip()
     if len(href) > MAX_HREF_LENGTH:
         raise InvalidDocument(f"{place} href is too long.")
-    if not href.startswith(("http://", "https://", "/")):
+    if href.startswith("//") or not href.startswith(("http://", "https://", "/")):
         raise InvalidDocument(
             f"{place} href must be http, https, or a site-relative path.",
             evidence={"href": href},

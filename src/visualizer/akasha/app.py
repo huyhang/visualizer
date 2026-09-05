@@ -105,6 +105,7 @@ def create_app(
     # routes that can do it -- while deliberately not importing Chronos. Left
     # out, the account page shares the book alone; the wiring modules supply it.
     book_world: Callable[[str], str | None] | None = None,
+    user_cleanup: Callable[[str], None] | None = None,
 ) -> Flask:
     app = Flask(__name__)
     # A secret key is required to sign session cookies. It must be supplied
@@ -150,7 +151,9 @@ def create_app(
         app, auth_store, csrf, _account_kinds(book_world)
     )
     _register_account_routes(app, auth_store, csrf, limiter)
-    _register_admin_routes(app, auth_store)
+    _register_admin_routes(
+        app, auth_store, user_cleanup or (lambda _user: None)
+    )
     if observability is not None:
         observability.install(app, "akasha")
         # Only this service renders the console, so only it needs the store.
@@ -1060,7 +1063,9 @@ def _register_account_routes(app: Flask, auth_store: AuthStore, csrf, limiter) -
         return redirect(url_for("account_page"))
 
 
-def _register_admin_routes(app: Flask, auth_store: AuthStore) -> None:
+def _register_admin_routes(
+    app: Flask, auth_store: AuthStore, user_cleanup: Callable[[str], None]
+) -> None:
     @app.get("/admin")
     @admin_required
     def admin_page():
@@ -1192,6 +1197,7 @@ def _register_admin_routes(app: Flask, auth_store: AuthStore) -> None:
         if _is_last_admin(auth_store, username):
             raise Forbidden("Cannot delete the last remaining admin.")
         auth_store.delete_user(username)
+        user_cleanup(username)
         return redirect(url_for("admin_page"))
 
     @app.post("/admin/grants")

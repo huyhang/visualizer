@@ -79,6 +79,16 @@ function persist(storage, username, state) {
   return state;
 }
 
+/** Replace one book's two marks with a server-validated entry. */
+export function storePosition(storage, username, book, entry) {
+  const state = readPositions(storage, username);
+  const normalised = normalise(entry);
+  if (normalised) state.books[book] = normalised;
+  else delete state.books[book];
+  persist(storage, username, state);
+  return normalised;
+}
+
 /**
  * The furthest mark after visiting ``spot``, or the saved one if that is still
  * further on.

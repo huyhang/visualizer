@@ -23,9 +23,17 @@ from bson import BSON
 from visualizer.auth.store import DATABASE_RESOURCE
 from visualizer.chronos.store import CHRONOS_DB
 from visualizer.logos.store import (
+    EXPORT_JOBS,
     LOGOS_DB,
     OUTLINE_REVISIONS,
     OUTLINES,
+    PUBLICATION_COVERS,
+    PUBLICATION_REVISIONS,
+    PUBLICATIONS,
+    READER_ITEMS,
+    READER_SETTINGS,
+    READING_POSITIONS,
+    SEARCH_BLOCKS,
     SECTION_REVISIONS,
     SECTIONS,
     VOLUME_REVISIONS,
@@ -255,8 +263,31 @@ class MongoDocumentSource:
             (OUTLINES, OUTLINE_REVISIONS),
             (VOLUMES, VOLUME_REVISIONS),
             (SECTIONS, SECTION_REVISIONS),
+            (PUBLICATIONS, PUBLICATION_REVISIONS),
         ):
             yield from _rejoined_by_book(database[heads], database[revisions])
+        for name in (PUBLICATION_COVERS, SEARCH_BLOCKS):
+            for stored in database[name].find():
+                yield StoredDocument(
+                    resource=("book", stored.get("book") or stored.get("_id")),
+                    total_bytes=_sizeof(stored),
+                )
+        # A rendered PDF waiting to be collected is the largest thing one
+        # account can park in the database, so it is charged to that account.
+        for stored in database[EXPORT_JOBS].find():
+            yield StoredDocument(
+                resource=("reader", stored.get("owner")),
+                total_bytes=_sizeof(stored),
+                created_by=stored.get("owner"),
+            )
+        for name in (READER_ITEMS, READER_SETTINGS, READING_POSITIONS):
+            for stored in database[name].find():
+                username = stored.get("username") or stored.get("_id")
+                yield StoredDocument(
+                    resource=("reader", username),
+                    total_bytes=_sizeof(stored),
+                    created_by=username,
+                )
 
 
 def _article(database: str, collection: str, stored: dict) -> StoredDocument:

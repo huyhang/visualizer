@@ -5,3 +5,5 @@ flask-login>=0.6
 flask-wtf>=1.2
 flask-limiter>=3.5
 networkx>=3.0
+weasyprint>=62.0
+Pillow>=9.1

@@ -178,6 +178,11 @@ def seeded(client):
          "VersionList"),
         (f"/books/{BOOK}/volumes/{VOLUME}/sections/{SECTION}/versions/1",
          "SectionRevision"),
+        ("/me/reader-settings", "ReaderSettings"),
+        (f"/books/{BOOK}/me/items", "ReaderItems"),
+        (f"/books/{BOOK}/me/position", "PositionEnvelope"),
+        (f"/books/{BOOK}/search?q=gate", "SearchResults"),
+        (f"/books/{BOOK}/publication", "Publication"),
     ],
 )
 def test_a_live_response_conforms_to_its_documented_schema(

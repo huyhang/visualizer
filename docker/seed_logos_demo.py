@@ -17,6 +17,9 @@ Logos that only show up at scale are actually visible:
 * **Prose that mentions the canon**: characters, the Seal and the three
   locations, as soft references. Delete one of those articles in Akasha and the
   report here lists the chapters that mention it, without touching the prose.
+* **Private reader data for Mara**: paragraph notes, bookmarks, series
+  checklists, and section checklists in both volumes, ready to inspect in Full
+  view.
 
 Usage (from the repo root, stack already up and seeded):
     python docker/seed_logos_demo.py
@@ -352,6 +355,148 @@ VOLUME_TWO = {
 
 VOLUMES = [VOLUME_ONE, VOLUME_TWO]
 
+# Spread across every section of both volumes, so Full view has something to
+# show wherever you land, and so the combinations worth eyeballing all appear:
+# two notes on one section, a note and a bookmark on different paragraphs of the
+# same section, a bookmark in each volume, and checklists at both scopes with
+# some items already ticked.
+READER_ITEMS = [
+    {
+        "kind": "note",
+        "volume": "the-ember-seal",
+        "section": "before-the-pact",
+        "block": "pro-1",
+        "text": "Echo the unnamed price when the charter returns in volume two.",
+    },
+    {
+        "kind": "note",
+        "volume": "the-ember-seal",
+        "section": "a-berth-in-the-harbour",
+        "block": "c2-3",
+        "text": "The berth is paid for twice. Deliberate — Aldric is being watched.",
+    },
+    {
+        "kind": "note",
+        "volume": "the-ember-seal",
+        "section": "the-witness",
+        "block": "c3-2",
+        "text": "Continuity check: resolve the impossible Emberport sighting later.",
+    },
+    {
+        "kind": "note",
+        "volume": "the-ember-seal",
+        "section": "the-harbour-exchange",
+        "block": "c4-1",
+        "text": "Pacing: the handoff wants one fewer beat before the oilcloth passes.",
+    },
+    {
+        "kind": "note",
+        "volume": "the-ember-seal",
+        "section": "the-harbour-exchange",
+        "block": "c4-4",
+        "text": "Second note on this chapter, so the panel shows more than one.",
+    },
+    {
+        "kind": "note",
+        "volume": "the-charter",
+        "section": "the-writ",
+        "block": "v2c1-2",
+        "text": "Corwin's draft echoes the prologue charter language. Intentional.",
+    },
+    {
+        "kind": "note",
+        "volume": "the-charter",
+        "section": "the-throne-hall",
+        "block": "v2c2-2",
+        "text": "Verify that the sealing action agrees with the established canon.",
+    },
+    {
+        "kind": "bookmark",
+        "volume": "the-ember-seal",
+        "section": "the-road-from-highkeep",
+        "block": "c1-2",
+        "text": "Aldric leaves with the Seal",
+    },
+    {
+        "kind": "bookmark",
+        "volume": "the-ember-seal",
+        "section": "the-harbour-exchange",
+        "block": "c4-2",
+        "text": "The handoff",
+    },
+    {
+        "kind": "bookmark",
+        "volume": "the-ember-seal",
+        "section": "the-witness",
+        "block": "c3-1",
+        "text": "The cooper's boy speaks",
+    },
+    {
+        "kind": "bookmark",
+        "volume": "the-ember-seal",
+        "section": "what-the-tide-took",
+        "block": "epi-1",
+        "text": "What the tide took",
+    },
+    {
+        "kind": "bookmark",
+        "volume": "the-charter",
+        "section": "the-throne-hall",
+        "block": "v2c2-2",
+        "text": "The charter is sealed",
+    },
+    {
+        "kind": "checklist",
+        "scope": "book",
+        "text": "Proofread the entire series before export.",
+        "done": False,
+    },
+    {
+        "kind": "checklist",
+        "scope": "book",
+        "text": "Export the EPUB and proof the title page.",
+        "done": True,
+    },
+    {
+        "kind": "checklist",
+        "scope": "book",
+        "text": "Confirm the volume titles and front matter for publication.",
+        "done": True,
+    },
+    {
+        "kind": "checklist",
+        "scope": "section",
+        "volume": "the-ember-seal",
+        "section": "the-harbour-exchange",
+        "text": "Tighten the exchange dialogue.",
+        "done": False,
+    },
+    {
+        "kind": "checklist",
+        "scope": "section",
+        "volume": "the-ember-seal",
+        "section": "the-witness",
+        "text": "Decide which account of the sighting survives.",
+        "done": True,
+    },
+    {
+        "kind": "checklist",
+        "scope": "section",
+        "volume": "the-ember-seal",
+        "section": "the-witness",
+        "text": "Reread the boy's voice against chapter one.",
+        "done": False,
+    },
+    {
+        "kind": "checklist",
+        "scope": "section",
+        "volume": "the-charter",
+        "section": "names-and-terms",
+        "text": "Verify every glossary term against the manuscript.",
+        "done": False,
+    },
+]
+
 
 # -- the wire ----------------------------------------------------------------
 
@@ -433,6 +578,43 @@ def write_volume(session, volume):
     return True
 
 
+def seed_reader_items(session):
+    """Add the demo account's private items once, without duplicating reruns."""
+    url = f"{LOGOS}/books/{BOOK}/me/items"
+    status, payload = session.call("GET", url)
+    if status != 200:
+        show(status, "read private reader items", json.dumps(payload))
+        return False
+
+    existing = payload["items"]
+    for item in READER_ITEMS:
+        label = f"{item['kind']} '{item['text']}'"
+        if any(_item_matches(current, item) for current in existing):
+            show(200, f"keep private {label}")
+            continue
+        status, created = session.call("POST", url, item)
+        show(status, f"create private {label}")
+        if status != 201:
+            return False
+        existing.append(created)
+    return True
+
+
+# What makes a seeded item "the same one" on a re-run. Deliberately not every
+# field: `done` and a bookmark's label are yours to change, and a re-run that
+# compared them would treat a ticked box as a missing item and seed a duplicate.
+_ITEM_IDENTITY = {
+    "note": ("kind", "volume", "section", "block", "text"),
+    "bookmark": ("kind", "volume", "section", "block"),
+    "checklist": ("kind", "scope", "volume", "section", "text"),
+}
+
+
+def _item_matches(current, expected):
+    fields = _ITEM_IDENTITY[expected["kind"]]
+    return all(current.get(field) == expected.get(field) for field in fields)
+
+
 def main():
     session = Session()
     status, body = session.call(
@@ -450,6 +632,9 @@ def main():
     for volume in VOLUMES:
         if not write_volume(session, volume):
             sys.exit(f"could not write volume '{volume['id']}'")
+
+    if not seed_reader_items(session):
+        sys.exit(f"could not write private reader items for '{USER}'")
 
     status, manuscript = session.call("GET", f"{LOGOS}/books/{BOOK}")
     if status == 200:

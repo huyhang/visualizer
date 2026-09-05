@@ -67,7 +67,10 @@ function renderBlock(block, nodes) {
   }
   // The stable block id travels with the node: paragraph-level anchors and
   // annotations are the reason the API mints them in the first place.
-  const attrs = { "data-block-id": asText(block.id, "Block id") };
+  const attrs = {
+    "data-block-id": asText(block.id, "Block id"),
+    "data-block-type": block.type,
+  };
   if (block.type === "heading") return renderHeading(block, attrs, nodes);
   if (LIST_TAGS[block.type]) return renderList(block, attrs, nodes);
   return nodes.element("p", attrs, inlineContent(block, nodes));

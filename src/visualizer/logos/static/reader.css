@@ -25,6 +25,7 @@ body {
   color: var(--text); background: var(--bg); line-height: 1.55;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: contain;
 }
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
@@ -127,6 +128,9 @@ h1, h2, h3, p { margin-top: 0; }
   color: var(--text); background: var(--surface-2);
   border: 1px solid var(--border); border-radius: 8px;
 }
+.setting-toggle > span { display: grid; }
+.setting-toggle small { color: var(--muted); font-size: .72rem; font-weight: 400; }
+.setting-toggle input { width: 1.15rem; height: 1.15rem; accent-color: var(--accent); }
 .settings-note { margin: .85rem 0 0; font-size: .78rem; line-height: 1.45; }
 .settings-actions {
   display: flex; justify-content: space-between; gap: .6rem; margin-top: 1rem;
@@ -162,6 +166,38 @@ h1, h2, h3, p { margin-top: 0; }
 .jump-section.current { font-weight: 700; }
 .jump-kind { color: var(--muted); font-size: .72rem; white-space: nowrap; }
 .jump-empty { padding: 1rem 0; }
+.dialog-search { display: grid; gap: .35rem; margin-top: .9rem; }
+.dialog-search label { color: var(--muted); font-size: .76rem; font-weight: 700; }
+.dialog-search > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .45rem; }
+.search-result {
+  display: grid; gap: .12rem; padding: .7rem; border-radius: 9px; color: var(--text);
+}
+.search-result + .search-result { border-top: 1px solid var(--border); }
+.search-result:hover { background: var(--surface-2); text-decoration: none; }
+.search-result-place, .search-snippet { color: var(--muted); font-size: .75rem; }
+.search-snippet { font-family: var(--prose-font); }
+.bookmark-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+  gap: .5rem; padding: .6rem 0; border-bottom: 1px solid var(--border);
+}
+.bookmark-row > a, .bookmark-row > span { display: grid; color: var(--text); }
+.bookmark-row a:hover { color: var(--accent-strong); text-decoration: none; }
+.bookmark-row span span, .bookmark-row a span { color: var(--muted); font-size: .74rem; }
+.bookmark-actions { display: flex !important; gap: .25rem; }
+.search-more { margin: .7rem auto 0; }
+
+/* private item and publication editors */
+.editor-field, .publication-field { display: grid; gap: .3rem; margin-top: .75rem; font-size: .78rem; font-weight: 700; }
+.editor-field small { color: var(--muted); font-weight: 400; }
+.editor-field + textarea, .publication-field input, #publication-cover {
+  width: 100%; padding: .55rem .65rem; color: var(--text); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 8px;
+}
+.editor-field + textarea { resize: vertical; font: inherit; }
+.form-error { min-height: 1.2em; margin: .5rem 0 0; color: var(--danger); font-size: .76rem; }
+.publication { width: min(38rem, calc(100vw - 2rem)); }
+.publish-actions { flex-wrap: wrap; align-items: center; }
+.publish-actions span { flex: 1; }
 
 /* page frame */
 .content {
@@ -208,6 +244,7 @@ h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.
 .book-meta, .section-meta, .volume-meta {
   margin: .5rem 0 0; color: var(--muted); font-size: .82rem;
 }
+.book-actions { display: flex; flex-wrap: wrap; gap: .55rem; margin-top: 1rem; }
 .reader-notice {
   padding: .7rem .9rem; border: 1px solid var(--border); border-radius: 10px;
   color: var(--muted); background: var(--surface-2);
@@ -294,9 +331,14 @@ h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.
 .jump-volume .section-pages { padding: .45rem 0; background: transparent; }
 
 /* one section, and only one section */
-.reading-section { padding-top: .4rem; }
+.reading-section {
+  padding: 2rem clamp(1.2rem, 4vw, 3.5rem) 3rem;
+  border: 1px solid var(--border); border-radius: 3px;
+  background: var(--surface); box-shadow: 0 12px 36px rgb(0 0 0 / .08);
+}
 .section-head { margin-bottom: 1.5rem; }
-.section-head h1 { margin-bottom: 0; }
+.section-head { text-align: center; padding: 7vh 0 1.5rem; }
+.section-head h1 { margin-bottom: 0; font-family: var(--prose-font); font-size: 2.15rem; font-weight: 500; }
 .section-body { display: grid; gap: 1.5rem; }
 .section-pager {
   display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;
@@ -314,7 +356,7 @@ h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.
 /* Focused is the whole promise of this page, so it is one rule and it is the
    default state of the markup: the panels are not merely hidden, they are
    never filled, because `app.js` does not fetch them. */
-[data-mode="focused"] .scenes { display: none; }
+[data-mode="focused"] .insights { display: none; }
 [data-mode="full"] .section-body {
   grid-template-columns: minmax(0, var(--prose-measure)) minmax(0, 15rem);
 }
@@ -326,6 +368,7 @@ h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.
   hyphens: auto;
 }
 .prose p { margin: 0 0 1em; }
+.prose > p + p { text-indent: 1.25em; }
 .prose h2, .prose h3, .prose h4 { margin: 1.6em 0 .5em; line-height: 1.3; text-align: left; }
 .prose ul, .prose ol { margin: 0 0 1em; padding-left: 1.4rem; }
 .prose li { margin-bottom: .35em; }
@@ -338,9 +381,33 @@ h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.
   padding: .7rem .9rem; border: 1px solid var(--border); border-radius: 10px;
   background: var(--surface-2); color: var(--muted); font-family: inherit;
 }
+.prose [data-block-id] { position: relative; }
+/* Not selectable, so the icons never travel with copied prose. */
+.reader-block-tools {
+  position: absolute; left: -3.6rem; top: -.2rem; display: flex; gap: .1rem;
+  user-select: none; -webkit-user-select: none;
+}
+/* Fading is per tool, not per rail: an unset control stays out of the way until
+   you reach for it, but a bookmark you have set is a mark on the page and has to
+   be readable without hovering anything. */
+.block-tool {
+  display: grid; place-items: center;
+  min-width: 1.75rem; height: 1.75rem; padding: 0; border: 0; border-radius: 7px;
+  color: var(--muted); background: transparent; font: 700 .82rem ui-sans-serif, system-ui;
+  opacity: .2; transition: opacity .15s ease, color .15s ease, background .15s ease;
+}
+.prose [data-block-id]:hover > .reader-block-tools > .block-tool,
+.block-tool:focus-visible, .block-tool.active { opacity: 1; }
+.block-tool:hover { background: var(--surface-3); }
+.note-tool.active { color: var(--accent-strong); background: var(--accent-soft); }
+.bookmark-tool.active { color: var(--bookmark); }
+.bookmark-tool.active:hover { background: var(--bookmark-soft); }
+.bookmark-tool svg { display: block; }
+[data-mode="focused"] .note-tool { display: none; }
+.target-block { border-radius: 4px; outline: 3px solid var(--accent-soft); outline-offset: 4px; }
 
 /* full view: the scenes each section was written from */
-.scenes { align-self: start; font-size: .84rem; }
+.insights { align-self: start; display: grid; gap: 1.15rem; font-size: .84rem; }
 .scenes h2 {
   margin: 0 0 .5rem; color: var(--muted);
   font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
@@ -355,6 +422,48 @@ h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.
 .scene-when { margin: .1rem 0 0; color: var(--muted); font-size: .78rem; }
 .scene.gone { background: var(--danger-soft); border-color: transparent; }
 .scene.gone .scene-title { color: var(--danger); }
+.private-group { display: grid; gap: .45rem; }
+.private-heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.private-heading h2 {
+  margin: 0; color: var(--muted); font-size: .72rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .06em;
+}
+.mini-action {
+  padding: .15rem .35rem; border: 0; border-radius: 5px;
+  color: var(--accent-strong); background: transparent; font-size: .7rem; font-weight: 700;
+}
+.mini-action:hover { background: var(--accent-soft); }
+.private-empty { margin: 0; color: var(--muted); font-size: .75rem; }
+.check-list, .note-list { display: grid; gap: .35rem; margin: 0; padding: 0; list-style: none; }
+.check-row { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: .4rem; }
+.check-row input { margin-top: .25rem; accent-color: var(--accent); }
+.check-text {
+  padding: 0; border: 0; color: var(--text); background: transparent; text-align: left; font-size: .78rem;
+}
+.check-text.done { color: var(--muted); text-decoration: line-through; }
+.note-card {
+  display: grid; gap: .25rem; width: 100%; padding: .55rem .65rem;
+  border: 1px solid var(--border); border-radius: 9px; color: var(--text);
+  background: var(--surface-2); text-align: left;
+}
+.note-card:hover { border-color: var(--accent); }
+.note-card.unavailable { border-color: var(--danger); }
+.note-copy { white-space: pre-wrap; }
+.note-anchor { color: var(--muted); font-size: .68rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.reader-toast, .boundary-cue {
+  position: fixed; left: 50%; bottom: 1.25rem; z-index: 100;
+  transform: translateX(-50%); padding: .6rem .85rem; border: 1px solid var(--border);
+  border-radius: 10px; color: var(--text); background: var(--surface); box-shadow: var(--shadow);
+  font-size: .78rem; font-weight: 700;
+}
+.reader-toast { color: var(--danger); }
+.boundary-cue { display: grid; gap: .3rem; min-width: min(18rem, calc(100vw - 2rem)); }
+.boundary-cue progress { width: 100%; height: 4px; accent-color: var(--accent); }
+.navigating-next .reading-section { animation: page-next .14s ease both; }
+.navigating-previous .reading-section { animation: page-previous .14s ease both; }
+@keyframes page-next { to { opacity: 0; transform: translateY(-1.25rem); } }
+@keyframes page-previous { to { opacity: 0; transform: translateY(1.25rem); } }
 
 @media (max-width: 1100px) {
   /* One column once a scene aside no longer fits beside the prose. */
@@ -379,7 +488,16 @@ h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.
   .section-pages { gap: .25rem; padding-inline: .65rem; }
   .page-btn { font-size: .72rem; }
   .section-pager { gap: .6rem; }
+  .reading-section { padding: 1.25rem 1.15rem 2.25rem; border-inline: 0; box-shadow: none; }
+  .section-head { padding-top: 3vh; }
+  /* No hover on a phone, so the controls sit at a readable weight all the time. */
+  .reader-block-tools { position: static; float: right; margin-left: .4rem; }
+  .block-tool { opacity: .6; }
   .settings form { padding: .9rem 1rem 1rem; }
   .setting-row { flex-wrap: wrap; gap: .3rem; }
   .setting-row select { min-width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .navigating-next .reading-section, .navigating-previous .reading-section { animation: none; }
 }

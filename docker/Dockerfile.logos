@@ -10,6 +10,13 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# Native text shaping for WeasyPrint, plus a metric-compatible serif: with no
+# font package the image ships only DejaVu, so the print stylesheet's Times
+# would silently resolve to a wider face and shift every line break.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install dependencies first so app-code edits don't invalidate this layer.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

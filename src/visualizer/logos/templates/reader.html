@@ -58,7 +58,7 @@
       </header>
 
       {#
-        Three buttons, no settings on the strip itself. What each mode shows is
+        Reader actions stay beside the prose. What each mode shows is
         the button's `title`, written by `app.js` as the mode changes: it is an
         explanation you want on the way in and never again, which is a tooltip
         rather than a line of standing text beside the prose.
@@ -73,6 +73,8 @@
                 aria-label="Jump to section" title="Jump to section">
           Contents
         </button>
+        <button class="btn ghost sm" id="search-open" type="button">Search</button>
+        <button class="btn ghost sm" id="bookmarks-open" type="button">Bookmarks</button>
       </div>
 
       <div class="reading-progress" id="reading-progress" hidden>
@@ -111,6 +113,14 @@
           <option value="serif">Serif</option>
           <option value="sans">Sans serif</option>
         </select>
+      </label>
+
+      <label class="setting-row setting-toggle">
+        <span>
+          <strong>Sync reading progress</strong>
+          <small>Keep your current and furthest positions across devices.</small>
+        </span>
+        <input id="sync-reading-position" type="checkbox">
       </label>
       <label class="setting-row">
         <span>Line spacing</span>
@@ -162,6 +172,73 @@
       <div class="jump-results" id="jump-results"></div>
     </div>
   </dialog>
+
+  <dialog class="jump" id="manuscript-search" aria-labelledby="search-title">
+    <div class="jump-shell">
+      <div class="jump-head">
+        <h2 id="search-title">Search this series</h2>
+        <form method="dialog"><button class="icon-btn" value="close" aria-label="Close search">×</button></form>
+      </div>
+      <form id="search-form" class="dialog-search" role="search" method="dialog">
+        <label for="manuscript-search-input">Published manuscript text</label>
+        <div><input id="manuscript-search-input" class="jump-search" type="search" required maxlength="200"
+                    placeholder="Search every volume"><button class="btn" type="submit">Search</button></div>
+      </form>
+      <p class="jump-status muted" id="search-status" aria-live="polite"></p>
+      <div class="jump-results" id="search-results"></div>
+    </div>
+  </dialog>
+
+  <dialog class="jump" id="bookmarks-dialog" aria-labelledby="bookmarks-title">
+    <div class="jump-shell">
+      <div class="jump-head">
+        <h2 id="bookmarks-title">Bookmarks</h2>
+        <form method="dialog"><button class="icon-btn" value="close" aria-label="Close bookmarks">×</button></form>
+      </div>
+      <p class="jump-status muted" id="bookmarks-status" aria-live="polite"></p>
+      <div class="jump-results" id="bookmarks-results"></div>
+    </div>
+  </dialog>
+
+  <dialog class="settings" id="item-editor" aria-labelledby="item-editor-title">
+    <form id="item-editor-form" method="dialog">
+      <div class="settings-head">
+        <h2 id="item-editor-title">Add note</h2>
+        <button class="icon-btn" type="button" id="item-editor-close" aria-label="Close editor">×</button>
+      </div>
+      <label class="editor-field" for="item-editor-text">Text</label>
+      <textarea id="item-editor-text" rows="6" maxlength="10000" required></textarea>
+      <p class="form-error" id="item-editor-error" role="alert"></p>
+      <div class="settings-actions">
+        <button class="btn ghost" id="item-editor-delete" type="button" hidden>Delete</button>
+        <button class="btn" type="submit">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="settings publication" id="publication-dialog" aria-labelledby="publication-title">
+    <form id="publication-form" method="dialog">
+      <div class="settings-head">
+        <h2 id="publication-title">Publish series</h2>
+        <button class="icon-btn" type="button" id="publication-close" aria-label="Close publication settings">×</button>
+      </div>
+      <div id="publication-fields"></div>
+      <label class="editor-field" for="publication-cover">Cover image <small>PNG or JPEG, up to 5 MiB</small></label>
+      <input id="publication-cover" type="file" accept="image/png,image/jpeg">
+      <p class="form-error" id="publication-error" role="alert"></p>
+      <div class="settings-actions publish-actions">
+        <button class="btn ghost" id="cover-delete" type="button" hidden>Remove cover</button>
+        <span></span>
+        <button class="btn ghost" id="export-epub" type="button">Download EPUB</button>
+        <button class="btn ghost" id="export-pdf" type="button">Download PDF</button>
+        <button class="btn" type="submit">Save details</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="boundary-cue" id="boundary-cue" hidden aria-live="polite">
+    <span id="boundary-cue-label"></span><progress id="boundary-cue-meter" max="100" value="0"></progress>
+  </div>
 
   <script type="module" src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>

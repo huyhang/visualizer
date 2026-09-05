@@ -30,7 +30,7 @@ login, one reverse-proxy entry.
 | **akasha** | `/` | A Wikipedia-style article store and editor: characters, items, locations, lore — with linking, versioning and diffs. Has a web UI. | [README](docs/akasha/README.md) · [design](docs/akasha/editor-design.md) |
 | **chronos** | `/timeline` | A plotline & timeline API for fiction writers: books, events and plotlines, checked for continuity errors, with a plotline visualiser and editor. | [README](docs/chronos/README.md) · [getting started](docs/chronos/getting-started.md) · [plain-language overview](docs/chronos/OVERVIEW.md) · [design](docs/chronos/design.md) |
 | **prithvi** | `/prithvi` | An SVG map per region of a world, with Akasha articles pinned to points on it. Has a web UI: upload a map, place and move pins, and read a pin's article beside the map. | [README](docs/prithvi/README.md) · [openapi](docs/prithvi/openapi.json) |
-| **logos** | `/logos` | A versioned manuscript API: ordered volumes and sections for each Chronos book, structured rich text with stable paragraph ids, and links back to the scenes they were written from. Its read-only web UI browses a book's outline and reads one section at a time in Focused or Full View. Writing stays on the API. | [README](docs/logos/README.md) · [permissions](docs/logos/permissions.md) · [openapi](docs/logos/openapi.json) |
+| **logos** | `/logos` | A versioned manuscript API and book-like reader with private notes, checklists, bookmarks, full-series search, optional progress sync, and whole-series PDF/EPUB publishing. Manuscript writing stays API-first. | [README](docs/logos/README.md) · [permissions](docs/logos/permissions.md) · [openapi](docs/logos/openapi.json) |
 | **mongo** | *internal* | Shared storage. Deliberately not published to the host. | — |
 
 They are named for what they hold: **Akasha** (the aether said to record all
@@ -85,12 +85,12 @@ docker compose -f docker/docker-compose.nas.yml up --build -d
   world you can write, pin articles to it, and click a pin to read its
   article beside the map. The API is under `…/prithvi/worlds/{world}/maps`,
   and a map with its pins drawn on is at `…/maps/{map}/render.svg`.
-- **http://localhost:5002/logos/** — the manuscript reader: pick a book, browse
-  its volumes and sections, and read one section at a time. Focused shows prose
-  alone; Full View adds the Chronos scenes that section was written from. It
-  remembers the last position in each book on that browser. It uses the same
-  book permissions as the API, and there is still no browser editor, so `curl`
-  and the [openapi](docs/logos/openapi.json) remain the way to write.
+- **http://localhost:5002/logos/** — the manuscript reader: search every volume,
+  bookmark paragraphs, keep private notes and checklists, and read one section
+  at a time. Focused shows prose alone; Full View adds private working material
+  and the Chronos scenes behind the section. Reading progress is local unless
+  the account opts into sync. A publication dialog exports the whole series as
+  PDF or EPUB. Manuscript writing itself remains API-first.
 - **http://localhost:5002/health** — akasha liveness; **/timeline/health**,
   **/prithvi/health** and **/logos/health** — the others.
 - **http://localhost:5002/admin/observability** — administrators only: NAS

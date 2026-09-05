@@ -50,6 +50,26 @@ class InvalidOrder(LogosError):
     code = "INVALID_ORDER"
 
 
+class InvalidReaderItem(LogosError):
+    status_code = 400
+    code = "INVALID_READER_ITEM"
+
+
+class InvalidReadingPosition(LogosError):
+    status_code = 400
+    code = "INVALID_READING_POSITION"
+
+
+class InvalidPublication(LogosError):
+    status_code = 400
+    code = "INVALID_PUBLICATION"
+
+
+class InvalidSearch(LogosError):
+    status_code = 400
+    code = "INVALID_SEARCH"
+
+
 class InvalidRevision(LogosError):
     status_code = 400
     code = "INVALID_REVISION"
@@ -80,6 +100,21 @@ class SectionNotFound(LogosError):
     code = "SECTION_NOT_FOUND"
 
 
+class ReaderItemNotFound(LogosError):
+    status_code = 404
+    code = "READER_ITEM_NOT_FOUND"
+
+
+class PublicationCoverNotFound(LogosError):
+    status_code = 404
+    code = "PUBLICATION_COVER_NOT_FOUND"
+
+
+class ExportJobNotFound(LogosError):
+    status_code = 404
+    code = "EXPORT_JOB_NOT_FOUND"
+
+
 class AlreadyExists(LogosError):
     status_code = 409
     code = "ALREADY_EXISTS"
@@ -108,6 +143,11 @@ class RevisionNotRetained(LogosError):
 class ChronosEventNotFound(LogosError):
     status_code = 422
     code = "CHRONOS_EVENT_NOT_FOUND"
+
+
+class ExportUnavailable(LogosError):
+    status_code = 503
+    code = "EXPORT_UNAVAILABLE"
 
 
 class PreconditionRequired(LogosError):

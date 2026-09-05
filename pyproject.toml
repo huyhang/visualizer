@@ -18,6 +18,9 @@ dependencies = [
     # Chronos builds each book's story graph in-process (convergence/divergence,
     # reachability); pure-Python, no server or extra container.
     "networkx>=3.0",
+    # Print-quality PDF output from the same semantic HTML used by EPUB.
+    "weasyprint>=62.0",
+    "Pillow>=9.1",
 ]
 
 [project.optional-dependencies]

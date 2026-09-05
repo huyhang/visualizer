@@ -25,7 +25,7 @@ _JS_DIR = (
 )
 _MODULES = (
     "dom.js", "prose.js", "preferences.js", "navigation.js", "outline.js",
-    "position.js", "progress.js",
+    "position.js", "progress.js", "boundary.js", "readerdata.js",
 )
 
 _PREAMBLE = """\
@@ -40,9 +40,11 @@ import {
 } from "./navigation.js";
 import {
   advance, blockAnchor, forgetPosition, parsePositions, prunePositions,
-  readPosition, readPositions, scrollForAnchor, writePosition,
+  readPosition, readPositions, scrollForAnchor, storePosition, writePosition,
 } from "./position.js";
 import { sectionProgress, scrollForProgress } from "./progress.js";
+import { boundaryGesture } from "./boundary.js";
+import { bookmarkAt, bookmarks, dataForSection, removeItem, replaceItem } from "./readerdata.js";
 import { nodeFactory as createNodes } from "./dom.js";
 import {
   defaultOpenVolume, filterOutline, pageForSection, SECTION_PAGE_SIZE,
@@ -245,7 +247,10 @@ def test_marks_nest_and_block_ids_travel_with_the_node(run_js):
     )
 
     (paragraph,) = tree["children"]
-    assert paragraph["attrs"] == {"data-block-id": "opening"}
+    assert paragraph["attrs"] == {
+        "data-block-id": "opening",
+        "data-block-type": "paragraph",
+    }
     outer = paragraph["children"][0]
     assert outer["tag"] == "em"
     assert outer["children"][0]["tag"] == "strong"
@@ -566,6 +571,20 @@ def test_positions_are_isolated_by_account_and_book(run_js):
     ]
 
 
+def test_a_server_position_can_replace_the_local_cache(run_js):
+    assert run_js(
+        "const backing = {}; const s = store(backing);"
+        "const saved = storePosition(s, 'mara', 'ember', {"
+        " last: {volume: 'v', section: 's', block: 'p', offset: 2, progress: .3},"
+        " furthest: {volume: 'v', section: 's', progress: .8}});"
+        "emit([saved, readPosition(s, 'mara', 'ember')]);"
+    ) == [{
+        "last": {"volume": "v", "section": "s", "block": "p", "offset": 2,
+                 "progress": .3},
+        "furthest": {"volume": "v", "section": "s", "progress": .8},
+    }] * 2
+
+
 def test_a_record_written_before_there_were_two_marks_still_reads(run_js):
     """The v1 shape was a bare spot. It is where the reader was *and* the best
     evidence of how far they got, so it seeds both marks rather than being
@@ -721,3 +740,46 @@ def test_where_you_are_still_moves_when_how_far_you_got_does_not(run_js):
     ]
 
 
+# -- private reader data and boundary navigation ----------------------------
+
+
+def test_private_items_are_selected_by_section_and_kind(run_js):
+    items = [
+        {"id": "n", "kind": "note", "volume": "v", "section": "s", "block": "p"},
+        {"id": "b", "kind": "bookmark", "volume": "v", "section": "s", "block": "p"},
+        {"id": "cs", "kind": "checklist", "scope": "section", "volume": "v", "section": "s"},
+        {"id": "cb", "kind": "checklist", "scope": "book"},
+        {"id": "other", "kind": "note", "volume": "v", "section": "else", "block": "p"},
+    ]
+    assert run_js(
+        "const found = dataForSection(INPUT, 'v', 's');"
+        "emit([Object.fromEntries(Object.entries(found).map(([k,v]) => [k, v.map(i => i.id)])),"
+        " bookmarkAt(INPUT, 'v', 's', 'p').id, bookmarks(INPUT).map(i => i.id),"
+        " replaceItem(INPUT, {id: 'n', kind: 'note', text: 'new'}).find(i => i.id === 'n').text,"
+        " removeItem(INPUT, 'n').some(i => i.id === 'n')]);",
+        items,
+    ) == [
+        {"notes": ["n"], "bookmarks": ["b"], "sectionChecklist": ["cs"],
+         "bookChecklist": ["cb"]},
+        "b", ["b"], "new", False,
+    ]
+
+
+def test_boundary_navigation_needs_sustained_input_at_the_matching_edge(run_js):
+    assert run_js(
+        "const g = boundaryGesture({threshold: 100, windowMs: 500});"
+        "emit(["
+        " g.push({delta: 40, atStart: false, atEnd: true, now: 0}),"
+        " g.push({delta: 61, atStart: false, atEnd: true, now: 100}),"
+        " g.reset(),"
+        " g.push({delta: -80, atStart: true, atEnd: false, now: 200}),"
+        " g.reset(),"
+        " g.push({delta: -100, atStart: true, atEnd: false, now: 300})]);"
+    ) == [
+        {"direction": "next", "progress": .4, "trigger": None},
+        {"direction": "next", "progress": 1, "trigger": "next"},
+        {"direction": None, "progress": 0, "trigger": None},
+        {"direction": "previous", "progress": .8, "trigger": None},
+        {"direction": None, "progress": 0, "trigger": None},
+        {"direction": "previous", "progress": 1, "trigger": "previous"},
+    ]

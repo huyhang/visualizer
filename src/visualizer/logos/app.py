@@ -6,7 +6,7 @@ gateway, the auth store -- is injected, so the whole service runs against
 in-memory fakes with no network.
 """
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request
 from flask_login import current_user, login_required
 from flask_wtf.csrf import CSRFProtect
 
@@ -21,8 +21,17 @@ from visualizer.auth import (
 from visualizer.observability import Observability
 from visualizer.shared_assets import register_shared_assets
 
-from .errors import Forbidden, InvalidRevision, LogosError, PreconditionRequired
+from .errors import (
+    Forbidden,
+    InvalidRevision,
+    LogosError,
+    PreconditionRequired,
+    PublicationCoverNotFound,
+)
 from .gateways import ArticleGateway, ChronosGateway
+from .publication import ExportJobs, PublicationService, export_filename
+from .reader import ReaderService
+from .search import SearchService
 from .services import ManuscriptService, SectionService, VolumeService
 from .store import LogosStore
 
@@ -51,6 +60,8 @@ def create_app(
     prithvi_url: str = "http://localhost:5004",
     logos_url: str = "http://localhost:5005",
     observability: Observability | None = None,
+    pdf_renderer=None,
+    export_runner=None,
 ) -> Flask:
     if not secret_key:
         raise ValueError("create_app requires a non-empty secret_key.")
@@ -79,14 +90,35 @@ def create_app(
     manuscripts = ManuscriptService(store, chronos, articles)
     volumes = VolumeService(store, chronos, articles)
     sections = SectionService(store, chronos, articles)
-    _register_routes(app, csrf, auth_store, manuscripts, volumes, sections)
+    readers = ReaderService(store, manuscripts)
+    search = SearchService(store, manuscripts)
+    publications = PublicationService(store, manuscripts, pdf_renderer)
+    jobs = ExportJobs(
+        store, publications, **({} if export_runner is None else
+                                {"runner": export_runner})
+    )
+    _register_routes(
+        app,
+        csrf,
+        auth_store,
+        manuscripts,
+        volumes,
+        sections,
+        readers,
+        search,
+        publications,
+        jobs,
+    )
     if observability is not None:
         observability.install(app, "logos")
     _register_error_handlers(app)
     return app
 
 
-def _register_routes(app, csrf, auth_store, manuscripts, volumes, sections):
+def _register_routes(
+    app, csrf, auth_store, manuscripts, volumes, sections, readers, search,
+    publications, export_jobs,
+):
     @app.get("/")
     @login_required
     def index():
@@ -109,6 +141,18 @@ def _register_routes(app, csrf, auth_store, manuscripts, volumes, sections):
         ]
         return jsonify({"books": rows})
 
+    @app.get("/me/reader-settings")
+    @csrf.exempt
+    @login_required
+    def get_reader_settings():
+        return jsonify(readers.get_settings(current_user.username))
+
+    @app.put("/me/reader-settings")
+    @csrf.exempt
+    @login_required
+    def update_reader_settings():
+        return jsonify(readers.set_settings(current_user.username, _json_body()))
+
     @app.get(_BOOK)
     @csrf.exempt
     @login_required
@@ -122,6 +166,163 @@ def _register_routes(app, csrf, auth_store, manuscripts, volumes, sections):
     def book_report(book):
         _authorize(auth_store, "read", book)
         return jsonify(manuscripts.report(book))
+
+    @app.get(_BOOK + "/search")
+    @csrf.exempt
+    @login_required
+    def search_manuscript(book):
+        _authorize(auth_store, "read", book)
+        return jsonify(
+            search.search(
+                book,
+                request.args.get("q"),
+                offset=request.args.get("offset", 0),
+                limit=request.args.get("limit", 20),
+            )
+        )
+
+    @app.get(_BOOK + "/me/items")
+    @csrf.exempt
+    @login_required
+    def list_reader_items(book):
+        _authorize(auth_store, "read", book)
+        return jsonify(readers.list_items(current_user.username, book))
+
+    @app.post(_BOOK + "/me/items")
+    @csrf.exempt
+    @login_required
+    def create_reader_item(book):
+        _authorize(auth_store, "read", book)
+        return _resource(
+            readers.create_item(current_user.username, book, _json_body()), 201
+        )
+
+    @app.put(_BOOK + "/me/items/<item>")
+    @csrf.exempt
+    @login_required
+    def update_reader_item(book, item):
+        _authorize(auth_store, "read", book)
+        return _resource(
+            readers.update_item(
+                current_user.username, book, item, _json_body(), _expected_rev()
+            )
+        )
+
+    @app.delete(_BOOK + "/me/items/<item>")
+    @csrf.exempt
+    @login_required
+    def delete_reader_item(book, item):
+        _authorize(auth_store, "read", book)
+        readers.delete_item(current_user.username, book, item, _expected_rev())
+        return "", 204
+
+    @app.get(_BOOK + "/me/position")
+    @csrf.exempt
+    @login_required
+    def get_reading_position(book):
+        _authorize(auth_store, "read", book)
+        return jsonify(readers.get_position(current_user.username, book))
+
+    @app.put(_BOOK + "/me/position")
+    @csrf.exempt
+    @login_required
+    def update_reading_position(book):
+        _authorize(auth_store, "read", book)
+        return jsonify(
+            readers.set_position(current_user.username, book, _json_body())
+        )
+
+    @app.get(_BOOK + "/publication")
+    @csrf.exempt
+    @login_required
+    def get_publication(book):
+        _authorize(auth_store, "read", book)
+        return _resource(publications.get(book))
+
+    @app.post(_BOOK + "/publication")
+    @csrf.exempt
+    @login_required
+    def create_publication(book):
+        _authorize(auth_store, "write", book)
+        return _resource(
+            publications.create(book, _json_body(), current_user.username), 201
+        )
+
+    @app.put(_BOOK + "/publication")
+    @csrf.exempt
+    @login_required
+    def update_publication(book):
+        _authorize(auth_store, "write", book)
+        return _resource(
+            publications.update(
+                book, _json_body(), _expected_rev(), current_user.username
+            )
+        )
+
+    @app.get(_BOOK + "/publication/cover")
+    @csrf.exempt
+    @login_required
+    def get_publication_cover(book):
+        _authorize(auth_store, "read", book)
+        cover = publications.cover(book)
+        if cover is None:
+            raise PublicationCoverNotFound("This series has no publication cover.")
+        return Response(bytes(cover["data"]), mimetype=cover["mime"])
+
+    @app.put(_BOOK + "/publication/cover")
+    @csrf.exempt
+    @login_required
+    def set_publication_cover(book):
+        _authorize(auth_store, "write", book)
+        return jsonify(publications.set_cover(book, request.get_data(cache=False)))
+
+    @app.delete(_BOOK + "/publication/cover")
+    @csrf.exempt
+    @login_required
+    def delete_publication_cover(book):
+        _authorize(auth_store, "write", book)
+        publications.delete_cover(book)
+        return "", 204
+
+    def _download(book, exported):
+        title = publications.get(book)["title"]
+        return Response(
+            exported.data,
+            mimetype=exported.mimetype,
+            headers={
+                "Content-Disposition": (
+                    'attachment; '
+                    f'filename="{export_filename(title, exported.extension)}"'
+                )
+            },
+        )
+
+    # EPUB is a stdlib zip of XHTML: cheap enough to hand back on the request
+    # that asked for it. PDF is laid out page by page and takes minutes on a
+    # long series, so it is started, polled and collected instead.
+    @app.get(_BOOK + "/exports/epub")
+    @csrf.exempt
+    @login_required
+    def export_epub(book):
+        _authorize(auth_store, "read", book)
+        return _download(book, publications.export(book, "epub"))
+
+    @app.post(_BOOK + "/exports/pdf")
+    @csrf.exempt
+    @login_required
+    def start_pdf_export(book):
+        _authorize(auth_store, "read", book)
+        return jsonify(export_jobs.start(book, current_user.username)), 202
+
+    @app.get(_BOOK + "/exports/pdf/<job>")
+    @csrf.exempt
+    @login_required
+    def collect_pdf_export(book, job):
+        _authorize(auth_store, "read", book)
+        exported = export_jobs.collect(book, current_user.username, job)
+        if exported is None:
+            return jsonify(export_jobs.status(book, current_user.username, job)), 202
+        return _download(book, exported)
 
     @app.delete(_BOOK)
     @csrf.exempt

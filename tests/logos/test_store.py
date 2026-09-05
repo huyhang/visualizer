@@ -1,5 +1,8 @@
 """Persistence mechanics that belong to Logos rather than to the shared engine."""
 
+import pytest
+
+from visualizer.logos.errors import RevisionConflict
 from visualizer.logos.store import LogosStore
 
 from .conftest import BOOK, SECTION, VOLUME, document, section_payload
@@ -90,3 +93,27 @@ def test_purging_a_book_removes_its_retained_history_too(logos_store, mongo_clie
     assert revisions.count_documents({}) == 0
     assert mongo_client["_logos"]["volume_revisions"].count_documents({}) == 0
     assert mongo_client["_logos"]["outline_revisions"].count_documents({}) == 0
+
+
+def test_reading_position_updates_are_compare_and_swap(logos_store):
+    position = {"last": None, "furthest": None}
+    logos_store.set_reading_position("mara", BOOK, position, expected_rev=0)
+
+    with pytest.raises(RevisionConflict):
+        logos_store.set_reading_position("mara", BOOK, position, expected_rev=0)
+
+
+def test_an_account_and_a_book_cannot_be_confused_for_another_pair(logos_store):
+    """Two fields, not one joined key.
+
+    Nothing constrains the punctuation in a username or a Chronos book id, so a
+    key built by concatenating them lets one pair spell another: 'alice' reading
+    'x::y' and 'alice::x' reading 'y' are different readers of different books.
+    """
+    mark = {"volume": "v", "section": "s", "block": "p1", "offset": 0, "progress": 0.9}
+    logos_store.set_reading_position(
+        "alice", "x::y", {"last": mark, "furthest": None}, expected_rev=0
+    )
+
+    assert logos_store.get_reading_position("alice::x", "y") is None
+    assert logos_store.get_reading_position("alice", "x::y")["last"] == mark

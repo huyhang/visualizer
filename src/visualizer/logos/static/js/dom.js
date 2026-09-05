@@ -41,6 +41,24 @@ export function el(tag, attrs = {}, children = []) {
   return browser.element(tag, attrs, children);
 }
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+/**
+ * The same builder for SVG, which needs its own namespace to render at all.
+ * Still no markup strings: an icon is a shape, not a blob of HTML.
+ */
+export function svgEl(tag, attrs = {}, children = []) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [name, value] of Object.entries(attrs)) {
+    if (value === null || value === undefined || value === false) continue;
+    node.setAttribute(name, value === true ? "" : String(value));
+  }
+  for (const child of children.flat()) {
+    if (child !== null && child !== undefined) node.appendChild(child);
+  }
+  return node;
+}
+
 export function clear(node) {
   while (node.firstChild) node.removeChild(node.firstChild);
   return node;

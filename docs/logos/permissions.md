@@ -28,8 +28,8 @@ anything on a reusable Chronos calendar.
 
 | Chronos book role | Permissions | What it can do in Logos |
 | --- | --- | --- |
-| Reader | `read` | Read the outline, volumes, sections, assembled manuscripts, the report, and retained revisions |
-| Editor | `read`, `write` | The above, plus create, update, reorder and restore |
+| Reader | `read` | Read, search and export the manuscript; manage only their own private notes, checklists, bookmarks and reading position |
+| Editor | `read`, `write` | The above, plus create, update, reorder and restore manuscript content and edit publication metadata |
 | Owner | `read`, `write`, `delete` | The above, plus delete sections, volumes and the manuscript, and manage sharing |
 
 Administrators are not exempt. An administrator holding no grant on a book cannot
@@ -39,6 +39,8 @@ management, not the content itself.
 ## By operation
 
 - `GET` requires `read`.
+- Private reader-item and position writes require `read`; they address only the
+  signed-in account and cannot alter another account or the manuscript.
 - Creating, updating, reordering and restoring require `write`.
 - Deleting a section, volume or manuscript requires `delete`.
 

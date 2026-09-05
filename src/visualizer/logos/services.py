@@ -32,6 +32,7 @@ from .presenters import (
     section_numbers,
 )
 from .richtext import article_refs, word_count
+from .search import search_projection
 from .validation import (
     SINGLETON_SECTION_KINDS,
     validate_identifier,
@@ -142,6 +143,60 @@ class _Service:
             ),
         )
 
+    # -- the whole manuscript, and the cheap questions asked about it ---------
+
+    def _publication_volumes(self, book: str) -> list[dict]:
+        """Every volume with its prose, in reading order. No Chronos round trip."""
+        volumes = []
+        for number, record in enumerate(self._ordered_volumes(book), 1):
+            sections = self._ordered_sections(book, record)
+            numbers = section_numbers(sections)
+            volumes.append(
+                present_volume(
+                    book,
+                    record,
+                    number,
+                    [
+                        present_section(
+                            section,
+                            numbers[section["section"]],
+                            include_document=True,
+                        )
+                        for section in sections
+                    ],
+                )
+            )
+        return volumes
+
+    def _reading_order(self, book: str) -> list[tuple[str, str]]:
+        """Ordered ``(volume, section)`` pairs, read from ordering records only.
+
+        The outline names the volumes, each volume names its sections, and the
+        section heads say which of those are still live -- none of which needs a
+        section's document. Callers that only have to place a mark in the book
+        use this instead of assembling every chapter.
+        """
+        live = self.store.section_ids(book)
+        return [
+            (record["volume"], section)
+            for record in self._ordered_volumes(book)
+            for section in Volume.from_storage(record).sections
+            if (record["volume"], section) in live
+        ]
+
+    def _reindex_search(self, book: str) -> None:
+        """Refresh the search projection from the manuscript as it now stands.
+
+        Called after every write that changes what search can match or how a hit
+        is labelled -- prose, titles and ordering all appear in a result row.
+        Reads never call this: see the note in ``store.py``.
+        """
+        outline = self.store.find_outline(book)
+        rows = [] if outline is None else search_projection(
+            self._publication_volumes(book)
+        )
+        self.store.reindex_search(book, rows)
+
     def _missing_refs(self, refs: list[dict]) -> set[tuple[str, str, str]]:
         """One gateway round trip for every reference in a view."""
         if not refs:
@@ -193,6 +248,38 @@ class ManuscriptService(_Service):
             for record in self._ordered_volumes(book)
         ]
         return present_manuscript(book, chronos_book, volumes, outline)
+
+    def publication(self, book: str) -> dict:
+        """The whole current manuscript, including prose, in reading order.
+
+        This loads every section's document, so only ask for it when the prose
+        itself is the point -- an export, or resolving a note's excerpt. To check
+        that a book exists use :meth:`require`; to place a mark within it use
+        :meth:`reading_order`.
+        """
+        chronos_book = self._book(book)
+        outline = self._require_outline(book)
+        return present_manuscript(
+            book, chronos_book, self._publication_volumes(book), outline
+        )
+
+    def require(self, book: str) -> dict:
+        """The Chronos book, or raise. Two indexed lookups and no prose.
+
+        This is the existence check every reader-layer write wants; assembling
+        the manuscript to answer it made each keystroke-rate position save read
+        the whole series.
+        """
+        chronos_book = self._book(book)
+        self._require_outline(book)
+        return chronos_book
+
+    # Quoted: this class defines `list`, which shadows the builtin in the class
+    # body, so an unquoted `list[...]` annotation is evaluated against the method.
+    def reading_order(self, book: str) -> "list[tuple[str, str]]":
+        """Ordered ``(volume, section)`` pairs. Ordering records only."""
+        self.require(book)
+        return self._reading_order(book)
 
     def report(self, book: str) -> dict:
         """Progress across a whole book, and every reference that no longer lands."""
@@ -256,6 +343,7 @@ class VolumeService(_Service):
             raise AlreadyExists(f"Volume '{volume_id}' already exists in '{book}'.")
         self._place_in_outline(book, volume_id, author)
         record = self.store.create_volume(book, volume_id, volume.to_storage(), author)
+        self._reindex_search(book)
         return self._volume_view(book, record)
 
     def _place_in_outline(self, book: str, volume_id: str, author: str) -> None:
@@ -326,6 +414,8 @@ class VolumeService(_Service):
         updated = self.store.update_volume(
             book, volume_id, incoming.to_storage(), expected_rev, author
         )
+        # The volume title is part of every search row this volume owns.
+        self._reindex_search(book)
         return self._volume_view(book, updated)
 
     def delete(
@@ -349,6 +439,7 @@ class VolumeService(_Service):
             )
         self.store.delete_volume(book, volume_id, expected_rev, author)
         self._forget_in_outline(book, volume_id, author)
+        self._reindex_search(book)
 
     def _forget_in_outline(self, book: str, volume_id: str, author: str) -> None:
         outline, record = self._outline(book)
@@ -363,6 +454,9 @@ class VolumeService(_Service):
         live = [row["volume"] for row in self._ordered_volumes(book)]
         outline = Outline(book, validate_order(payload, "volumes", live))
         self.store.update_outline(book, outline.to_storage(), expected_rev, author)
+        # Reading order decides both the volume number on a hit and the order
+        # results come back in.
+        self._reindex_search(book)
         return ManuscriptService(self.store, self.chronos, self.articles).get(book)
 
 
@@ -383,6 +477,7 @@ class SectionService(_Service):
         record = self.store.create_section(
             book, volume_id, section_id, section.to_storage(), author
         )
+        self._reindex_search(book)
         return self._present_one(book, volume_id, record)
 
     def _place_in_volume(
@@ -436,6 +531,7 @@ class SectionService(_Service):
         record = self.store.update_section(
             book, volume_id, section_id, section.to_storage(), expected_rev, author
         )
+        self._reindex_search(book)
         return self._present_one(book, volume_id, record)
 
     def delete(
@@ -457,6 +553,7 @@ class SectionService(_Service):
             self.store.update_volume(
                 book, volume_id, volume.to_storage(), volume_record["rev"], author
             )
+        self._reindex_search(book)
 
     def reorder(
         self, book: str, volume_id: str, payload, expected_rev: int, author: str
@@ -471,6 +568,8 @@ class SectionService(_Service):
         updated = self.store.update_volume(
             book, volume_id, volume.to_storage(), expected_rev, author
         )
+        # Section order renumbers chapters, and the number is in the hit label.
+        self._reindex_search(book)
         return self._volume_view(book, updated)
 
     def history(self, book: str, volume_id: str, section_id: str) -> dict:
@@ -524,6 +623,7 @@ class SectionService(_Service):
         record = self.store.restore_section(
             book, volume_id, section_id, revision, expected_rev, author
         )
+        self._reindex_search(book)
         return self._present_one(book, volume_id, record)
 
     # -- guards ---------------------------------------------------------------
