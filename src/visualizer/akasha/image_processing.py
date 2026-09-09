@@ -8,6 +8,7 @@ from pathlib import PurePath
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
+from .assets import IMAGE, Asset, AssetBlob
 from .errors import ImageTooLarge, InvalidImage
 from .metadata import strip_metadata
 
@@ -53,6 +54,27 @@ class ProcessedImage:
     original: ImageVariant
     display: ImageVariant
     thumbnail: ImageVariant
+
+    def as_asset(self) -> Asset:
+        """The library entry for this upload, in the store's own vocabulary."""
+        return Asset(
+            kind=IMAGE,
+            filename=self.filename,
+            facts={"format": self.format, "width": self.width, "height": self.height},
+            variants={
+                name: AssetBlob(
+                    data=variant.data,
+                    mime_type=variant.mime_type,
+                    sha256=variant.sha256,
+                    facts={"width": variant.width, "height": variant.height},
+                )
+                for name, variant in (
+                    ("original", self.original),
+                    ("display", self.display),
+                    ("thumbnail", self.thumbnail),
+                )
+            },
+        )
 
 
 class ImageProcessor:

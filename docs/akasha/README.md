@@ -19,7 +19,7 @@ There are two ways to use it:
 
 Both share one login, one permission model, and one document store. See
 [`editor-design.md`](editor-design.md) for the editor design,
-[`media-design.md`](media-design.md) for image handling, and the
+[`media-design.md`](media-design.md) for images and dioramas, and the
 [repo README](../../README.md) for the stack as a whole.
 
 > **Companion service — `chronos`.** A plotline & timeline API for fiction
@@ -63,6 +63,8 @@ the admin grants access.
 | `AKASHA_MAX_IMAGE_PIXELS` | largest decoded image, protecting memory from compressed image bombs | `40000000` |
 | `AKASHA_IMAGE_DISPLAY_MAX_PX` | longest edge of the article display copy | `2048` |
 | `AKASHA_IMAGE_THUMBNAIL_MAX_PX` | longest edge of a library thumbnail | `360` |
+| `AKASHA_MAX_MODEL_BYTES` | largest accepted `.glb` diorama | `25165824` (24 MiB) |
+| `AKASHA_MAX_MODEL_VERTICES` | most vertices in one diorama, summed from its accessors | `2000000` |
 | `SESSION_COOKIE_SECURE` | mark the session cookie HTTPS-only (enable behind an HTTPS reverse proxy) | `false` |
 | `MONITORING_ENABLED` | record per-writer usage, latency and errors at boot (the admin page can pause it at runtime) | `true` |
 | `MONITORING_DATA_PATH` | path whose free space represents the NAS data volume | `/data` |
@@ -172,8 +174,18 @@ pixel you uploaded but not the metadata around it — camera model, software and
 GPS coordinates are stripped before anything is saved, because that original is
 what the full-size view hands to every reader of the article.
 
-`GET /databases/<db>/media?orphans=1` lists the images nothing points at any
-more, so a world's library can be tidied without guessing.
+**World Gallery.** Every world has a page listing everything in its library —
+open the world and press **World Gallery**. It shows each image and diorama with
+its size, who added it and when, marks the ones nothing points at any more, and
+gives the whole library's footprint in one line. Select anything to edit its
+alternative text, open it full size, re-aim it if it is a diorama, or delete it.
+
+Deleting is refused while an article still shows the asset — including a
+retained revision — and the refusal names which articles would break, with a
+force option if you mean it. Adding is deliberately *not* here: an upload is
+made for a particular article and needs write access to it, so it happens in
+the editor. Everything after that is a property of the world, which is what
+this page is for.
 
 **History, compare & restore.** The **History** tab lists an article's retained
 versions. Each one offers **Compare with current** (a field-by-field diff with
@@ -510,7 +522,9 @@ authenticated session (except `/health`).
 | GET    | `/databases/<db>/media/<id>` | image metadata and private variant URLs |
 | PATCH  | `/databases/<db>/media/<id>` | update alternative text (uploader or world owner) |
 | DELETE | `/databases/<db>/media/<id>?force=` | delete when unreferenced; force deletion reports the references it breaks |
-| GET    | `/databases/<db>/media/<id>/<variant>` | `original`, `display`, or `thumbnail` bytes |
+| POST   | `/databases/<db>/media/dioramas` | upload a `.glb` with an optional poster and its presentation manifest |
+| PUT    | `/databases/<db>/media/<id>/manifest` | re-aim a diorama's camera and lights without re-uploading it (JSON, or multipart with a re-shot poster) |
+| GET    | `/databases/<db>/media/<id>/<variant>` | `original`/`display`/`thumbnail` for an image, `model`/`poster` for a diorama |
 | GET    | `…/collections/<col>/collaborators` | who can access this collection (owner only) |
 | PUT    | `…/collections/<col>/collaborators/<user>` | share it as `reader`/`editor`/`owner` |
 | DELETE | `…/collections/<col>/collaborators/<user>` | stop sharing it |
@@ -593,3 +607,25 @@ This service's tests live in `tests/akasha/`:
 pytest -q tests/akasha     # in-memory MongoDB (mongomock); no server needed
 ruff check src/visualizer/akasha
 ```
+
+**Dioramas.** The editor's **◳ Diorama** button adds a voxel scene to the same
+library. Choose a `.glb`, aim the camera with three sliders, hang up to eight
+local lanterns, and watch the preview as you go — the gallery still is captured
+from that very view when you save, so it always matches. Placing one in an
+article works exactly as an image does, and clicking it opens the scene full
+size with **Pause rotation** and **Reset view**.
+
+Models must be self-contained: one that links out to another server is refused,
+because opening the article would tell that server who was reading it.
+
+To change a diorama afterwards, click it to open the full-size view and press
+**Adjust camera & lights**, beside **Pause rotation** and **Reset view** — that
+is where the scene is big enough to judge what you are changing. The same form
+comes back with the model already loaded and every setting as you left it, and
+the scene behind it re-aims as soon as you save. The button appears only if you
+may manage that diorama. It is also reachable from the **▧ Image** library in
+the editor, if you are already in there.
+
+Only the presentation changes; the geometry is never re-uploaded, and the
+gallery still is retaken from the new view so it cannot go on showing the old
+one.

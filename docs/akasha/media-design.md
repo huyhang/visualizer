@@ -1,10 +1,14 @@
-# Akasha image library
+# Akasha media library
 
-Akasha stores private raster images in a reusable library scoped to one world.
-The original bytes and generated variants live in GridFS. An article references
-them through stable ids in its flat `body`, `gallery`, and `profile_image`
-fields, so placement, captions, gallery order, and profile selection are part of
-normal article history.
+Akasha stores private raster images and voxel dioramas in one reusable library
+scoped to a world. Bytes live in GridFS; an article references them through
+stable ids in its flat `body`, `gallery`, and `profile_image` fields, so
+placement, captions, gallery order, and profile selection are part of normal
+article history.
+
+Both kinds are the same *asset* to the store — the sections below describe
+images first, because dioramas inherit almost all of it and the last section
+covers only what differs.
 
 ## Storage and processing
 
@@ -62,8 +66,9 @@ image references, and treats it as an ordinary infobox fact otherwise. Nothing
 is rejected for being inconsistent — a body image missing from the gallery still
 renders, an unattached profile choice is simply not shown — because the editor
 is what maintains the invariant and a stricter API would refuse documents that
-predate the feature. The
-editor can also attach an existing library image without inserting it in prose,
+predate the feature.
+
+The editor can also attach an existing library image without inserting it in prose,
 reorder attachments, and choose one attachment as `profile_image`. The profile
 is rendered above the infobox at its natural aspect ratio with a height cap and
 is excluded from the gallery grid at the bottom.
@@ -88,3 +93,85 @@ and leaves a visible placeholder. This scan is deliberately the source of truth:
 a separately maintained reference count could drift on the standalone MongoDB
 deployment, which has no multi-document transaction joining an article update
 to media metadata.
+
+## Voxel dioramas
+
+A diorama is a library entry like an image: same world scoping, same grants,
+same reference scan guarding deletion, same storage accounting. What differs is
+what it holds — a `.glb` and an optional poster — and that it carries a
+presentation manifest the reader can edit without touching the geometry.
+
+Sharing the library rather than sitting beside it is the whole design. A second
+store would have meant a second answer to who may upload, who may see, what
+blocks a delete and who is charged for the bytes; instead `assets.py` describes
+an asset generically and `media_store.py` never reads a fact it stores.
+
+### The gate
+
+`gltf.py` decides what may be stored, before anything reaches a renderer. Three
+questions, in order: is the file structurally what it claims (declared length
+equals the bytes present, chunks fit inside them, only the two chunk types glTF
+defines); does it reach outside itself (a `uri` on any buffer or image is
+refused, because a stored model that fetches when opened would report who read
+which article); and is it bounded (counts, texture sizes, and a vertex total
+summed from the accessors rather than believed from a header).
+
+Models needing extensions the viewer cannot honour — Draco, meshopt, basisu —
+are refused rather than rendered wrong: losing the geometry silently is a worse
+outcome than never loading.
+
+`tests/akasha/test_vendored_three.py` closes the loop the gate cannot see by
+loading a model through the actual vendored renderer and asserting three.js
+counts the same vertices the gate did. If those drifted, the caps would be
+guarding a different file from the one that renders.
+
+### Geometry and presentation
+
+Geometry is in the `.glb` and never changes; camera, rotation, and local lights
+live in a versioned manifest under the same record. Re-aiming is
+`PUT …/media/{id}/manifest` — a few numbers, not a multi-megabyte re-upload —
+and the model's measured facts are carried across untouched because they
+describe a file that did not change.
+
+The writer reaches it from the full-size view, beside Pause and Reset:
+**Adjust camera & lights** reopens the same form with the file input gone and
+every value as it was, and the scene behind the dialog re-aims on save rather
+than making the reader close and reopen to see the change. That placement is
+the point — the camera is what is being judged, and the lightbox is the only
+place the scene is large enough to judge it. The same button is in the image
+library dialog for anyone already in the editor. Saving sends the manifest *and a re-shot poster*, because
+moving the camera and retaking the still it was seen through are one act — the
+route accepts multipart for exactly that, and JSON for scripts that have no
+camera to photograph. The replaced poster's bytes are deleted once the record
+points at the new ones, so a swap does not quietly leave storage behind.
+
+Manifest values are refused rather than clamped. A form that turns a typed 250
+into 100 has told the writer their input was accepted when it was replaced.
+Azimuth is the exception and wraps, since 370° and 10° name the same camera.
+
+### The poster cannot go stale
+
+There is no GL in a Python process, so the server cannot render a preview. The
+editor captures one from the scene it has already drawn, at save time, through
+the camera the manifest describes — so the still and the manifest are made from
+each other and cannot fall out of step. A diorama without a poster is fine: the
+viewer simply builds the scene when it scrolls into view.
+
+### Contexts are rationed
+
+Every live scene holds a WebGL context and browsers cap those at roughly eight
+to sixteen, silently dropping the oldest past the limit. Viewers therefore mount
+on an `IntersectionObserver` and a pool of four retires the least recently seen
+scene, so a long article decides which figure goes quiet rather than the
+browser deciding for it. `dispose()` returns geometry, materials, textures,
+controls and the renderer; without it every reopened lightbox leaks a context
+and the symptom appears somewhere else on the page.
+
+### three.js is vendored
+
+`static/js/vendor/three/`, pinned at r180 with its licence, its README stating
+the one divergence (bare specifiers repointed at the files beside them), and a
+test that fails if an upgrade reintroduces a bare specifier or a remote URL.
+`three.core.min.js` is included because `three.module.min.js` imports it —
+omitting it 404s the entire JS entrypoint. The renderer is loaded by dynamic
+import, so an article with no diorama in it never fetches the runtime.

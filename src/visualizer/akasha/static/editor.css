@@ -575,3 +575,129 @@ del.d { background: var(--del-soft); color: var(--del); border-radius: 3px; padd
 .share-add { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center;
   border-top: 1px solid var(--border); padding-top: .9rem; }
 .share-add select { flex: 1; }
+
+/* voxel dioramas: a live scene where a figure's image would be */
+.article-diorama {
+  position: relative; display: block; width: 100%; aspect-ratio: 16 / 10;
+  border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  background: linear-gradient(var(--surface-3), var(--surface-2));
+}
+.article-diorama canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+.article-diorama canvas:active { cursor: grabbing; }
+/* The poster sits underneath and is covered once the scene is live, so a slow
+   model never shows an empty box. */
+.diorama-poster {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+}
+.article-diorama.is-live .diorama-poster { display: none; }
+.article-diorama.diorama-static::after,
+.article-diorama.diorama-failed::after {
+  content: "3D is unavailable here"; position: absolute; inset: auto 0 0 0;
+  padding: .35rem .5rem; font-size: .78rem; text-align: center;
+  color: var(--muted); background: var(--surface-2);
+}
+.article-diorama.diorama-static:has(.diorama-poster)::after { content: "Shown as a still"; }
+.diorama-expand {
+  position: absolute; top: .5rem; right: .5rem; z-index: 1;
+  width: 2rem; height: 2rem; padding: 0; line-height: 1;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); cursor: zoom-in;
+}
+.diorama-expand:hover { border-color: var(--accent); }
+.diorama-expand:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.lightbox-diorama { aspect-ratio: 16 / 9; max-height: 70vh; }
+.diorama-controls { display: flex; gap: .5rem; justify-content: center; margin-top: .6rem; }
+.diorama-description { margin: .6rem 0 0; font-size: .88rem; }
+
+/* the add-a-diorama form */
+.diorama-modal { max-width: min(96vw, 900px); }
+.diorama-dialog h3 { font-size: .95rem; margin: 1.1rem 0 .6rem; }
+.diorama-dialog textarea { width: 100%; font: inherit; }
+.field-help { display: block; margin-top: .25rem; font-size: .74rem; line-height: 1.35; }
+.diorama-slider-row { display: grid; grid-template-columns: 1fr auto; gap: .5rem; align-items: center; }
+.diorama-checkbox label { display: flex; align-items: center; gap: .4rem; font-weight: 600; }
+.diorama-preview { aspect-ratio: 16 / 10; margin-top: .3rem; }
+.diorama-note { margin: .4rem 0 0; font-size: .8rem; }
+
+.diorama-lights { display: flex; flex-direction: column; gap: .5rem; margin-bottom: .6rem; }
+.diorama-light-row {
+  display: grid; grid-template-columns: auto 1fr auto auto auto; gap: .5rem;
+  align-items: center; padding: .45rem; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--surface-2);
+}
+.diorama-xyz { display: flex; align-items: center; gap: .3rem; min-width: 0; }
+.diorama-xyz label { font-size: .72rem; color: var(--muted); margin: 0; }
+.diorama-xyz input { width: 4.2rem; }
+.diorama-light-row input[type="color"] { width: 2.4rem; height: 2rem; padding: 0; }
+.diorama-light-row input[type="number"] { width: 4.4rem; }
+@media (max-width: 640px) {
+  .diorama-light-row { grid-template-columns: 1fr 1fr; }
+  .diorama-xyz { grid-column: 1 / -1; }
+  .article-diorama { aspect-ratio: 4 / 3; }
+}
+.media-card.is-diorama { border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+.media-card.is-diorama::after {
+  content: "3D"; position: absolute; top: .3rem; right: .3rem;
+  padding: 0 .3rem; border-radius: 5px; font-size: .62rem; font-weight: 700;
+  background: var(--accent-soft); color: var(--accent-strong);
+}
+.media-card { position: relative; }
+.media-card-blank {
+  display: grid; place-items: center; width: 100%; aspect-ratio: 4 / 3;
+  border-radius: 7px; background: var(--surface-3); color: var(--muted);
+  font-size: .8rem; font-weight: 700;
+}
+
+/* the World Gallery: everything one world holds, and how to look after it */
+.gallery-filter {
+  display: inline-flex; align-items: center; gap: .4rem;
+  margin-bottom: 1rem; font-size: .85rem; color: var(--muted);
+}
+.world-gallery-body { display: grid; grid-template-columns: 1fr; gap: 1.2rem; }
+@media (min-width: 900px) {
+  .world-gallery-body { grid-template-columns: minmax(0, 1fr) 22rem; align-items: start; }
+  .world-gallery-detail { position: sticky; top: 1rem; }
+}
+.world-gallery-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: .8rem; align-content: start;
+}
+.world-gallery-card {
+  position: relative; display: flex; flex-direction: column; gap: .35rem;
+  min-width: 0; padding: .45rem; text-align: left; font-size: .78rem;
+  border: 2px solid transparent; border-radius: 10px;
+  background: var(--surface-2); color: var(--text);
+}
+.world-gallery-card:hover { border-color: var(--border); }
+.world-gallery-card.selected { border-color: var(--accent); background: var(--accent-soft); }
+.world-gallery-card:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.world-gallery-card img {
+  width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 7px;
+}
+.world-gallery-card.is-diorama::before {
+  content: "3D"; position: absolute; top: .6rem; right: .6rem; z-index: 1;
+  padding: 0 .3rem; border-radius: 5px; font-size: .62rem; font-weight: 700;
+  background: var(--accent-soft); color: var(--accent-strong);
+}
+.world-gallery-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.world-gallery-meta { color: var(--muted); font-size: .72rem; }
+.world-gallery-unused {
+  align-self: flex-start; padding: 0 .35rem; border-radius: 5px;
+  font-size: .66rem; font-weight: 700; text-transform: uppercase;
+  background: var(--surface-3); color: var(--muted);
+}
+.world-gallery-detail-inner {
+  padding: 1rem; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface-2);
+}
+.world-gallery-facts {
+  display: grid; grid-template-columns: auto 1fr; gap: .25rem .7rem;
+  margin: 0 0 .9rem; font-size: .8rem;
+}
+.world-gallery-facts dt { color: var(--muted); }
+.world-gallery-facts dd { margin: 0; }
+.world-gallery-detail-inner input[type="text"] { width: 100%; }
+.world-gallery-actions {
+  display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .9rem;
+}

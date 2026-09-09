@@ -8,12 +8,17 @@ import os
 
 from pymongo import MongoClient
 
+from .gltf import GlbLimits
+from .image_processing import ImageProcessor
+
 DEFAULT_MONGO_URI = "mongodb://mongo:27017"
 DEFAULT_VERSIONS_KEEP = 20
 DEFAULT_MAX_IMAGE_BYTES = 20 * 1024 * 1024
 DEFAULT_MAX_IMAGE_PIXELS = 40_000_000
 DEFAULT_IMAGE_DISPLAY_MAX_PX = 2048
 DEFAULT_IMAGE_THUMBNAIL_MAX_PX = 360
+DEFAULT_MAX_MODEL_BYTES = 24 * 1024 * 1024
+DEFAULT_MAX_VERTICES = 2_000_000
 # In-memory rate-limit storage suits a single process; point this at Redis
 # (e.g. "redis://redis:6379") to share limits across multiple gunicorn workers.
 DEFAULT_RATELIMIT_STORAGE_URI = "memory://"
@@ -88,6 +93,29 @@ def get_image_display_max_px() -> int:
 def get_image_thumbnail_max_px() -> int:
     return _positive_int(
         "AKASHA_IMAGE_THUMBNAIL_MAX_PX", DEFAULT_IMAGE_THUMBNAIL_MAX_PX
+    )
+
+
+def get_image_processor() -> ImageProcessor:
+    """The image pipeline, sized from the environment."""
+    return ImageProcessor(
+        get_max_image_bytes(),
+        get_max_image_pixels(),
+        get_image_display_max_px(),
+        get_image_thumbnail_max_px(),
+    )
+
+
+def get_glb_limits() -> GlbLimits:
+    """Caps on a stored diorama, read once and injected into the processor.
+
+    Only the two an operator plausibly wants to move are environment-backed;
+    the structural counts are defended by the code that renders them, not by
+    deployment policy.
+    """
+    return GlbLimits(
+        max_bytes=_positive_int("AKASHA_MAX_MODEL_BYTES", DEFAULT_MAX_MODEL_BYTES),
+        max_vertices=_positive_int("AKASHA_MAX_MODEL_VERTICES", DEFAULT_MAX_VERTICES),
     )
 
 

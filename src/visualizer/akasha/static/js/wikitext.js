@@ -97,10 +97,16 @@ export function renderWikitext(text) {
 export async function hydrateImages(container, { resolveMedia, onOpenImage }) {
   if (!resolveMedia) return;
   const figures = Array.from(container.querySelectorAll("figure.article-image"));
+  const mounted = [];
   await Promise.all(figures.map(async (figure) => {
     const button = figure.querySelector(".article-image-open");
+    const caption = () => figure.querySelector("figcaption")?.textContent || "";
     try {
       const media = await resolveMedia(button.dataset.mediaId);
+      if (media.kind === "diorama") {
+        mounted.push(await _hydrateDiorama(figure, button, media, onOpenImage));
+        return;
+      }
       const image = document.createElement("img");
       image.src = media.display_url;
       image.alt = media.alt;
@@ -109,7 +115,7 @@ export async function hydrateImages(container, { resolveMedia, onOpenImage }) {
       button.textContent = "";
       button.appendChild(image);
       button.addEventListener("click", () => {
-        if (onOpenImage) onOpenImage(media, figure.querySelector("figcaption")?.textContent || "");
+        if (onOpenImage) onOpenImage(media, caption());
       });
     } catch (error) {
       button.disabled = true;
@@ -117,6 +123,40 @@ export async function hydrateImages(container, { resolveMedia, onOpenImage }) {
       figure.classList.add("image-missing");
     }
   }));
+  // Callers that re-render a container (the editor preview does, on every
+  // keystroke) must be able to give the contexts back.
+  return { dispose: () => mounted.forEach((handle) => handle?.dispose?.()) };
+}
+
+// A diorama replaces the button rather than filling it: dragging to orbit
+// inside a control that also means "open" fights itself, so the scene gets the
+// surface and a corner control opens the full-size view.
+async function _hydrateDiorama(figure, button, media, onOpenImage) {
+  const { mountDiorama } = await import("./diorama-viewer.js");
+  const host = document.createElement("div");
+  host.className = "article-diorama";
+  host.setAttribute("role", "img");
+  host.setAttribute("aria-label", media.alt);
+  button.replaceWith(host);
+  figure.classList.add("is-diorama");
+
+  const open = document.createElement("button");
+  open.type = "button";
+  open.className = "diorama-expand";
+  open.title = "Open full size";
+  open.setAttribute("aria-label", "Open this diorama full size");
+  open.textContent = "⤢";
+  open.addEventListener("click", () => {
+    if (onOpenImage) onOpenImage(media, figure.querySelector("figcaption")?.textContent || "");
+  });
+  host.appendChild(open);
+
+  return mountDiorama(host, {
+    modelUrl: media.model_url,
+    posterUrl: media.poster_url,
+    manifest: media.manifest || {},
+    onError: () => { figure.classList.add("image-missing"); },
+  });
 }
 
 export async function renderInto(container, text, options) {

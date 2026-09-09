@@ -1,5 +1,6 @@
 """HTTP boundary for Akasha's authenticated, world-scoped media library."""
 
+import json
 from io import BytesIO
 
 from flask import jsonify, request, send_file, url_for
@@ -7,13 +8,22 @@ from flask_login import current_user, login_required
 
 from visualizer.auth import DELETE, READ, WRITE, Forbidden, is_allowed
 
-from .errors import ImageTooLarge, InvalidImage, MediaInUse, MediaNotFound
+from .assets import DIORAMA
+from .errors import (
+    ImageTooLarge,
+    InvalidDiorama,
+    InvalidImage,
+    MediaInUse,
+    MediaNotFound,
+)
 from .media_service import MediaService
 from .routing import flag_arg, reject_reserved
 
 _MEDIA = "/databases/<database>/media"
 _MEDIA_ITEM = _MEDIA + "/<media_id>"
-_VARIANTS = ("original", "display", "thumbnail")
+# Every variant name any kind can carry. An image has the first three, a
+# diorama the last two; the content route serves whichever a record holds.
+_VARIANTS = ("original", "display", "thumbnail", "model", "poster")
 
 
 def register_media_routes(app, service: MediaService, auth_store, csrf) -> None:
@@ -53,13 +63,7 @@ def register_media_routes(app, service: MediaService, auth_store, csrf) -> None:
             raise ImageTooLarge(
                 f"An image upload is at most {service.processor.max_bytes} bytes."
             )
-        collection = request.form.get("collection", "").strip()
-        article = request.form.get("article", "").strip()
-        if not collection or not article:
-            raise InvalidImage("An article context is required for an upload.")
-        grants = auth_store.grants_for(current_user.username)
-        if not is_allowed(grants, WRITE, database, collection, article):
-            raise Forbidden("You do not have 'write' permission on this article.")
+        _require_article_write(auth_store, database)
         upload = request.files.get("file")
         if upload is None:
             raise InvalidImage("Choose an image to upload.")
@@ -72,6 +76,56 @@ def register_media_routes(app, service: MediaService, auth_store, csrf) -> None:
             request.form.get("alt"),
         )
         return jsonify(_present(record, database, can_manage=True)), 201
+
+    @app.post(_MEDIA + "/dioramas")
+    @csrf.exempt
+    @login_required
+    def upload_diorama(database):
+        reject_reserved(database)
+        _require_article_write(auth_store, database)
+        model = request.files.get("model")
+        if model is None:
+            raise InvalidDiorama("Choose a model to upload.")
+        cap = service.dioramas.max_bytes if service.dioramas else 0
+        data = model.stream.read(cap + 1)
+        poster = request.files.get("poster")
+        record = service.upload_diorama(
+            database,
+            current_user.username,
+            model.filename,
+            data,
+            request.form.get("alt"),
+            _manifest_field(),
+            poster.stream.read(service.processor.max_bytes + 1) if poster else None,
+        )
+        return jsonify(_present(record, database, can_manage=True)), 201
+
+    @app.put(_MEDIA_ITEM + "/manifest")
+    @csrf.exempt
+    @login_required
+    def replace_manifest(database, media_id):
+        """Re-aim a camera without touching the geometry it looks at.
+
+        Two shapes, because there are two callers. A script sends JSON and
+        changes only the numbers. The editor sends multipart and includes a
+        freshly captured poster, because it has just moved the camera the old
+        poster was taken through.
+        """
+        reject_reserved(database)
+        record = service.store.get(database, media_id)
+        _require_manager(auth_store, database, record)
+        poster = None
+        if request.files:
+            payload = _manifest_field()
+            upload = request.files.get("poster")
+            if upload is not None:
+                poster = upload.stream.read(service.processor.max_bytes + 1)
+        else:
+            payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            raise InvalidDiorama("Provide the manifest as a JSON object.")
+        updated = service.update_manifest(database, media_id, payload, poster)
+        return jsonify(_present(updated, database, can_manage=True))
 
     @app.get(_MEDIA_ITEM)
     @login_required
@@ -106,8 +160,10 @@ def register_media_routes(app, service: MediaService, auth_store, csrf) -> None:
         try:
             references = service.delete(database, media_id, force=flag_arg("force"))
         except MediaInUse as error:
+            # The library holds two kinds; say which one is being refused.
+            noun = "diorama" if record.get("kind") == DIORAMA else "image"
             raise MediaInUse(
-                "This image is still used by an article or retained revision.",
+                f"This {noun} is still used by an article or retained revision.",
                 _readable_references(auth_store, database, error.references),
             ) from None
         return jsonify(
@@ -148,10 +204,41 @@ def register_media_routes(app, service: MediaService, auth_store, csrf) -> None:
         return response
 
 
+def _require_article_write(auth_store, database: str) -> None:
+    """Every upload is made *for* an article, and needs write access to it.
+
+    Shared by images and dioramas: one rule, one place, so the two upload paths
+    cannot drift into two different answers about who may add to a library.
+    """
+    collection = request.form.get("collection", "").strip()
+    article = request.form.get("article", "").strip()
+    if not collection or not article:
+        raise InvalidImage("An article context is required for an upload.")
+    grants = auth_store.grants_for(current_user.username)
+    if not is_allowed(grants, WRITE, database, collection, article):
+        raise Forbidden("You do not have 'write' permission on this article.")
+
+
+def _manifest_field() -> dict:
+    """The presentation manifest, sent as a JSON field beside the binaries."""
+    raw = request.form.get("manifest")
+    if not raw:
+        return {}
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise InvalidDiorama("The presentation manifest is not valid JSON.") from exc
+    if not isinstance(payload, dict):
+        raise InvalidDiorama("The presentation manifest must be an object.")
+    return payload
+
+
 def _present(record: dict, database: str, can_manage: bool) -> dict:
     presented = dict(record)
     presented["can_manage"] = can_manage
-    for variant in _VARIANTS:
+    # Only the variants this record actually holds: a diorama has no thumbnail
+    # and an image has no model, and a URL for either would be a dead link.
+    for variant in record.get("variants", {}):
         presented[f"{variant}_url"] = url_for(
             "media_content", database=database, media_id=record["id"], variant=variant
         )

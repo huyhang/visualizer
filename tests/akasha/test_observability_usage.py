@@ -225,7 +225,7 @@ def test_the_sweep_charges_gridfs_media_to_its_uploader():
     processed = ImageProcessor(100_000, 100_000, 20, 10).process(
         raw.getvalue(), "portrait.jpg"
     )
-    MediaStore(client).create("world", "devi", "A portrait", processed)
+    MediaStore(client).create("world", "devi", "A portrait", processed.as_asset())
 
     media = [
         doc for doc in MongoDocumentSource(client).documents()

@@ -89,7 +89,8 @@ export const api = {
     request("GET", docPath(db, col, id) + `/diff?from=${from}&to=${to}`),
   restore: (db, col, id, rev) => request("POST", docPath(db, col, id) + `/restore/${rev}`),
 
-  listMedia: (db) => request("GET", `/databases/${enc(db)}/media`),
+  listMedia: (db, { orphans = false } = {}) =>
+    request("GET", `/databases/${enc(db)}/media${orphans ? "?orphans=1" : ""}`),
   getMedia: (db, id) => request("GET", `/databases/${enc(db)}/media/${enc(id)}`),
   uploadMedia: (db, col, id, file, alt) => {
     const form = new FormData();
@@ -98,6 +99,26 @@ export const api = {
     form.append("alt", alt);
     form.append("file", file);
     return request("POST", `/databases/${enc(db)}/media`, { form });
+  },
+  uploadDiorama: (db, col, id, { model, poster, alt, manifest }) => {
+    const form = new FormData();
+    form.append("collection", col);
+    form.append("article", id);
+    form.append("alt", alt);
+    form.append("manifest", JSON.stringify(manifest));
+    form.append("model", model);
+    if (poster) form.append("poster", poster, "poster.webp");
+    return request("POST", `/databases/${enc(db)}/media/dioramas`, { form });
+  },
+  // With a poster this goes as multipart, because re-aiming the camera and
+  // re-shooting the still it is seen through are one act, not two.
+  updateManifest: (db, id, manifest, poster = null) => {
+    const url = `/databases/${enc(db)}/media/${enc(id)}/manifest`;
+    if (!poster) return request("PUT", url, { body: manifest });
+    const form = new FormData();
+    form.append("manifest", JSON.stringify(manifest));
+    form.append("poster", poster, "poster.webp");
+    return request("PUT", url, { form });
   },
   updateMedia: (db, id, alt) =>
     request("PATCH", `/databases/${enc(db)}/media/${enc(id)}`, { body: { alt } }),

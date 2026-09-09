@@ -2,7 +2,7 @@
 // this component owns only order, caption, and profile selection.
 
 import { clear, el, toast } from "./dom.js";
-import { resolveMedia } from "./media.js";
+import { assetPreview, resolveMedia } from "./media.js";
 
 export function createGalleryEditor({ db, gallery, profileImage, onChoose, canDetach }) {
   return new GalleryEditor(db, gallery, profileImage, onChoose, canDetach);
@@ -71,7 +71,9 @@ class GalleryEditor {
     ]);
     resolveMedia(this.db, item.media_id).then((media) => {
       clear(preview);
-      preview.appendChild(el("img", { src: media.thumbnail_url, alt: media.alt, loading: "lazy" }));
+      // Not `media.thumbnail_url`: a diorama has none, and reaching for it
+      // yields `<img src="undefined">` -- a broken icon beside correct alt text.
+      preview.appendChild(assetPreview(media));
     }).catch(() => {
       preview.textContent = "Unavailable";
       preview.classList.add("image-missing");

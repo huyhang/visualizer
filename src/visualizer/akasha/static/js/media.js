@@ -44,6 +44,91 @@ export function insertImageDirective(area, placement, existing = null) {
   area.dispatchEvent(new Event("input"));
 }
 
+/**
+ * A node that previews a library asset, whatever kind it is.
+ *
+ * An image has a thumbnail. A diorama has a poster if one was captured and
+ * nothing at all if one was not -- so asking any of these for `thumbnail_url`
+ * and trusting the answer produces `<img src="undefined">`, which is the broken
+ * icon that sent me here. Three places needed this; they share it now.
+ */
+export function previewSource(item) {
+  return item?.thumbnail_url || item?.poster_url || null;
+}
+
+export function assetPreview(item, { className = "" } = {}) {
+  const source = previewSource(item);
+  if (source) {
+    return el("img", {
+      class: className || null, src: source, alt: item.alt || "", loading: "lazy",
+    });
+  }
+  return el("span", {
+    class: `media-card-blank${className ? " " + className : ""}`,
+    text: "3D",
+    title: `${item.filename} has no still; open it to see the scene`,
+  });
+}
+
+/** "image" or "diorama" -- the library holds both, so nothing says one. */
+export function assetNoun(item) {
+  return item?.kind === "diorama" ? "diorama" : "image";
+}
+
+/**
+ * Delete a library asset, asking first if an article still shows it.
+ *
+ * Shared by the library dialog and the World Gallery. Both need the same three
+ * behaviours -- the 409, the list of what would break, and the force path --
+ * and writing them twice is how two places end up disagreeing about whether a
+ * forced delete was confirmed.
+ */
+export async function deleteAsset(db, item, { onDeleted } = {}, force = false) {
+  const noun = assetNoun(item);
+  try {
+    await api.deleteMedia(db, item.id, force);
+    mediaCache.delete(`${db}/${item.id}`);
+    toast(`The ${noun} was deleted.`);
+    if (onDeleted) onDeleted(item);
+    return true;
+  } catch (error) {
+    if (error.status === 409 && !force) {
+      _confirmForceDelete(db, item, error.body?.references || [], onDeleted);
+    } else {
+      toast(error.message || `Could not delete the ${noun}.`, true);
+    }
+    return false;
+  }
+}
+
+function _confirmForceDelete(db, item, references, onDeleted) {
+  const noun = assetNoun(item);
+  const explanation = references.length
+    ? "Deleting it will leave a placeholder in these article versions:"
+    : `This ${noun} is used by an article version you cannot view. Deleting it `
+      + "will leave a placeholder there.";
+  const list = references.length
+    ? el("ul", {}, references.slice(0, 8).map((ref) => el("li", {
+        text: `${ref.collection} / ${ref.article}, revision ${ref.revision}`
+            + `${ref.current ? " (current)" : ""}`,
+      })))
+    : null;
+  modal({
+    title: `Delete a ${noun} that is still used?`,
+    body: el("div", {}, [el("p", { text: explanation }), list]),
+    actions: [
+      { label: `Keep ${noun}`, variant: "secondary" },
+      {
+        label: "Force delete",
+        variant: "danger",
+        onClick: async (close) => {
+          if (await deleteAsset(db, item, { onDeleted }, true)) close();
+        },
+      },
+    ],
+  });
+}
+
 export function openImageLibrary(area, scope, { beforeUpload, onAttach, attachOnly = false } = {}) {
   new MediaLibraryDialog(area, scope, beforeUpload, onAttach, attachOnly).open();
 }
@@ -90,7 +175,11 @@ class MediaLibraryDialog {
     this.manageAlt = el("input", { type: "text", placeholder: "Alternative text" });
     this.manageStatus = el("span", { class: "muted media-upload-status" });
     this.saveAlt = el("button", { type: "button", class: "btn sm secondary", text: "Save alt text" });
-    this.remove = el("button", { type: "button", class: "btn sm danger", text: "Delete image" });
+    this.adjust = el("button", {
+      type: "button", class: "btn sm secondary", text: "Adjust camera & lights",
+      title: "Re-aim this diorama without re-uploading it",
+    });
+    this.remove = el("button", { type: "button", class: "btn sm danger", text: "Delete" });
     this.manage = this._manageSection();
     this._wireControls();
   }
@@ -106,6 +195,7 @@ class MediaLibraryDialog {
     this.width.addEventListener("input", () => this._showWidth());
     this.align.addEventListener("change", () => this._showWidth());
     this.saveAlt.addEventListener("click", () => this._saveAlt());
+    this.adjust.addEventListener("click", () => this._adjust());
     this.remove.addEventListener("click", () => this._delete());
     this._showWidth();
   }
@@ -140,9 +230,10 @@ class MediaLibraryDialog {
 
   _manageSection() {
     return el("section", { class: "media-manage", hidden: "hidden" }, [
-      el("h3", { text: "Selected image" }),
+      el("h3", { text: "Selected item" }),
       el("div", { class: "field" }, [el("label", { text: "Alternative text" }), this.manageAlt]),
-      el("div", { class: "media-upload-action" }, [this.saveAlt, this.remove, this.manageStatus]),
+      el("div", { class: "media-upload-action" },
+        [this.saveAlt, this.adjust, this.remove, this.manageStatus]),
     ]);
   }
 
@@ -163,7 +254,7 @@ class MediaLibraryDialog {
     } catch (error) {
       clear(this.grid);
       this.grid.appendChild(el("p", {
-        class: "form-error", text: error.message || "Could not load images.",
+        class: "form-error", text: error.message || "Could not load this world's library.",
       }));
     }
   }
@@ -172,7 +263,7 @@ class MediaLibraryDialog {
     clear(this.grid);
     this.manage.hidden = true;
     if (!this.items.length) {
-      this.grid.appendChild(el("p", { class: "muted", text: "No images are available yet." }));
+      this.grid.appendChild(el("p", { class: "muted", text: "Nothing in this world's library yet." }));
       return;
     }
     this.items.forEach((item) => this.grid.appendChild(this._card(item)));
@@ -184,10 +275,11 @@ class MediaLibraryDialog {
     rememberMedia(item);
     const card = el("button", {
       type: "button",
-      class: `media-card${item.id === this.selected ? " selected" : ""}`,
+      class: `media-card${item.id === this.selected ? " selected" : ""}`
+           + `${item.kind === "diorama" ? " is-diorama" : ""}`,
       onclick: () => this._select(item, card),
     }, [
-      el("img", { src: item.thumbnail_url, alt: "", loading: "lazy" }),
+      assetPreview(item),
       el("span", { text: item.alt }),
     ]);
     return card;
@@ -202,11 +294,31 @@ class MediaLibraryDialog {
 
   _showManaged(item) {
     this.manage.hidden = false;
+    this.remove.textContent = `Delete ${assetNoun(item)}`;
     this.manageAlt.value = item.alt;
     this.manageAlt.disabled = !item.can_manage;
     this.saveAlt.hidden = !item.can_manage;
     this.remove.hidden = !item.can_manage;
-    this.manageStatus.textContent = `${item.filename} · uploaded by ${item.uploader}`;
+    // Only a diorama has a camera to move.
+    this.adjust.hidden = !item.can_manage || item.kind !== "diorama";
+    const measure = item.kind === "diorama"
+      ? `${item.model?.vertices?.toLocaleString() ?? "?"} vertices`
+      : `${item.width}×${item.height}`;
+    this.manageStatus.textContent =
+      `${item.filename} · ${measure} · uploaded by ${item.uploader}`;
+  }
+
+  async _adjust() {
+    const item = this.items.find((entry) => entry.id === this.selected);
+    if (!item) return;
+    const { openDioramaEditor } = await import("./diorama-form.js");
+    openDioramaEditor(this.scope, item, {
+      onSaved: (updated) => {
+        rememberMedia(updated);
+        this.items = this.items.map((e) => (e.id === updated.id ? updated : e));
+        this._paint();
+      },
+    });
   }
 
   async _upload(button) {
@@ -249,39 +361,15 @@ class MediaLibraryDialog {
     } catch (error) { toast(error.message || "Could not update the image.", true); }
   }
 
-  async _delete(force = false) {
-    if (!this.selected) return false;
-    try {
-      await api.deleteMedia(this.scope.db, this.selected, force);
-      mediaCache.delete(`${this.scope.db}/${this.selected}`);
-      this.items = this.items.filter((item) => item.id !== this.selected);
-      this.selected = null;
-      this._paint();
-      toast("Image deleted.");
-      return true;
-    } catch (error) {
-      if (error.status === 409 && !force) this._confirmForceDelete(error.body?.references || []);
-      else toast(error.message || "Could not delete the image.", true);
-      return false;
-    }
-  }
-
-  _confirmForceDelete(references) {
-    const explanation = references.length
-      ? "Deleting it will leave a placeholder in these article versions:"
-      : "This image is used by an article version you cannot view. Deleting it will leave a placeholder there.";
-    const list = references.length ? el("ul", {}, references.slice(0, 8).map((ref) => el("li", {
-      text: `${ref.collection} / ${ref.article}, revision ${ref.revision}${ref.current ? " (current)" : ""}`,
-    }))) : null;
-    modal({
-      title: "Delete an image that is still used?",
-      body: el("div", {}, [el("p", { text: explanation }), list]),
-      actions: [
-        { label: "Keep image", variant: "secondary" },
-        { label: "Force delete", variant: "danger", onClick: async (close) => {
-            if (await this._delete(true)) close();
-          } },
-      ],
+  async _delete() {
+    const item = this.items.find((entry) => entry.id === this.selected);
+    if (!item) return;
+    await deleteAsset(this.scope.db, item, {
+      onDeleted: () => {
+        this.items = this.items.filter((entry) => entry.id !== item.id);
+        this.selected = null;
+        this._paint();
+      },
     });
   }
 
@@ -301,6 +389,7 @@ class MediaLibraryDialog {
 }
 
 export function openImageLightbox(media, caption) {
+  if (media.kind === "diorama") return openDioramaLightbox(media, caption);
   const image = el("img", {
     src: media.original_url,
     alt: media.alt,
@@ -317,5 +406,89 @@ export function openImageLightbox(media, caption) {
     body: figure,
     actions: [{ label: "Close", variant: "secondary" }],
     className: "image-lightbox",
+  });
+}
+
+// The diorama at full size: the same scene, given room, with the two controls
+// that are only useful once it is large -- stop the turn to look at one face,
+// and get back to the framing the writer chose after orbiting away from it.
+export function openDioramaLightbox(media, caption) {
+  const host = el("div", { class: "article-diorama lightbox-diorama" });
+  let manifest = media.manifest || {};
+  let handle = null;
+  let turning = manifest.auto_rotate !== false;
+
+  const pause = el("button", {
+    type: "button", class: "btn sm secondary",
+    text: turning ? "Pause rotation" : "Resume rotation",
+    onclick: () => {
+      turning = !turning;
+      handle?.stage?.setAutoRotate(turning);
+      pause.textContent = turning ? "Pause rotation" : "Resume rotation";
+    },
+  });
+  const reset = el("button", {
+    type: "button", class: "btn sm secondary", text: "Reset view",
+    onclick: () => handle?.stage?.reset(),
+  });
+
+  const description = el("p", {
+    class: "muted diorama-description", hidden: manifest.description ? null : "hidden",
+    text: manifest.description || "",
+  });
+  const controls = el("div", { class: "diorama-controls" }, [pause, reset]);
+  const figure = el("figure", { class: "lightbox-figure" }, [
+    host,
+    controls,
+    caption ? el("figcaption", { text: caption }) : null,
+    description,
+  ]);
+
+  // Adjusting belongs here rather than only in the editor: this is the one
+  // place the scene is big enough to judge, and the camera is the thing being
+  // judged. Shown only to someone who could actually save the change.
+  if (media.can_manage) {
+    controls.appendChild(el("button", {
+      type: "button", class: "btn sm secondary", text: "Adjust camera & lights",
+      title: "Re-aim this diorama without re-uploading it",
+      onclick: async () => {
+        const { openDioramaEditor } = await import("./diorama-form.js");
+        openDioramaEditor({ db: media.world }, { ...media, manifest }, {
+          onSaved: (updated) => {
+            rememberMedia(updated);
+            manifest = updated.manifest || {};
+            // Re-aim the scene already on screen rather than making the reader
+            // close and reopen to see what they just changed.
+            handle?.stage?.reaim(manifest);
+            turning = manifest.auto_rotate !== false;
+            pause.textContent = turning ? "Pause rotation" : "Resume rotation";
+            description.textContent = manifest.description || "";
+            description.hidden = !manifest.description;
+            const heading = figure.closest(".modal")?.querySelector(".modal-title");
+            if (heading) heading.textContent = manifest.title || updated.filename;
+          },
+        });
+      },
+    }));
+  }
+
+  modal({
+    title: manifest.title || media.filename,
+    body: figure,
+    actions: [{ label: "Close", variant: "secondary" }],
+    className: "image-lightbox",
+    // Give the context back on close. Without this every open leaks one, and
+    // the browser starts blanking the oldest scene on the page behind it.
+    onClose: () => handle?.dispose(),
+  });
+
+  import("./diorama-viewer.js").then(({ mountDiorama }) => {
+    handle = mountDiorama(host, {
+      modelUrl: media.model_url,
+      posterUrl: media.poster_url,
+      manifest,
+      onError: (error) => toast(error.message || "The model could not be loaded.", true),
+    });
+    handle.wake();
   });
 }

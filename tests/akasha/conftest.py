@@ -12,9 +12,9 @@ import pytest
 from werkzeug.security import generate_password_hash
 
 from visualizer.akasha.app import create_app
+from visualizer.akasha.gltf import GlbLimits
 from visualizer.akasha.image_processing import ImageProcessor
-from visualizer.akasha.media_service import ArticleMediaReferences, MediaService
-from visualizer.akasha.media_store import MediaStore
+from visualizer.akasha.media_service import build_media_service
 from visualizer.akasha.store import DocumentStore
 from visualizer.auth import AuthStore
 
@@ -59,15 +59,15 @@ def auth_store(mongo_client):
 
 @pytest.fixture
 def media_service(mongo_client):
-    return MediaService(
-        MediaStore(mongo_client),
+    return build_media_service(
+        mongo_client,
         ImageProcessor(
             max_bytes=1024 * 1024,
             max_pixels=1_000_000,
             display_max_px=512,
             thumbnail_max_px=96,
         ),
-        ArticleMediaReferences(mongo_client),
+        GlbLimits(max_bytes=1024 * 1024),
     )
 
 

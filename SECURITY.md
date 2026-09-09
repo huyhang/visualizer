@@ -128,6 +128,21 @@ this doc and the code disagree, trust the code and fix the doc.
   published to everyone who can read the article. Colour-critical records (ICC
   profiles, JFIF density) are kept deliberately.
 
+- **3D models are read before they are stored, and never fetch anything.** A
+  `.glb` must be structurally honest — its declared length must equal the bytes
+  received, chunks must fit inside them, and only the two chunk types glTF
+  defines are allowed — and entirely self-contained: a `uri` on any buffer or
+  image is refused outright, `data:` included. That is the load-bearing rule.
+  A stored model that fetched when opened would tell a third party who read
+  which article, and a `data:` payload would carry content past the chunk walk
+  that checks everything else. Counts, texture dimensions and a vertex total
+  summed from the accessors are capped; embedded textures are bounds-checked
+  inside the binary chunk before Pillow decodes their headers; models requiring
+  extensions the viewer cannot render are refused rather than rendered wrong
+  (`akasha/gltf.py`). three.js is vendored rather than loaded from a CDN for the
+  same reason, and `tests/akasha/test_vendored_three.py` fails if an upgrade
+  reintroduces a remote import.
+
 ### Output handling (XSS)
 
 - **Wikitext is sanitized by construction.** The renderer HTML-escapes all

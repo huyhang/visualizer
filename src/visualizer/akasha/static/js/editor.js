@@ -8,7 +8,8 @@ import { splitArticle, assembleArticle, parseFactValue, factValueToInput } from 
 import { hydrateImages, renderWikitext } from "./wikitext.js";
 import { attachLinkPicker } from "./linkpicker.js";
 import { localDiff, renderDiff } from "./diffview.js";
-import { openImageLibrary, openImageLightbox, resolveMedia } from "./media.js";
+import { openDioramaDialog } from "./diorama-form.js";
+import { openImageLibrary, openImageLightbox, rememberMedia, resolveMedia } from "./media.js";
 import { createGalleryEditor } from "./gallery.js";
 import { imageIds } from "./image-format.js";
 
@@ -48,6 +49,12 @@ export function renderEditor(container, ctx, handlers) {
     _tbBtn("▧ Image", () => openImageLibrary(bodyArea, { db, col, id }, {
       beforeUpload: handlers.onBeforeImageUpload,
       onAttach: attachImage,
+    })),
+    _tbBtn("◳ Diorama", () => openDioramaDialog({ db, col, id }, {
+      beforeUpload: handlers.onBeforeImageUpload,
+      // A diorama joins the library like any other attachment, so it lands in
+      // the gallery and can then be placed in the prose exactly as an image is.
+      onAdded: (media) => { rememberMedia(media); attachImage(media.id, ""); },
     })),
     _tbBtn("👁 Preview", () => togglePreview()),
   ]);

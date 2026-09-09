@@ -299,6 +299,82 @@
         }
       }
     },
+    "/databases/{database}/media/dioramas": {
+      "post": {
+        "tags": ["media"],
+        "summary": "Upload a voxel diorama to a world's library",
+        "description": "A `.glb` and, optionally, a still poster to show before the scene is running.\n\nThe model is read before it is stored: the header's declared length must match the bytes that arrived, chunk types are an allowlist, counts and textures are capped, the vertex total is summed from the accessors rather than believed, and **any `uri` on a buffer or image is refused** — a stored model must not fetch from anywhere when opened. Models requiring extensions the viewer cannot honour (Draco, meshopt, basisu) are refused rather than rendered wrong.\n\nThe poster goes through the ordinary image pipeline, so it is content-sniffed, capped and stripped of metadata like any other upload. Writers capture it from the editor's live preview, which is why it cannot fall out of step with the manifest it ships beside.",
+        "parameters": [
+          {"$ref": "#/components/parameters/Database"}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["collection", "article", "alt", "model", "manifest"],
+                "properties": {
+                  "collection": {"type": "string"},
+                  "article": {"type": "string"},
+                  "alt": {"type": "string", "maxLength": 300},
+                  "model": {"type": "string", "format": "binary", "description": "A glTF binary (.glb)."},
+                  "poster": {"type": "string", "format": "binary", "description": "Optional still shown before the scene loads."},
+                  "manifest": {"type": "string", "description": "The presentation manifest as a JSON string; see DioramaManifest."}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Stored.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Media"}}}
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "413": {"$ref": "#/components/responses/BadRequest"}
+        }
+      }
+    },
+    "/databases/{database}/media/{media_id}/manifest": {
+      "put": {
+        "tags": ["media"],
+        "summary": "Re-aim a diorama without re-uploading it",
+        "description": "Replaces the presentation manifest. The model's measured facts are carried across untouched: they describe a file, and the file has not changed. This is the whole reason presentation is kept apart from geometry — moving a camera should not cost a multi-megabyte upload. Refused with 400 on an entry that is not a diorama.\n\nTwo request shapes, because there are two callers. **JSON** changes only the numbers, which is what a script wants. **Multipart** carries the manifest as a `manifest` field plus a freshly captured `poster`, which is what the editor sends: it has just moved the camera the existing poster was taken through, and a still of a viewpoint that no longer exists is worse than none. The replaced poster's bytes are deleted once the record points at the new ones.",
+        "parameters": [
+          {"$ref": "#/components/parameters/Database"},
+          {"$ref": "#/components/parameters/MediaId"}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {"schema": {"$ref": "#/components/schemas/DioramaManifest"}},
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["manifest"],
+                "properties": {
+                  "manifest": {"type": "string", "description": "The manifest as a JSON string; see DioramaManifest."},
+                  "poster": {"type": "string", "format": "binary", "description": "A still re-shot through the new camera."}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Re-aimed.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Media"}}}
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      }
+    },
     "/databases/{database}/media/{media_id}": {
       "get": {
         "tags": ["media"],
@@ -2192,23 +2268,103 @@
         }
       },
       "Media": {
+        "description": "A library entry. Both kinds carry the same identity, ownership and variant machinery; what differs is the facts each reports and the variants each holds. A `{variant}_url` is present only for a variant the entry actually has, so an image has no `model_url` and a diorama has no `thumbnail_url`.",
+        "oneOf": [
+          {"$ref": "#/components/schemas/MediaImage"},
+          {"$ref": "#/components/schemas/MediaDiorama"}
+        ]
+      },
+      "MediaCommon": {
         "type": "object",
-        "required": ["id", "world", "uploader", "filename", "alt", "format", "width", "height", "created_at", "can_manage", "original_url", "display_url", "thumbnail_url"],
+        "required": ["id", "world", "uploader", "kind", "filename", "alt", "created_at", "can_manage", "variants"],
         "properties": {
           "id": {"type": "string"},
           "world": {"type": "string"},
           "uploader": {"type": "string"},
+          "kind": {"type": "string", "enum": ["image", "diorama"]},
           "filename": {"type": "string"},
           "alt": {"type": "string"},
-          "format": {"type": "string", "enum": ["JPEG", "PNG", "WEBP"]},
-          "width": {"type": "integer"},
-          "height": {"type": "integer"},
           "created_at": {"type": "string", "format": "date-time"},
           "can_manage": {"type": "boolean"},
-          "variants": {"type": "object"},
-          "original_url": {"type": "string"},
-          "display_url": {"type": "string"},
-          "thumbnail_url": {"type": "string"}
+          "variants": {"type": "object"}
+        }
+      },
+      "MediaImage": {
+        "allOf": [
+          {"$ref": "#/components/schemas/MediaCommon"},
+          {
+            "type": "object",
+            "required": ["format", "width", "height", "original_url", "display_url", "thumbnail_url"],
+            "properties": {
+              "kind": {"type": "string", "enum": ["image"]},
+              "format": {"type": "string", "enum": ["JPEG", "PNG", "WEBP"]},
+              "width": {"type": "integer"},
+              "height": {"type": "integer"},
+              "original_url": {"type": "string"},
+              "display_url": {"type": "string"},
+              "thumbnail_url": {"type": "string"}
+            }
+          }
+        ]
+      },
+      "MediaDiorama": {
+        "allOf": [
+          {"$ref": "#/components/schemas/MediaCommon"},
+          {
+            "type": "object",
+            "required": ["model", "manifest", "model_url"],
+            "properties": {
+              "kind": {"type": "string", "enum": ["diorama"]},
+              "model": {
+                "type": "object",
+                "description": "Measured from the uploaded file, never edited. Replacing the manifest carries these across unchanged.",
+                "properties": {
+                  "vertices": {"type": "integer"},
+                  "nodes": {"type": "integer"},
+                  "meshes": {"type": "integer"},
+                  "materials": {"type": "integer"},
+                  "primitives": {"type": "integer"},
+                  "textures": {"type": "integer"},
+                  "bytes": {"type": "integer"},
+                  "extensions": {"type": "array", "items": {"type": "string"}}
+                }
+              },
+              "manifest": {"$ref": "#/components/schemas/DioramaManifest"},
+              "model_url": {"type": "string"},
+              "poster_url": {"type": "string", "description": "Absent when no poster was supplied."}
+            }
+          }
+        ]
+      },
+      "DioramaManifest": {
+        "type": "object",
+        "description": "How a diorama is shown, kept apart from what it is made of so the camera can move without the geometry being re-uploaded. Values out of range are **refused, not clamped** — a form that silently replaces a typed value has told the writer it was accepted. Azimuth is the exception: it wraps, because 370° and 10° name the same camera.",
+        "required": ["title"],
+        "properties": {
+          "schema_version": {"type": "integer", "enum": [1]},
+          "title": {"type": "string", "maxLength": 120},
+          "description": {"type": "string", "maxLength": 1000},
+          "camera_azimuth": {"type": "integer", "description": "Degrees, wrapped into 0-359. Default 35."},
+          "camera_elevation": {"type": "integer", "minimum": -89, "maximum": 89, "description": "Default 25. The poles are excluded: straight down loses the camera's up-vector."},
+          "rotation_speed": {"type": "number", "minimum": 0, "maximum": 30, "description": "Degrees per second. Default 6."},
+          "auto_rotate": {"type": "boolean", "description": "Default true. Honoured alongside prefers-reduced-motion."},
+          "lights": {
+            "type": "array",
+            "maxItems": 8,
+            "description": "Local lanterns. The scene already has a sun; directional lights are excluded because a second sun flattens the shadows the scene is lit for.",
+            "items": {
+              "type": "object",
+              "required": ["type"],
+              "properties": {
+                "type": {"type": "string", "enum": ["point", "spot"]},
+                "x": {"type": "number", "minimum": -1000, "maximum": 1000},
+                "y": {"type": "number", "minimum": -1000, "maximum": 1000},
+                "z": {"type": "number", "minimum": -1000, "maximum": 1000},
+                "color": {"type": "string", "pattern": "^#[0-9a-f]{6}$"},
+                "intensity": {"type": "number", "minimum": 0, "maximum": 20}
+              }
+            }
+          }
         }
       },
       "Document": {

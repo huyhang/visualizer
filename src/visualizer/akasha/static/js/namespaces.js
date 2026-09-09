@@ -105,6 +105,11 @@ export async function mountCollections(container, database, handlers) {
     grid,
   ]));
   actions.appendChild(el("button", {
+    class: "btn sm secondary", type: "button", text: "World Gallery",
+    title: "Every image and diorama in this world",
+    onclick: () => handlers.onGallery(database),
+  }));
+  actions.appendChild(el("button", {
     class: "btn sm", type: "button", text: `＋ New ${T.collection.one}`,
     onclick: () => handlers.onCreate(database),
   }));

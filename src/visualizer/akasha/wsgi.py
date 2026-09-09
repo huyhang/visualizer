@@ -16,11 +16,9 @@ from .app import create_app
 from .config import (
     get_akasha_url,
     get_chronos_url,
-    get_image_display_max_px,
-    get_image_thumbnail_max_px,
+    get_glb_limits,
+    get_image_processor,
     get_logos_url,
-    get_max_image_bytes,
-    get_max_image_pixels,
     get_mongo_client,
     get_prithvi_url,
     get_rate_limit_storage_uri,
@@ -28,9 +26,7 @@ from .config import (
     get_secure_cookies,
     get_versions_keep,
 )
-from .image_processing import ImageProcessor
-from .media_service import ArticleMediaReferences, MediaService
-from .media_store import MediaStore
+from .media_service import build_media_service
 from .store import DocumentStore
 
 _client = get_mongo_client()
@@ -65,15 +61,8 @@ app = create_app(
     prithvi_url=get_prithvi_url(),
     logos_url=get_logos_url(),
     observability=_observability,
-    media_service=MediaService(
-        MediaStore(_client),
-        ImageProcessor(
-            get_max_image_bytes(),
-            get_max_image_pixels(),
-            get_image_display_max_px(),
-            get_image_thumbnail_max_px(),
-        ),
-        ArticleMediaReferences(_client),
+    media_service=build_media_service(
+        _client, get_image_processor(), get_glb_limits()
     ),
 )
 

@@ -20,8 +20,15 @@ _JS_DIR = Path(__file__).resolve().parents[2] / "src" / "visualizer" / "akasha" 
 
 # `import { a, b } from "./x.js";` and `import "./x.js";`
 _IMPORT = re.compile(r"""import\s+(?:(?P<names>\{[^}]*\})\s+from\s+)?["'](?P<from>[^"']+)["']""")
+# `await import("./x.js")`. A dynamic import is a real edge -- the diorama
+# viewer is loaded this way so an article with no 3D in it never fetches the
+# renderer -- and a checker blind to it calls the target an orphan.
+_DYNAMIC_IMPORT = re.compile(r"""import\s*\(\s*["'](?P<from>[^"']+)["']""")
 # `$` and `$$` are valid identifiers, and dom.js exports both.
 _EXPORT = re.compile(r"""export\s+(?:async\s+)?(?:function|class|const|let|var)\s+(?P<name>[\w$]+)""")
+# `export { A, B as C };` -- how the vendored three.js addons publish their
+# names. Without this every import from them looks unresolved.
+_EXPORT_LIST = re.compile(r"""export\s*\{(?P<names>[^}]*)\}\s*(?!from)""")
 
 # Modules allowed to write HTML directly, each because it *is* the escaping
 # layer for its own output rather than a view pasting a title into the page:
@@ -54,12 +61,20 @@ def _modules():
 
 
 def _exports(path: Path) -> set[str]:
-    return set(_EXPORT.findall(path.read_text()))
+    text = path.read_text()
+    names = set(_EXPORT.findall(text))
+    for group in _EXPORT_LIST.findall(text):
+        for entry in group.split(","):
+            parts = entry.strip().split(" as ")
+            if parts[-1].strip():
+                names.add(parts[-1].strip())
+    return names
 
 
 def _imports(path: Path):
     """Yield (target_module_path, imported_names) for each relative import."""
-    for match in _IMPORT.finditer(path.read_text()):
+    text = path.read_text()
+    for match in _IMPORT.finditer(text):
         target = match.group("from")
         if not target.startswith("."):
             continue  # no bare/bundler specifiers in this project
@@ -68,6 +83,10 @@ def _imports(path: Path):
             _target(path, target),
             [n.split(" as ")[0].strip() for n in names.strip("{}").split(",") if n.strip()],
         )
+    for match in _DYNAMIC_IMPORT.finditer(text):
+        target = match.group("from")
+        if target.startswith("."):
+            yield (_target(path, target), [])
 
 
 @pytest.mark.parametrize("module", _modules() + _shared_modules(), ids=lambda p: p.name)

@@ -1,4 +1,9 @@
-"""MongoDB/GridFS persistence for Akasha's world-scoped media library."""
+"""MongoDB/GridFS persistence for Akasha's world-scoped media library.
+
+Holds *assets*: images and dioramas alike. What distinguishes them lives in
+``assets.py`` and in each kind's own module; nothing here reads a fact it
+stores, which is why a new kind costs this file nothing.
+"""
 
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -6,8 +11,8 @@ from uuid import uuid4
 
 import gridfs
 
+from .assets import IMAGE, Asset
 from .errors import MediaNotFound
-from .image_processing import ProcessedImage
 
 MEDIA_DB = "_akasha_media"
 MEDIA_COLLECTION = "media"
@@ -34,46 +39,41 @@ class MediaStore:
         self._clock = clock or _default_clock
         self._id_factory = id_factory or (lambda: uuid4().hex)
 
-    def create(
-        self, world: str, uploader: str, alt: str, image: ProcessedImage
-    ) -> dict:
+    def create(self, world: str, uploader: str, alt: str, asset: Asset) -> dict:
         media_id = self._id_factory()
         blobs: dict[str, object] = {}
         by_digest: dict[str, object] = {}
         try:
-            for name in ("original", "display", "thumbnail"):
-                variant = getattr(image, name)
-                # A derivative may *be* the original: the processor declines to
-                # build one that would cost more bytes than it saves. Store
-                # those bytes once and point both variants at the same file.
-                if variant.sha256 not in by_digest:
-                    by_digest[variant.sha256] = self._files.put(
-                        variant.data,
-                        filename=image.filename,
-                        content_type=variant.mime_type,
+            for name, blob in asset.variants.items():
+                # Two variants may be the same bytes: the image processor
+                # declines a derivative that would cost more than it saves, and
+                # a diorama's poster is one file however many places show it.
+                if blob.sha256 not in by_digest:
+                    by_digest[blob.sha256] = self._files.put(
+                        blob.data,
+                        filename=asset.filename,
+                        content_type=blob.mime_type,
                         metadata={"media_id": media_id, "variant": name},
                     )
-                blobs[name] = by_digest[variant.sha256]
+                blobs[name] = by_digest[blob.sha256]
             record = {
                 "_id": media_id,
                 "world": world,
                 "uploader": uploader,
-                "filename": image.filename,
+                "kind": asset.kind,
+                "filename": asset.filename,
                 "alt": alt,
-                "format": image.format,
-                "width": image.width,
-                "height": image.height,
+                "facts": dict(asset.facts),
                 "created_at": self._clock().isoformat(),
                 "variants": {
                     name: {
                         "file_id": blobs[name],
-                        "mime_type": getattr(image, name).mime_type,
-                        "width": getattr(image, name).width,
-                        "height": getattr(image, name).height,
-                        "bytes": len(getattr(image, name).data),
-                        "sha256": getattr(image, name).sha256,
+                        "mime_type": blob.mime_type,
+                        "bytes": len(blob.data),
+                        "sha256": blob.sha256,
+                        "facts": dict(blob.facts),
                     }
-                    for name in blobs
+                    for name, blob in asset.variants.items()
                 },
             }
             self._records.insert_one(record)
@@ -82,6 +82,52 @@ class MediaStore:
                 self._files.delete(file_id)
             raise
         return self._public(record)
+
+    def replace_variant(self, world: str, media_id: str, name: str, blob) -> dict:
+        """Swap one variant's bytes, keeping the rest of the record.
+
+        Used when a diorama is re-aimed: the poster has to be retaken or it
+        would go on showing a camera angle that no longer exists.
+        """
+        record = self._record(world, media_id)
+        variants = record.get("variants", {})
+        previous = variants.get(name, {}).get("file_id")
+        file_id = self._files.put(
+            blob.data,
+            filename=record["filename"],
+            content_type=blob.mime_type,
+            metadata={"media_id": media_id, "variant": name},
+        )
+        variants[name] = {
+            "file_id": file_id,
+            "mime_type": blob.mime_type,
+            "bytes": len(blob.data),
+            "sha256": blob.sha256,
+            "facts": dict(blob.facts),
+        }
+        self._records.update_one(
+            {"_id": media_id, "world": world}, {"$set": {"variants": variants}}
+        )
+        # Only after the record points elsewhere, and only if nothing else
+        # still points at it -- variants may share one file.
+        still_used = any(
+            details.get("file_id") == previous for details in variants.values()
+        )
+        if previous is not None and not still_used:
+            try:
+                self._files.delete(previous)
+            except gridfs.errors.NoFile:
+                pass
+        return self.get(world, media_id)
+
+    def update_facts(self, world: str, media_id: str, facts: dict) -> dict:
+        """Replace an asset's kind-level facts -- a diorama's manifest, edited."""
+        result = self._records.update_one(
+            {"_id": media_id, "world": world}, {"$set": {"facts": dict(facts)}}
+        )
+        if result.matched_count == 0:
+            raise MediaNotFound(f"Image '{media_id}' does not exist in '{world}'.")
+        return self.get(world, media_id)
 
     def list(self, world: str) -> list[dict]:
         return [
@@ -131,19 +177,38 @@ class MediaStore:
 
     @staticmethod
     def _public(record: dict) -> dict:
-        variants = record.get("variants", {})
+        """The API view. Kind facts are spread to the top level rather than
+        nested, so an image keeps reporting `format`/`width`/`height` exactly
+        where it always did and a diorama adds its own alongside."""
         return {
             "id": record["_id"],
             "world": record["world"],
             "uploader": record["uploader"],
+            "kind": record.get("kind", IMAGE),
             "filename": record["filename"],
             "alt": record["alt"],
-            "format": record["format"],
-            "width": record["width"],
-            "height": record["height"],
             "created_at": record["created_at"],
+            **_facts(record, ("format", "width", "height")),
             "variants": {
-                name: {key: value for key, value in details.items() if key != "file_id"}
-                for name, details in variants.items()
+                name: {
+                    "mime_type": details.get("mime_type"),
+                    "bytes": details.get("bytes"),
+                    "sha256": details.get("sha256"),
+                    **_facts(details, ("width", "height")),
+                }
+                for name, details in record.get("variants", {}).items()
             },
         }
+
+
+def _facts(document: dict, legacy_keys: tuple[str, ...]) -> dict:
+    """This document's facts, whichever shape it was written in.
+
+    Records predating the diorama work keep their facts at the top level rather
+    than under ``facts``. Both are read so an existing library keeps rendering
+    without a migration; only the newer shape is ever written.
+    """
+    facts = document.get("facts")
+    if isinstance(facts, dict):
+        return dict(facts)
+    return {key: document[key] for key in legacy_keys if key in document}

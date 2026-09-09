@@ -120,6 +120,18 @@ class MediaNotFound(AkashaError):
     status_code = 404
 
 
+class InvalidDiorama(AkashaError):
+    """Raised when an upload is not a glTF binary Akasha will store and render."""
+
+    status_code = 400
+
+
+class DioramaTooLarge(AkashaError):
+    """Raised when a model's bytes, counts or textures exceed the caps."""
+
+    status_code = 413
+
+
 class MediaInUse(AkashaError):
     """Raised when deleting media would break an article or retained revision."""
 

@@ -34,6 +34,10 @@ import {
 } from "./create.js";
 
 const SEARCH_ROUTE = "_search";
+// Reserved at the top level like the search route, and safe there for the
+// same reason: a world whose name starts with "_" is rejected outright, so
+// this can never shadow one.
+const GALLERY_ROUTE = "_gallery";
 
 const pane = $("#pane");
 const sidebar = $("#sidebar");
@@ -56,6 +60,7 @@ const toCollection = (db, col, query) => {
 };
 const toArticle = (t) => go(`#/${enc(t.db)}/${enc(t.col)}/${enc(t.id)}`);
 const toSearch = () => go(`#/${SEARCH_ROUTE}`);
+const toGallery = (db) => go(`#/${GALLERY_ROUTE}/${enc(db)}`);
 
 function parseHash() {
   return location.hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
@@ -73,6 +78,7 @@ const browseHandlers = {
   onDatabase: toDatabase,
   onCollection: toCollection,
   onArticle: (t) => toArticle(t),
+  onGallery: toGallery,
   onCreate: (db, col) => (db ? newArticle({ db, col }) : newDatabase()),
   onDeleteDatabase: (db) => confirmDeleteDatabase(db, {
     onDeleted: () => { browser.load(); toHome(); },
@@ -90,6 +96,11 @@ async function route() {
     // Keep the scope we arrived with, so the form opens on the collection you
     // were just reading rather than making you choose it again.
     return mountSearch(pane, scope, browseHandlers);
+  }
+  if (parts[0] === GALLERY_ROUTE && parts[1]) {
+    browser.setActive("");
+    const { mountWorldGallery } = await import("./world-gallery.js");
+    return mountWorldGallery(pane, parts[1], browseHandlers);
   }
   scope = { db: parts[0], col: parts[1], id: parts[2] };
 

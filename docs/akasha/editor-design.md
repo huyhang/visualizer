@@ -307,8 +307,24 @@ view (so a body diff reads as formatted prose, Wikipedia-style).
 - A hidden **"Advanced"** toggle reveals a raw flat-field editor for power users;
   it edits the same document through the same validation/OCC/versioning path.
 - Small ES modules, one responsibility each: `api.js`, `browser.js`,
-  `viewer.js`, `editor.js`, `gallery.js`, `media.js`, `links.js`, `wikitext.js`,
-  `history.js`, `theme.js`.
+  `viewer.js`, `editor.js`, `gallery.js`, `media.js`, `world-gallery.js`,
+  `links.js`, `wikitext.js`, `history.js`, `theme.js`. The 3D pieces
+  (`diorama-viewer.js`, `diorama-form.js`) and the World Gallery are reached by
+  *dynamic* import, so a reader who opens an article with no 3D in it never
+  fetches the renderer.
+
+### The World Gallery
+
+A fifth route, `#/_gallery/{world}`, reached from the world page. Reserved at
+the top level like `#/_search`, and safe there for the same reason: a world
+whose name begins with `_` is rejected outright, so the prefix can never shadow
+one.
+
+It exists because the library is world-scoped but every door into it was inside
+one arbitrary article's edit mode. Uploading stays there — an upload is made
+*for* an article and is authorised against it — while everything afterwards
+(what is held, what it costs, what nothing points at, what should go) is a
+property of the world and belongs on the world's own page.
 
 ### Browsing: a route per level
 

@@ -151,7 +151,7 @@ def test_shared_variant_bytes_are_stored_once(mongo_client):
     processed = ImageProcessor(1_000_000, 1_000_000, 2048, 360).process(
         _already_optimal_png(), "dot.png"
     )
-    store.create("earth", "mara", "Keep", processed)
+    store.create("earth", "mara", "Keep", processed.as_asset())
     files = list(mongo_client["_akasha_media"]["blobs.files"].find())
     assert len(files) < 3
     for variant in ("original", "display", "thumbnail"):
@@ -237,7 +237,7 @@ def test_gridfs_store_round_trip_and_delete():
         clock=lambda: datetime(2026, 1, 1, tzinfo=UTC),
         id_factory=lambda: IMAGE_ID,
     )
-    created = store.create(DB, "alice", "A map", image)
+    created = store.create(DB, "alice", "A map", image.as_asset())
     assert created["id"] == IMAGE_ID
     assert created["created_at"] == "2026-01-01T00:00:00+00:00"
     assert "file_id" not in created["variants"]["original"]
@@ -550,3 +550,33 @@ def test_a_portrait_photo_hangs_the_same_way_up_in_every_variant():
     archived = Image.open(BytesIO(processed.original.data))
     assert archived.getexif().get(274) == 6
     assert archived.getexif().get(271) is None
+
+
+def test_a_record_written_before_dioramas_still_reads(mongo_client):
+    """The live library predates the `kind`/`facts` shape. Both are read; only
+    the newer one is written, so an existing world needs no migration."""
+    legacy = {
+        "_id": IMAGE_ID,
+        "world": "earth",
+        "uploader": "mara",
+        "filename": "corwin.png",
+        "alt": "Corwin's profile",
+        "format": "PNG",
+        "width": 900,
+        "height": 600,
+        "created_at": "2026-09-08T21:08:57.653336+00:00",
+        "variants": {
+            "display": {
+                "file_id": "f1", "mime_type": "image/png",
+                "width": 900, "height": 600, "bytes": 9709, "sha256": "abc",
+            }
+        },
+    }
+    mongo_client["_akasha_media"]["media"].insert_one(dict(legacy))
+
+    public = MediaStore(mongo_client).get("earth", IMAGE_ID)
+    assert public["kind"] == "image"          # defaulted, not stored
+    assert (public["format"], public["width"], public["height"]) == ("PNG", 900, 600)
+    assert public["variants"]["display"]["width"] == 900
+    assert public["variants"]["display"]["bytes"] == 9709
+    assert "file_id" not in public["variants"]["display"]

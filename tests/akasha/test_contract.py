@@ -298,3 +298,60 @@ def test_live_errors_conform(schema_doc, seeded, method, url, status):
 def test_an_unauthenticated_call_is_documented_as_401(schema_doc, anon_client):
     resp = anon_client.get("/databases")
     assert resp.status_code == 401
+
+
+def _glb_bytes(vertices=120):
+    """The smallest model the gate accepts."""
+    import struct
+
+    document = {
+        "asset": {"version": "2.0"},
+        "accessors": [{"count": vertices, "type": "VEC3", "componentType": 5126}],
+        "meshes": [{"primitives": [{"attributes": {"POSITION": 0}}]}],
+        "nodes": [{"mesh": 0}],
+        "materials": [{"name": "stone"}],
+    }
+    raw = json.dumps(document).encode()
+    raw += b" " * (-len(raw) % 4)
+    body = struct.pack("<II", len(raw), 0x4E4F534A) + raw
+    return struct.pack("<4sII", b"glTF", 2, 12 + len(body)) + body
+
+
+def test_live_image_and_diorama_responses_both_conform(schema_doc, seeded):
+    """Route coverage only proves the paths are documented. `Media` is a union
+    of two shapes, so both have to be checked against it or half the schema is
+    decoration."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    picture = BytesIO()
+    Image.new("RGB", (12, 9)).save(picture, "PNG")
+    picture.seek(0)
+    image = seeded.post(f"/databases/{DB}/media", data={
+        "collection": COL, "article": "aragorn", "alt": "A map",
+        "file": (picture, "map.png"),
+    })
+    assert image.status_code == 201
+    _validator(schema_doc, "Media").validate(image.get_json())
+    _validator(schema_doc, "MediaImage").validate(image.get_json())
+
+    diorama = seeded.post(f"/databases/{DB}/media/dioramas", data={
+        "collection": COL, "article": "aragorn", "alt": "A keep",
+        "manifest": json.dumps({"title": "Highkeep"}),
+        "model": (BytesIO(_glb_bytes()), "keep.glb"),
+    })
+    assert diorama.status_code == 201
+    _validator(schema_doc, "Media").validate(diorama.get_json())
+    _validator(schema_doc, "MediaDiorama").validate(diorama.get_json())
+
+    # ...and the union discriminates, or it is only decorating the spec.
+    assert not _validator(schema_doc, "MediaImage").is_valid(diorama.get_json())
+    assert not _validator(schema_doc, "MediaDiorama").is_valid(image.get_json())
+
+    aimed = seeded.put(
+        f"/databases/{DB}/media/{diorama.get_json()['id']}/manifest",
+        json={"title": "Highkeep", "camera_azimuth": 120},
+    )
+    assert aimed.status_code == 200
+    _validator(schema_doc, "MediaDiorama").validate(aimed.get_json())

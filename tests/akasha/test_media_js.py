@@ -221,3 +221,29 @@ def test_a_crafted_placement_cannot_break_out_of_an_attribute(run_js):
     # ...and nothing of it reached an attribute.
     assert "onerror" not in tags
     assert tags.count('"') % 2 == 0  # every attribute quote is still paired
+
+
+def test_a_diorama_previews_from_its_poster_not_a_thumbnail(run_js):
+    """The library holds two kinds and only one of them has a thumbnail.
+
+    Reaching for `thumbnail_url` on a diorama yields `undefined`, which the
+    browser renders as a broken-image icon beside perfectly correct alt text --
+    which is exactly what the article gallery was showing.
+    """
+    result = run_js(
+        "emit({\n"
+        "  image: previewSource({thumbnail_url: '/t', poster_url: null}),\n"
+        "  diorama: previewSource({poster_url: '/p'}),\n"
+        "  posterless: previewSource({model_url: '/m'}),\n"
+        "  nothing: previewSource(null),\n"
+        "});",
+        "previewSource",
+    )
+    assert result == {
+        "image": "/t",
+        "diorama": "/p",
+        # No still was captured: the caller shows a placeholder rather than
+        # setting src to undefined.
+        "posterless": None,
+        "nothing": None,
+    }
