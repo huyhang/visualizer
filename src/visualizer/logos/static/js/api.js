@@ -1,6 +1,5 @@
-// The Logos API as the reader uses it. Manuscript prose remains read-only;
-// writes below affect only the current account's reader layer or publication
-// settings a writer is allowed to change.
+// The Logos API used by the reader and writing workspace. Every manuscript
+// mutation carries the revision the browser actually read.
 //
 // There is no write here and no `If-Match`, because there is nothing this page
 // can change. `BASE` comes from the template's `request.script_root`, so one
@@ -61,16 +60,49 @@ const json = (method, path, body, revision = null, options = {}) => request(path
 
 const volumePath = (book, volume) =>
   `/books/${enc(book)}/volumes/${enc(volume)}`;
+const sectionPath = (book, volume, section) =>
+  `${volumePath(book, volume)}/sections/${enc(section)}`;
+const draftPath = (book, volume, section, draft) =>
+  `${sectionPath(book, volume, section)}/drafts/${enc(draft)}`;
 
 export const api = {
   books: () => get("/books"),
   manuscript: (book) => get(`/books/${enc(book)}`),
+  createVolume: (book, volume, body) => json(
+    "POST", `/books/${enc(book)}/volumes/${enc(volume)}`, body,
+  ),
+  createSection: (book, volume, section, body) => json(
+    "POST", `${volumePath(book, volume)}/sections/${enc(section)}`, body,
+  ),
   section: (book, volume, section) =>
-    get(`${volumePath(book, volume)}/sections/${enc(section)}`),
+    get(sectionPath(book, volume, section)),
+  updateSection: (book, volume, section, body, revision) =>
+    json("PUT", sectionPath(book, volume, section), body, revision),
+  updateSectionMetadata: (book, volume, section, body, revision) =>
+    json("PUT", `${sectionPath(book, volume, section)}/metadata`, body, revision),
+  drafts: (book, volume, section) =>
+    get(`${sectionPath(book, volume, section)}/drafts`),
+  draft: (book, volume, section, draft) =>
+    get(draftPath(book, volume, section, draft)),
+  createDraft: (book, volume, section, body) =>
+    json("POST", `${sectionPath(book, volume, section)}/drafts`, body),
+  saveDraft: (book, volume, section, draft, body, revision, keepalive = false) =>
+    json("PUT", draftPath(book, volume, section, draft), body, revision, { keepalive }),
+  deleteDraft: (book, volume, section, draft, revision) =>
+    json("DELETE", draftPath(book, volume, section, draft), undefined, revision),
+  makePrimary: (book, volume, section, draft, sectionRevision) =>
+    json("PUT", `${sectionPath(book, volume, section)}/primary-draft`,
+      { draft }, sectionRevision),
+  entities: (book, query) => get(
+    `/books/${enc(book)}/ui/entities?${new URLSearchParams({ q: query })}`,
+  ),
+  writingReview: (book, document, dialect = "en-US") => json(
+    "POST", `/books/${enc(book)}/ui/writing-review`, { document, dialect },
+  ),
   // Full View only. Focused never reaches this, which is what makes "no
   // entities from any other service" a property of the network trace.
   scenes: (book, volume, section) =>
-    get(`${volumePath(book, volume)}/sections/${enc(section)}/ui/scenes`),
+    get(`${sectionPath(book, volume, section)}/ui/scenes`),
   search: (book, query, offset = 0) => get(
     `/books/${enc(book)}/search?${new URLSearchParams({ q: query, offset })}`,
   ),

@@ -29,6 +29,8 @@ from visualizer.akasha.media_store import (
 from visualizer.auth.store import DATABASE_RESOURCE
 from visualizer.chronos.store import CHRONOS_DB
 from visualizer.logos.store import (
+    DRAFT_REVISIONS,
+    DRAFTS,
     EXPORT_JOBS,
     LOGOS_DB,
     OUTLINE_REVISIONS,
@@ -291,6 +293,7 @@ class MongoDocumentSource:
             (OUTLINES, OUTLINE_REVISIONS),
             (VOLUMES, VOLUME_REVISIONS),
             (SECTIONS, SECTION_REVISIONS),
+            (DRAFTS, DRAFT_REVISIONS),
             (PUBLICATIONS, PUBLICATION_REVISIONS),
         ):
             yield from _rejoined_by_book(database[heads], database[revisions])

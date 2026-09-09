@@ -47,11 +47,13 @@ import {
   removeItem,
   replaceItem,
 } from "./readerdata.js";
+import { beginWriting, mountWriter, writerUrl } from "./writer.js";
 
 const root = document.documentElement;
 const content = document.getElementById("content");
 const toolbar = document.getElementById("reader-toolbar");
 const modeButton = document.getElementById("mode-toggle");
+const writeButton = document.getElementById("write-open");
 const settings = document.getElementById("reading-settings");
 const progressRegion = document.getElementById("reading-progress");
 const progressMeter = document.getElementById("reading-progress-meter");
@@ -150,6 +152,8 @@ function percent(value) {
 function hideReaderChrome() {
   toolbar.hidden = true;
   progressRegion.hidden = true;
+  content.classList.remove("writer-content");
+  document.body.classList.remove("writer-active", "show-writer-outline", "show-writer-context");
   open = null;
 }
 
@@ -173,11 +177,18 @@ function bookCard(row) {
     ? `${row.volume_count} ${row.volume_count === 1 ? "volume" : "volumes"}`
     : "No manuscript yet";
   const heading = el("h2", { text: row.title || row.book });
-  return el("article", { class: `card${row.has_manuscript ? "" : " inert"}` }, [
+  const actionable = row.has_manuscript || row.permissions.write;
+  return el("article", { class: `card${actionable ? "" : " inert"}` }, [
     row.has_manuscript
       ? el("a", { class: "card-link", href: bookUrl(row.book) }, [heading])
       : heading,
     el("p", { class: "card-sub", text: row.book }),
+    !row.has_manuscript && row.permissions.write ? el("button", {
+      class: "btn sm", type: "button", text: "Start writing",
+      onclick: () => api.manuscript(row.book)
+        .then((manuscript) => beginWriting(manuscript, BASE))
+        .catch((error) => showTransientError(error.message || "The manuscript could not be started.")),
+    }) : null,
     el("p", { class: "card-meta", text: summary }),
     furthest ? continueLink(row.book, furthest) : null,
   ]);
@@ -194,7 +205,7 @@ function renderShelf(books) {
   );
   fill(content, [
     el("div", { class: "page-heading" }, [
-      el("p", { class: "eyebrow", text: "Read-only library" }),
+      el("p", { class: "eyebrow", text: "Manuscript library" }),
       el("h1", { text: "Manuscripts" }),
       el("p", { class: "lead", text: "Choose a book to browse its volumes and sections." }),
     ]),
@@ -265,6 +276,12 @@ function sectionRow(manuscript, volume, section, marks) {
           })
         : null,
     ]),
+    manuscript.permissions.write ? el("a", {
+      class: "section-edit-link",
+      href: writerUrl(BASE, manuscript.book, volume.id, section.id),
+      text: "Edit",
+      "aria-label": `Edit ${sectionName(section)}`,
+    }) : null,
   ]);
 }
 
@@ -459,10 +476,15 @@ function renderBook(manuscript, notice = null) {
           words(manuscript.word_count),
         ),
       }),
-      manuscript.volumes.length ? el("div", { class: "book-actions" }, [
-        el("button", { class: "btn ghost", type: "button", text: "Search series", onclick: openSearch }),
-        el("button", { class: "btn ghost", type: "button", text: "Bookmarks", onclick: () => openBookmarks().catch((error) => showTransientError(error.message)) }),
-        el("button", { class: "btn ghost", type: "button", text: "Publish series", onclick: openPublication }),
+      (manuscript.volumes.length || manuscript.permissions.write) ? el("div", { class: "book-actions" }, [
+        manuscript.permissions.write ? el("button", {
+          class: "btn", type: "button", text: "New chapter",
+          onclick: () => beginWriting(manuscript, BASE)
+            .catch((error) => showTransientError(error.message || "The chapter could not be created.")),
+        }) : null,
+        manuscript.volumes.length ? el("button", { class: "btn ghost", type: "button", text: "Search series", onclick: openSearch }) : null,
+        manuscript.volumes.length ? el("button", { class: "btn ghost", type: "button", text: "Bookmarks", onclick: () => openBookmarks().catch((error) => showTransientError(error.message)) }) : null,
+        manuscript.volumes.length ? el("button", { class: "btn ghost", type: "button", text: "Publish series", onclick: openPublication }) : null,
       ]) : null,
     ]),
     notice ? el("p", { class: "reader-notice", role: "status", text: notice }) : null,
@@ -531,6 +553,7 @@ function sectionPager(manuscript, volume, section) {
 function renderReader(manuscript, entry, section) {
   pageManuscript = manuscript;
   toolbar.hidden = false;
+  writeButton.hidden = !manuscript.permissions.write;
   progressRegion.hidden = false;
   document.title = `${sectionName(section)} — ${manuscript.title || manuscript.book}`;
   const proseNode = prose(section);
@@ -1299,6 +1322,15 @@ function update(patch) {
 }
 
 function wire() {
+  writeButton.addEventListener("click", () => {
+    if (!open) return;
+    const url = new URL(writerUrl(
+      BASE, open.manuscript.book, open.volume.id, open.section.id,
+    ), window.location.origin);
+    const anchor = blockSnapshot().block;
+    if (anchor) url.searchParams.set("block", anchor);
+    window.location.href = url.href;
+  });
   modeButton.addEventListener("click", () => {
     update({ mode: otherMode(preferences.mode) });
     if (showsChronos(preferences)) loadScenes().then(() => scheduleMeasure(false));
@@ -1405,6 +1437,26 @@ async function openSection(manuscript, entry) {
   const section = await api.section(
     manuscript.book, entry.volume.id, entry.section.id,
   );
+  const query = new URLSearchParams(window.location.search);
+  if (query.get("mode") === "write" && manuscript.permissions.write) {
+    hideReaderChrome();
+    document.body.classList.add("writer-active");
+    await mountWriter({
+      container: content,
+      manuscript,
+      entry,
+      section,
+      user: readerUser,
+      base: BASE,
+      akashaUrl: window.__AKASHA_URL__ || "/",
+      onDone: (block) => {
+        window.location.href = readerUrl(
+          manuscript.book, entry.volume.id, entry.section.id, block,
+        );
+      },
+    });
+    return;
+  }
   open = {
     manuscript,
     volume: entry.volume,

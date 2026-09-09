@@ -4,12 +4,41 @@ Logos is the manuscript service. A Chronos book is a novel series; Logos gives
 that series ordered, numbered volumes, and gives each volume an ordered sequence
 of prose sections.
 
-Manuscript writing is API-first and stays that way: there is no prose editor UI.
-The browser does let readers manage private notes, checklists and bookmarks,
-and lets writers manage publication settings. In the combined deployment Logos
+The browser provides a focused writing workspace as well as the existing reader.
+Writers can maintain named drafts, compare them, look up selected prose in
+Akasha, and use private local writing feedback. Readers can manage private
+notes, checklists and bookmarks, and writers can manage publication settings.
+In the combined deployment Logos
 is mounted at `/logos`: `/logos/`
 opens the library, and the paths in [`openapi.json`](openapi.json) are relative
 to that mount.
+
+## The writer
+
+Open a section and choose **Edit**. The desktop workspace places the manuscript
+outline beside a centered rich-text page and a collapsible Akasha/Writing Coach
+panel. On a phone those panels become drawers, the global navigation disappears
+temporarily, and the formatting bar stays above the software keyboard. **Done**
+returns to the same passage in the reader.
+
+Selecting prose offers an Akasha lookup. Results are permission-filtered,
+prefer the Chronos book's world, and can be opened or stored as a structured
+`mention` without changing the selected wording. The Writing Coach uses only
+local deterministic rules; it sends no prose to an external service. Its
+injected advisor interface leaves room for a separately configured opt-in AI
+implementation later.
+
+Each section has one or more named drafts and exactly one primary draft. New
+drafts clone an existing draft, retaining stable block ids so the comparison
+view can align paragraphs. Only the primary appears in the reader, manuscript
+search and exports. Saving one alternative therefore cannot accidentally alter
+the published manuscript.
+
+Typing is recovered in two layers: a local IndexedDB copy is written promptly,
+then the complete validated draft is autosaved with its last-read revision.
+Offline edits remain local and retry when connectivity returns. A concurrent
+change is never overwritten; the writer can preserve the local copy as a new
+named recovery draft.
 
 ## The reader
 
@@ -182,7 +211,8 @@ structure around it.
 
 ## Editing and recovery
 
-`PUT` replaces a whole volume or section. There is no paragraph-level write.
+`PUT` replaces a whole volume, section or draft. There is no paragraph-level
+write. The browser autosaves complete drafts through the same guarded API.
 
 **Every mutation of an existing resource requires `If-Match`**, carrying the
 revision from its last read; without one the request is refused with

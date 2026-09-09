@@ -16,15 +16,19 @@ from .errors import (
     BookNotFound,
     CascadeRequired,
     ChronosEventNotFound,
+    InvalidSection,
     ManuscriptNotFound,
+    PrimaryDraftConflict,
     RevisionConflict,
     RevisionNotRetained,
     SectionKindInUse,
     SectionNotFound,
     VolumeNotFound,
 )
-from .models import Outline, Section, Volume
+from .models import Draft, Outline, Section, Volume
 from .presenters import (
+    present_draft,
+    present_draft_revision,
     present_manuscript,
     present_section,
     present_section_revision,
@@ -35,8 +39,11 @@ from .richtext import article_refs, word_count
 from .search import search_projection
 from .validation import (
     SINGLETON_SECTION_KINDS,
+    validate_draft_payload,
     validate_identifier,
+    validate_new_draft,
     validate_order,
+    validate_primary_draft,
     validate_section_payload,
     validate_volume_payload,
 )
@@ -97,10 +104,20 @@ class _Service:
     def _ordered_sections(self, book: str, volume_record: dict) -> list[dict]:
         volume = Volume.from_storage(volume_record)
         by_id = {
-            row["section"]: row
+            row["section"]: self._with_primary_document(row)
             for row in self.store.list_sections(book, volume.id)
         }
         return [by_id[key] for key in volume.sections if key in by_id]
+
+    def _with_primary_document(self, record: dict) -> dict:
+        """Resolve the live primary while legacy section reads remain compatible."""
+        draft_id = record.get("primary_draft_id")
+        if not draft_id:
+            return record
+        draft = self.store.find_draft(
+            record["book"], record["volume"], record["section"], draft_id
+        )
+        return {**record, "document": draft["document"]} if draft else record
 
     def _volume_number(self, book: str, volume_id: str) -> int:
         ordered = [row["volume"] for row in self._ordered_volumes(book)]
@@ -285,7 +302,9 @@ class ManuscriptService(_Service):
         """Progress across a whole book, and every reference that no longer lands."""
         self._book(book)
         volumes = self._ordered_volumes(book)
-        sections = self.store.list_sections(book)
+        sections = [
+            self._with_primary_document(row) for row in self.store.list_sections(book)
+        ]
         by_id = {row["section"]: row for row in sections}
         missing = self._missing_refs(
             [ref for row in sections for ref in article_refs(row["document"])]
@@ -434,6 +453,17 @@ class VolumeService(_Service):
         # Prose first, then the volume, then its place in the order. Stopping
         # part-way always leaves the volume reachable so the delete can be retried.
         for section in sections:
+            for draft in self.store.list_drafts(
+                book, volume_id, section["section"]
+            ):
+                self.store.delete_draft(
+                    book,
+                    volume_id,
+                    section["section"],
+                    draft["draft"],
+                    draft["rev"],
+                    author,
+                )
             self.store.delete_section(
                 book, volume_id, section["section"], section["rev"], author
             )
@@ -473,7 +503,18 @@ class SectionService(_Service):
             raise AlreadyExists(
                 f"Section '{section_id}' already exists in volume '{volume_id}'."
             )
+        primary = "draft-1"
+        section = replace(section, primary_draft_id=primary)
         self._place_in_volume(book, volume_record, section_id, author)
+        if self.store.find_draft(book, volume_id, section_id, primary) is None:
+            self.store.create_draft(
+                book,
+                volume_id,
+                section_id,
+                primary,
+                Draft(primary, "Draft 1", section.document).to_storage(),
+                author,
+            )
         record = self.store.create_section(
             book, volume_id, section_id, section.to_storage(), author
         )
@@ -494,7 +535,9 @@ class SectionService(_Service):
     def get(self, book: str, volume_id: str, section_id: str) -> dict:
         self._book(book)
         self._require_volume(book, volume_id)
-        record = self._require_section(book, volume_id, section_id)
+        record = self._with_primary_document(
+            self._require_section(book, volume_id, section_id)
+        )
         return self._present_one(book, volume_id, record)
 
     def scenes(self, book: str, volume_id: str, section_id: str) -> dict:
@@ -524,12 +567,83 @@ class SectionService(_Service):
     ) -> dict:
         self._book(book)
         volume_record = self._require_volume(book, volume_id)
-        self._require_section(book, volume_id, section_id)
+        current = self._require_section(book, volume_id, section_id)
         section = validate_section_payload(section_id, payload)
+        section = replace(
+            section,
+            primary_draft_id=current.get("primary_draft_id") or "draft-1",
+        )
         self._check_kind(book, volume_record, section, ignore=section_id)
         self._check_events(book, section.event_ids)
         record = self.store.update_section(
             book, volume_id, section_id, section.to_storage(), expected_rev, author
+        )
+        primary = section.primary_draft_id
+        draft = self.store.find_draft(book, volume_id, section_id, primary)
+        if draft is None:
+            self.store.create_draft(
+                book,
+                volume_id,
+                section_id,
+                primary,
+                Draft(primary, "Draft 1", section.document).to_storage(),
+                author,
+            )
+        elif draft["document"] != section.document:
+            self.store.update_draft(
+                book,
+                volume_id,
+                section_id,
+                primary,
+                Draft(primary, draft["name"], section.document).to_storage(),
+                draft["rev"],
+                author,
+            )
+        self._reindex_search(book)
+        return self._present_one(book, volume_id, record)
+
+    def update_metadata(
+        self,
+        book: str,
+        volume_id: str,
+        section_id: str,
+        payload,
+        expected_rev: int,
+        author: str,
+    ) -> dict:
+        """Edit chapter metadata without touching any draft document."""
+        self._book(book)
+        volume_record = self._require_volume(book, volume_id)
+        current = self._require_section(book, volume_id, section_id)
+        if not isinstance(payload, dict):
+            raise InvalidSection("A section metadata body must be a JSON object.")
+        unexpected = sorted(set(payload) - {"title", "overview", "event_ids"})
+        if unexpected:
+            raise InvalidSection(
+                "A section metadata body contains unsupported fields.",
+                evidence={"unexpected": unexpected},
+            )
+        body = {
+            "kind": current["kind"],
+            "title": payload.get("title", current.get("title")),
+            "overview": payload.get("overview", current.get("overview", "")),
+            "event_ids": payload.get("event_ids", current.get("event_ids", [])),
+            "document": current["document"],
+        }
+        incoming = validate_section_payload(section_id, body)
+        incoming = replace(
+            incoming,
+            primary_draft_id=current.get("primary_draft_id") or "draft-1",
+        )
+        self._check_kind(book, volume_record, incoming, ignore=section_id)
+        self._check_events(book, incoming.event_ids)
+        record = self.store.update_section(
+            book,
+            volume_id,
+            section_id,
+            incoming.to_storage(),
+            expected_rev,
+            author,
         )
         self._reindex_search(book)
         return self._present_one(book, volume_id, record)
@@ -546,6 +660,15 @@ class SectionService(_Service):
         volume_record = self._require_volume(book, volume_id)
         record = self._require_section(book, volume_id, section_id)
         self._check_rev(record, expected_rev)
+        for draft in self.store.list_drafts(book, volume_id, section_id):
+            self.store.delete_draft(
+                book,
+                volume_id,
+                section_id,
+                draft["draft"],
+                draft["rev"],
+                author,
+            )
         self.store.delete_section(book, volume_id, section_id, expected_rev, author)
         volume = Volume.from_storage(volume_record)
         if section_id in volume.sections:
@@ -605,7 +728,7 @@ class SectionService(_Service):
     ) -> dict:
         self._book(book)
         volume_record = self._require_volume(book, volume_id)
-        self._require_section(book, volume_id, section_id)
+        current = self._require_section(book, volume_id, section_id)
         target = self.store.section_revision(book, volume_id, section_id, revision)
         if target["deleted"]:
             raise RevisionNotRetained(
@@ -621,14 +744,42 @@ class SectionService(_Service):
         self._check_kind(book, volume_record, section, ignore=section_id)
         self._check_events(book, section.event_ids)
         record = self.store.restore_section(
-            book, volume_id, section_id, revision, expected_rev, author
+            book,
+            volume_id,
+            section_id,
+            revision,
+            expected_rev,
+            author,
+            current.get("primary_draft_id") or "draft-1",
         )
+        primary = record.get("primary_draft_id") or "draft-1"
+        draft = self.store.find_draft(book, volume_id, section_id, primary)
+        if draft is None:
+            self.store.create_draft(
+                book,
+                volume_id,
+                section_id,
+                primary,
+                Draft(primary, "Draft 1", record["document"]).to_storage(),
+                author,
+            )
+        elif draft["document"] != record["document"]:
+            self.store.update_draft(
+                book,
+                volume_id,
+                section_id,
+                primary,
+                Draft(primary, draft["name"], record["document"]).to_storage(),
+                draft["rev"],
+                author,
+            )
         self._reindex_search(book)
         return self._present_one(book, volume_id, record)
 
     # -- guards ---------------------------------------------------------------
 
     def _present_one(self, book: str, volume_id: str, record: dict) -> dict:
+        record = self._with_primary_document(record)
         volume_record = self.store.get_volume(book, volume_id)
         missing = self._missing_refs(article_refs(record["document"]))
         return present_section(
@@ -666,3 +817,262 @@ class SectionService(_Service):
                     f"{section.kind}.",
                     evidence={"kind": section.kind, "section": sibling["section"]},
                 )
+
+
+class DraftService(_Service):
+    """Named, versioned alternatives beneath a section.
+
+    The section keeps a materialized copy of the primary document. That leaves
+    the established reader and publication API unchanged while draft identity
+    and history live independently here.
+    """
+
+    DEFAULT_ID = "draft-1"
+
+    def _section(self, book: str, volume: str, section: str) -> dict:
+        self._book(book)
+        self._require_volume(book, volume)
+        return self._require_section(book, volume, section)
+
+    @staticmethod
+    def _primary(record: dict) -> str:
+        return record.get("primary_draft_id") or DraftService.DEFAULT_ID
+
+    def _materialize(self, book: str, volume: str, section: str, author: str) -> None:
+        """Create the initial draft for a manuscript written before drafts existed."""
+        if self.store.list_drafts(book, volume, section):
+            return
+        current = self._section(book, volume, section)
+        draft_id = self._primary(current)
+        self.store.create_draft(
+            book,
+            volume,
+            section,
+            draft_id,
+            Draft(draft_id, "Draft 1", current["document"]).to_storage(),
+            author,
+        )
+
+    def list(
+        self, book: str, volume: str, section: str, author: str
+    ) -> dict:
+        current = self._section(book, volume, section)
+        self._materialize(book, volume, section, author)
+        primary = self._primary(current)
+        rows = sorted(
+            self.store.list_drafts(book, volume, section),
+            key=lambda row: (row["name"].lower(), row["draft"]),
+        )
+        return {
+            "book": book,
+            "volume": volume,
+            "section": section,
+            "primary_draft_id": primary,
+            "section_rev": current["rev"],
+            "drafts": [
+                present_draft(row, primary, include_document=False) for row in rows
+            ],
+        }
+
+    def get(
+        self, book: str, volume: str, section: str, draft: str, author: str
+    ) -> dict:
+        current = self._section(book, volume, section)
+        self._materialize(book, volume, section, author)
+        validate_identifier(draft, "draft")
+        return present_draft(
+            self.store.get_draft(book, volume, section, draft),
+            self._primary(current),
+        )
+
+    def create(
+        self, book: str, volume: str, section: str, payload, author: str
+    ) -> dict:
+        current = self._section(book, volume, section)
+        self._materialize(book, volume, section, author)
+        name, source_id = validate_new_draft(payload)
+        source_id = source_id or self._primary(current)
+        source = self.store.get_draft(book, volume, section, source_id)
+        draft_id = self.store.new_draft_id()
+        record = self.store.create_draft(
+            book,
+            volume,
+            section,
+            draft_id,
+            Draft(draft_id, name, source["document"]).to_storage(),
+            author,
+        )
+        return present_draft(record, self._primary(current))
+
+    def update(
+        self,
+        book: str,
+        volume: str,
+        section: str,
+        draft: str,
+        payload,
+        expected_rev: int,
+        author: str,
+    ) -> dict:
+        current = self._section(book, volume, section)
+        self._materialize(book, volume, section, author)
+        incoming = validate_draft_payload(draft, payload)
+        updated = self.store.update_draft(
+            book,
+            volume,
+            section,
+            draft,
+            incoming.to_storage(),
+            expected_rev,
+            author,
+        )
+        section_rev = current["rev"]
+        if draft == self._primary(current):
+            refreshed = self._require_section(book, volume, section)
+            primary_section = replace(
+                Section.from_storage(refreshed), document=incoming.document
+            )
+            projected = self.store.update_section(
+                book,
+                volume,
+                section,
+                primary_section.to_storage(),
+                refreshed["rev"],
+                author,
+            )
+            section_rev = projected["rev"]
+            self._reindex_search(book)
+        return {
+            **present_draft(updated, self._primary(current)),
+            "section_rev": section_rev,
+        }
+
+    def make_primary(
+        self,
+        book: str,
+        volume: str,
+        section: str,
+        payload,
+        expected_rev: int,
+        author: str,
+    ) -> dict:
+        current = self._section(book, volume, section)
+        self._check_rev(current, expected_rev)
+        self._materialize(book, volume, section, author)
+        draft_id = validate_primary_draft(payload)
+        draft = self.store.get_draft(book, volume, section, draft_id)
+        updated_section = replace(
+            Section.from_storage(current),
+            document=draft["document"],
+            primary_draft_id=draft_id,
+        )
+        stored = self.store.update_section(
+            book,
+            volume,
+            section,
+            updated_section.to_storage(),
+            expected_rev,
+            author,
+        )
+        self._reindex_search(book)
+        return {
+            "book": book,
+            "volume": volume,
+            "section": section,
+            "primary_draft_id": draft_id,
+            "section_rev": stored["rev"],
+        }
+
+    def delete(
+        self,
+        book: str,
+        volume: str,
+        section: str,
+        draft: str,
+        expected_rev: int,
+        author: str,
+    ) -> None:
+        current = self._section(book, volume, section)
+        self._materialize(book, volume, section, author)
+        if draft == self._primary(current):
+            raise PrimaryDraftConflict(
+                "Choose another primary draft before deleting this one."
+            )
+        self.store.delete_draft(
+            book, volume, section, draft, expected_rev, author
+        )
+
+    def history(
+        self, book: str, volume: str, section: str, draft: str, author: str
+    ) -> dict:
+        self._section(book, volume, section)
+        self._materialize(book, volume, section, author)
+        validate_identifier(draft, "draft")
+        return {
+            "book": book,
+            "volume": volume,
+            "section": section,
+            "draft": draft,
+            "versions": self.store.draft_history(book, volume, section, draft),
+        }
+
+    def revision(
+        self,
+        book: str,
+        volume: str,
+        section: str,
+        draft: str,
+        revision: int,
+        author: str,
+    ) -> dict:
+        self._section(book, volume, section)
+        self._materialize(book, volume, section, author)
+        return present_draft_revision(
+            self.store.draft_revision(book, volume, section, draft, revision)
+        )
+
+    def restore(
+        self,
+        book: str,
+        volume: str,
+        section: str,
+        draft: str,
+        revision: int,
+        expected_rev: int,
+        author: str,
+    ) -> dict:
+        current_section = self._section(book, volume, section)
+        self._materialize(book, volume, section, author)
+        target = self.store.draft_revision(
+            book, volume, section, draft, revision
+        )
+        if target["deleted"]:
+            raise RevisionNotRetained(
+                f"Revision {revision} is a deletion and has no document."
+            )
+        restored = validate_draft_payload(
+            draft, {"name": target["name"], "document": target["document"]}
+        )
+        record = self.store.restore_draft(
+            book, volume, section, draft, revision, expected_rev, author
+        )
+        section_rev = current_section["rev"]
+        if draft == self._primary(current_section):
+            refreshed = self._require_section(book, volume, section)
+            projected = replace(
+                Section.from_storage(refreshed), document=restored.document
+            )
+            stored = self.store.update_section(
+                book,
+                volume,
+                section,
+                projected.to_storage(),
+                refreshed["rev"],
+                author,
+            )
+            section_rev = stored["rev"]
+            self._reindex_search(book)
+        return {
+            **present_draft(record, self._primary(current_section)),
+            "section_rev": section_rev,
+        }

@@ -26,6 +26,7 @@ _JS_DIR = (
 _MODULES = (
     "dom.js", "prose.js", "preferences.js", "navigation.js", "outline.js",
     "position.js", "progress.js", "boundary.js", "readerdata.js",
+    "editor.js", "comparison.js", "recovery.js",
 )
 
 _PREAMBLE = """\
@@ -50,6 +51,9 @@ import {
   defaultOpenVolume, filterOutline, pageForSection, SECTION_PAGE_SIZE,
   sectionCount, sectionPage,
 } from "./outline.js";
+import { documentFromEditor, wordCount as editorWordCount } from "./editor.js";
+import { compareDocuments, draftStats } from "./comparison.js";
+import { createAutosave, recoveryKey } from "./recovery.js";
 
 const INPUT = %s;
 
@@ -141,6 +145,124 @@ def test_a_fragment_ignores_optional_children(run_js):
         "createNodes(owner).fragment([{id: 1}, null, undefined, {id: 2}]);"
         "emit(appended);"
     ) == [{"id": 1}, {"id": 2}]
+
+
+def test_draft_comparison_aligns_stable_blocks_and_reports_flow_stats(run_js):
+    left = _doc(_para({"type": "text", "text": "The gate opened."}, node_id="a"))
+    right = _doc(
+        _para({"type": "text", "text": "The gate opened slowly."}, node_id="a"),
+        _para({"type": "text", "text": "Lyra entered."}, node_id="b"),
+    )
+
+    result = run_js(
+        "emit({comparison: compareDocuments(INPUT.left, INPUT.right), stats: draftStats(INPUT.right)});",
+        {"left": left, "right": right},
+    )
+
+    assert [row["status"] for row in result["comparison"]["rows"]] == [
+        "changed", "added"
+    ]
+    assert result["stats"] == {
+        "words": 6, "paragraphs": 2, "sentences": 2,
+        "averageSentenceWords": 3,
+    }
+
+
+def test_editor_word_count_includes_mentions_and_lists(run_js):
+    payload = {
+        "version": 1,
+        "type": "doc",
+        "content": [
+            _para({
+                "type": "mention",
+                "text": "Lyra Venn",
+                "ref": {"database": "ember", "collection": "people", "id": "lyra"},
+            }),
+            {
+                "type": "bullet_list", "id": "list", "content": [
+                    {"type": "list_item", "content": [{"type": "text", "text": "went home"}]}
+                ],
+            },
+        ],
+    }
+    assert run_js("emit(editorWordCount(INPUT));", payload) == 4
+
+
+def test_editor_serialization_preserves_marks_mentions_and_block_ids(run_js):
+    result = run_js(
+        "const text = (value) => ({nodeType: 3, nodeValue: value});"
+        "const element = (tagName, children, dataset = {}, attributes = {}) => ({"
+        " nodeType: 1, tagName, dataset, childNodes: children,"
+        " children: children.filter((child) => child.nodeType === 1),"
+        " matches: (selector) => selector === '[data-entity-id]' && Boolean(dataset.entityId),"
+        " getAttribute: (name) => attributes[name] || null"
+        "});"
+        "const bold = element('STRONG', [text('bold')]);"
+        "const mention = element('SPAN', [text('Lyra')], {"
+        " entityId: 'lyra', entityType: 'mention', database: 'ember', collection: 'characters'"
+        "});"
+        "const paragraph = element('P', [bold, text(' met '), mention], {blockId: 'p1'});"
+        "const root = {childNodes: [paragraph]};"
+        "emit(documentFromEditor(root, () => 'unused'));"
+    )
+
+    assert result == {
+        "version": 1,
+        "type": "doc",
+        "content": [{
+            "type": "paragraph",
+            "id": "p1",
+            "content": [
+                {"type": "text", "text": "bold", "marks": [{"type": "strong"}]},
+                {"type": "text", "text": " met "},
+                {
+                    "type": "mention",
+                    "ref": {
+                        "database": "ember", "collection": "characters", "id": "lyra"
+                    },
+                    "text": "Lyra",
+                },
+            ],
+        }],
+    }
+
+
+def test_recovery_keys_are_scoped_to_account_and_draft(run_js):
+    result = run_js(
+        "emit([recoveryKey(INPUT), recoveryKey({...INPUT, draft: 'other'})]);",
+        {"user": "mara", "book": "ember pact", "volume": "one", "section": "gate", "draft": "first"},
+    )
+    assert result[0] != result[1]
+    assert "ember%20pact" in result[0]
+
+
+def test_autosave_keeps_the_latest_snapshot_while_a_save_is_running(run_js):
+    result = run_js(
+        "const saved = []; const states = []; let release;"
+        "const gate = new Promise((resolve) => { release = resolve; });"
+        "const autosave = createAutosave({delay: 1, saveLocal: () => {},"
+        " saveRemote: async (value) => { saved.push(value); if (value === 1) await gate; },"
+        " onState: (value) => states.push(value)});"
+        "autosave.schedule(1); await new Promise((r) => setTimeout(r, 5));"
+        "autosave.schedule(2); release(); await new Promise((r) => setTimeout(r, 10));"
+        "emit({saved, pending: autosave.hasPending(), states});"
+    )
+    assert result["saved"] == [1, 2]
+    assert result["pending"] is False
+    assert result["states"][-1] == "saved"
+
+
+def test_autosave_keeps_a_conflicting_snapshot_for_recovery(run_js):
+    result = run_js(
+        "const states = [];"
+        "const autosave = createAutosave({delay: 1, saveLocal: () => {},"
+        " saveRemote: async () => { throw {status: 409}; },"
+        " onState: (value) => states.push(value)});"
+        "autosave.schedule({text: 'mine'}); await autosave.flush();"
+        "emit({pending: autosave.hasPending(), states});"
+    )
+    assert result["pending"] is True
+    assert result["states"][-1] == "conflict"
 
 
 # -- what the renderer refuses ------------------------------------------------

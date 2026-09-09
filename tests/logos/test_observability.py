@@ -32,6 +32,25 @@ def test_a_revision_is_charged_to_whoever_wrote_it(mongo_client, logos_store):
     assert sorted(author for author, _ in record.history) == ["devi", "mara"]
 
 
+def test_named_draft_bytes_are_charged_to_the_chronos_book(
+    mongo_client, logos_store
+):
+    logos_store.create_draft(
+        BOOK,
+        VOLUME,
+        SECTION,
+        "alternate",
+        {"name": "Alternate", "document": section_payload()["document"]},
+        "mara",
+    )
+
+    records = list(MongoDocumentSource(mongo_client).documents())
+
+    assert len(records) == 1
+    assert records[0].resource == ("book", BOOK)
+    assert records[0].created_by == "mara"
+
+
 def test_private_reader_bytes_are_charged_to_the_account(mongo_client, logos_store):
     logos_store.create_reader_item(
         "mara",

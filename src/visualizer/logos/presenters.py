@@ -5,7 +5,7 @@ the records as they stand, never read out of a stored field. That is what makes
 reordering safe: there is no second copy of a number to forget to update.
 """
 
-from .models import Section, Volume
+from .models import Draft, Section, Volume
 from .richtext import blocks_of, word_count
 
 AUDIT_FIELDS = ("rev", "created_by", "updated_by", "updated_at")
@@ -51,6 +51,7 @@ def present_section(
         "title": section.title,
         "overview": section.overview,
         "event_ids": section.event_ids,
+        "primary_draft_id": section.primary_draft_id or "draft-1",
         "paragraph_count": len(blocks_of(section.document, kind="paragraph")),
         "word_count": word_count(section.document),
         "missing_refs": list(missing_refs or []),
@@ -59,6 +60,43 @@ def present_section(
     }
     if include_document:
         result["document"] = section.document
+    return result
+
+
+def present_draft(record: dict, primary: str, *, include_document: bool = True) -> dict:
+    draft = Draft.from_storage(record)
+    path = section_path(record["book"], record["volume"], record["section"])
+    result = {
+        "book": record["book"],
+        "volume": record["volume"],
+        "section": record["section"],
+        "id": draft.id,
+        "name": draft.name,
+        "primary": draft.id == primary,
+        "paragraph_count": len(blocks_of(draft.document, kind="paragraph")),
+        "word_count": word_count(draft.document),
+        "_links": {"self": f"{path}/drafts/{draft.id}"},
+        **audit(record),
+    }
+    if include_document:
+        result["document"] = draft.document
+    return result
+
+
+def present_draft_revision(record: dict) -> dict:
+    result = {
+        "book": record["book"],
+        "volume": record["volume"],
+        "section": record["section"],
+        "id": record["draft"],
+        "rev": record["rev"],
+        "op": record["op"],
+        "author": record.get("author"),
+        "timestamp": record["timestamp"],
+        "deleted": record["deleted"],
+    }
+    if not record["deleted"]:
+        result.update(name=record["name"], document=record["document"])
     return result
 
 

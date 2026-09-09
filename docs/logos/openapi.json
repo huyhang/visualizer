@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Logos API",
-    "version": "1.1.0",
-    "description": "Versioned manuscripts for Chronos books, private reader annotations, cross-volume search, and whole-series PDF/EPUB publication.\n\nPaths are relative to the service mount. In the combined deployment that is `/logos`; running Logos standalone it is `/`.\n\nUpdates to revisioned resources and reader items require an `If-Match` header carrying the `rev` from the last read."
+    "version": "1.2.0",
+    "description": "Versioned manuscripts for Chronos books, named writing drafts, private reader annotations and writing feedback, Akasha lookup, cross-volume search, and whole-series PDF/EPUB publication.\n\nPaths are relative to the service mount. In the combined deployment that is `/logos`; running Logos standalone it is `/`.\n\nUpdates to revisioned resources and reader items require an `If-Match` header carrying the `rev` from the last read."
   },
   "servers": [
     { "url": "/logos", "description": "Combined single-origin deployment" },
@@ -14,6 +14,8 @@
     { "name": "manuscripts", "description": "One manuscript per Chronos book." },
     { "name": "volumes", "description": "Ordered, numbered entries in a series." },
     { "name": "sections", "description": "Prologue, chapters, epilogue, glossary." },
+    { "name": "drafts", "description": "Named prose alternatives; exactly one is primary." },
+    { "name": "writer", "description": "Permission-filtered, private authoring assistance." },
     { "name": "reader", "description": "Private notes, checklists, bookmarks, progress, and search." },
     { "name": "publication", "description": "Whole-series publication metadata and exports." }
   ],
@@ -423,6 +425,17 @@
         }
       }
     },
+    "/books/{book}/volumes/{volume}/sections/{section}/metadata": {
+      "put": {
+        "tags": ["sections"], "summary": "Edit section metadata without replacing a draft",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }, { "$ref": "#/components/parameters/Volume" }, { "$ref": "#/components/parameters/Section" }, { "$ref": "#/components/parameters/IfMatch" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "title": { "type": "string", "nullable": true }, "overview": { "type": "string" }, "event_ids": { "type": "array", "items": { "type": "string" } } } } } } },
+        "responses": {
+          "200": { "description": "The updated section.", "headers": { "ETag": { "$ref": "#/components/headers/ETag" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Section" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "428": { "$ref": "#/components/responses/PreconditionRequired" }
+        }
+      }
+    },
     "/books/{book}/volumes/{volume}/sections/{section}/ui/scenes": {
       "get": {
         "tags": ["reader"],
@@ -498,6 +511,92 @@
         }
       }
     },
+    "/books/{book}/volumes/{volume}/sections/{section}/drafts": {
+      "get": {
+        "tags": ["drafts"], "summary": "List the section's named drafts",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }, { "$ref": "#/components/parameters/Volume" }, { "$ref": "#/components/parameters/Section" }],
+        "responses": {
+          "200": { "description": "Draft summaries and the primary id.", "content": { "application/json": { "schema": { "type": "object" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "post": {
+        "tags": ["drafts"], "summary": "Clone a new named draft",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }, { "$ref": "#/components/parameters/Volume" }, { "$ref": "#/components/parameters/Section" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["name"], "properties": { "name": { "type": "string" }, "source": { "type": "string" } } } } } },
+        "responses": {
+          "201": { "description": "The cloned draft.", "headers": { "ETag": { "$ref": "#/components/headers/ETag" } }, "content": { "application/json": { "schema": { "type": "object" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/books/{book}/volumes/{volume}/sections/{section}/drafts/{draft}": {
+      "get": {
+        "tags": ["drafts"], "summary": "Read one draft with its prose",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }, { "$ref": "#/components/parameters/Volume" }, { "$ref": "#/components/parameters/Section" }, { "$ref": "#/components/parameters/Draft" }],
+        "responses": {
+          "200": { "description": "The draft.", "headers": { "ETag": { "$ref": "#/components/headers/ETag" } }, "content": { "application/json": { "schema": { "type": "object" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "put": {
+        "tags": ["drafts"], "summary": "Autosave a complete draft",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }, { "$ref": "#/components/parameters/Volume" }, { "$ref": "#/components/parameters/Section" }, { "$ref": "#/components/parameters/Draft" }, { "$ref": "#/components/parameters/IfMatch" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["name", "document"], "properties": { "name": { "type": "string" }, "document": { "$ref": "#/components/schemas/Document" } } } } } },
+        "responses": {
+          "200": { "description": "The saved draft.", "headers": { "ETag": { "$ref": "#/components/headers/ETag" } }, "content": { "application/json": { "schema": { "type": "object" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "428": { "$ref": "#/components/responses/PreconditionRequired" }
+        }
+      },
+      "delete": {
+        "tags": ["drafts"], "summary": "Delete a non-primary draft",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }, { "$ref": "#/components/parameters/Volume" }, { "$ref": "#/components/parameters/Section" }, { "$ref": "#/components/parameters/Draft" }, { "$ref": "#/components/parameters/IfMatch" }],
+        "responses": {
+          "204": { "description": "Deleted." }, "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "428": { "$ref": "#/components/responses/PreconditionRequired" }
+        }
+      }
+    },
+    "/books/{book}/volumes/{volume}/sections/{section}/primary-draft": {
+      "put": {
+        "tags": ["drafts"], "summary": "Designate the draft used for reading and export",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }, { "$ref": "#/components/parameters/Volume" }, { "$ref": "#/components/parameters/Section" }, { "$ref": "#/components/parameters/IfMatch" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["draft"], "properties": { "draft": { "type": "string" } } } } } },
+        "responses": {
+          "200": { "description": "The new primary id and section revision.", "content": { "application/json": { "schema": { "type": "object" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "428": { "$ref": "#/components/responses/PreconditionRequired" }
+        }
+      }
+    },
+    "/books/{book}/volumes/{volume}/sections/{section}/drafts/{draft}/versions": {
+      "get": {
+        "tags": ["drafts"], "summary": "List retained revisions of one draft",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }, { "$ref": "#/components/parameters/Volume" }, { "$ref": "#/components/parameters/Section" }, { "$ref": "#/components/parameters/Draft" }],
+        "responses": {
+          "200": { "description": "Revision metadata, newest first.", "content": { "application/json": { "schema": { "type": "object" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/books/{book}/volumes/{volume}/sections/{section}/drafts/{draft}/versions/{rev}": {
+      "get": {
+        "tags": ["drafts"], "summary": "Read one retained draft revision",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }, { "$ref": "#/components/parameters/Volume" }, { "$ref": "#/components/parameters/Section" }, { "$ref": "#/components/parameters/Draft" }, { "$ref": "#/components/parameters/Rev" }],
+        "responses": {
+          "200": { "description": "The retained draft revision.", "content": { "application/json": { "schema": { "type": "object" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "410": { "$ref": "#/components/responses/Gone" }
+        }
+      }
+    },
+    "/books/{book}/volumes/{volume}/sections/{section}/drafts/{draft}/versions/{rev}/restore": {
+      "post": {
+        "tags": ["drafts"], "summary": "Restore a retained draft revision as a new revision",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }, { "$ref": "#/components/parameters/Volume" }, { "$ref": "#/components/parameters/Section" }, { "$ref": "#/components/parameters/Draft" }, { "$ref": "#/components/parameters/Rev" }, { "$ref": "#/components/parameters/IfMatch" }],
+        "responses": {
+          "200": { "description": "The restored draft.", "headers": { "ETag": { "$ref": "#/components/headers/ETag" } }, "content": { "application/json": { "schema": { "type": "object" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "410": { "$ref": "#/components/responses/Gone" }, "428": { "$ref": "#/components/responses/PreconditionRequired" }
+        }
+      }
+    },
     "/me/reader-settings": {
       "get": {
         "tags": ["reader"], "summary": "Current account's reader settings",
@@ -531,6 +630,27 @@
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/books/{book}/ui/entities": {
+      "get": {
+        "tags": ["writer"], "summary": "Find readable Akasha entities for selected prose",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }, { "name": "q", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 200 } }],
+        "responses": {
+          "200": { "description": "Permission-filtered entity matches.", "content": { "application/json": { "schema": { "type": "object" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/books/{book}/ui/writing-review": {
+      "post": {
+        "tags": ["writer"], "summary": "Run the configured private writing advisor",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["document"], "properties": { "document": { "$ref": "#/components/schemas/Document" }, "dialect": { "type": "string", "enum": ["en-US", "en-GB"] } } } } } },
+        "responses": {
+          "200": { "description": "Ephemeral findings; prose and findings are not retained.", "content": { "application/json": { "schema": { "type": "object" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
     },
@@ -745,6 +865,13 @@
         "required": true,
         "schema": { "type": "string" }
       },
+      "Draft": {
+        "name": "draft",
+        "in": "path",
+        "required": true,
+        "description": "A stable named draft id.",
+        "schema": { "type": "string" }
+      },
       "Item": {
         "name": "item",
         "in": "path",
@@ -842,13 +969,13 @@
         }
       },
       "NotFound": {
-        "description": "The Chronos book, manuscript, volume or section does not exist.",
+        "description": "The Chronos book, manuscript, volume, section or draft does not exist.",
         "content": {
           "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
         }
       },
       "Conflict": {
-        "description": "A stale revision, an id already taken, a second prologue/epilogue/glossary, or a delete that would take prose with it.",
+        "description": "A stale revision, an id already taken, a second prologue/epilogue/glossary, an attempt to delete the primary draft, or a delete that would take prose with it.",
         "content": {
           "application/json": { "schema": { "$ref": "#/components/schemas/Error" } }
         }
@@ -901,10 +1028,12 @@
               "BOOK_NOT_FOUND",
               "CASCADE_REQUIRED",
               "CHRONOS_EVENT_NOT_FOUND",
+              "DRAFT_NOT_FOUND",
               "EXPORT_JOB_NOT_FOUND",
               "EXPORT_UNAVAILABLE",
               "FORBIDDEN",
               "INVALID_DOCUMENT",
+              "INVALID_DRAFT",
               "INVALID_IDENTIFIER",
               "INVALID_ORDER",
               "INVALID_PUBLICATION",
@@ -917,6 +1046,7 @@
               "LOGOS_ERROR",
               "MANUSCRIPT_NOT_FOUND",
               "PRECONDITION_REQUIRED",
+              "PRIMARY_DRAFT_CONFLICT",
               "PUBLICATION_COVER_NOT_FOUND",
               "READER_ITEM_NOT_FOUND",
               "REVISION_CONFLICT",
@@ -1110,6 +1240,7 @@
           "title",
           "overview",
           "event_ids",
+          "primary_draft_id",
           "paragraph_count",
           "word_count",
           "missing_refs",
@@ -1135,6 +1266,7 @@
           "title": { "type": "string", "nullable": true },
           "overview": { "type": "string" },
           "event_ids": { "type": "array", "items": { "type": "string" } },
+          "primary_draft_id": { "type": "string", "description": "The named draft shown by readers and exports." },
           "paragraph_count": { "type": "integer" },
           "word_count": { "type": "integer" },
           "missing_refs": {
@@ -1158,6 +1290,7 @@
           "title": "The Broken Gate",
           "overview": "Lyra reaches the gate.",
           "event_ids": ["opening"],
+          "primary_draft_id": "draft-1",
           "paragraph_count": 1,
           "word_count": 4,
           "missing_refs": [],

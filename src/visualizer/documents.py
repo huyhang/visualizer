@@ -295,13 +295,19 @@ class VersionedDocuments:
         head = self._live_head(identity, not_found)
         self._advance(head, None, DELETE, expected_rev, author)
 
-    def restore(self, identity: dict, rev: int, expected_rev, author, not_found) -> dict:
+    def restore(
+        self, identity: dict, rev: int, expected_rev, author, not_found,
+        transform=None,
+    ) -> dict:
         """Re-apply a retained revision as a new one, tombstone or not."""
         head = self._any_head(identity, not_found)
         target = self._retained(head, rev)
         if target.get("body") is None:
             raise self._gone(f"Revision {rev} is a deletion and has no body.")
-        return self._advance(head, target["body"], RESTORE, expected_rev, author)
+        body = target["body"]
+        if transform is not None:
+            body = transform(dict(body))
+        return self._advance(head, body, RESTORE, expected_rev, author)
 
     # -- internals -----------------------------------------------------------
 

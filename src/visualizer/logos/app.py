@@ -24,6 +24,7 @@ from visualizer.shared_assets import register_shared_assets
 from .errors import (
     Forbidden,
     InvalidRevision,
+    InvalidSearch,
     LogosError,
     PreconditionRequired,
     PublicationCoverNotFound,
@@ -31,9 +32,11 @@ from .errors import (
 from .gateways import ArticleGateway, ChronosGateway
 from .publication import ExportJobs, PublicationService, export_filename
 from .reader import ReaderService
+from .richtext import validate_document
 from .search import SearchService
-from .services import ManuscriptService, SectionService, VolumeService
+from .services import DraftService, ManuscriptService, SectionService, VolumeService
 from .store import LogosStore
+from .writing import RuleBasedWritingAdvisor, WritingAdvisor
 
 # Logos reads the Chronos book grant directly -- one resource kind, one grant,
 # no second sharing model and no migration for books that already exist.
@@ -42,6 +45,9 @@ BOOK_RESOURCE = "book"
 _BOOK = "/books/<book>"
 _VOLUME = _BOOK + "/volumes/<volume>"
 _SECTION = _VOLUME + "/sections/<section>"
+_DRAFTS = _SECTION + "/drafts"
+_DRAFT = _DRAFTS + "/<draft>"
+_DRAFT_VERSIONS = _DRAFT + "/versions"
 
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
@@ -62,6 +68,7 @@ def create_app(
     observability: Observability | None = None,
     pdf_renderer=None,
     export_runner=None,
+    writing_advisor: WritingAdvisor | None = None,
 ) -> Flask:
     if not secret_key:
         raise ValueError("create_app requires a non-empty secret_key.")
@@ -90,9 +97,11 @@ def create_app(
     manuscripts = ManuscriptService(store, chronos, articles)
     volumes = VolumeService(store, chronos, articles)
     sections = SectionService(store, chronos, articles)
+    drafts = DraftService(store, chronos, articles)
     readers = ReaderService(store, manuscripts)
     search = SearchService(store, manuscripts)
     publications = PublicationService(store, manuscripts, pdf_renderer)
+    advisor = writing_advisor or RuleBasedWritingAdvisor()
     jobs = ExportJobs(
         store, publications, **({} if export_runner is None else
                                 {"runner": export_runner})
@@ -104,10 +113,13 @@ def create_app(
         manuscripts,
         volumes,
         sections,
+        drafts,
         readers,
         search,
         publications,
         jobs,
+        articles,
+        advisor,
     )
     if observability is not None:
         observability.install(app, "logos")
@@ -116,13 +128,13 @@ def create_app(
 
 
 def _register_routes(
-    app, csrf, auth_store, manuscripts, volumes, sections, readers, search,
-    publications, export_jobs,
+    app, csrf, auth_store, manuscripts, volumes, sections, drafts, readers, search,
+    publications, export_jobs, articles, writing_advisor,
 ):
     @app.get("/")
     @login_required
     def index():
-        """The read-only reader shell. The prose itself arrives as JSON."""
+        """The reader and writer shell. Manuscript data itself arrives as JSON."""
         return render_template("reader.html")
 
     @app.get("/health")
@@ -135,7 +147,7 @@ def _register_routes(
     @login_required
     def list_books():
         rows = [
-            row
+            _with_permissions(row, auth_store, row["book"])
             for row in manuscripts.list()
             if _allowed(auth_store, "read", row["book"])
         ]
@@ -179,6 +191,46 @@ def _register_routes(
                 offset=request.args.get("offset", 0),
                 limit=request.args.get("limit", 20),
             )
+        )
+
+    @app.get(_BOOK + "/ui/entities")
+    @csrf.exempt
+    @login_required
+    def lookup_entities(book):
+        _authorize(auth_store, "write", book)
+        query = (request.args.get("q") or "").strip()
+        if not query or len(query) > 200:
+            raise InvalidSearch("An entity lookup must contain 1-200 characters.")
+        chronos_book = manuscripts.require(book)
+        grants = auth_store.grants_for(current_user.username)
+        return jsonify(
+            {
+                "query": query,
+                "entities": articles.lookup_entities(
+                    query, grants, chronos_book.get("world")
+                ),
+            }
+        )
+
+    @app.post(_BOOK + "/ui/writing-review")
+    @csrf.exempt
+    @login_required
+    def review_writing(book):
+        _authorize(auth_store, "write", book)
+        manuscripts.require(book)
+        body = _json_body()
+        if not isinstance(body, dict) or set(body) - {"document", "dialect"}:
+            raise InvalidSearch("A writing review requires a document and dialect.")
+        dialect = body.get("dialect", "en-US")
+        if dialect not in {"en-US", "en-GB"}:
+            raise InvalidSearch("The writing dialect must be 'en-US' or 'en-GB'.")
+        document = validate_document(body.get("document"))
+        return jsonify(
+            {
+                "dialect": dialect,
+                "issues": writing_advisor.review(document, dialect),
+                "private": bool(getattr(writing_advisor, "private", False)),
+            }
         )
 
     @app.get(_BOOK + "/me/items")
@@ -453,6 +505,21 @@ def _register_routes(
         )
         return _resource(_with_permissions(result, auth_store, book))
 
+    @app.put(_SECTION + "/metadata")
+    @csrf.exempt
+    @login_required
+    def update_section_metadata(book, volume, section):
+        _authorize(auth_store, "write", book)
+        result = sections.update_metadata(
+            book,
+            volume,
+            section,
+            _json_body(),
+            _expected_rev(),
+            current_user.username,
+        )
+        return _resource(_with_permissions(result, auth_store, book))
+
     @app.delete(_SECTION)
     @csrf.exempt
     @login_required
@@ -486,6 +553,121 @@ def _register_routes(
             book, volume, section, rev, _expected_rev(), current_user.username
         )
         return _resource(_with_permissions(result, auth_store, book))
+
+    @app.get(_DRAFTS)
+    @csrf.exempt
+    @login_required
+    def list_drafts(book, volume, section):
+        _authorize(auth_store, "write", book)
+        return jsonify(
+            drafts.list(book, volume, section, current_user.username)
+        )
+
+    @app.post(_DRAFTS)
+    @csrf.exempt
+    @login_required
+    def create_draft(book, volume, section):
+        _authorize(auth_store, "write", book)
+        return _resource(
+            drafts.create(
+                book, volume, section, _json_body(), current_user.username
+            ),
+            201,
+        )
+
+    @app.get(_DRAFT)
+    @csrf.exempt
+    @login_required
+    def get_draft(book, volume, section, draft):
+        _authorize(auth_store, "write", book)
+        return _resource(
+            drafts.get(book, volume, section, draft, current_user.username)
+        )
+
+    @app.put(_DRAFT)
+    @csrf.exempt
+    @login_required
+    def update_draft(book, volume, section, draft):
+        _authorize(auth_store, "write", book)
+        return _resource(
+            drafts.update(
+                book,
+                volume,
+                section,
+                draft,
+                _json_body(),
+                _expected_rev(),
+                current_user.username,
+            )
+        )
+
+    @app.delete(_DRAFT)
+    @csrf.exempt
+    @login_required
+    def delete_draft(book, volume, section, draft):
+        _authorize(auth_store, "delete", book)
+        drafts.delete(
+            book,
+            volume,
+            section,
+            draft,
+            _expected_rev(),
+            current_user.username,
+        )
+        return "", 204
+
+    @app.put(_SECTION + "/primary-draft")
+    @csrf.exempt
+    @login_required
+    def make_primary_draft(book, volume, section):
+        _authorize(auth_store, "write", book)
+        return jsonify(
+            drafts.make_primary(
+                book,
+                volume,
+                section,
+                _json_body(),
+                _expected_rev(),
+                current_user.username,
+            )
+        )
+
+    @app.get(_DRAFT_VERSIONS)
+    @csrf.exempt
+    @login_required
+    def draft_versions(book, volume, section, draft):
+        _authorize(auth_store, "write", book)
+        return jsonify(
+            drafts.history(book, volume, section, draft, current_user.username)
+        )
+
+    @app.get(_DRAFT_VERSIONS + "/<int:rev>")
+    @csrf.exempt
+    @login_required
+    def draft_version(book, volume, section, draft, rev):
+        _authorize(auth_store, "write", book)
+        return jsonify(
+            drafts.revision(
+                book, volume, section, draft, rev, current_user.username
+            )
+        )
+
+    @app.post(_DRAFT_VERSIONS + "/<int:rev>/restore")
+    @csrf.exempt
+    @login_required
+    def restore_draft(book, volume, section, draft, rev):
+        _authorize(auth_store, "write", book)
+        return _resource(
+            drafts.restore(
+                book,
+                volume,
+                section,
+                draft,
+                rev,
+                _expected_rev(),
+                current_user.username,
+            )
+        )
 
 
 # -- helpers -----------------------------------------------------------------

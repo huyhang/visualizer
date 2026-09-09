@@ -12,6 +12,7 @@ from werkzeug.test import Client
 
 from visualizer.akasha.app import create_app as create_akasha_app
 from visualizer.akasha.store import DocumentStore
+from visualizer.auth import ALL_PERMS
 from visualizer.chronos.app import create_app as create_chronos_app
 from visualizer.chronos.entity_gate import FakeEntityGate
 from visualizer.chronos.models import Book, EntityRef, Event
@@ -34,6 +35,30 @@ SHARED = {
     "prithvi_url": "/prithvi",
     "logos_url": "/logos",
 }
+
+
+def test_akasha_lookup_is_ranked_and_filtered_by_article_grants(
+    mongo_client, auth_store
+):
+    documents = DocumentStore(mongo_client)
+    documents.create_collection("ember", "characters")
+    documents.create(
+        "ember", "characters", "lyra", {"title": "Lyra Venn", "role": "Envoy"}
+    )
+    documents.create_collection("other", "characters")
+    documents.create(
+        "other", "characters", "lyra-shadow", {"title": "Lyra's Shadow"}
+    )
+    auth_store.grant_owner(
+        "mara", "ember", "characters", None, list(ALL_PERMS)
+    )
+
+    rows = InProcessArticleGateway(documents).lookup_entities(
+        "Lyra", auth_store.grants_for("mara"), preferred_database="ember"
+    )
+
+    assert [(row["database"], row["id"]) for row in rows] == [("ember", "lyra")]
+    assert rows[0]["preview"] == "Envoy"
 
 
 def _body(response):

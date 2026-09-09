@@ -15,7 +15,10 @@ deleted article and Prithvi takes for a pin.
 
 from typing import Protocol
 
+from visualizer.akasha.browsing import visible_collections, visible_databases
 from visualizer.akasha.errors import AkashaError
+from visualizer.akasha.labels import derive_title
+from visualizer.auth import READ, is_allowed
 from visualizer.chronos.calendar import codec_for
 from visualizer.chronos.errors import BookNotFound as ChronosBookNotFound
 from visualizer.chronos.models import Book, Event
@@ -47,6 +50,11 @@ class ChronosGateway(Protocol):
 class ArticleGateway(Protocol):
     def missing_articles(self, refs: list[dict]) -> list[dict]:
         """Which of ``refs`` no longer name a live Akasha article."""
+
+    def lookup_entities(
+        self, query: str, grants: list[dict], preferred_database: str | None = None
+    ) -> list[dict]:
+        """Readable Akasha entities matching selected manuscript text."""
 
 
 class InProcessChronosGateway:
@@ -119,6 +127,51 @@ class InProcessArticleGateway:
             return False
         return True
 
+    def lookup_entities(
+        self, query: str, grants: list[dict], preferred_database: str | None = None
+    ) -> list[dict]:
+        needle = query.casefold().strip()
+        if not needle:
+            return []
+        matches = []
+        databases = visible_databases(grants, self._documents.list_databases())
+        for database in databases:
+            collections = visible_collections(
+                grants, database, self._documents.list_collections(database)
+            )
+            for collection in collections:
+                for record in self._documents.search(database, collection, text=query):
+                    if not is_allowed(
+                        grants, READ, database, collection, record["id"]
+                    ):
+                        continue
+                    body = record.get("document", {})
+                    title = body.get("title") or record["id"]
+                    if needle not in record["id"].casefold() and needle not in str(
+                        title
+                    ).casefold():
+                        continue
+                    matches.append(
+                        {
+                            "database": database,
+                            "database_title": derive_title(database),
+                            "collection": collection,
+                            "collection_title": derive_title(collection),
+                            "id": record["id"],
+                            "title": title,
+                            "preview": _article_preview(body),
+                        }
+                    )
+        return sorted(
+            matches,
+            key=lambda row: (
+                row["database"] != preferred_database,
+                _name_rank(row, needle),
+                str(row["title"]).casefold(),
+                row["id"],
+            ),
+        )[:20]
+
 
 class LogosReferenceGate:
     """The narrow Logos view Chronos consults before a destructive write."""
@@ -147,12 +200,14 @@ class FakeChronosGateway:
         self._books: dict[str, dict] = {}
         self._events: dict[str, dict[str, dict]] = {}
 
-    def add_book(self, book: str, title: str | None = None, events=()) -> None:
+    def add_book(
+        self, book: str, title: str | None = None, events=(), world: str | None = None
+    ) -> None:
         self._books[book] = {
             "id": book,
             "title": title,
             "overview": "",
-            "world": None,
+            "world": world,
         }
         self._events[book] = {event: _fake_scene(event) for event in events}
 
@@ -195,8 +250,61 @@ class FakeArticleGateway:
     def missing_articles(self, refs: list[dict]) -> list[dict]:
         return [ref for ref in refs if self._key(ref) not in self._articles]
 
+    def lookup_entities(
+        self, query: str, grants: list[dict], preferred_database: str | None = None
+    ) -> list[dict]:
+        needle = query.casefold().strip()
+        rows = [
+            {
+                "database": database,
+                "database_title": derive_title(database),
+                "collection": collection,
+                "collection_title": derive_title(collection),
+                "id": article,
+                "title": derive_title(article),
+                "preview": "",
+            }
+            for database, collection, article in self._articles
+            if needle in article.casefold() or needle in derive_title(article).casefold()
+        ]
+        return sorted(
+            rows,
+            key=lambda row: (
+                row["database"] != preferred_database,
+                _name_rank(row, needle),
+                row["title"].casefold(),
+            ),
+        )[:20]
+
     @staticmethod
     def _key(ref) -> tuple[str, str, str]:
         if isinstance(ref, dict):
             return (ref["database"], ref["collection"], ref["id"])
         return tuple(ref)
+
+
+def _name_rank(row: dict, needle: str) -> int:
+    names = (str(row.get("title") or "").casefold(), row["id"].casefold())
+    if needle in names:
+        return 0
+    if any(name.startswith(needle) for name in names):
+        return 1
+    if any(word.startswith(needle) for name in names for word in name.split()):
+        return 2
+    return 3
+
+
+def _article_preview(body: dict) -> str:
+    """A compact, plain-text preview; arbitrary article fields stay untrusted."""
+    values = []
+    for key, value in body.items():
+        if key == "title" or value in (None, "", []):
+            continue
+        if isinstance(value, list):
+            values.extend(str(item) for item in value[:3])
+        elif isinstance(value, (str, int, float, bool)):
+            values.append(str(value))
+        if sum(len(part) for part in values) >= 240:
+            break
+    text = " · ".join(values)
+    return text[:237] + "..." if len(text) > 240 else text

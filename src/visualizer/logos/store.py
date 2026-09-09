@@ -1,10 +1,10 @@
 """MongoDB persistence for manuscripts, publication data and private reader state.
 
 Manuscript and publication records use the shared ``VersionedDocuments`` engine
-in the reserved ``_logos`` database. Sections retain real history because prose
-cannot be reconstructed; ordering and publication metadata retain only their
-current revision. Private reader items use smaller account-keyed records with
-compare-and-swap updates.
+in the reserved ``_logos`` database. Sections and their named drafts retain real
+history because prose cannot be reconstructed; ordering and publication metadata
+retain only their current revision. Private reader items use smaller
+account-keyed records with compare-and-swap updates.
 
 Search is a projection maintained on the *write* path. Reads never rebuild it:
 a rebuild driven by a reader would make one account's search a write against
@@ -32,6 +32,7 @@ from visualizer.documents import VersionedDocuments
 
 from .errors import (
     AlreadyExists,
+    DraftNotFound,
     ManuscriptNotFound,
     ReaderItemNotFound,
     RevisionConflict,
@@ -47,6 +48,8 @@ VOLUMES = "volumes"
 VOLUME_REVISIONS = "volume_revisions"
 SECTIONS = "sections"
 SECTION_REVISIONS = "section_revisions"
+DRAFTS = "drafts"
+DRAFT_REVISIONS = "draft_revisions"
 PUBLICATIONS = "publications"
 PUBLICATION_REVISIONS = "publication_revisions"
 PUBLICATION_COVERS = "publication_covers"
@@ -59,6 +62,7 @@ EXPORT_JOBS = "export_jobs"
 OUTLINE_IDENTITY = ("book",)
 VOLUME_IDENTITY = ("book", "volume")
 SECTION_IDENTITY = ("book", "volume", "section")
+DRAFT_IDENTITY = ("book", "volume", "section", "draft")
 PUBLICATION_IDENTITY = ("book",)
 
 # Ordering records carry no prose, so their history would be a list of
@@ -87,6 +91,10 @@ class LogosStore:
         )
         self._sections = self._documents(
             database, SECTIONS, SECTION_REVISIONS, SECTION_IDENTITY,
+            section_revisions_keep, clock,
+        )
+        self._drafts = self._documents(
+            database, DRAFTS, DRAFT_REVISIONS, DRAFT_IDENTITY,
             section_revisions_keep, clock,
         )
         self._publications = self._documents(
@@ -275,13 +283,111 @@ class LogosStore:
         rev: int,
         expected_rev: int,
         author: str,
+        primary_draft_id: str | None = None,
     ) -> dict:
+        def preserve_primary(body: dict) -> dict:
+            if primary_draft_id:
+                body["primary_draft_id"] = primary_draft_id
+            return body
+
         return self._sections.restore(
             self._section_key(book, volume, section),
             rev,
             expected_rev,
             author,
             SectionNotFound,
+            preserve_primary,
+        )
+
+    # -- drafts ---------------------------------------------------------------
+
+    def new_draft_id(self) -> str:
+        return self._id_factory()
+
+    def create_draft(
+        self, book: str, volume: str, section: str, draft: str,
+        body: dict, author: str,
+    ) -> dict:
+        return self._drafts.create(
+            self._draft_key(book, volume, section, draft),
+            body,
+            author,
+            AlreadyExists,
+        )
+
+    def get_draft(
+        self, book: str, volume: str, section: str, draft: str
+    ) -> dict:
+        return self._drafts.get(
+            self._draft_key(book, volume, section, draft), DraftNotFound
+        )
+
+    def find_draft(
+        self, book: str, volume: str, section: str, draft: str
+    ) -> dict | None:
+        try:
+            return self.get_draft(book, volume, section, draft)
+        except DraftNotFound:
+            return None
+
+    def list_drafts(self, book: str, volume: str, section: str) -> list[dict]:
+        return self._drafts.list(
+            {"book": book, "volume": volume, "section": section}
+        )
+
+    def update_draft(
+        self, book: str, volume: str, section: str, draft: str,
+        body: dict, expected_rev: int, author: str,
+    ) -> dict:
+        return self._drafts.update(
+            self._draft_key(book, volume, section, draft),
+            body,
+            expected_rev,
+            author,
+            DraftNotFound,
+        )
+
+    def delete_draft(
+        self, book: str, volume: str, section: str, draft: str,
+        expected_rev: int, author: str,
+    ) -> None:
+        self._drafts.delete(
+            self._draft_key(book, volume, section, draft),
+            expected_rev,
+            author,
+            DraftNotFound,
+        )
+
+    def draft_history(
+        self, book: str, volume: str, section: str, draft: str
+    ) -> list[dict]:
+        return self._drafts.history(
+            self._draft_key(book, volume, section, draft), DraftNotFound
+        )
+
+    def draft_revision(
+        self, book: str, volume: str, section: str, draft: str, rev: int
+    ) -> dict:
+        return self._drafts.revision(
+            self._draft_key(book, volume, section, draft), rev, DraftNotFound
+        )
+
+    def restore_draft(
+        self,
+        book: str,
+        volume: str,
+        section: str,
+        draft: str,
+        rev: int,
+        expected_rev: int,
+        author: str,
+    ) -> dict:
+        return self._drafts.restore(
+            self._draft_key(book, volume, section, draft),
+            rev,
+            expected_rev,
+            author,
+            DraftNotFound,
         )
 
     # -- shelf-wide reads -----------------------------------------------------
@@ -565,6 +671,7 @@ class LogosStore:
         collects, but can never leave a live head pointing at a missing body.
         """
         for heads_name, revisions_name in (
+            (DRAFTS, DRAFT_REVISIONS),
             (SECTIONS, SECTION_REVISIONS),
             (VOLUMES, VOLUME_REVISIONS),
             (OUTLINES, OUTLINE_REVISIONS),
@@ -595,6 +702,15 @@ class LogosStore:
     @staticmethod
     def _section_key(book: str, volume: str, section: str) -> dict:
         return {"book": book, "volume": volume, "section": section}
+
+    @staticmethod
+    def _draft_key(book: str, volume: str, section: str, draft: str) -> dict:
+        return {
+            "book": book,
+            "volume": volume,
+            "section": section,
+            "draft": draft,
+        }
 
     def _now(self) -> str:
         return self._clock().isoformat()

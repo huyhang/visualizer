@@ -17,6 +17,7 @@
     // Reading positions stay in this browser, but are isolated between the
     // accounts that may use it.
     window.__READER_USER__ = {{ current_user.username | tojson }};
+    window.__AKASHA_URL__ = {{ service_links.akasha | tojson }};
   </script>
   <script src="{{ url_for('shared_js', filename='prefs.js') }}"></script>
 </head>
@@ -64,6 +65,7 @@
         rather than a line of standing text beside the prose.
       #}
       <div class="reader-toolbar" id="reader-toolbar" hidden>
+        <button class="btn sm" id="write-open" type="button" hidden>Edit</button>
         <button class="btn ghost" id="mode-toggle" type="button"
                 aria-pressed="false">Focused</button>
         <button class="btn ghost sm" id="settings-open" type="button">

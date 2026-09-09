@@ -291,6 +291,10 @@ def test_the_reader_assets_are_served(client):
         "/static/js/progress.js",
         "/static/js/navigation.js",
         "/static/js/outline.js",
+        "/static/js/editor.js",
+        "/static/js/comparison.js",
+        "/static/js/recovery.js",
+        "/static/js/writer.js",
         "/static/js/shared/prefs.js",
         "/static/shared/service-nav.css",
     ):

@@ -40,6 +40,11 @@ class InvalidSection(LogosError):
     code = "INVALID_SECTION"
 
 
+class InvalidDraft(LogosError):
+    status_code = 400
+    code = "INVALID_DRAFT"
+
+
 class InvalidDocument(LogosError):
     status_code = 400
     code = "INVALID_DOCUMENT"
@@ -100,6 +105,11 @@ class SectionNotFound(LogosError):
     code = "SECTION_NOT_FOUND"
 
 
+class DraftNotFound(LogosError):
+    status_code = 404
+    code = "DRAFT_NOT_FOUND"
+
+
 class ReaderItemNotFound(LogosError):
     status_code = 404
     code = "READER_ITEM_NOT_FOUND"
@@ -133,6 +143,11 @@ class CascadeRequired(LogosError):
 class SectionKindInUse(LogosError):
     status_code = 409
     code = "SECTION_KIND_IN_USE"
+
+
+class PrimaryDraftConflict(LogosError):
+    status_code = 409
+    code = "PRIMARY_DRAFT_CONFLICT"
 
 
 class RevisionNotRetained(LogosError):

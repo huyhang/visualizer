@@ -12,7 +12,9 @@ A Chronos book grant lives in the shared `_auth` database with the resource type
 Chronos book: wheel-of-time
 └── Logos manuscript
     ├── every volume
-    └── every section, and its retained revisions
+    └── every section
+        ├── its named drafts and retained revisions
+        └── its retained section revisions
 ```
 
 There are no volume-level or section-level grants. Creating Logos content does
@@ -29,8 +31,8 @@ anything on a reusable Chronos calendar.
 | Chronos book role | Permissions | What it can do in Logos |
 | --- | --- | --- |
 | Reader | `read` | Read, search and export the manuscript; manage only their own private notes, checklists, bookmarks and reading position |
-| Editor | `read`, `write` | The above, plus create, update, reorder and restore manuscript content and edit publication metadata |
-| Owner | `read`, `write`, `delete` | The above, plus delete sections, volumes and the manuscript, and manage sharing |
+| Editor | `read`, `write` | The above, plus use the writing workspace, create and update drafts, choose the primary, reorder and restore manuscript content, and edit publication metadata |
+| Owner | `read`, `write`, `delete` | The above, plus delete drafts, sections, volumes and the manuscript, and manage sharing |
 
 Administrators are not exempt. An administrator holding no grant on a book cannot
 read its Chronos content or its prose; the admin role governs accounts and access
@@ -41,8 +43,9 @@ management, not the content itself.
 - `GET` requires `read`.
 - Private reader-item and position writes require `read`; they address only the
   signed-in account and cannot alter another account or the manuscript.
-- Creating, updating, reordering and restoring require `write`.
-- Deleting a section, volume or manuscript requires `delete`.
+- Creating, updating, reordering and restoring require `write`. Alternate drafts
+  are not exposed to read-only collaborators.
+- Deleting a draft, section, volume or manuscript requires `delete`.
 
 **The grant is checked before anything is loaded.** A caller without one gets
 `403 FORBIDDEN` whether or not the book exists, so the API is not an oracle for

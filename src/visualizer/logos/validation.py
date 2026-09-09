@@ -14,12 +14,13 @@ import re
 from typing import Any
 
 from .errors import (
+    InvalidDraft,
     InvalidIdentifier,
     InvalidOrder,
     InvalidSection,
     InvalidVolume,
 )
-from .models import Section, Volume
+from .models import Draft, Section, Volume
 from .richtext import validate_document
 
 SECTION_KINDS = ("prologue", "chapter", "epilogue", "glossary")
@@ -30,6 +31,7 @@ NUMBERED_SECTION_KIND = "chapter"
 
 MAX_TITLE_LENGTH = 300
 MAX_OVERVIEW_LENGTH = 10_000
+MAX_DRAFT_NAME_LENGTH = 120
 
 # A volume or section id becomes a URL path segment, so it is kept to characters
 # that need no escaping and cannot be confused with the store's key separator.
@@ -86,6 +88,41 @@ def validate_section_payload(section_id: str, payload: Any) -> Section:
         ),
         _id_list(body.get("event_ids", []), "event_ids", InvalidSection),
     )
+
+
+def validate_draft_payload(draft_id: str, payload: Any) -> Draft:
+    """Validate a complete draft replacement."""
+    validate_identifier(draft_id, "draft")
+    body = _mapping(payload, InvalidDraft, "A draft body")
+    _only(body, {"name", "document"}, InvalidDraft, "draft")
+    if "document" not in body:
+        raise InvalidDraft("A draft requires a 'document'.")
+    return Draft(
+        draft_id,
+        _required_text(
+            body.get("name"), "name", MAX_DRAFT_NAME_LENGTH, InvalidDraft
+        ),
+        validate_document(body["document"]),
+    )
+
+
+def validate_new_draft(payload: Any) -> tuple[str, str | None]:
+    """Return the name and optional source id for a draft clone request."""
+    body = _mapping(payload, InvalidDraft, "A draft body")
+    _only(body, {"name", "source"}, InvalidDraft, "draft")
+    name = _required_text(
+        body.get("name"), "name", MAX_DRAFT_NAME_LENGTH, InvalidDraft
+    )
+    source = body.get("source")
+    if source is not None:
+        validate_identifier(source, "source draft")
+    return name, source
+
+
+def validate_primary_draft(payload: Any) -> str:
+    body = _mapping(payload, InvalidDraft, "A primary draft body")
+    _only(body, {"draft"}, InvalidDraft, "primary draft")
+    return validate_identifier(body.get("draft"), "draft")
 
 
 def validate_order(payload: Any, field: str, known: list[str]) -> list[str]:

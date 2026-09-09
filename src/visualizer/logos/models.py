@@ -56,15 +56,19 @@ class Section:
     title: str | None = None
     overview: str = ""
     event_ids: list[str] = field(default_factory=list)
+    primary_draft_id: str | None = None
 
     def to_storage(self) -> dict:
-        return {
+        result = {
             "kind": self.kind,
             "title": self.title,
             "overview": self.overview,
             "event_ids": list(self.event_ids),
             "document": self.document,
         }
+        if self.primary_draft_id:
+            result["primary_draft_id"] = self.primary_draft_id
+        return result
 
     @classmethod
     def from_storage(cls, record: dict) -> "Section":
@@ -74,5 +78,26 @@ class Section:
             title=record.get("title"),
             overview=record.get("overview", ""),
             event_ids=list(record.get("event_ids", [])),
+            document=record["document"],
+            primary_draft_id=record.get("primary_draft_id"),
+        )
+
+
+@dataclass
+class Draft:
+    """One independently editable prose version of a section."""
+
+    id: str
+    name: str
+    document: dict
+
+    def to_storage(self) -> dict:
+        return {"name": self.name, "document": self.document}
+
+    @classmethod
+    def from_storage(cls, record: dict) -> "Draft":
+        return cls(
+            id=record["draft"],
+            name=record["name"],
             document=record["document"],
         )
