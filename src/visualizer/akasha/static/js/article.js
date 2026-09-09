@@ -1,25 +1,37 @@
 // The Wikipedia illusion: split a flat document into its article parts and
 // reassemble it. This is the only place the reserved-field mapping lives.
 
-import { formatGalleryItem, parseGalleryItem, parseImageDirective } from "./image-format.js";
+import {
+  formatGalleryItem, isMediaId, parseGalleryItem, parseImageDirective,
+} from "./image-format.js";
 
 export const TITLE = "title";
 export const BODY = "body";
 export const PROFILE_IMAGE = "profile_image";
 export const GALLERY = "gallery";
 
-const RESERVED = new Set([TITLE, BODY, PROFILE_IMAGE, GALLERY]);
+// `title` and `body` are ours unconditionally. The two image fields are ours
+// only when they hold image references: an article that has always listed its
+// wings under `gallery` keeps that list as an ordinary infobox fact, rather
+// than having it hidden by a feature it predates.
+export function galleryEntries(value) {
+  if (!Array.isArray(value) || !value.length) return null;
+  const parsed = value.map(parseGalleryItem);
+  return parsed.every(Boolean) ? parsed : null;
+}
 
 export function splitArticle(document, slug) {
   const doc = document || {};
+  const stored = galleryEntries(doc[GALLERY]);
+  const claimsProfile = isMediaId(doc[PROFILE_IMAGE]);
   const facts = [];
   for (const [key, value] of Object.entries(doc)) {
-    if (RESERVED.has(key)) continue;
+    if (key === TITLE || key === BODY) continue;
+    if (key === GALLERY && stored) continue;
+    if (key === PROFILE_IMAGE && claimsProfile) continue;
     facts.push({ key, value });
   }
-  const gallery = Array.isArray(doc[GALLERY])
-    ? doc[GALLERY].map(parseGalleryItem).filter(Boolean)
-    : [];
+  const gallery = stored ? [...stored] : [];
   const attached = new Set(gallery.map((item) => item.media_id));
   for (const line of String(doc[BODY] || "").split(/\r?\n/)) {
     const placement = parseImageDirective(line);
@@ -46,19 +58,21 @@ export function assembleArticle({ title, body, facts, profileImage = null, galle
   const doc = {};
   if (title && title.trim()) doc[TITLE] = title.trim();
   if (body && body.length) doc[BODY] = body;
+  for (const { key, value } of facts) {
+    const cleanKey = key && key.trim();
+    if (!cleanKey || cleanKey === TITLE || cleanKey === BODY) continue;
+    doc[cleanKey] = value;
+  }
+  // Written last, and only when there is something to write: an article with
+  // no attachments leaves both names to whatever fact was already using them.
   if (gallery.length) {
     doc[GALLERY] = gallery.map((item) => formatGalleryItem({
       id: item.media_id || item.id,
       caption: item.caption,
     }));
-  }
-  if (profileImage && gallery.some((item) => (item.media_id || item.id) === profileImage)) {
-    doc[PROFILE_IMAGE] = profileImage;
-  }
-  for (const { key, value } of facts) {
-    const cleanKey = key && key.trim();
-    if (!cleanKey || RESERVED.has(cleanKey)) continue;
-    doc[cleanKey] = value;
+    if (profileImage && gallery.some((item) => (item.media_id || item.id) === profileImage)) {
+      doc[PROFILE_IMAGE] = profileImage;
+    }
   }
   return doc;
 }

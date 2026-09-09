@@ -256,9 +256,12 @@ A flat document maps onto an article:
 | a flat array field | an infobox row rendered as **chips/tags** |
 
 Docs created via the raw API without `title` or `body` degrade gracefully — the
-slug is the heading and all fields other than the four reserved article fields
-show as infobox facts. The backend also validates that body images and a profile
-choice belong to the ordered `gallery` attachment list.
+slug is the heading and every other field shows as an infobox fact. `gallery`
+and `profile_image` are reserved only while they hold image references: an
+article that used either name before images existed keeps it as a fact, and
+round-trips through the editor unchanged. The backend does not police
+consistency between them; the editor maintains it and the reader ignores what
+it cannot resolve.
 
 ### Body markup: wikitext-like subset
 

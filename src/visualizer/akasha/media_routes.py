@@ -7,8 +7,9 @@ from flask_login import current_user, login_required
 
 from visualizer.auth import DELETE, READ, WRITE, Forbidden, is_allowed
 
-from .errors import ImageTooLarge, InvalidImage, MediaInUse, MediaNotFound, ReservedName
+from .errors import ImageTooLarge, InvalidImage, MediaInUse, MediaNotFound
 from .media_service import MediaService
+from .routing import flag_arg, reject_reserved
 
 _MEDIA = "/databases/<database>/media"
 _MEDIA_ITEM = _MEDIA + "/<media_id>"
@@ -19,25 +20,32 @@ def register_media_routes(app, service: MediaService, auth_store, csrf) -> None:
     @app.get(_MEDIA)
     @login_required
     def list_media(database):
-        _reject_reserved(database)
+        reject_reserved(database)
         records = service.store.list(database)
         visible = _visible_ids(service, auth_store, database, records)
         shown = records if visible is None else [r for r in records if r["id"] in visible]
-        return jsonify(
-            {
-                "media": [
-                    _present(r, database, _can_manage(auth_store, database, r))
-                    for r in shown
-                ],
-                "count": len(shown),
-            }
-        )
+        body = {
+            "media": [
+                _present(r, database, _can_manage(auth_store, database, r))
+                for r in shown
+            ],
+            "count": len(shown),
+        }
+        if flag_arg("orphans"):
+            # Which of these nothing points at any more -- the housekeeping
+            # question this feature creates. Scoped to what the caller can
+            # already see, so it never discloses an image by omission.
+            referenced = service.references.referenced_ids(database)
+            body["orphans"] = sorted(
+                r["id"] for r in shown if r["id"] not in referenced
+            )
+        return jsonify(body)
 
     @app.post(_MEDIA)
     @csrf.exempt
     @login_required
     def upload_media(database):
-        _reject_reserved(database)
+        reject_reserved(database)
         if (
             request.content_length is not None
             and request.content_length > service.processor.max_bytes + 1024 * 1024
@@ -68,7 +76,7 @@ def register_media_routes(app, service: MediaService, auth_store, csrf) -> None:
     @app.get(_MEDIA_ITEM)
     @login_required
     def get_media(database, media_id):
-        _reject_reserved(database)
+        reject_reserved(database)
         record = service.store.get(database, media_id)
         _require_visible(service, auth_store, database, record)
         return jsonify(
@@ -79,7 +87,7 @@ def register_media_routes(app, service: MediaService, auth_store, csrf) -> None:
     @csrf.exempt
     @login_required
     def update_media(database, media_id):
-        _reject_reserved(database)
+        reject_reserved(database)
         record = service.store.get(database, media_id)
         _require_manager(auth_store, database, record)
         payload = request.get_json(silent=True)
@@ -92,11 +100,11 @@ def register_media_routes(app, service: MediaService, auth_store, csrf) -> None:
     @csrf.exempt
     @login_required
     def delete_media(database, media_id):
-        _reject_reserved(database)
+        reject_reserved(database)
         record = service.store.get(database, media_id)
         _require_manager(auth_store, database, record)
         try:
-            references = service.delete(database, media_id, force=_flag("force"))
+            references = service.delete(database, media_id, force=flag_arg("force"))
         except MediaInUse as error:
             raise MediaInUse(
                 "This image is still used by an article or retained revision.",
@@ -114,7 +122,7 @@ def register_media_routes(app, service: MediaService, auth_store, csrf) -> None:
     @app.get(_MEDIA_ITEM + "/<variant>")
     @login_required
     def media_content(database, media_id, variant):
-        _reject_reserved(database)
+        reject_reserved(database)
         if variant not in _VARIANTS:
             raise MediaNotFound(f"Image variant '{variant}' does not exist.")
         record = service.store.get(database, media_id)
@@ -128,6 +136,12 @@ def register_media_routes(app, service: MediaService, auth_store, csrf) -> None:
             conditional=True,
             etag=details["sha256"],
         )
+        # ``send_file(conditional=True)`` sets ``no-cache``, which would make
+        # the browser revalidate every figure on every page view and cancel the
+        # max-age below. Clear it: image bytes are immutable (a new upload gets
+        # a new id), so they can sit in a private cache for a day. The ETag
+        # still gives a cheap 304 once that day is up.
+        response.cache_control.no_cache = None
         response.cache_control.private = True
         response.cache_control.max_age = 86400
         response.headers["X-Content-Type-Options"] = "nosniff"
@@ -195,10 +209,3 @@ def _readable_references(auth_store, database, references) -> list[dict]:
     ]
 
 
-def _reject_reserved(database: str) -> None:
-    if database.startswith("_"):
-        raise ReservedName(f"Database '{database}' is reserved and not accessible.")
-
-
-def _flag(name: str) -> bool:
-    return request.args.get(name, "").strip().lower() in ("1", "true", "yes", "on")

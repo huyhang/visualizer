@@ -71,13 +71,13 @@ from .errors import (
     DocumentNotFound,
     InvalidRevision,
     MediaInUse,
-    ReservedName,
     VersionNotFound,
 )
 from .history import find_snapshot, history_meta
 from .labels import derive_title
 from .media_routes import register_media_routes
 from .media_service import MediaService
+from .routing import flag_arg, reject_reserved
 from .store import DocumentStore
 from .terms import TERMS
 from .validation import validate_document, validate_search_terms
@@ -169,12 +169,6 @@ def create_app(
     return app
 
 
-def _reject_reserved(database: str) -> None:
-    """Block access to internal/reserved databases (e.g. the auth store)."""
-    if database.startswith("_"):
-        raise ReservedName(f"Database '{database}' is reserved and not accessible.")
-
-
 # Akasha's three shareable kinds, tightened from the neutral descriptors: the
 # writer-facing words from ``terms.py``, and the guard that keeps the reserved
 # `_auth` / `_chronos` namespaces unshareable. The chronos two are taken as they
@@ -183,17 +177,17 @@ def _reject_reserved(database: str) -> None:
 AKASHA_WORLD = replace(
     sharing.WORLD,
     label=TERMS["database"]["One"], plural=TERMS["database"]["Many"],
-    guard=lambda scope: _reject_reserved(scope["database"]),
+    guard=lambda scope: reject_reserved(scope["database"]),
 )
 AKASHA_COLLECTION = replace(
     sharing.COLLECTION,
     label=TERMS["collection"]["One"], plural=TERMS["collection"]["Many"],
-    guard=lambda scope: _reject_reserved(scope["database"]),
+    guard=lambda scope: reject_reserved(scope["database"]),
 )
 AKASHA_ARTICLE = replace(
     sharing.ARTICLE,
     label=TERMS["document"]["One"], plural=TERMS["document"]["Many"],
-    guard=lambda scope: _reject_reserved(scope["database"]),
+    guard=lambda scope: reject_reserved(scope["database"]),
 )
 # The order the account page shows them in: this writer's own world first, then
 # what they have built on top of it.
@@ -261,7 +255,7 @@ def _authorize(auth_store: AuthStore, method: str, database, collection, doc_id=
     governs *account and access management* (the ``/admin`` console), not content
     access: an admin sees another user's content only where explicitly granted.
     """
-    _reject_reserved(database)
+    reject_reserved(database)
     perm = perm_for_method(method)
     grants = auth_store.grants_for(current_user.username)
     if not is_allowed(grants, perm, database, collection, doc_id):
@@ -328,7 +322,7 @@ def _register_routes(app: Flask, store: DocumentStore, auth_store: AuthStore, cs
     @login_required
     def create_collection(database, collection):
         # Any authenticated user may create a namespace and owns what they make.
-        _reject_reserved(database)
+        reject_reserved(database)
         result = store.create_collection(database, collection)
         auth_store.grant_owner(
             current_user.username, database, collection, None, list(ALL_PERMS)
@@ -350,10 +344,10 @@ def _register_routes(app: Flask, store: DocumentStore, auth_store: AuthStore, cs
         held something can go. Its grants go with it, so a namespace that no
         longer exists stops haunting its owners' account pages.
         """
-        _reject_reserved(database)
+        reject_reserved(database)
         _require_owner(auth_store, database, collection, None)
         result = store.delete_collection(
-            database, collection, purge_history=_flag_arg("purge")
+            database, collection, purge_history=flag_arg("purge")
         )
         _revoke_scope(auth_store, database, collection)
         return jsonify({"database": database, "collection": collection, **result})
@@ -369,7 +363,7 @@ def _register_routes(app: Flask, store: DocumentStore, auth_store: AuthStore, cs
         was already an owner-only act. This clears shells left behind by older
         versions, which created the namespace before the article was written.
         """
-        _reject_reserved(database)
+        reject_reserved(database)
         store.delete_database(database)
         return "", 204
 
@@ -429,7 +423,7 @@ def _register_routes(app: Flask, store: DocumentStore, auth_store: AuthStore, cs
     @csrf.exempt
     @login_required
     def search(database, collection):
-        _reject_reserved(database)
+        reject_reserved(database)
         key, text = validate_search_terms(
             request.args.get("key"), request.args.get("text")
         )
@@ -477,7 +471,7 @@ def _register_browse_routes(app: Flask, store: DocumentStore, auth_store: AuthSt
     @csrf.exempt
     @login_required
     def list_collections(database):
-        _reject_reserved(database)
+        reject_reserved(database)
         grants = auth_store.grants_for(current_user.username)
         present = store.list_collections(database)
         collections = visible_collections(grants, database, present)
@@ -507,7 +501,7 @@ def _register_browse_routes(app: Flask, store: DocumentStore, auth_store: AuthSt
         collection page is the full-text search the API always had and the
         browser never offered.
         """
-        _reject_reserved(database)
+        reject_reserved(database)
         grants = auth_store.grants_for(current_user.username)
         rows = _readable_rows(store, grants, database, collection)
         page = browse_articles(
@@ -553,7 +547,7 @@ def _register_browse_routes(app: Flask, store: DocumentStore, auth_store: AuthSt
         per article like every other listing, and each row says whether *this*
         caller may restore it, so the button is only drawn when it would work.
         """
-        _reject_reserved(database)
+        reject_reserved(database)
         grants = auth_store.grants_for(current_user.username)
         rows = [
             {
@@ -604,12 +598,6 @@ def _register_browse_routes(app: Flask, store: DocumentStore, auth_store: AuthSt
         matches = _gather_suggestions(store, grants, query)
         ranked = rank_suggestions(matches, current_db, current_col)
         return jsonify({"suggestions": ranked[:_SUGGEST_LIMIT]})
-
-
-def _flag_arg(name: str) -> bool:
-    """A boolean query flag: present, and not spelled as a denial."""
-    raw = request.args.get(name)
-    return raw is not None and raw.lower() not in ("", "0", "false", "no")
 
 
 def _int_arg(name: str, default: int) -> int:
@@ -898,7 +886,7 @@ def _register_sharing_routes(app: Flask, auth_store: AuthStore, csrf) -> None:
     @csrf.exempt
     @login_required
     def list_collection_collaborators(database, collection):
-        _reject_reserved(database)
+        reject_reserved(database)
         _require_owner(auth_store, database, collection, None)
         return jsonify(
             {"collaborators": _collaborators(auth_store, database, collection, None)}
@@ -920,7 +908,7 @@ def _register_sharing_routes(app: Flask, auth_store: AuthStore, csrf) -> None:
     @csrf.exempt
     @login_required
     def list_document_collaborators(database, collection, doc_id):
-        _reject_reserved(database)
+        reject_reserved(database)
         _require_owner(auth_store, database, collection, doc_id)
         return jsonify(
             {"collaborators": _collaborators(auth_store, database, collection, doc_id)}

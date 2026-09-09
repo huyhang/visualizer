@@ -33,34 +33,32 @@ function renderInline(escaped) {
   return out;
 }
 
-function renderImage(placement) {
+// Quotes are safe in text content but not in an attribute, so close that gap
+// for the values that land in one.
+function escAttr(value) {
+  return esc(String(value)).replaceAll('"', "&quot;");
+}
+
+// The one place a figure's markup is written. Both the string renderer and the
+// DOM builder below go through it: spelling it twice is how the two drift.
+function renderImage(placement, className = "") {
+  const extra = className ? ` ${escAttr(className)}` : "";
   const caption = esc(placement.caption);
   const figcaption = caption ? `<figcaption>${caption}</figcaption>` : "";
-  return `<figure class="article-image align-${placement.align}" style="--image-width:${placement.width}%">`
-    + `<button type="button" class="article-image-open" data-media-id="${placement.media_id}" aria-label="Open full-size image">`
+  return `<figure class="article-image align-${escAttr(placement.align)}${extra}" style="--image-width:${Number(placement.width) || 100}%">`
+    + `<button type="button" class="article-image-open" data-media-id="${escAttr(placement.media_id)}" aria-label="Open full-size image">`
     + `<span class="image-placeholder">Loading image…</span></button>${figcaption}</figure>`;
 }
 
+// The same figure as a live node, for the callers that build a page rather than
+// a string (the profile image and the gallery grid). Parsed from the markup
+// above rather than reassembled, so `hydrateImages` finds the same hooks and a
+// change to one is a change to both. Every interpolated value is escaped by
+// `renderImage`, which is what makes reparsing it safe.
 export function createImageFigure(placement, className = "") {
-  const figure = document.createElement("figure");
-  figure.className = `article-image align-${placement.align}${className ? " " + className : ""}`;
-  figure.style.setProperty("--image-width", `${placement.width}%`);
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "article-image-open";
-  button.dataset.mediaId = placement.media_id;
-  button.setAttribute("aria-label", "Open full-size image");
-  const placeholder = document.createElement("span");
-  placeholder.className = "image-placeholder";
-  placeholder.textContent = "Loading image…";
-  button.appendChild(placeholder);
-  figure.appendChild(button);
-  if (placement.caption) {
-    const caption = document.createElement("figcaption");
-    caption.textContent = placement.caption;
-    figure.appendChild(caption);
-  }
-  return figure;
+  const template = document.createElement("template");
+  template.innerHTML = renderImage(placement, className);
+  return template.content.firstElementChild;
 }
 
 export function renderWikitext(text) {

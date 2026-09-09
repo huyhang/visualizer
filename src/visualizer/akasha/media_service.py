@@ -23,6 +23,21 @@ class ArticleMediaReferences:
             visible.update(self._find_ids(stored))
         return visible
 
+    def referenced_ids(self, world: str) -> set[str]:
+        """Every media id any article still points at, live or retained.
+
+        Retained revisions count because they are what blocks a delete: an
+        "orphan" that history still holds would be listed as removable and then
+        refuse to go, which is a worse answer than not listing it.
+        """
+        found = set()
+        for _, stored in self._documents(world):
+            if not stored.get("_deleted"):
+                found |= self._find_ids(stored)
+            for snapshot in stored.get("_history", ()):
+                found |= self._find_ids(snapshot.get("document") or {})
+        return found
+
     def references(self, world: str, media_id: str) -> list[dict]:
         found = []
         for collection, stored in self._documents(world):

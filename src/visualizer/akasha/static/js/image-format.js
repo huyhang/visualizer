@@ -36,6 +36,10 @@ export function parseGalleryItem(value) {
   return match ? { media_id: match[1], caption: match[2] } : null;
 }
 
+export function isMediaId(value) {
+  return typeof value === "string" && new RegExp(`^${ID}$`).test(value);
+}
+
 export function formatGalleryItem({ id, caption }) {
   return `${id}|${String(caption || "").replaceAll(/\r?\n/g, " ")}`;
 }

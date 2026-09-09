@@ -238,9 +238,10 @@
       "get": {
         "tags": ["media"],
         "summary": "List images visible to the caller in a world",
-        "description": "World readers see the whole library. Narrower collaborators see their own uploads and images used by articles they may read.",
+        "description": "World readers see the whole library. Narrower collaborators see their own uploads and images used by articles they may read.\n\n`?orphans=1` adds an `orphans` array naming the visible images no article points at any more — in its current revision or in any retained one, so the list is exactly what would delete without a 409.",
         "parameters": [
-          {"$ref": "#/components/parameters/Database"}
+          {"$ref": "#/components/parameters/Database"},
+          {"name": "orphans", "in": "query", "required": false, "schema": {"type": "string", "enum": ["1", "true", "yes", "on"]}, "description": "Also report which visible images nothing references."}
         ],
         "responses": {
           "200": {
@@ -252,7 +253,8 @@
                   "required": ["media", "count"],
                   "properties": {
                     "media": {"type": "array", "items": {"$ref": "#/components/schemas/Media"}},
-                    "count": {"type": "integer"}
+                    "count": {"type": "integer"},
+                    "orphans": {"type": "array", "items": {"type": "string"}, "description": "Ids of visible images nothing references, live or retained. Present only with ?orphans=1."}
                   }
                 }
               }
@@ -367,6 +369,7 @@
       "get": {
         "tags": ["media"],
         "summary": "Read original, display, or thumbnail image bytes",
+        "description": "`original` is the upload with its metadata containers removed (Exif including GPS, XMP, IPTC, PNG text chunks) and every pixel intact. `display` and `thumbnail` are bounded re-encodes — except where the re-encode would be larger than the original, in which case the original is served under that name and reports its own dimensions. Responses carry an ETag and `Cache-Control: private, max-age=86400`.",
         "parameters": [
           {"$ref": "#/components/parameters/Database"},
           {"$ref": "#/components/parameters/MediaId"},
@@ -2210,7 +2213,7 @@
       },
       "Document": {
         "type": "object",
-        "description": "An article body: a **flat** JSON object. Every value is a scalar or an array of scalars \u2014 no nested objects, no arrays of arrays. Enforced on create and update (`validation.py`); a violation is a 400. Reserved fields are `title`, `body`, `gallery`, and `profile_image`; everything else renders as an infobox fact. Every valid image directive in `body` must name an attachment in `gallery`, and `profile_image`, when present, must also name one of those attachments.",
+        "description": "An article body: a **flat** JSON object. Every value is a scalar or an array of scalars \u2014 no nested objects, no arrays of arrays. Enforced on create and update (`validation.py`); a violation is a 400.\n\n`title` and `body` are reserved. `gallery` and `profile_image` are reserved *conditionally*: they are read as image references only when they parse as such, and render as ordinary infobox facts otherwise, so an article that used either name before images existed keeps saving. An internally inconsistent set is accepted rather than refused \u2014 a body image missing from `gallery` still renders, a `profile_image` naming no attachment is simply not shown \u2014 and the editor never writes one.",
         "properties": {
           "gallery": {
             "type": "array",
@@ -2219,12 +2222,12 @@
               "type": "string",
               "pattern": "^[a-f0-9]{32}\\|.*$"
             },
-            "description": "Ordered article attachments encoded as media-id|article-specific caption."
+            "description": "Ordered article attachments encoded as media-id|article-specific caption. An array that does not match this shape is an ordinary infobox fact, not a gallery."
           },
           "profile_image": {
             "type": "string",
             "pattern": "^[a-f0-9]{32}$",
-            "description": "An attached gallery image rendered above the infobox and omitted from the bottom gallery."
+            "description": "An attached gallery image rendered above the infobox and omitted from the bottom gallery. A value that is not a media id is an ordinary infobox fact."
           }
         },
         "additionalProperties": {

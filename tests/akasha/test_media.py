@@ -7,7 +7,7 @@ import mongomock
 import mongomock.gridfs
 import pytest
 from conftest import COLLECTION, DB, doc_url, login
-from PIL import Image
+from PIL import Image, ImageDraw
 from werkzeug.security import generate_password_hash
 
 from visualizer.akasha.config import (
@@ -21,7 +21,7 @@ from visualizer.akasha.config import (
     get_max_image_pixels,
 )
 from visualizer.akasha.errors import ImageTooLarge, InvalidImage, MediaInUse
-from visualizer.akasha.image_processing import ImageProcessor
+from visualizer.akasha.image_processing import ImageProcessor, _is_lossless_webp
 from visualizer.akasha.media import (
     document_image_ids,
     image_ids,
@@ -104,6 +104,108 @@ def test_processor_keeps_original_and_builds_bounded_variants():
     assert (processed.display.width, processed.display.height) == (500, 250)
     assert (processed.thumbnail.width, processed.thumbnail.height) == (100, 50)
     assert processed.display.mime_type == "image/png"
+
+
+def _flat_art(size=(900, 600)):
+    """Drawn artwork: few colours, hard edges -- the case resampling inflates."""
+    image = Image.new("RGB", size, (18, 22, 48))
+    draw = ImageDraw.Draw(image)
+    draw.polygon([(0, 400), (250, 180), (520, 400)], fill=(60, 70, 110))
+    draw.rectangle([300, 150, 600, 560], fill=(48, 52, 74))
+    for x in range(330, 580, 60):
+        for y in range(200, 480, 90):
+            draw.rectangle([x, y, x + 26, y + 44], fill=(250, 190, 90))
+    out = BytesIO()
+    image.save(out, "PNG")
+    return out.getvalue()
+
+
+def test_a_derivative_is_never_larger_than_what_it_derives_from():
+    """Flat art resampled to a thumbnail used to cost twice the original."""
+    raw = _flat_art()
+    processed = ImageProcessor(1_000_000, 1_000_000, 2048, 360).process(raw, "keep.png")
+    assert processed.original.data == raw
+    for variant in (processed.display, processed.thumbnail):
+        assert len(variant.data) <= len(raw)
+
+
+def _already_optimal_png():
+    """Too small to shrink: re-encoding it can only tie, so both derivatives
+    are declined and every variant is the upload itself."""
+    out = BytesIO()
+    Image.new("RGB", (4, 4), (1, 2, 3)).save(out, "PNG", optimize=True)
+    return out.getvalue()
+
+
+def test_a_declined_derivative_falls_back_to_the_original_bytes():
+    """Nothing is fabricated: the variant reports the original's real size."""
+    raw = _already_optimal_png()
+    processed = ImageProcessor(1_000_000, 1_000_000, 2048, 360).process(raw, "dot.png")
+    assert processed.display.sha256 == processed.original.sha256
+    assert processed.thumbnail.data == raw
+    assert (processed.display.width, processed.display.height) == (4, 4)
+
+
+def test_shared_variant_bytes_are_stored_once(mongo_client):
+    store = MediaStore(mongo_client, id_factory=lambda: IMAGE_ID)
+    processed = ImageProcessor(1_000_000, 1_000_000, 2048, 360).process(
+        _already_optimal_png(), "dot.png"
+    )
+    store.create("earth", "mara", "Keep", processed)
+    files = list(mongo_client["_akasha_media"]["blobs.files"].find())
+    assert len(files) < 3
+    for variant in ("original", "display", "thumbnail"):
+        data, _ = store.read_variant("earth", IMAGE_ID, variant)
+        assert data
+
+
+def test_a_lossless_webp_upload_stays_lossless():
+    """Pillow's WebP default is lossy q80; on flat art that also inflates it."""
+    image = Image.new("RGB", (400, 300), (240, 230, 210))
+    ImageDraw.Draw(image).rectangle([50, 50, 350, 250], fill=(200, 60, 40))
+    out = BytesIO()
+    image.save(out, "WEBP", lossless=True)
+    raw = out.getvalue()
+
+    processed = ImageProcessor(1_000_000, 1_000_000, 2048, 360).process(
+        raw, "flag.webp"
+    )
+    display = Image.open(BytesIO(processed.display.data)).convert("RGB")
+    assert display.tobytes() == image.tobytes()
+    assert len(processed.display.data) <= len(raw)
+
+
+def test_a_lossy_webp_upload_is_not_re_encoded_as_lossless():
+    photo = Image.effect_noise((900, 700), 48).convert("RGB")
+    out = BytesIO()
+    photo.save(out, "WEBP", quality=80)
+    processed = ImageProcessor(5_000_000, 5_000_000, 400, 100).process(
+        out.getvalue(), "noise.webp"
+    )
+    assert (processed.display.width, processed.display.height) == (400, 311)
+    assert len(processed.display.data) < len(out.getvalue())
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        (b"", False),
+        (b"RIFF", False),
+        (b"RIFF\x00\x00\x00\x00WEBPVP8L", True),
+        (b"RIFF\x00\x00\x00\x00WEBPVP8 ", False),
+        (b"RIFF\x00\x00\x00\x00NOPEVP8L", False),
+    ],
+)
+def test_lossless_detection_reads_the_container_not_a_guess(raw, expected):
+    assert _is_lossless_webp(raw) is expected
+
+
+def test_lossless_detection_walks_past_an_extended_header():
+    """A VP8X file carries its bitstream after the header and ICC chunks."""
+    body = b"VP8X" + (10).to_bytes(4, "little") + b"\x00" * 10
+    body += b"ICCP" + (3).to_bytes(4, "little") + b"abc\x00"  # odd size, padded
+    body += b"VP8L" + (4).to_bytes(4, "little") + b"data"
+    assert _is_lossless_webp(b"RIFF" + b"\x00" * 4 + b"WEBP" + body) is True
 
 
 @pytest.mark.parametrize(
@@ -376,3 +478,75 @@ def test_image_becomes_deletable_after_referencing_history_is_pruned(mongo_clien
 
     assert service.delete(DB, IMAGE_ID) == []
     assert media_store.list(DB) == []
+
+
+def test_orphans_lists_only_what_nothing_points_at(client, media_service):
+    client.post(doc_url("atlas"), json={"title": "Atlas"})
+    unused = _upload(client, filename="unused.png").get_json()["id"]
+    used = _upload(client, filename="used.png").get_json()["id"]
+    client.put(
+        doc_url("atlas"),
+        json={
+            "title": "Atlas",
+            "body": f"{{{{image:{used}|center|60|In the prose}}}}",
+            "gallery": [f"{used}|In the prose"],
+        },
+    )
+
+    plain = client.get(f"/databases/{DB}/media").get_json()
+    assert "orphans" not in plain
+
+    listed = client.get(f"/databases/{DB}/media?orphans=1").get_json()
+    assert listed["orphans"] == [unused]
+
+
+def test_an_image_held_only_by_history_is_not_called_an_orphan(client):
+    """It would be listed as removable and then refuse to be removed."""
+    client.post(doc_url("atlas"), json={"title": "Atlas"})
+    media_id = _upload(client, filename="retired.png").get_json()["id"]
+    client.put(
+        doc_url("atlas"),
+        json={
+            "title": "Atlas",
+            "body": f"{{{{image:{media_id}|center|60|Once}}}}",
+            "gallery": [f"{media_id}|Once"],
+        },
+    )
+    client.put(doc_url("atlas"), json={"title": "Atlas", "body": "The image is gone"})
+
+    listed = client.get(f"/databases/{DB}/media?orphans=1").get_json()
+    assert listed["orphans"] == []
+    assert client.delete(f"/databases/{DB}/media/{media_id}").status_code == 409
+
+
+def test_orphans_are_scoped_to_what_the_caller_can_see(app, auth_store, client):
+    client.post(doc_url("atlas"), json={"title": "Atlas"})
+    _upload(client, filename="secret.png")
+    auth_store.create_user("outsider", generate_password_hash("pw"), role="user")
+    auth_store.add_grant(
+        "outsider", DB, COLLECTION, "atlas", ["read"], granted_by="admin"
+    )
+    outsider = app.test_client()
+    login(outsider, "outsider", "pw")
+
+    listed = outsider.get(f"/databases/{DB}/media?orphans=1").get_json()
+    assert listed["orphans"] == []
+
+
+def test_a_portrait_photo_hangs_the_same_way_up_in_every_variant():
+    """Exif rotation is stripped from nothing and reported by everything: the
+    lightbox serves the archive, so it must not disagree with the article."""
+    exif = Image.Exif()
+    exif[274] = 6  # stored landscape, displayed portrait
+    exif[271] = "SecretCam"
+    out = BytesIO()
+    Image.effect_noise((400, 300), 40).convert("RGB").save(out, "JPEG", exif=exif)
+    raw = out.getvalue()
+
+    processed = ImageProcessor(1_000_000, 1_000_000, 2048, 360).process(raw, "me.jpg")
+    assert (processed.width, processed.height) == (300, 400)
+    for variant in (processed.original, processed.display, processed.thumbnail):
+        assert variant.width < variant.height, "reported shape is the stored one"
+    archived = Image.open(BytesIO(processed.original.data))
+    assert archived.getexif().get(274) == 6
+    assert archived.getexif().get(271) is None

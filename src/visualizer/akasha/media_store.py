@@ -38,16 +38,22 @@ class MediaStore:
         self, world: str, uploader: str, alt: str, image: ProcessedImage
     ) -> dict:
         media_id = self._id_factory()
-        blobs = {}
+        blobs: dict[str, object] = {}
+        by_digest: dict[str, object] = {}
         try:
             for name in ("original", "display", "thumbnail"):
                 variant = getattr(image, name)
-                blobs[name] = self._files.put(
-                    variant.data,
-                    filename=image.filename,
-                    content_type=variant.mime_type,
-                    metadata={"media_id": media_id, "variant": name},
-                )
+                # A derivative may *be* the original: the processor declines to
+                # build one that would cost more bytes than it saves. Store
+                # those bytes once and point both variants at the same file.
+                if variant.sha256 not in by_digest:
+                    by_digest[variant.sha256] = self._files.put(
+                        variant.data,
+                        filename=image.filename,
+                        content_type=variant.mime_type,
+                        metadata={"media_id": media_id, "variant": name},
+                    )
+                blobs[name] = by_digest[variant.sha256]
             record = {
                 "_id": media_id,
                 "world": world,
@@ -72,7 +78,7 @@ class MediaStore:
             }
             self._records.insert_one(record)
         except Exception:
-            for file_id in blobs.values():
+            for file_id in by_digest.values():
                 self._files.delete(file_id)
             raise
         return self._public(record)
@@ -108,9 +114,11 @@ class MediaStore:
 
     def delete(self, world: str, media_id: str) -> None:
         record = self._record(world, media_id)
-        for details in record.get("variants", {}).values():
+        # Variants can share one file when a derivative was declined, so delete
+        # the distinct ids rather than one per variant name.
+        for file_id in {d["file_id"] for d in record.get("variants", {}).values()}:
             try:
-                self._files.delete(details["file_id"])
+                self._files.delete(file_id)
             except gridfs.errors.NoFile:
                 pass
         self._records.delete_one({"_id": media_id, "world": world})

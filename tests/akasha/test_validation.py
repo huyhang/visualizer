@@ -53,17 +53,22 @@ def test_validate_document_accepts_consistent_article_images():
 @pytest.mark.parametrize(
     "payload",
     [
-        {"gallery": "not-an-array"},
-        {"gallery": ["not-an-image"]},
+        # Field names belong to the writer. An article that used these two long
+        # before images existed must keep saving; the reader claims them only
+        # when they parse as image references.
+        {"gallery": ["Denon wing", "Sully wing", "Richelieu wing"]},
+        {"gallery": "the east hall"},
+        {"profile_image": "commissioned 1387 by the guild"},
+        # Internally inconsistent, but the reader degrades rather than breaking:
+        # an unattached body image still renders, an unattached portrait is
+        # simply not shown.
         {"gallery": [f"{'a' * 32}|one", f"{'a' * 32}|two"]},
-        {"profile_image": "not-an-id", "gallery": []},
         {"profile_image": "a" * 32, "gallery": []},
-        {"body": f"{{{{image:{'a' * 32}|center|50|Missing attachment}}}}"},
+        {"body": f"{{{{image:{'a' * 32}|center|50|Unattached}}}}"},
     ],
 )
-def test_validate_document_rejects_inconsistent_article_images(payload):
-    with pytest.raises(InvalidDocument):
-        validate_document(payload)
+def test_validate_document_does_not_police_the_image_fields(payload):
+    assert validate_document(payload) is payload
 
 
 @pytest.mark.parametrize(

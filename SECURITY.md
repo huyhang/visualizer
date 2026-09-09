@@ -117,8 +117,16 @@ this doc and the code disagree, trust the code and fix the doc.
 - **Raster uploads are decoded, not trusted by name.** Akasha accepts only
   content Pillow verifies as JPEG, PNG or static WebP; filename extensions and
   declared MIME types do not decide the format. Encoded-byte and decoded-pixel
-  caps limit compressed image bombs, and generated display copies contain only
-  pixels rather than uploaded metadata. SVG is not accepted by this path.
+  caps limit compressed image bombs, and the pixel cap is checked from the
+  header *before* the image is decoded, so a bomb costs a few MB rather than
+  the memory its dimensions claim. SVG is not accepted by this path.
+- **Uploads are stripped of their metadata before storage.** Every stored copy,
+  the archived original included, has its Exif (including GPS), XMP, IPTC and
+  PNG text chunks removed by container surgery — no decode, no re-compression,
+  every pixel intact (`akasha/metadata.py`). This matters because the original
+  is what the full-size view serves: a photo's location tag would otherwise be
+  published to everyone who can read the article. Colour-critical records (ICC
+  profiles, JFIF density) are kept deliberately.
 
 ### Output handling (XSS)
 

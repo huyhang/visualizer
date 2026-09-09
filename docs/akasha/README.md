@@ -167,7 +167,13 @@ fits the infobox width, and is omitted from the bottom gallery.
 Click an image while reading to open its full-resolution original, with the
 caption below it; click the enlarged image to toggle between fitted and actual
 size. Uploaded originals, display copies and thumbnails are private and remain
-inside the same MongoDB backup as the articles.
+inside the same MongoDB backup as the articles. The stored original keeps every
+pixel you uploaded but not the metadata around it — camera model, software and
+GPS coordinates are stripped before anything is saved, because that original is
+what the full-size view hands to every reader of the article.
+
+`GET /databases/<db>/media?orphans=1` lists the images nothing points at any
+more, so a world's library can be tidied without guessing.
 
 **History, compare & restore.** The **History** tab lists an article's retained
 versions. Each one offers **Compare with current** (a field-by-field diff with
@@ -230,6 +236,10 @@ The UI presents a document as an article using four reserved fields:
 | `gallery` | ordered `media-id\|caption` attachments |
 | `profile_image` | the id of one image in `gallery` |
 | any other field | an infobox fact (arrays render as chips) |
+
+The last two are claimed only when they hold image references. An article that
+has always kept a `gallery` list of wing names keeps it as an infobox fact —
+the field name is yours, and adding images did not take it away.
 
 All are optional — a document created via the API with none still reads fine
 (the id is used as the heading and every field shows in the infobox).
@@ -495,7 +505,7 @@ authenticated session (except `/health`).
 | POST   | `…/documents/<id>/restore/<n>` | restore version `n` as a new revision |
 | GET    | `/databases/<db>/collections/<col>/search?key=&text=` | search |
 | GET    | `/suggest?q=&db=&col=` | link type-ahead over readable articles |
-| GET    | `/databases/<db>/media` | visible images in a world's media library |
+| GET    | `/databases/<db>/media?orphans=` | visible images in a world's media library; `orphans=1` also names the ones nothing references |
 | POST   | `/databases/<db>/media` | multipart image upload with article context and alternative text |
 | GET    | `/databases/<db>/media/<id>` | image metadata and private variant URLs |
 | PATCH  | `/databases/<db>/media/<id>` | update alternative text (uploader or world owner) |

@@ -4,8 +4,6 @@ import { api } from "./api.js";
 import { clear, el, modal, toast } from "./dom.js";
 import { formatImageDirective, parseImageDirective } from "./image-format.js";
 
-export { formatImageDirective } from "./image-format.js";
-
 const mediaCache = new Map();
 
 export async function resolveMedia(db, id) {

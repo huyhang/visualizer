@@ -48,26 +48,14 @@ def get_secret_key() -> str:
     return key
 
 
-def get_versions_keep() -> int:
-    """Max version snapshots retained per document (older ones are pruned).
-
-    Read here (the only place env is touched) and injected into the app factory,
-    keeping the store env-free and testable. Defaults to ``20``; a non-numeric or
-    non-positive value is rejected rather than silently ignored.
-    """
-    raw = os.environ.get("VERSIONS_KEEP")
-    if raw is None or raw.strip() == "":
-        return DEFAULT_VERSIONS_KEEP
-    try:
-        value = int(raw)
-    except ValueError:
-        raise RuntimeError(f"VERSIONS_KEEP must be an integer, got {raw!r}.")
-    if value < 1:
-        raise RuntimeError("VERSIONS_KEEP must be at least 1.")
-    return value
-
-
 def _positive_int(name: str, default: int) -> int:
+    """One env-backed positive integer.
+
+    Every numeric knob below reads through here, so they all agree on what an
+    empty value, a non-number and a zero mean: default, refuse, refuse. Read at
+    import time and injected into the app factory, keeping the stores and route
+    layer env-free and testable.
+    """
     raw = os.environ.get(name)
     if raw is None or raw.strip() == "":
         return default
@@ -78,6 +66,11 @@ def _positive_int(name: str, default: int) -> int:
     if value < 1:
         raise RuntimeError(f"{name} must be at least 1.")
     return value
+
+
+def get_versions_keep() -> int:
+    """Max version snapshots retained per document (older ones are pruned)."""
+    return _positive_int("VERSIONS_KEEP", DEFAULT_VERSIONS_KEEP)
 
 
 def get_max_image_bytes() -> int:

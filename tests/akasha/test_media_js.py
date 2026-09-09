@@ -50,12 +50,12 @@ def run_js(tmp_path_factory):
     ):
         shutil.copy(_JS_DIR / name, workspace / name)
 
-    def run(imports: str, body: str):
+    def run(body: str, imports: str = ""):
         script = workspace / "driver.js"
         script.write_text(
-            f'import {{ {imports} }} from "./media.js";\n'
-            'import { formatGalleryItem, parseGalleryItem, parseImageDirective } '
-            'from "./image-format.js";\n'
+            (f'import {{ {imports} }} from "./media.js";\n' if imports else "")
+            + 'import { formatGalleryItem, formatImageDirective, parseGalleryItem, '
+            'parseImageDirective } from "./image-format.js";\n'
             'import { assembleArticle, splitArticle } from "./article.js";\n'
             'import { renderWikitext } from "./wikitext.js";\n'
             "const emit = (value) => console.log(JSON.stringify(value));\n"
@@ -72,7 +72,7 @@ def run_js(tmp_path_factory):
 
 def test_browser_and_server_parse_the_same_directive(run_js):
     directive = "{{image:" + "a" * 32 + "|right|45|Tower at dusk}}"
-    browser = run_js("formatImageDirective", f"emit(parseImageDirective({json.dumps(directive)}));")
+    browser = run_js(f"emit(parseImageDirective({json.dumps(directive)}));")
     server = parse_image_directive(directive)
     assert browser == {
         "media_id": server.media_id,
@@ -84,7 +84,6 @@ def test_browser_and_server_parse_the_same_directive(run_js):
 
 def test_formatter_constrains_layout_values(run_js):
     result = run_js(
-        "formatImageDirective",
         "emit(formatImageDirective({id: '" + "b" * 32
         + "', align: 'full', width: 12, caption: 'A\\ncaption'}));",
     )
@@ -94,7 +93,6 @@ def test_formatter_constrains_layout_values(run_js):
 def test_gallery_format_round_trips_caption_separators(run_js):
     media_id = "b" * 32
     result = run_js(
-        "formatImageDirective",
         f"emit(parseGalleryItem(formatGalleryItem({{id: '{media_id}', caption: 'Map | dusk'}})));",
     )
     assert result == {"media_id": media_id, "caption": "Map | dusk"}
@@ -114,7 +112,7 @@ const document = assembleArticle({{
 }});
 emit({{document, article: splitArticle(document, 'atlas')}});
 """
-    result = run_js("formatImageDirective", script)
+    result = run_js(script)
     assert result["document"]["gallery"] == [f"{first}|First", f"{second}|Second"]
     assert result["document"]["profile_image"] == second
     assert result["article"]["facts"] == [{"key": "region", "value": "North"}]
@@ -124,7 +122,6 @@ def test_inline_image_is_migrated_into_article_gallery(run_js):
     media_id = "c" * 32
     directive = f"{{{{image:{media_id}|left|35|Old caption}}}}"
     result = run_js(
-        "formatImageDirective",
         f"emit(splitArticle({{body: {json.dumps(directive)}}}, 'atlas').gallery);",
     )
     assert result == [{"media_id": media_id, "caption": "Old caption"}]
@@ -132,7 +129,7 @@ def test_inline_image_is_migrated_into_article_gallery(run_js):
 
 def test_renderer_escapes_caption_and_emits_only_validated_layout(run_js):
     directive = "{{image:" + "c" * 32 + "|left|35|<script>alert(1)</script>}}"
-    html = run_js("formatImageDirective", f"emit(renderWikitext({json.dumps(directive)}));")
+    html = run_js(f"emit(renderWikitext({json.dumps(directive)}));")
     assert "<script>" not in html
     assert "&lt;script&gt;" in html
     assert "align-left" in html
@@ -152,6 +149,75 @@ const found = directiveAtCursor(area);
 insertImageDirective(area, {{id: found.placement.media_id, align: 'right', width: 65, caption: 'New'}}, found);
 emit({{value: area.value, cursor: area.cursor}});
 """
-    result = run_js("directiveAtCursor, insertImageDirective", body)
+    result = run_js(body, "directiveAtCursor, insertImageDirective")
     assert result["value"] == "Before\n{{image:" + "d" * 32 + "|right|65|New}}\nAfter"
     assert result["cursor"][0] == result["cursor"][1]
+
+
+def test_a_gallery_fact_that_predates_images_survives_a_round_trip(run_js):
+    """`gallery` and `profile_image` are only reserved when they hold image
+    references. A list of wing names is an infobox fact, and must come back."""
+    script = """
+const stored = {
+  title: 'The Louvre',
+  gallery: ['Denon wing', 'Sully wing'],
+  profile_image: 'commissioned 1387 by the guild',
+};
+const article = splitArticle(stored, 'louvre');
+emit({facts: article.facts, gallery: article.gallery,
+      profile: article.profileImage,
+      rebuilt: assembleArticle({title: article.title, body: article.body,
+                                facts: article.facts,
+                                profileImage: article.profileImage,
+                                gallery: article.gallery})});
+"""
+    result = run_js(script)
+    assert result["gallery"] == []
+    assert result["profile"] is None
+    assert {f["key"] for f in result["facts"]} == {"gallery", "profile_image"}
+    assert result["rebuilt"]["gallery"] == ["Denon wing", "Sully wing"]
+    assert result["rebuilt"]["profile_image"] == "commissioned 1387 by the guild"
+
+
+def test_an_image_gallery_still_claims_the_field(run_js):
+    media_id = "e" * 32
+    script = f"""
+const stored = {{title: 'Atlas', gallery: ['{media_id}|A caption'],
+                 profile_image: '{media_id}', region: 'North'}};
+const article = splitArticle(stored, 'atlas');
+emit({{facts: article.facts, gallery: article.gallery,
+      profile: article.profileImage}});
+"""
+    result = run_js(script)
+    assert result["gallery"] == [{"media_id": media_id, "caption": "A caption"}]
+    assert result["profile"] == media_id
+    assert [f["key"] for f in result["facts"]] == ["region"]
+
+
+def test_the_figure_markup_has_one_source(run_js):
+    """`createImageFigure` reparses `renderImage`'s output rather than
+    rebuilding it, so the reader's hooks cannot drift from the renderer's."""
+    media_id = "f" * 32
+    directive = f"{{{{image:{media_id}|right|45|Quote \" and <tag>}}}}"
+    html = run_js(f"emit(renderWikitext({json.dumps(directive)}));")
+
+    assert f'data-media-id="{media_id}"' in html
+    assert 'class="article-image align-right"' in html
+    assert "--image-width:45%" in html
+    assert 'aria-label="Open full-size image"' in html
+    assert "<script>" not in html and "&lt;tag&gt;" in html
+
+
+def test_a_crafted_placement_cannot_break_out_of_an_attribute(run_js):
+    """`createImageFigure` is called with hand-built placements, not only with
+    parser output, so the markup escapes its own attribute values."""
+    html = run_js(
+        "emit(renderWikitext('{{image:' + 'a'.repeat(32)"
+        " + '|left|30|\" onerror=alert(1) x=\"}}'));"
+    )
+    tags, caption = html.split("<figcaption>")
+    # The payload reached text content, where a bare quote is harmless...
+    assert caption.startswith('" onerror=alert(1) x="</figcaption>')
+    # ...and nothing of it reached an attribute.
+    assert "onerror" not in tags
+    assert tags.count('"') % 2 == 0  # every attribute quote is still paired
