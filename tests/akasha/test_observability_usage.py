@@ -6,8 +6,14 @@ trustworthy is that they reconcile -- owns plus authored must equal exactly what
 is on disk, with nothing double-counted and nothing lost.
 """
 
-import mongomock
+from io import BytesIO
 
+import mongomock
+import mongomock.gridfs
+from PIL import Image
+
+from visualizer.akasha.image_processing import ImageProcessor
+from visualizer.akasha.media_store import MediaStore
 from visualizer.akasha.store import DocumentStore
 from visualizer.auth import AuthStore
 from visualizer.chronos.store import CalendarStore, StoryStore
@@ -20,6 +26,8 @@ from visualizer.observability.usage import (
     owner_index,
 )
 from visualizer.prithvi.store import PrithviStore
+
+mongomock.gridfs.enable_gridfs_integration()
 
 
 def _grant(username, database, collection, doc_id, perms, granted_by, kind="database"):
@@ -208,6 +216,24 @@ def test_the_sweep_measures_articles_and_their_history():
     assert article.total_bytes > 0
     assert [author for author, _ in article.history] == ["mara", "devi"]
     assert all(size > 0 for _, size in article.history)
+
+
+def test_the_sweep_charges_gridfs_media_to_its_uploader():
+    client, _ = _populated_client()
+    raw = BytesIO()
+    Image.new("RGB", (20, 10), "navy").save(raw, "JPEG")
+    processed = ImageProcessor(100_000, 100_000, 20, 10).process(
+        raw.getvalue(), "portrait.jpg"
+    )
+    MediaStore(client).create("world", "devi", "A portrait", processed)
+
+    media = [
+        doc for doc in MongoDocumentSource(client).documents()
+        if doc.resource[0] == "media"
+    ]
+    assert len(media) == 1
+    assert media[0].created_by == "devi"
+    assert media[0].total_bytes > len(raw.getvalue())
 
 
 def test_a_scan_writes_one_row_per_writer_and_supersedes_itself():

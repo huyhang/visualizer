@@ -40,6 +40,32 @@ def test_validate_document_rejects_nested_values(payload):
         validate_document(payload)
 
 
+def test_validate_document_accepts_consistent_article_images():
+    media_id = "a" * 32
+    payload = {
+        "body": f"{{{{image:{media_id}|right|40|Inline caption}}}}",
+        "gallery": [f"{media_id}|Gallery caption|with a separator"],
+        "profile_image": media_id,
+    }
+    assert validate_document(payload) is payload
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"gallery": "not-an-array"},
+        {"gallery": ["not-an-image"]},
+        {"gallery": [f"{'a' * 32}|one", f"{'a' * 32}|two"]},
+        {"profile_image": "not-an-id", "gallery": []},
+        {"profile_image": "a" * 32, "gallery": []},
+        {"body": f"{{{{image:{'a' * 32}|center|50|Missing attachment}}}}"},
+    ],
+)
+def test_validate_document_rejects_inconsistent_article_images(payload):
+    with pytest.raises(InvalidDocument):
+        validate_document(payload)
+
+
 @pytest.mark.parametrize(
     "raw,expected",
     [("a@b.co", "a@b.co"), ("  Alice@Example.COM ", "alice@example.com")],

@@ -46,13 +46,19 @@ export function toast(message, isError = false) {
 // mouse. Returns `close` so a caller's action can dismiss it once its work is
 // done. `onClose` fires however it was dismissed — a caller waiting on an answer
 // needs to hear about a cancel too.
-export function modal({ title, body, actions, onClose }) {
+export function modal({ title, body, actions, onClose, className = "" }) {
+  const previousFocus = document.activeElement;
   const close = () => {
     document.removeEventListener("keydown", onKey);
     scrim.remove();
+    if (previousFocus?.focus) previousFocus.focus();
     if (onClose) onClose();
   };
-  const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
+  const onKey = (e) => {
+    const dialogs = document.querySelectorAll(".modal-scrim");
+    if (dialogs[dialogs.length - 1] !== scrim) return;
+    if (e.key === "Escape") { e.stopPropagation(); close(); }
+  };
 
   const foot = el("div", { class: "modal-foot" },
     (actions || []).map((a) =>
@@ -62,7 +68,10 @@ export function modal({ title, body, actions, onClose }) {
         text: a.label,
         onclick: () => a.onClick ? a.onClick(close) : close(),
       })));
-  const dialog = el("div", { class: "modal", role: "dialog", "aria-modal": "true" }, [
+  const dialog = el("div", {
+    class: `modal${className ? " " + className : ""}`,
+    role: "dialog", "aria-modal": "true",
+  }, [
     el("div", { class: "modal-head" }, [
       el("span", { class: "modal-title", text: title }),
       el("button", { class: "icon-btn sm", type: "button", text: "✕", title: "Close", onclick: () => close() }),
@@ -78,6 +87,6 @@ export function modal({ title, body, actions, onClose }) {
   document.addEventListener("keydown", onKey);
   document.body.appendChild(scrim);
   const first = dialog.querySelector("input, select, textarea");
-  if (first) first.focus();
+  (first || dialog.querySelector("button"))?.focus();
   return close;
 }

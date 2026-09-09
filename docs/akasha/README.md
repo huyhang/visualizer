@@ -18,7 +18,8 @@ There are two ways to use it:
   Python + [`requests`](https://requests.readthedocs.io/).
 
 Both share one login, one permission model, and one document store. See
-[`editor-design.md`](editor-design.md) for the full design, and the
+[`editor-design.md`](editor-design.md) for the editor design,
+[`media-design.md`](media-design.md) for image handling, and the
 [repo README](../../README.md) for the stack as a whole.
 
 > **Companion service — `chronos`.** A plotline & timeline API for fiction
@@ -58,6 +59,10 @@ the admin grants access.
 | `SECRET_KEY` | signs session cookies — **required**; compose refuses to start without it. Generate with `python -c "import secrets; print(secrets.token_hex(32))"`. | none (must be set) |
 | `MONGO_URI` | MongoDB connection string | `mongodb://mongo:27017` |
 | `VERSIONS_KEEP` | max version snapshots kept per article (older pruned) | `20` |
+| `AKASHA_MAX_IMAGE_BYTES` | largest accepted JPEG, PNG, or WebP upload | `20971520` (20 MiB) |
+| `AKASHA_MAX_IMAGE_PIXELS` | largest decoded image, protecting memory from compressed image bombs | `40000000` |
+| `AKASHA_IMAGE_DISPLAY_MAX_PX` | longest edge of the article display copy | `2048` |
+| `AKASHA_IMAGE_THUMBNAIL_MAX_PX` | longest edge of a library thumbnail | `360` |
 | `SESSION_COOKIE_SECURE` | mark the session cookie HTTPS-only (enable behind an HTTPS reverse proxy) | `false` |
 | `MONITORING_ENABLED` | record per-writer usage, latency and errors at boot (the admin page can pause it at runtime) | `true` |
 | `MONITORING_DATA_PATH` | path whose free space represents the NAS data volume | `/data` |
@@ -107,7 +112,8 @@ lazy-loading tree — a shortcut, not the only way in: clicking a *name* opens
 that level's page, while the twisty beside it unfolds in place.
 
 Open an article to read it rendered as a page: a title heading, the prose body,
-and an **infobox** of the remaining fields on the side.
+an optional profile image above the side **infobox**, and an attached-image
+gallery at the bottom.
 
 **Find things.** The sidebar box is a type-ahead over titles, showing which world
 and category each match came from. The filter on a category page is a *full-text*
@@ -125,6 +131,9 @@ on the home page it makes a world. The one in the header offers dropdowns of wha
 already exists, pre-filled from wherever you were — you never retype a name that
 is sitting in a list beside you. A new article's category is created when the
 article is **saved**, so backing out of the editor leaves nothing behind.
+Uploading an image is the deliberate exception: it creates the category first
+because the upload remains available in that world's library if the draft is
+cancelled.
 
 **Edit.** **Edit** on an open article (or a **New** that you carried through)
 gives you:
@@ -137,8 +146,28 @@ gives you:
   articles you can read; picking one inserts the correct link automatically, and
   if nothing matches you can **create the target on the fly**,
 - an **infobox editor** to add/rename/remove fields (a value with commas becomes
-  a list of chips), and
+  a list of chips),
+- an **article gallery** where attached images can be captioned, reordered,
+  detached, or selected as the profile picture, and
 - a hidden **Advanced** toggle to edit the raw fields directly.
+
+**Images.** The editor's **Image** button opens the current world's media
+library. Upload a JPEG, PNG or static WebP with alternative text, or reuse an
+image already visible to you. It is inserted at the cursor and can be aligned
+left, centre, right or full-width and sized as a percentage. Those placement
+choices and the caption belong to this occurrence, so another article can use
+the same image differently. On narrow screens images stack at full width.
+
+Inserting or uploading an image also attaches it to the article gallery. Use
+**Add image** in that gallery to attach a world-library image without placing it
+in the prose. Gallery captions and order belong to this article. One attached
+image may be the profile picture above the infobox; it keeps its aspect ratio,
+fits the infobox width, and is omitted from the bottom gallery.
+
+Click an image while reading to open its full-resolution original, with the
+caption below it; click the enlarged image to toggle between fitted and actual
+size. Uploaded originals, display copies and thumbnails are private and remain
+inside the same MongoDB backup as the articles.
 
 **History, compare & restore.** The **History** tab lists an article's retained
 versions. Each one offers **Compare with current** (a field-by-field diff with
@@ -192,15 +221,17 @@ Documents are **flat** JSON objects: each value is a scalar
 and nested arrays are rejected — this keeps the editor and the version diff
 simple.
 
-The UI presents a document as an article using two conventional fields:
+The UI presents a document as an article using four reserved fields:
 
 | Field | Becomes |
 | --- | --- |
 | `title` | the article heading |
 | `body` | the article prose (wikitext) |
+| `gallery` | ordered `media-id\|caption` attachments |
+| `profile_image` | the id of one image in `gallery` |
 | any other field | an infobox fact (arrays render as chips) |
 
-Both are optional — a document created via the API with neither still reads fine
+All are optional — a document created via the API with none still reads fine
 (the id is used as the heading and every field shows in the infobox).
 
 **Link syntax** (inside any string value, usually `body`):
@@ -211,6 +242,15 @@ Both are optional — a document created via the API with neither still reads fi
 | `[[characters/rand]]` | `rand` in another collection of the *same* database |
 | `[[middle-earth/lord-of-the-rings/frodo]]` | fully-qualified |
 | `[[aragorn\|the King]]` | same target, custom link text |
+
+Images use a line-level directive generated by the editor:
+
+```text
+{{image:0123456789abcdef0123456789abcdef|right|40|The tower at dusk}}
+```
+
+The fields are stable media id, alignment, percentage width and caption. A
+malformed directive is rendered as text rather than interpreted as HTML.
 
 ---
 
@@ -455,6 +495,12 @@ authenticated session (except `/health`).
 | POST   | `…/documents/<id>/restore/<n>` | restore version `n` as a new revision |
 | GET    | `/databases/<db>/collections/<col>/search?key=&text=` | search |
 | GET    | `/suggest?q=&db=&col=` | link type-ahead over readable articles |
+| GET    | `/databases/<db>/media` | visible images in a world's media library |
+| POST   | `/databases/<db>/media` | multipart image upload with article context and alternative text |
+| GET    | `/databases/<db>/media/<id>` | image metadata and private variant URLs |
+| PATCH  | `/databases/<db>/media/<id>` | update alternative text (uploader or world owner) |
+| DELETE | `/databases/<db>/media/<id>?force=` | delete when unreferenced; force deletion reports the references it breaks |
+| GET    | `/databases/<db>/media/<id>/<variant>` | `original`, `display`, or `thumbnail` bytes |
 | GET    | `…/collections/<col>/collaborators` | who can access this collection (owner only) |
 | PUT    | `…/collections/<col>/collaborators/<user>` | share it as `reader`/`editor`/`owner` |
 | DELETE | `…/collections/<col>/collaborators/<user>` | stop sharing it |

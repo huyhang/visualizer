@@ -35,7 +35,7 @@ DB, COL = "earth", "lotr"
 _COL_URL = f"/databases/{DB}/collections/{COL}"
 _DOC_URL = f"{_COL_URL}/documents/aragorn"
 
-_HTTP_METHODS = {"get", "post", "put", "delete"}
+_HTTP_METHODS = {"get", "post", "put", "patch", "delete"}
 
 # Server-rendered pages and browser form posts: HTML in, redirect out. They are
 # part of the app but not of the JSON contract, so they are named individually

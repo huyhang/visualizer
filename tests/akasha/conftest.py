@@ -7,10 +7,14 @@ where they share one MongoDB.
 """
 
 import mongomock
+import mongomock.gridfs
 import pytest
 from werkzeug.security import generate_password_hash
 
 from visualizer.akasha.app import create_app
+from visualizer.akasha.image_processing import ImageProcessor
+from visualizer.akasha.media_service import ArticleMediaReferences, MediaService
+from visualizer.akasha.media_store import MediaStore
 from visualizer.akasha.store import DocumentStore
 from visualizer.auth import AuthStore
 
@@ -19,6 +23,8 @@ COLLECTION = "things"
 
 ADMIN_USER = "admin"
 ADMIN_PASS = "admin-pass"
+
+mongomock.gridfs.enable_gridfs_integration()
 
 
 @pytest.fixture
@@ -52,8 +58,24 @@ def auth_store(mongo_client):
 
 
 @pytest.fixture
-def app(store, auth_store):
-    app = create_app(store, auth_store, secret_key="test-secret")
+def media_service(mongo_client):
+    return MediaService(
+        MediaStore(mongo_client),
+        ImageProcessor(
+            max_bytes=1024 * 1024,
+            max_pixels=1_000_000,
+            display_max_px=512,
+            thumbnail_max_px=96,
+        ),
+        ArticleMediaReferences(mongo_client),
+    )
+
+
+@pytest.fixture
+def app(store, auth_store, media_service):
+    app = create_app(
+        store, auth_store, secret_key="test-secret", media_service=media_service
+    )
     # CSRF is exercised in the browser; disable it so API-style tests stay terse.
     # Rate limiting is exercised by a dedicated test; off here so the many
     # per-test logins don't trip the per-IP limits.

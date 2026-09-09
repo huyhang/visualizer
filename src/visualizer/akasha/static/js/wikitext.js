@@ -2,6 +2,8 @@
 //   '''bold'''  ''italic''  == heading ==  * list item  [[link]] / [[link|label]]
 // Everything is HTML-escaped first, so only the tags we emit reach the DOM.
 
+import { parseImageDirective } from "./image-format.js";
+
 const LINK_RE = /\[\[([^\]]+)\]\]/g;
 
 // Escape only the characters unsafe in HTML *text* content. We deliberately do
@@ -31,6 +33,36 @@ function renderInline(escaped) {
   return out;
 }
 
+function renderImage(placement) {
+  const caption = esc(placement.caption);
+  const figcaption = caption ? `<figcaption>${caption}</figcaption>` : "";
+  return `<figure class="article-image align-${placement.align}" style="--image-width:${placement.width}%">`
+    + `<button type="button" class="article-image-open" data-media-id="${placement.media_id}" aria-label="Open full-size image">`
+    + `<span class="image-placeholder">Loading image…</span></button>${figcaption}</figure>`;
+}
+
+export function createImageFigure(placement, className = "") {
+  const figure = document.createElement("figure");
+  figure.className = `article-image align-${placement.align}${className ? " " + className : ""}`;
+  figure.style.setProperty("--image-width", `${placement.width}%`);
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "article-image-open";
+  button.dataset.mediaId = placement.media_id;
+  button.setAttribute("aria-label", "Open full-size image");
+  const placeholder = document.createElement("span");
+  placeholder.className = "image-placeholder";
+  placeholder.textContent = "Loading image…";
+  button.appendChild(placeholder);
+  figure.appendChild(button);
+  if (placement.caption) {
+    const caption = document.createElement("figcaption");
+    caption.textContent = placement.caption;
+    figure.appendChild(caption);
+  }
+  return figure;
+}
+
 export function renderWikitext(text) {
   const lines = String(text || "").split(/\r?\n/);
   const html = [];
@@ -40,7 +72,11 @@ export function renderWikitext(text) {
   for (const raw of lines) {
     const line = raw.trimEnd();
     const heading = line.match(/^(={2,6})\s*(.*?)\s*=*\s*$/);
-    if (/^\*\s+/.test(line)) {
+    const image = parseImageDirective(line);
+    if (image) {
+      flushList();
+      html.push(renderImage(image));
+    } else if (/^\*\s+/.test(line)) {
       list = list || [];
       list.push(`<li>${renderInline(esc(line.replace(/^\*\s+/, "")))}</li>`);
     } else if (heading) {
@@ -60,16 +96,45 @@ export function renderWikitext(text) {
 
 // Render into a container and wire link chips: resolve titles/existence and
 // call onNavigate(target) on click.
-export async function renderInto(container, text, { scope, resolveTarget, parseTarget, onNavigate }) {
+export async function hydrateImages(container, { resolveMedia, onOpenImage }) {
+  if (!resolveMedia) return;
+  const figures = Array.from(container.querySelectorAll("figure.article-image"));
+  await Promise.all(figures.map(async (figure) => {
+    const button = figure.querySelector(".article-image-open");
+    try {
+      const media = await resolveMedia(button.dataset.mediaId);
+      const image = document.createElement("img");
+      image.src = media.display_url;
+      image.alt = media.alt;
+      image.loading = "lazy";
+      image.decoding = "async";
+      button.textContent = "";
+      button.appendChild(image);
+      button.addEventListener("click", () => {
+        if (onOpenImage) onOpenImage(media, figure.querySelector("figcaption")?.textContent || "");
+      });
+    } catch (error) {
+      button.disabled = true;
+      button.textContent = "Image unavailable";
+      figure.classList.add("image-missing");
+    }
+  }));
+}
+
+export async function renderInto(container, text, options) {
+  const { scope, resolveTarget, parseTarget, onNavigate } = options;
   container.innerHTML = renderWikitext(text);
   const anchors = Array.from(container.querySelectorAll("a.wikilink"));
-  await Promise.all(anchors.map(async (a) => {
-    const target = parseTarget(a.dataset.target, scope);
-    const info = await resolveTarget(target);
-    if (!info.exists) a.classList.add("redlink");
-    if (!a.textContent.trim() || a.textContent.trim() === a.dataset.target) {
-      a.textContent = info.title;
-    }
-    a.addEventListener("click", (e) => { e.preventDefault(); onNavigate(target, info); });
-  }));
+  if (resolveTarget) {
+    await Promise.all(anchors.map(async (a) => {
+      const target = parseTarget(a.dataset.target, scope);
+      const info = await resolveTarget(target);
+      if (!info.exists) a.classList.add("redlink");
+      if (!a.textContent.trim() || a.textContent.trim() === a.dataset.target) {
+        a.textContent = info.title;
+      }
+      a.addEventListener("click", (e) => { e.preventDefault(); onNavigate(target, info); });
+    }));
+  }
+  await hydrateImages(container, options);
 }

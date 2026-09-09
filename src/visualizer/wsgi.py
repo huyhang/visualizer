@@ -14,12 +14,19 @@ import os
 
 from visualizer.akasha.app import create_app as create_akasha_app
 from visualizer.akasha.config import (
+    get_image_display_max_px,
+    get_image_thumbnail_max_px,
+    get_max_image_bytes,
+    get_max_image_pixels,
     get_mongo_client,
     get_rate_limit_storage_uri,
     get_secret_key,
     get_secure_cookies,
     get_versions_keep,
 )
+from visualizer.akasha.image_processing import ImageProcessor
+from visualizer.akasha.media_service import ArticleMediaReferences, MediaService
+from visualizer.akasha.media_store import MediaStore
 from visualizer.akasha.store import DocumentStore
 from visualizer.auth import AuthStore
 from visualizer.chronos.app import create_app as create_chronos_app
@@ -99,6 +106,16 @@ _akasha_app = create_akasha_app(
     prithvi_url=_prithvi_url,
     logos_url=_logos_url,
     observability=_observability,
+    media_service=MediaService(
+        MediaStore(_client),
+        ImageProcessor(
+            get_max_image_bytes(),
+            get_max_image_pixels(),
+            get_image_display_max_px(),
+            get_image_thumbnail_max_px(),
+        ),
+        ArticleMediaReferences(_client),
+    ),
 )
 _chronos_app = create_chronos_app(
     _story_store,

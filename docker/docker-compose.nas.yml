@@ -38,6 +38,12 @@ services:
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required — set it in docker/.env}
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       VERSIONS_KEEP: ${VERSIONS_KEEP:-20}
+      # Akasha raster uploads: cap encoded and decoded size, then create a
+      # browser-sized display copy and a media-picker thumbnail.
+      AKASHA_MAX_IMAGE_BYTES: ${AKASHA_MAX_IMAGE_BYTES:-20971520}
+      AKASHA_MAX_IMAGE_PIXELS: ${AKASHA_MAX_IMAGE_PIXELS:-40000000}
+      AKASHA_IMAGE_DISPLAY_MAX_PX: ${AKASHA_IMAGE_DISPLAY_MAX_PX:-2048}
+      AKASHA_IMAGE_THUMBNAIL_MAX_PX: ${AKASHA_IMAGE_THUMBNAIL_MAX_PX:-360}
       # In-memory auth rate limiting by default; point at a shared backend (e.g.
       # redis://redis:6379) to hold limits across multiple gunicorn workers.
       RATELIMIT_STORAGE_URI: ${RATELIMIT_STORAGE_URI:-memory://}

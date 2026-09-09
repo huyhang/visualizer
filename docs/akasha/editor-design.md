@@ -39,6 +39,10 @@ is the source of truth for anything this doc drifts from.
 
 ## Data model
 
+Image uploads and their placement are specified separately in
+[`media-design.md`](media-design.md). They extend the body wikitext without
+changing the flat document model below.
+
 Documents remain flat JSON objects, with two additional constraints and two
 internal fields.
 
@@ -237,7 +241,7 @@ ES modules. Talks only to the JSON API with the session cookie (+ CSRF token on
 writes). Existing `/login`, `/register`, and server-rendered `/admin` are
 unchanged.
 
-### The Wikipedia illusion (presentation only — no backend model change)
+### The Wikipedia illusion
 
 A flat document maps onto an article:
 
@@ -246,12 +250,15 @@ A flat document maps onto an article:
 | the doc `id` | the page **slug** (its link target) |
 | a `title` field | the display **heading** |
 | a `body` field (long string) | the **article prose** (wikitext) |
+| `gallery` | ordered image attachments shown at the bottom |
+| `profile_image` | one attached image shown above the infobox |
 | every other field | a row in the **infobox** |
 | a flat array field | an infobox row rendered as **chips/tags** |
 
-`title`/`body` are ordinary string fields (no schema change). Docs created via
-the raw API without them degrade gracefully — the slug is the heading and all
-fields show as infobox facts.
+Docs created via the raw API without `title` or `body` degrade gracefully — the
+slug is the heading and all fields other than the four reserved article fields
+show as infobox facts. The backend also validates that body images and a profile
+choice belong to the ordered `gallery` attachment list.
 
 ### Body markup: wikitext-like subset
 
@@ -297,7 +304,8 @@ view (so a body diff reads as formatted prose, Wikipedia-style).
 - A hidden **"Advanced"** toggle reveals a raw flat-field editor for power users;
   it edits the same document through the same validation/OCC/versioning path.
 - Small ES modules, one responsibility each: `api.js`, `browser.js`,
-  `viewer.js`, `editor.js`, `links.js`, `wikitext.js`, `history.js`, `theme.js`.
+  `viewer.js`, `editor.js`, `gallery.js`, `media.js`, `links.js`, `wikitext.js`,
+  `history.js`, `theme.js`.
 
 ### Browsing: a route per level
 

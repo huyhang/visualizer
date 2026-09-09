@@ -33,6 +33,10 @@
       "description": "History, comparison and restore"
     },
     {
+      "name": "media",
+      "description": "Private world-scoped image uploads and delivery"
+    },
+    {
       "name": "sharing",
       "description": "Granting others access (owners only)"
     },
@@ -227,6 +231,152 @@
           "409": {
             "$ref": "#/components/responses/Conflict"
           }
+        }
+      }
+    },
+    "/databases/{database}/media": {
+      "get": {
+        "tags": ["media"],
+        "summary": "List images visible to the caller in a world",
+        "description": "World readers see the whole library. Narrower collaborators see their own uploads and images used by articles they may read.",
+        "parameters": [
+          {"$ref": "#/components/parameters/Database"}
+        ],
+        "responses": {
+          "200": {
+            "description": "Visible media.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["media", "count"],
+                  "properties": {
+                    "media": {"type": "array", "items": {"$ref": "#/components/schemas/Media"}},
+                    "count": {"type": "integer"}
+                  }
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"}
+        }
+      },
+      "post": {
+        "tags": ["media"],
+        "summary": "Upload an image to a world's library",
+        "description": "Requires write access to the article named by the multipart context fields. JPEG, PNG and static WebP are accepted.",
+        "parameters": [
+          {"$ref": "#/components/parameters/Database"}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["collection", "article", "alt", "file"],
+                "properties": {
+                  "collection": {"type": "string"},
+                  "article": {"type": "string"},
+                  "alt": {"type": "string", "maxLength": 300},
+                  "file": {"type": "string", "format": "binary"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Uploaded and processed.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Media"}}}
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "413": {"$ref": "#/components/responses/BadRequest"}
+        }
+      }
+    },
+    "/databases/{database}/media/{media_id}": {
+      "get": {
+        "tags": ["media"],
+        "summary": "Read image metadata",
+        "parameters": [
+          {"$ref": "#/components/parameters/Database"},
+          {"$ref": "#/components/parameters/MediaId"}
+        ],
+        "responses": {
+          "200": {
+            "description": "Image metadata and variant URLs.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Media"}}}
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      },
+      "patch": {
+        "tags": ["media"],
+        "summary": "Change an image's alternative text",
+        "parameters": [
+          {"$ref": "#/components/parameters/Database"},
+          {"$ref": "#/components/parameters/MediaId"}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["alt"],
+                "properties": {"alt": {"type": "string", "maxLength": 300}}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated metadata.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Media"}}}
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}
+        }
+      },
+      "delete": {
+        "tags": ["media"],
+        "summary": "Delete an image",
+        "description": "Blocked while a current or retained article version references the image unless `force=1` is explicit.",
+        "parameters": [
+          {"$ref": "#/components/parameters/Database"},
+          {"$ref": "#/components/parameters/MediaId"},
+          {"name": "force", "in": "query", "schema": {"type": "boolean"}}
+        ],
+        "responses": {
+          "200": {"description": "Deleted; includes any references deliberately broken by a forced deletion."},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {"$ref": "#/components/responses/Conflict"}
+        }
+      }
+    },
+    "/databases/{database}/media/{media_id}/{variant}": {
+      "get": {
+        "tags": ["media"],
+        "summary": "Read original, display, or thumbnail image bytes",
+        "parameters": [
+          {"$ref": "#/components/parameters/Database"},
+          {"$ref": "#/components/parameters/MediaId"},
+          {"name": "variant", "in": "path", "required": true, "schema": {"type": "string", "enum": ["original", "display", "thumbnail"]}}
+        ],
+        "responses": {
+          "200": {"description": "Private image bytes."},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"}
         }
       }
     },
@@ -1769,6 +1919,16 @@
           "type": "string"
         }
       },
+      "MediaId": {
+        "name": "media_id",
+        "in": "path",
+        "description": "Stable identifier of an image in the world's media library.",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        }
+      },
       "Rev": {
         "name": "rev",
         "in": "path",
@@ -2028,10 +2188,45 @@
           "error": "Document 'nope' not found in 'earth/lotr'."
         }
       },
+      "Media": {
+        "type": "object",
+        "required": ["id", "world", "uploader", "filename", "alt", "format", "width", "height", "created_at", "can_manage", "original_url", "display_url", "thumbnail_url"],
+        "properties": {
+          "id": {"type": "string"},
+          "world": {"type": "string"},
+          "uploader": {"type": "string"},
+          "filename": {"type": "string"},
+          "alt": {"type": "string"},
+          "format": {"type": "string", "enum": ["JPEG", "PNG", "WEBP"]},
+          "width": {"type": "integer"},
+          "height": {"type": "integer"},
+          "created_at": {"type": "string", "format": "date-time"},
+          "can_manage": {"type": "boolean"},
+          "variants": {"type": "object"},
+          "original_url": {"type": "string"},
+          "display_url": {"type": "string"},
+          "thumbnail_url": {"type": "string"}
+        }
+      },
       "Document": {
         "type": "object",
-        "description": "An article body: a **flat** JSON object. Every value is a scalar or an array of scalars \u2014 no nested objects, no arrays of arrays. Enforced on create and update (`validation.py`); a violation is a 400. Two field names are conventional rather than special: `title` becomes the heading and `body` the wikitext prose; everything else renders as an infobox fact.",
-        "properties": {},
+        "description": "An article body: a **flat** JSON object. Every value is a scalar or an array of scalars \u2014 no nested objects, no arrays of arrays. Enforced on create and update (`validation.py`); a violation is a 400. Reserved fields are `title`, `body`, `gallery`, and `profile_image`; everything else renders as an infobox fact. Every valid image directive in `body` must name an attachment in `gallery`, and `profile_image`, when present, must also name one of those attachments.",
+        "properties": {
+          "gallery": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}\\|.*$"
+            },
+            "description": "Ordered article attachments encoded as media-id|article-specific caption."
+          },
+          "profile_image": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$",
+            "description": "An attached gallery image rendered above the infobox and omitted from the bottom gallery."
+          }
+        },
         "additionalProperties": {
           "oneOf": [
             {

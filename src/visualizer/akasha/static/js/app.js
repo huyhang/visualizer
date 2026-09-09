@@ -223,6 +223,13 @@ function openEditor(ctx) {
       return ctx.pendingCollection ? toDatabase(ctx.db) : toCollection(ctx.db, ctx.col);
     },
     onReload: () => openArticle(ctx),
+    onBeforeImageUpload: async () => {
+      if (!ctx.pendingCollection) return;
+      await ensureCollection(ctx.db, ctx.col);
+      ctx.pendingCollection = false;
+      forgetTitles();
+      browser.load();
+    },
     onCreateLink: (query, scopeOfLink) => createLinkTarget(query, scopeOfLink)
       .then((target) => { if (target) browser.refresh(target.db, target.col); return target; }),
   });

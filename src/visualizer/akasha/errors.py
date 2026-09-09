@@ -100,3 +100,31 @@ class InvalidRevision(AkashaError):
     """Raised when an If-Match / _rev precondition value is malformed."""
 
     status_code = 400
+
+
+class InvalidImage(AkashaError):
+    """Raised when an upload is missing or is not a supported, safe image."""
+
+    status_code = 400
+
+
+class ImageTooLarge(AkashaError):
+    """Raised when encoded bytes or decoded pixels exceed the configured cap."""
+
+    status_code = 413
+
+
+class MediaNotFound(AkashaError):
+    """Raised when a media id or one of its stored variants does not exist."""
+
+    status_code = 404
+
+
+class MediaInUse(AkashaError):
+    """Raised when deleting media would break an article or retained revision."""
+
+    status_code = 409
+
+    def __init__(self, message: str, references: list[dict]):
+        super().__init__(message)
+        self.references = references

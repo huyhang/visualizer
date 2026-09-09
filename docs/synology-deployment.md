@@ -119,7 +119,7 @@ as well.
 ## Backups
 
 Every service shares one MongoDB, so one dump covers everything — articles,
-books, plotlines, events, maps, pins, accounts and grants.
+uploaded images, books, plotlines, events, maps, pins, accounts and grants.
 
 It lives in a Docker **named volume**, `visualizer_mongo-data`, which on DSM sits
 under `/volume1/@docker/volumes/…` — a hidden system folder that File Station and

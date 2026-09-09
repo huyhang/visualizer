@@ -10,6 +10,10 @@ from pymongo import MongoClient
 
 DEFAULT_MONGO_URI = "mongodb://mongo:27017"
 DEFAULT_VERSIONS_KEEP = 20
+DEFAULT_MAX_IMAGE_BYTES = 20 * 1024 * 1024
+DEFAULT_MAX_IMAGE_PIXELS = 40_000_000
+DEFAULT_IMAGE_DISPLAY_MAX_PX = 2048
+DEFAULT_IMAGE_THUMBNAIL_MAX_PX = 360
 # In-memory rate-limit storage suits a single process; point this at Redis
 # (e.g. "redis://redis:6379") to share limits across multiple gunicorn workers.
 DEFAULT_RATELIMIT_STORAGE_URI = "memory://"
@@ -61,6 +65,37 @@ def get_versions_keep() -> int:
     if value < 1:
         raise RuntimeError("VERSIONS_KEEP must be at least 1.")
     return value
+
+
+def _positive_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        raise RuntimeError(f"{name} must be an integer, got {raw!r}.") from None
+    if value < 1:
+        raise RuntimeError(f"{name} must be at least 1.")
+    return value
+
+
+def get_max_image_bytes() -> int:
+    return _positive_int("AKASHA_MAX_IMAGE_BYTES", DEFAULT_MAX_IMAGE_BYTES)
+
+
+def get_max_image_pixels() -> int:
+    return _positive_int("AKASHA_MAX_IMAGE_PIXELS", DEFAULT_MAX_IMAGE_PIXELS)
+
+
+def get_image_display_max_px() -> int:
+    return _positive_int("AKASHA_IMAGE_DISPLAY_MAX_PX", DEFAULT_IMAGE_DISPLAY_MAX_PX)
+
+
+def get_image_thumbnail_max_px() -> int:
+    return _positive_int(
+        "AKASHA_IMAGE_THUMBNAIL_MAX_PX", DEFAULT_IMAGE_THUMBNAIL_MAX_PX
+    )
 
 
 def get_rate_limit_storage_uri() -> str:

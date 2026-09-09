@@ -14,10 +14,12 @@ export class ApiError extends Error {
   get isNotFound() { return this.status === 404; }
 }
 
-async function request(method, url, { body, ifMatch } = {}) {
+async function request(method, url, { body, form, ifMatch } = {}) {
   const headers = { Accept: "application/json" };
   const opts = { method, headers };
-  if (body !== undefined) {
+  if (form !== undefined) {
+    opts.body = form;
+  } else if (body !== undefined) {
     headers["Content-Type"] = "application/json";
     opts.body = JSON.stringify(body);
   }
@@ -86,6 +88,21 @@ export const api = {
   diff: (db, col, id, from, to) =>
     request("GET", docPath(db, col, id) + `/diff?from=${from}&to=${to}`),
   restore: (db, col, id, rev) => request("POST", docPath(db, col, id) + `/restore/${rev}`),
+
+  listMedia: (db) => request("GET", `/databases/${enc(db)}/media`),
+  getMedia: (db, id) => request("GET", `/databases/${enc(db)}/media/${enc(id)}`),
+  uploadMedia: (db, col, id, file, alt) => {
+    const form = new FormData();
+    form.append("collection", col);
+    form.append("article", id);
+    form.append("alt", alt);
+    form.append("file", file);
+    return request("POST", `/databases/${enc(db)}/media`, { form });
+  },
+  updateMedia: (db, id, alt) =>
+    request("PATCH", `/databases/${enc(db)}/media/${enc(id)}`, { body: { alt } }),
+  deleteMedia: (db, id, force = false) =>
+    request("DELETE", `/databases/${enc(db)}/media/${enc(id)}${force ? "?force=1" : ""}`),
 
   suggest: (q, db, col) => {
     const p = new URLSearchParams({ q });

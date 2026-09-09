@@ -70,11 +70,14 @@ from .errors import (
     AkashaError,
     DocumentNotFound,
     InvalidRevision,
+    MediaInUse,
     ReservedName,
     VersionNotFound,
 )
 from .history import find_snapshot, history_meta
 from .labels import derive_title
+from .media_routes import register_media_routes
+from .media_service import MediaService
 from .store import DocumentStore
 from .terms import TERMS
 from .validation import validate_document, validate_search_terms
@@ -106,6 +109,7 @@ def create_app(
     # out, the account page shares the book alone; the wiring modules supply it.
     book_world: Callable[[str], str | None] | None = None,
     user_cleanup: Callable[[str], None] | None = None,
+    media_service: MediaService | None = None,
 ) -> Flask:
     app = Flask(__name__)
     # A secret key is required to sign session cookies. It must be supplied
@@ -144,6 +148,8 @@ def create_app(
     _register_routes(app, store, auth_store, csrf)
     _register_browse_routes(app, store, auth_store, csrf)
     _register_version_routes(app, store, auth_store, csrf)
+    if media_service is not None:
+        register_media_routes(app, media_service, auth_store, csrf)
     _register_sharing_routes(app, auth_store, csrf)
     # The account page lists things from both services, so it reaches them all
     # through one uniform family on this origin. See ``visualizer.sharing``.
@@ -1237,7 +1243,10 @@ def _is_last_admin(auth_store: AuthStore, username: str) -> bool:
 def _register_error_handlers(app: Flask) -> None:
     @app.errorhandler(AkashaError)
     def handle_domain_error(err: AkashaError):
-        return jsonify({"error": err.message}), err.status_code
+        payload = {"error": err.message}
+        if isinstance(err, MediaInUse):
+            payload["references"] = err.references
+        return jsonify(payload), err.status_code
 
     @app.errorhandler(AuthError)
     def handle_auth_error(err: AuthError):

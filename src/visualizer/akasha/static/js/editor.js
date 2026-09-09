@@ -5,9 +5,12 @@
 import { el, clear, toast, modal } from "./dom.js";
 import { api, ApiError } from "./api.js";
 import { splitArticle, assembleArticle, parseFactValue, factValueToInput } from "./article.js";
-import { renderWikitext } from "./wikitext.js";
+import { hydrateImages, renderWikitext } from "./wikitext.js";
 import { attachLinkPicker } from "./linkpicker.js";
 import { localDiff, renderDiff } from "./diffview.js";
+import { openImageLibrary, openImageLightbox, resolveMedia } from "./media.js";
+import { createGalleryEditor } from "./gallery.js";
+import { imageIds } from "./image-format.js";
 
 export function renderEditor(container, ctx, handlers) {
   const { db, col, id, doc, rev, isNew } = ctx;
@@ -20,6 +23,20 @@ export function renderEditor(container, ctx, handlers) {
   const preview = el("div", { class: "preview-pane" }, [el("div", { class: "preview-label", text: "Preview" }), el("div", { class: "article-body" })]);
   const split = el("div", { class: "editor-split" }, [bodyArea]);
 
+  let galleryEditor;
+  const attachImage = (mediaId, caption) => galleryEditor.attach(mediaId, caption);
+  galleryEditor = createGalleryEditor({
+    db,
+    gallery: article.gallery,
+    profileImage: article.profileImage,
+    canDetach: (mediaId) => !imageIds(bodyArea.value).has(mediaId),
+    onChoose: () => openImageLibrary(null, { db, col, id }, {
+      beforeUpload: handlers.onBeforeImageUpload,
+      onAttach: attachImage,
+      attachOnly: true,
+    }),
+  });
+
   const picker = attachLinkPicker(bodyArea, { db, col }, { onCreateRequest: handlers.onCreateLink });
 
   const toolbar = el("div", { class: "edit-toolbar" }, [
@@ -28,11 +45,20 @@ export function renderEditor(container, ctx, handlers) {
     _tbBtn("Heading", () => linePrefix(bodyArea, "== ", " ==")),
     _tbBtn("List", () => linePrefix(bodyArea, "* ", "")),
     _tbBtn("🔗 Insert link", () => picker.open("")),
+    _tbBtn("▧ Image", () => openImageLibrary(bodyArea, { db, col, id }, {
+      beforeUpload: handlers.onBeforeImageUpload,
+      onAttach: attachImage,
+    })),
     _tbBtn("👁 Preview", () => togglePreview()),
   ]);
 
   function refreshPreview() {
-    preview.querySelector(".article-body").innerHTML = renderWikitext(bodyArea.value);
+    const previewBody = preview.querySelector(".article-body");
+    previewBody.innerHTML = renderWikitext(bodyArea.value);
+    hydrateImages(previewBody, {
+      resolveMedia: (mediaId) => resolveMedia(db, mediaId),
+      onOpenImage: openImageLightbox,
+    });
   }
   let previewOn = false;
   function togglePreview() {
@@ -71,10 +97,13 @@ export function renderEditor(container, ctx, handlers) {
   let advancedOn = false;
   const advancedToggle = el("button", { class: "advanced-toggle", text: "▸ Advanced (raw fields)", onclick: () => toggleAdvanced() });
   function collectArticle() {
+    const images = galleryEditor.value();
     return assembleArticle({
       title: titleInput.value,
       body: bodyArea.value,
       facts: factRows.map((r) => ({ key: r.keyIn.value, value: parseFactValue(r.valIn.value) })),
+      profileImage: images.profileImage,
+      gallery: images.gallery,
     });
   }
   function toggleAdvanced() {
@@ -144,6 +173,7 @@ export function renderEditor(container, ctx, handlers) {
   container.appendChild(toolbar);
   container.appendChild(split);
   container.appendChild(infoboxEditor);
+  container.appendChild(galleryEditor.element);
   container.appendChild(el("div", { style: "margin-top:1rem" }, [advancedToggle, rawWrap]));
 }
 

@@ -20,6 +20,12 @@ from typing import Protocol
 
 from bson import BSON
 
+from visualizer.akasha.media_store import (
+    BLOB_CHUNKS,
+    BLOB_FILES,
+    MEDIA_COLLECTION,
+    MEDIA_DB,
+)
 from visualizer.auth.store import DATABASE_RESOURCE
 from visualizer.chronos.store import CHRONOS_DB
 from visualizer.logos.store import (
@@ -212,6 +218,7 @@ class MongoDocumentSource:
 
     def documents(self) -> Iterator[StoredDocument]:
         yield from self._articles()
+        yield from self._media()
         yield from self._chronos()
         yield from self._prithvi()
         yield from self._logos()
@@ -240,6 +247,27 @@ class MongoDocumentSource:
                 resource=("calendar", stored.get("owner")),
                 total_bytes=_sizeof(stored),
                 created_by=stored.get("owner") or stored.get("created_by"),
+            )
+
+    def _media(self) -> Iterator[StoredDocument]:
+        """Charge each GridFS file and chunk to the image's uploader."""
+        database = self._client[MEDIA_DB]
+        sizes: dict[str, int] = {}
+        file_media = {}
+        for stored in database[BLOB_FILES].find():
+            media_id = (stored.get("metadata") or {}).get("media_id")
+            if media_id:
+                file_media[stored["_id"]] = media_id
+                sizes[media_id] = sizes.get(media_id, 0) + _sizeof(stored)
+        for stored in database[BLOB_CHUNKS].find():
+            media_id = file_media.get(stored.get("files_id"))
+            if media_id:
+                sizes[media_id] = sizes.get(media_id, 0) + _sizeof(stored)
+        for stored in database[MEDIA_COLLECTION].find():
+            yield StoredDocument(
+                resource=("media", stored.get("world"), stored["_id"]),
+                total_bytes=_sizeof(stored) + sizes.get(stored["_id"], 0),
+                created_by=stored.get("uploader"),
             )
 
     def _prithvi(self) -> Iterator[StoredDocument]:

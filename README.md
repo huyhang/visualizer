@@ -27,7 +27,7 @@ login, one reverse-proxy entry.
 
 | Service | Path | What it does | Docs |
 | --- | --- | --- | --- |
-| **akasha** | `/` | A Wikipedia-style article store and editor: characters, items, locations, lore — with linking, versioning and diffs. Has a web UI. | [README](docs/akasha/README.md) · [design](docs/akasha/editor-design.md) |
+| **akasha** | `/` | A Wikipedia-style article store and editor: characters, items, locations, lore — with linking, images, versioning and diffs. Has a web UI. | [README](docs/akasha/README.md) · [editor design](docs/akasha/editor-design.md) · [image design](docs/akasha/media-design.md) |
 | **chronos** | `/timeline` | A plotline & timeline API for fiction writers: books, events and plotlines, checked for continuity errors, with a plotline visualiser and editor. | [README](docs/chronos/README.md) · [getting started](docs/chronos/getting-started.md) · [plain-language overview](docs/chronos/OVERVIEW.md) · [design](docs/chronos/design.md) |
 | **prithvi** | `/prithvi` | An SVG map per region of a world, with Akasha articles pinned to points on it. Has a web UI: upload a map, place and move pins, and read a pin's article beside the map. | [README](docs/prithvi/README.md) · [openapi](docs/prithvi/openapi.json) |
 | **logos** | `/logos` | A versioned manuscript API and book-like reader with private notes, checklists, bookmarks, full-series search, optional progress sync, and whole-series PDF/EPUB publishing. Manuscript writing stays API-first. | [README](docs/logos/README.md) · [permissions](docs/logos/permissions.md) · [openapi](docs/logos/openapi.json) |

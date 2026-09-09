@@ -114,6 +114,11 @@ this doc and the code disagree, trust the code and fix the doc.
   is what catches `xlink:href="javascript:…"` hiding behind a prefix. Only the
   rewritten document is stored, and the response says what was removed
   (`prithvi/svg.py`).
+- **Raster uploads are decoded, not trusted by name.** Akasha accepts only
+  content Pillow verifies as JPEG, PNG or static WebP; filename extensions and
+  declared MIME types do not decide the format. Encoded-byte and decoded-pixel
+  caps limit compressed image bombs, and generated display copies contain only
+  pixels rather than uploaded metadata. SVG is not accepted by this path.
 
 ### Output handling (XSS)
 
@@ -222,7 +227,9 @@ Ordered roughly by priority. Items marked *(partial)* have some support already.
    `frame-ancestors 'none'` (clickjacking), `Referrer-Policy`, and
    `Permissions-Policy`. Flask-Talisman can supply most of these.
 7. **Request size limits.** *(partial — SVG uploads are capped at
-   `PRITHVI_MAX_SVG_BYTES`, refused from the declared length before buffering.)*
+   `PRITHVI_MAX_SVG_BYTES`; Akasha raster uploads have encoded-byte and
+   decoded-pixel caps and reject an oversized declared request before multipart
+   parsing.)*
    The article and timeline APIs still have no `MAX_CONTENT_LENGTH`; set one and
    bound field/array/string sizes to prevent memory-exhaustion via oversized
    documents. Listing is already capped (`limit` ≤ 500); keep pagination bounded.
