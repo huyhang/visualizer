@@ -159,7 +159,7 @@ class InProcessArticleGateway:
                             "collection_title": derive_title(collection),
                             "id": record["id"],
                             "title": title,
-                            "preview": _article_preview(body),
+                            "fields": _article_fields(body),
                         }
                     )
         return sorted(
@@ -262,7 +262,7 @@ class FakeArticleGateway:
                 "collection_title": derive_title(collection),
                 "id": article,
                 "title": derive_title(article),
-                "preview": "",
+                "fields": [],
             }
             for database, collection, article in self._articles
             if needle in article.casefold() or needle in derive_title(article).casefold()
@@ -294,17 +294,30 @@ def _name_rank(row: dict, needle: str) -> int:
     return 3
 
 
-def _article_preview(body: dict) -> str:
-    """A compact, plain-text preview; arbitrary article fields stay untrusted."""
-    values = []
+def _clip(text: str, limit: int) -> str:
+    clean = " ".join(text.split())
+    return clean if len(clean) <= limit else clean[: limit - 1].rstrip() + "…"
+
+
+def _article_fields(body: dict, limit: int = 6) -> list[dict]:
+    """The article's own fields, named and clipped, for a glance beside prose.
+
+    Kept as pairs rather than flattened into one string: a writer checking a
+    character mid-sentence wants to see *which* fact is which. Values are
+    stringified and clipped because an Akasha article may hold anything, and
+    this panel is a glance, not a viewer.
+    """
+    fields = []
     for key, value in body.items():
         if key == "title" or value in (None, "", []):
             continue
         if isinstance(value, list):
-            values.extend(str(item) for item in value[:3])
+            text = ", ".join(str(item) for item in value[:3])
         elif isinstance(value, (str, int, float, bool)):
-            values.append(str(value))
-        if sum(len(part) for part in values) >= 240:
+            text = str(value)
+        else:
+            continue
+        fields.append({"name": derive_title(key), "value": _clip(text, 120)})
+        if len(fields) >= limit:
             break
-    text = " · ".join(values)
-    return text[:237] + "..." if len(text) > 240 else text
+    return fields

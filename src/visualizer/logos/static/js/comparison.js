@@ -1,9 +1,21 @@
 // Draft alignment and prose statistics, independent of DOM and network.
 
 function inlineText(block) {
-  const content = block.type === "bullet_list" || block.type === "ordered_list"
-    ? (block.content || []).flatMap((item) => item.content || []) : block.content || [];
-  return content.map((node) => node.text || (node.type === "hard_break" ? "\n" : "")).join("");
+  const list = block.type === "bullet_list" || block.type === "ordered_list";
+  // List items are separate lines of prose, so they need a separator between
+  // them; inline nodes *within* one run do not, or every mention would gain a
+  // space. Joining everything with "" ran adjacent items together and made a
+  // three-item list count as one word.
+  const runs = list
+    ? (block.content || []).map((item) => joined(item.content))
+    : [joined(block.content)];
+  return runs.join("\n");
+}
+
+function joined(content) {
+  return (content || [])
+    .map((node) => node.text || (node.type === "hard_break" ? "\n" : ""))
+    .join("");
 }
 
 export function draftStats(document) {

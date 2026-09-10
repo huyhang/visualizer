@@ -8,6 +8,61 @@ from typing import Protocol
 
 from .richtext import block_text, validate_document
 
+# US spelling paired with its UK counterpart. Curated rather than derived: a
+# "-our" -> "-or" rule would flag "four" and "hour", and an "-ise" -> "-ize"
+# rule would flag "rise". Only divergences a novel actually meets are listed.
+DIALECT_PAIRS = (
+    ("color", "colour"), ("honor", "honour"), ("armor", "armour"),
+    ("harbor", "harbour"), ("neighbor", "neighbour"), ("favor", "favour"),
+    ("rumor", "rumour"), ("odor", "odour"), ("splendor", "splendour"),
+    ("valor", "valour"), ("ardor", "ardour"), ("clamor", "clamour"),
+    ("parlor", "parlour"), ("savior", "saviour"), ("behavior", "behaviour"),
+    ("labor", "labour"), ("vapor", "vapour"), ("rigor", "rigour"),
+    ("center", "centre"), ("theater", "theatre"), ("saber", "sabre"),
+    ("scepter", "sceptre"), ("specter", "spectre"), ("luster", "lustre"),
+    ("caliber", "calibre"), ("fiber", "fibre"), ("somber", "sombre"),
+    ("realize", "realise"), ("recognize", "recognise"),
+    ("apologize", "apologise"), ("organize", "organise"),
+    ("memorize", "memorise"), ("agonize", "agonise"),
+    ("baptize", "baptise"), ("defense", "defence"), ("offense", "offence"),
+    ("pretense", "pretence"), ("traveled", "travelled"),
+    ("traveling", "travelling"), ("traveler", "traveller"),
+    ("jewelry", "jewellery"),
+    ("marvelous", "marvellous"), ("counselor", "counsellor"),
+    ("gray", "grey"), ("plow", "plough"), ("mold", "mould"),
+    ("smolder", "smoulder"), ("cozy", "cosy"),
+)
+
+DIALECT_NAMES = {"en-US": "US", "en-GB": "UK"}
+
+
+def _forms(word: str) -> list[str]:
+    """A base spelling and the inflections that share its divergence."""
+    stem = word.removesuffix("e")
+    return [word, f"{word}s", f"{stem}ed", f"{stem}ing"]
+
+
+def _dialect_index() -> dict[str, dict[str, str]]:
+    """For each dialect, every *foreign* form mapped to its local equivalent."""
+    index: dict[str, dict[str, str]] = {"en-US": {}, "en-GB": {}}
+    for american, british in DIALECT_PAIRS:
+        for us_form, uk_form in zip(_forms(american), _forms(british)):
+            # Writing US: British forms are the foreign ones, and vice versa.
+            index["en-US"][uk_form] = us_form
+            index["en-GB"][us_form] = uk_form
+    return index
+
+
+FOREIGN_FORMS = _dialect_index()
+
+
+def _match_case(found: str, replacement: str) -> str:
+    if found.isupper():
+        return replacement.upper()
+    if found[:1].isupper():
+        return replacement.capitalize()
+    return replacement
+
 
 class WritingAdvisor(Protocol):
     private: bool
@@ -29,6 +84,8 @@ class RuleBasedWritingAdvisor:
         r"\b(?:am|is|are|was|were|be|been|being)\s+([a-z]+ed)\b", re.IGNORECASE
     )
 
+    _WORD = re.compile(r"[A-Za-z][A-Za-z'-]*")
+
     def review(self, document: dict, dialect: str = "en-US") -> list[dict]:
         clean = validate_document(document)
         issues: list[dict] = []
@@ -39,8 +96,39 @@ class RuleBasedWritingAdvisor:
                 continue
             issues.extend(self._mechanics(block["id"], text))
             issues.extend(self._rhythm(block["id"], text))
+            issues.extend(self._dialect(block["id"], text, dialect))
             openings.extend(self._openings(block["id"], text))
         issues.extend(self._repeated_openings(openings))
+        return issues
+
+    def _dialect(self, block: str, text: str, dialect: str) -> list[dict]:
+        """Spellings from the other side of the Atlantic than the one chosen.
+
+        A manuscript wants one dialect throughout; which one is the writer's
+        business, so this reports the mismatch and offers the local spelling
+        rather than deciding.
+        """
+        foreign = FOREIGN_FORMS.get(dialect)
+        if not foreign:
+            return []
+        here = DIALECT_NAMES.get(dialect, dialect)
+        there = DIALECT_NAMES["en-GB" if dialect == "en-US" else "en-US"]
+        issues = []
+        seen: set[str] = set()
+        for match in self._WORD.finditer(text):
+            found = match.group(0)
+            local = foreign.get(found.casefold())
+            if local is None or found.casefold() in seen:
+                continue
+            seen.add(found.casefold())
+            issues.append(
+                _issue(
+                    block, "spelling", f"{there} spelling in a {here} manuscript",
+                    found, _match_case(found, local),
+                    f"“{found}” is the {there} spelling. "
+                    f"A {here} manuscript would use “{_match_case(found, local)}”.",
+                )
+            )
         return issues
 
     def _mechanics(self, block: str, text: str) -> list[dict]:

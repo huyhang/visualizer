@@ -1,10 +1,11 @@
-// The Logos API used by the reader and writing workspace. Every manuscript
-// mutation carries the revision the browser actually read.
+// The Logos API used by the reader and the writing workspace. Reads stay
+// read-only; every manuscript mutation below carries `If-Match` with the
+// revision the browser actually read, so a save that raced another writer is
+// refused rather than silently winning.
 //
-// There is no write here and no `If-Match`, because there is nothing this page
-// can change. `BASE` comes from the template's `request.script_root`, so one
-// bundle works at `/logos` behind the gateway and at `/` when Logos runs on
-// its own port -- the same reason nothing below hardcodes a prefix.
+// `BASE` comes from the template's `request.script_root`, so one bundle works
+// at `/logos` behind the gateway and at `/` when Logos runs on its own port --
+// the same reason nothing below hardcodes a prefix.
 
 const enc = encodeURIComponent;
 

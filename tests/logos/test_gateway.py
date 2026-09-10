@@ -58,7 +58,42 @@ def test_akasha_lookup_is_ranked_and_filtered_by_article_grants(
     )
 
     assert [(row["database"], row["id"]) for row in rows] == [("ember", "lyra")]
-    assert rows[0]["preview"] == "Envoy"
+    # Named pairs, not a run-on string: the panel shows which fact is which.
+    assert rows[0]["fields"] == [{"name": "Role", "value": "Envoy"}]
+
+
+def test_lookup_fields_are_named_capped_and_clipped(mongo_client, auth_store):
+    """An article may hold anything; the panel beside the prose may not."""
+    documents = DocumentStore(mongo_client)
+    documents.create_collection("ember", "characters")
+    documents.create(
+        "ember", "characters", "lyra",
+        {
+            "title": "Lyra Venn",
+            "role": "Envoy",
+            "home_region": "The Reach",
+            "allegiances": ["Crown", "Guild", "Circle", "Fourth"],
+            "empty": "",
+            "missing": None,
+            "notes": "word " * 60,
+            "a": "1", "b": "2", "c": "3", "d": "4",
+        },
+    )
+    auth_store.grant_owner("mara", "ember", "characters", None, list(ALL_PERMS))
+
+    fields = InProcessArticleGateway(documents).lookup_entities(
+        "Lyra", auth_store.grants_for("mara"),
+    )[0]["fields"]
+
+    assert len(fields) == 6, "at most six pairs reach the panel"
+    assert {"name": "Role", "value": "Envoy"} in fields
+    assert {"name": "Home Region", "value": "The Reach"} in fields
+    # Lists show their first few entries, not their repr.
+    assert {"name": "Allegiances", "value": "Crown, Guild, Circle"} in fields
+    # Blank and absent values never take a slot.
+    assert not [field for field in fields if field["name"] in {"Empty", "Missing"}]
+    notes = next(field for field in fields if field["name"] == "Notes")
+    assert len(notes["value"]) == 120 and notes["value"].endswith("…")
 
 
 def _body(response):

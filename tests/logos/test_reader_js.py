@@ -26,7 +26,7 @@ _JS_DIR = (
 _MODULES = (
     "dom.js", "prose.js", "preferences.js", "navigation.js", "outline.js",
     "position.js", "progress.js", "boundary.js", "readerdata.js",
-    "editor.js", "comparison.js", "recovery.js",
+    "editor.js", "comparison.js", "recovery.js", "coachpanel.js",
 )
 
 _PREAMBLE = """\
@@ -51,9 +51,12 @@ import {
   defaultOpenVolume, filterOutline, pageForSection, SECTION_PAGE_SIZE,
   sectionCount, sectionPage,
 } from "./outline.js";
-import { documentFromEditor, wordCount as editorWordCount } from "./editor.js";
+import {
+  documentFromEditor, mentionRef, unlinkMention, wordCount as editorWordCount,
+} from "./editor.js";
 import { compareDocuments, draftStats } from "./comparison.js";
 import { createAutosave, recoveryKey } from "./recovery.js";
+import { createCoachPanel } from "./coachpanel.js";
 
 const INPUT = %s;
 
@@ -165,6 +168,146 @@ def test_draft_comparison_aligns_stable_blocks_and_reports_flow_stats(run_js):
     assert result["stats"] == {
         "words": 6, "paragraphs": 2, "sentences": 2,
         "averageSentenceWords": 3,
+    }
+
+
+def test_the_two_word_counts_agree_on_lists(run_js):
+    """One document, one answer.
+
+    The comparison view's statistics and the editor's live count are separate
+    walkers over the same structure. They drifted on lists -- comparison joined
+    list items with nothing, so a three-item list read as one word and the
+    compare dialog contradicted the header beside it.
+    """
+    document = {
+        "version": 1,
+        "type": "doc",
+        "content": [
+            _para({"type": "text", "text": "The gate opened."}),
+            {
+                "type": "ordered_list", "id": "list", "content": [
+                    {"type": "list_item", "content": [{"type": "text", "text": "alpha"}]},
+                    {"type": "list_item", "content": [{"type": "text", "text": "beta"}]},
+                    {"type": "list_item", "content": [{"type": "text", "text": "gamma"}]},
+                ],
+            },
+        ],
+    }
+
+    result = run_js(
+        "emit({editor: editorWordCount(INPUT), compare: draftStats(INPUT).words});",
+        document,
+    )
+
+    assert result == {"editor": 6, "compare": 6}
+
+
+def test_the_coach_panel_applies_a_suggestion_and_can_undo_it(run_js):
+    """The panel is a pure renderer over injected seams.
+
+    Extracted from `mountWriter` so this path is reachable at all: applying a
+    suggestion, then undoing it, without a browser or a network.
+    """
+    result = run_js(
+        # A recording stand-in for the element builders and the prose surface.
+        "const made = [];"
+        "const ui = {"
+        "  el: (tag, attrs = {}, children = []) => {"
+        "    const node = {tag, attrs, children: children.flat().filter(Boolean),"
+        "      remove() { node.removed = true; }};"
+        "    made.push(node); return node;"
+        "  },"
+        "  fill: (node, children) => { node.children = children.flat().filter(Boolean); return node; },"
+        "};"
+        "const body = {children: []};"
+        "const calls = [];"
+        "const prose = {"
+        "  snapshot: () => ({version: 1, marker: 'before'}),"
+        "  restore: (doc) => calls.push(['restore', doc.marker]),"
+        "  replaceIn: (block, from, to) => { calls.push(['replace', block, from, to]); return true; },"
+        "  reveal: (block) => calls.push(['reveal', block]),"
+        "};"
+        "let dialect = 'en-GB'; const ignored = new Set();"
+        "const preferences = {"
+        "  dialect: () => dialect,"
+        "  setDialect: (value) => { dialect = value; },"
+        "  isIgnored: (title) => ignored.has(title),"
+        "  ignore: (title) => ignored.add(title),"
+        "};"
+        "const issues = ["
+        "  {block: 'p1', category: 'spelling', title: 'US spelling',"
+        "   message: 'm', excerpt: 'color', replacement: 'colour'},"
+        "  {block: 'p2', category: 'flow', title: 'Long sentence',"
+        "   message: 'm', excerpt: 'x', replacement: null},"
+        "];"
+        "const seen = [];"
+        "const panel = createCoachPanel({body, ui, prose, preferences,"
+        "  requestReview: async (chosen) => { seen.push(chosen); return {issues}; }});"
+        "await panel.review();"
+        "const cards = body.children.filter((c) => c.attrs.class === 'coach-issue');"
+        "const actions = cards[0].children.find((c) => c.attrs.class === 'coach-actions');"
+        "const use = actions.children[0];"
+        "use.attrs.onclick();"
+        "const undo = cards[0].children.find((c) => c.attrs && c.attrs.text === 'Undo');"
+        "undo.attrs.onclick();"
+        "emit({dialectAsked: seen, cards: cards.length,"
+        "  firstAction: use.attrs.text, calls});"
+    )
+
+    assert result["dialectAsked"] == ["en-GB", "en-GB"]
+    assert result["cards"] == 2
+    assert result["firstAction"] == "Use “colour”"
+    assert result["calls"] == [
+        ["replace", "p1", "color", "colour"],
+        ["restore", "before"],
+    ]
+
+
+def test_the_coach_panel_hides_rules_the_writer_has_ignored(run_js):
+    result = run_js(
+        "const ui = {"
+        "  el: (tag, attrs = {}, children = []) => ({tag, attrs,"
+        "    children: children.flat().filter(Boolean), remove() {}}),"
+        "  fill: (node, children) => { node.children = children.flat().filter(Boolean); return node; },"
+        "};"
+        "const body = {children: []};"
+        "const ignored = new Set(['Long sentence']);"
+        "const panel = createCoachPanel({body, ui,"
+        "  prose: {snapshot: () => ({}), restore() {}, replaceIn: () => true, reveal() {}},"
+        "  preferences: {dialect: () => 'en-US', setDialect() {},"
+        "    isIgnored: (t) => ignored.has(t), ignore: (t) => ignored.add(t)},"
+        "  requestReview: async () => ({issues: ["
+        "    {block: 'p1', category: 'flow', title: 'Long sentence',"
+        "     message: 'm', excerpt: 'x', replacement: null}]})});"
+        "await panel.review();"
+        "emit(body.children.map((c) => c.attrs.class));"
+    )
+
+    assert "coach-issue" not in result
+    assert "coach-clear" in result
+
+
+def test_a_linked_phrase_can_be_unlinked_without_touching_its_words(run_js):
+    """Unlinking keeps the prose and drops only the Akasha reference."""
+    result = run_js(
+        "const text = (value) => ({nodeType: 3, nodeValue: value});"
+        "const owner = {createTextNode: text};"
+        "const span = {nodeType: 1, tagName: 'SPAN', ownerDocument: owner,"
+        " textContent: 'Sir Aldric', dataset: {entityType: 'mention',"
+        " database: 'ember', collection: 'characters', entityId: 'aldric'}};"
+        "const parent = {childNodes: [span],"
+        " replaceChild(fresh, old) { this.childNodes = [fresh]; }};"
+        "span.parentNode = parent;"
+        "const ref = mentionRef(span);"
+        "const done = unlinkMention(span);"
+        "emit({ref, done, left: parent.childNodes[0].nodeValue});"
+    )
+
+    assert result["done"] is True
+    assert result["left"] == "Sir Aldric"
+    assert result["ref"] == {
+        "type": "mention", "database": "ember", "collection": "characters",
+        "id": "aldric", "text": "Sir Aldric",
     }
 
 

@@ -169,8 +169,48 @@ def test_selected_text_can_find_an_akasha_entity(section):
         "collection_title": "Characters",
         "id": "lyra",
         "title": "Lyra",
-        "preview": "",
+        "fields": [],
     }
+
+
+def test_the_dialect_choice_changes_what_the_advisor_reports(section):
+    """The US/UK control has to earn its place in the panel.
+
+    It was wired end to end -- persisted, sent, validated, echoed -- while the
+    advisor ignored it, so flipping it changed nothing a writer could see.
+    """
+    prose = document("The colour of the harbour, and the theater beyond it.")
+
+    def spellings(dialect):
+        response = section.post(
+            f"/books/{BOOK}/ui/writing-review",
+            json={"document": prose, "dialect": dialect},
+        )
+        assert response.status_code == 200
+        return {
+            (issue["excerpt"], issue["replacement"])
+            for issue in response.get_json()["issues"]
+            if issue["category"] == "spelling"
+        }
+
+    assert spellings("en-US") == {("colour", "color"), ("harbour", "harbor")}
+    assert spellings("en-GB") == {("theater", "theatre")}
+
+
+def test_the_advisor_leaves_words_that_only_look_like_dialect_variants(section):
+    """A pattern rule would flag these; the curated pair list must not."""
+    response = section.post(
+        f"/books/{BOOK}/ui/writing-review",
+        json={
+            "document": document("Four hours later the sun would rise again."),
+            "dialect": "en-GB",
+        },
+    )
+
+    assert [
+        issue for issue in response.get_json()["issues"]
+        if issue["category"] == "spelling"
+    ] == []
 
 
 def test_the_private_writing_advisor_reports_mechanics_and_flow(section):

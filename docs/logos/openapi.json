@@ -638,7 +638,7 @@
         "tags": ["writer"], "summary": "Find readable Akasha entities for selected prose",
         "parameters": [{ "$ref": "#/components/parameters/Book" }, { "name": "q", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 200 } }],
         "responses": {
-          "200": { "description": "Permission-filtered entity matches.", "content": { "application/json": { "schema": { "type": "object" } } } },
+          "200": { "description": "Permission-filtered entity matches, best first. Each carries the article's own `fields` as named, clipped pairs -- at most six, values at most 120 characters -- so the writing panel can show which fact is which without loading the article.", "content": { "application/json": { "schema": { "type": "object" } } } },
           "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }
         }
       }

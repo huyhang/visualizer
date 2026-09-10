@@ -25,6 +25,12 @@ function attrs(node, values) {
 
 function renderInline(owner, value) {
   if (value.type === "hard_break") return owner.createElement("br");
+  // Deliberately *not* `contenteditable="false"`. A non-editable island inside
+  // an editable host is atomic to the selection engine: a drag cannot extend
+  // across its words, so a writer can only ever double-click one word of a
+  // linked phrase. Ordinary spans select normally, and a mention split by
+  // editing is re-merged on the way out -- `compact` matches on everything
+  // except `text`, so two fragments sharing a ref become one node again.
   if (value.type === "mention" || value.type === "article_link") {
     const node = attrs(owner.createElement("span"), {
       class: "entity-mention",
@@ -32,7 +38,6 @@ function renderInline(owner, value) {
       "data-database": value.ref.database,
       "data-collection": value.ref.collection,
       "data-entity-id": value.ref.id,
-      contenteditable: "false",
     });
     node.textContent = value.text;
     return node;
@@ -200,7 +205,6 @@ export function linkMention(selection, entity) {
     "data-database": entity.database,
     "data-collection": entity.collection,
     "data-entity-id": entity.id,
-    contenteditable: "false",
   });
   mention.textContent = label;
   range.deleteContents();
@@ -212,6 +216,82 @@ export function linkMention(selection, entity) {
     browserSelection.removeAllRanges();
     browserSelection.addRange(range);
   }
+  return true;
+}
+
+// -- the caret ---------------------------------------------------------------
+// Resuming at the right paragraph is most of the job; resuming at the right
+// word is the rest. Offsets count visible characters, so they survive the
+// re-render that recovery performs.
+
+export function caretPosition(root, selection) {
+  if (!selection || !selection.rangeCount) return null;
+  const range = selection.getRangeAt(0);
+  if (!root.contains(range.startContainer)) return null;
+  const element = range.startContainer.nodeType === 1
+    ? range.startContainer : range.startContainer.parentElement;
+  const block = element && element.closest("[data-block-id]");
+  if (!block) return null;
+  const measure = range.cloneRange();
+  measure.selectNodeContents(block);
+  measure.setEnd(range.startContainer, range.startOffset);
+  return { block: block.dataset.blockId, offset: measure.toString().length };
+}
+
+export function placeCaret(root, position) {
+  if (!position || !position.block) return false;
+  const block = root.querySelector(`[data-block-id="${CSS.escape(position.block)}"]`);
+  if (!block) return false;
+  const owner = block.ownerDocument;
+  const walker = owner.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+  let remaining = Math.max(0, position.offset || 0);
+  let node = walker.nextNode();
+  let last = null;
+  while (node && remaining > node.nodeValue.length) {
+    remaining -= node.nodeValue.length;
+    last = node;
+    node = walker.nextNode();
+  }
+  const target = node || last;
+  const caret = owner.createRange();
+  if (target) caret.setStart(target, Math.min(remaining, target.nodeValue.length));
+  else caret.selectNodeContents(block);
+  caret.collapse(true);
+  const browserSelection = owner.defaultView && owner.defaultView.getSelection();
+  if (!browserSelection) return false;
+  browserSelection.removeAllRanges();
+  browserSelection.addRange(caret);
+  block.scrollIntoView({ block: "center" });
+  return true;
+}
+
+// -- existing mentions -------------------------------------------------------
+// A linked phrase is prose, not a widget: it stays selectable and editable.
+// These let the workspace offer it the two actions a writer actually wants --
+// look the entity up again, or take the link off the words.
+
+export function mentionAt(node, root) {
+  const element = node && (node.nodeType === 1 ? node : node.parentElement);
+  const mention = element && element.closest("[data-entity-id]");
+  return mention && root.contains(mention) ? mention : null;
+}
+
+export function mentionRef(element) {
+  return {
+    type: element.dataset.entityType || "mention",
+    database: element.dataset.database,
+    collection: element.dataset.collection,
+    id: element.dataset.entityId,
+    text: element.textContent,
+  };
+}
+
+export function unlinkMention(element) {
+  if (!element || !element.parentNode) return false;
+  const owner = element.ownerDocument;
+  element.parentNode.replaceChild(
+    owner.createTextNode(element.textContent), element,
+  );
   return true;
 }
 

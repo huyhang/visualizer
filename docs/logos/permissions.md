@@ -40,11 +40,20 @@ management, not the content itself.
 
 ## By operation
 
-- `GET` requires `read`.
+- `GET` requires `read`, except under a section's `drafts`: alternate drafts are
+  working material rather than published prose, so reading one requires `write`
+  like changing it does.
 - Private reader-item and position writes require `read`; they address only the
   signed-in account and cannot alter another account or the manuscript.
 - Creating, updating, reordering and restoring require `write`. Alternate drafts
   are not exposed to read-only collaborators.
+- **Preconditions are asymmetric by design.** Every write carries `If-Match`,
+  including a draft save — a draft is shared with the book's other editors, so
+  two people typing into one draft is a lost update like any other. What is
+  *not* guarded is the section projection that a primary-draft save performs on
+  the writer's behalf: it re-reads the section and writes with the revision it
+  just read, because the draft's own precondition already established that the
+  writer was current.
 - Deleting a draft, section, volume or manuscript requires `delete`.
 
 **The grant is checked before anything is loaded.** A caller without one gets

@@ -21,12 +21,29 @@ panel. On a phone those panels become drawers, the global navigation disappears
 temporarily, and the formatting bar stays above the software keyboard. **Done**
 returns to the same passage in the reader.
 
-Selecting prose offers an Akasha lookup. Results are permission-filtered,
-prefer the Chronos book's world, and can be opened or stored as a structured
-`mention` without changing the selected wording. The Writing Coach uses only
-local deterministic rules; it sends no prose to an external service. Its
-injected advisor interface leaves room for a separately configured opt-in AI
-implementation later.
+**Akasha lookup lives on the right-click menu.** Select a name and right-click
+it for *Look up in Akasha*; right-click words that are already linked for *Open
+in Akasha* and *Unlink*. `Cmd/Ctrl+K` does the lookup from the keyboard.
+Results are permission-filtered, prefer the Chronos book's world, and arrive as
+the article's own named fields, so a writer can check a fact without leaving
+the page. Storing one writes a structured `mention` that does not change the
+selected wording.
+
+The browser's own context menu is only replaced when there is something
+manuscript-specific to offer — a selection, or a linked phrase. Right-clicking
+anywhere else leaves it alone, because that menu carries paste and the
+spellchecker's suggestions, which are worth more than a uniform rule.
+
+Words already linked stay ordinary prose: selectable, editable, and left-click
+opens their entity in the side panel rather than the menu — the panel shows
+what the entity *is*, the menu does something to it.
+
+The Writing Coach uses only local deterministic rules; it sends no prose to an
+external service. Alongside mechanics and flow it checks dialect consistency:
+choose US or UK and it reports spellings from the other side, offering the
+local form. Which dialect a manuscript uses is the writer's choice, so it
+reports the mismatch rather than deciding. Its injected advisor interface
+leaves room for a separately configured opt-in AI implementation later.
 
 Each section has one or more named drafts and exactly one primary draft. New
 drafts clone an existing draft, retaining stable block ids so the comparison
