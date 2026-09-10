@@ -27,6 +27,7 @@ _MODULES = (
     "dom.js", "prose.js", "preferences.js", "navigation.js", "outline.js",
     "position.js", "progress.js", "boundary.js", "readerdata.js",
     "editor.js", "comparison.js", "recovery.js", "coachpanel.js",
+    "akashapanel.js", "contextmenu.js", "draftstate.js",
 )
 
 _PREAMBLE = """\
@@ -57,6 +58,9 @@ import {
 import { compareDocuments, draftStats } from "./comparison.js";
 import { createAutosave, recoveryKey } from "./recovery.js";
 import { createCoachPanel } from "./coachpanel.js";
+import { createAkashaPanel } from "./akashapanel.js";
+import { menuPosition } from "./contextmenu.js";
+import { createDraftState } from "./draftstate.js";
 
 const INPUT = %s;
 
@@ -200,6 +204,137 @@ def test_the_two_word_counts_agree_on_lists(run_js):
     )
 
     assert result == {"editor": 6, "compare": 6}
+
+
+_RECORDING_UI = (
+    "const ui = {"
+    "  el: (tag, attrs = {}, children = []) => ({tag, attrs,"
+    "    children: children.flat().filter(Boolean), remove() {}}),"
+    "  fill: (node, children) => { node.children = children.flat().filter(Boolean); return node; },"
+    "};"
+)
+
+
+def test_renaming_a_draft_updates_the_open_copy_and_the_listing_row(run_js):
+    """The bug this state object exists to make unrepeatable.
+
+    The open draft and its row in the listing are separate reads; the selector
+    renders from the rows, so a rename that touched only the open copy showed
+    the old name until autosave came back.
+    """
+    result = run_js(
+        "const state = createDraftState({"
+        "  sectionRev: 4,"
+        "  drafts: [{id: 'a', name: 'First', primary: true},"
+        "           {id: 'b', name: 'Second', primary: false}],"
+        "  current: {id: 'b', name: 'Second', primary: false, rev: 2}});"
+        "state.renamed('Taut pass');"
+        "emit({options: state.options(), open: state.current.name});"
+    )
+
+    assert result["open"] == "Taut pass"
+    assert result["options"] == [
+        {"value": "a", "text": "First (Primary)", "current": False},
+        {"value": "b", "text": "Taut pass", "current": True},
+    ]
+
+
+def test_promoting_moves_the_primary_flag_off_every_other_draft(run_js):
+    result = run_js(
+        "const state = createDraftState({"
+        "  sectionRev: 4,"
+        "  drafts: [{id: 'a', name: 'First', primary: true},"
+        "           {id: 'b', name: 'Second', primary: false}],"
+        "  current: {id: 'b', name: 'Second', primary: false, rev: 2}});"
+        "state.promoted(9);"
+        "emit({options: state.options(), rev: state.sectionRev,"
+        "  open: state.current.primary});"
+    )
+
+    assert result["rev"] == 9
+    assert result["open"] is True
+    assert [option["text"] for option in result["options"]] == [
+        "First", "Second (Primary)",
+    ]
+
+
+def test_a_saved_draft_replaces_the_open_copy_and_refreshes_its_row(run_js):
+    result = run_js(
+        "const state = createDraftState({"
+        "  sectionRev: 4,"
+        "  drafts: [{id: 'b', name: 'Second', primary: false, word_count: 10}],"
+        "  current: {id: 'b', name: 'Second', primary: false, rev: 2}});"
+        "state.saved({id: 'b', name: 'Second', primary: false, rev: 3,"
+        "  word_count: 66, section_rev: 7});"
+        "state.sectionChanged(8);"
+        "emit({rev: state.current.rev, rowWords: state.rows[0].word_count,"
+        "  sectionRev: state.sectionRev, count: state.count});"
+    )
+
+    assert result == {"rev": 3, "rowWords": 66, "sectionRev": 8, "count": 1}
+
+
+def test_the_akasha_panel_reports_an_empty_result_and_a_failure_apart(run_js):
+    result = run_js(
+        _RECORDING_UI
+        + "const body = {children: []};"
+        "const seen = [];"
+        "const panel = createAkashaPanel({body, ui, focus: () => seen.push('focus'),"
+        "  search: async () => ({entities: []})});"
+        "await panel.showLookup({text: 'Aldric', block: 'p1'}, {});"
+        "const empty = body.children.map((c) => [c.attrs.class, c.attrs.text]);"
+        "const failing = createAkashaPanel({body, ui, focus: () => {},"
+        "  search: async () => { throw new Error('Akasha is down'); }});"
+        "await failing.showLookup({text: 'Aldric', block: 'p1'}, {});"
+        "emit({seen, empty, failed: body.children.map((c) => [c.attrs.class, c.attrs.text])});"
+    )
+
+    assert result["seen"] == ["focus"]
+    assert result["empty"] == [["muted", "No readable Akasha entity matched."]]
+    assert result["failed"] == [["form-error", "Akasha is down"]]
+
+
+def test_linking_is_offered_only_when_the_selection_sits_in_one_block(run_js):
+    result = run_js(
+        _RECORDING_UI
+        + "const entity = {title: 'Sir Aldric', database_title: 'Ember',"
+        "  collection_title: 'Characters', fields: [{name: 'Role', value: 'Knight'}]};"
+        "const linked = [];"
+        "async function render(selection) {"
+        "  const body = {children: []};"
+        "  const panel = createAkashaPanel({body, ui, focus: () => {},"
+        "    search: async () => ({entities: [entity]})});"
+        "  await panel.showLookup(selection, {onOpen: () => {},"
+        "    onLink: (e) => linked.push(e.title)});"
+        "  const actions = body.children[0].children.find((c) => c.attrs.class === 'entity-actions');"
+        "  return actions.children[0];"
+        "}"
+        "const inBlock = await render({text: 'Sir Aldric', block: 'p1'});"
+        "const across = await render({text: 'Sir Aldric', block: null});"
+        "inBlock.attrs.onclick();"
+        "emit({inBlock: inBlock.attrs.disabled, across: across.attrs.disabled,"
+        "  acrossTitle: across.attrs.title, linked});"
+    )
+
+    assert result["inBlock"] is False
+    assert result["across"] is True
+    assert result["acrossTitle"] == "Select within one paragraph to link"
+    assert result["linked"] == ["Sir Aldric"]
+
+
+def test_the_context_menu_stays_inside_the_viewport(run_js):
+    result = run_js(
+        "const menu = {width: 200, height: 120};"
+        "const viewport = {width: 1000, height: 700};"
+        "emit({"
+        "  middle: menuPosition({x: 400, y: 300}, menu, viewport),"
+        "  bottomRight: menuPosition({x: 990, y: 690}, menu, viewport),"
+        "  topLeft: menuPosition({x: 0, y: 0}, menu, viewport)});"
+    )
+
+    assert result["middle"] == {"left": 400, "top": 300}
+    assert result["bottomRight"] == {"left": 792, "top": 572}
+    assert result["topLeft"] == {"left": 8, "top": 8}
 
 
 def test_the_coach_panel_applies_a_suggestion_and_can_undo_it(run_js):

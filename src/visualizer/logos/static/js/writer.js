@@ -2,8 +2,11 @@
 // comparison and recovery stay in small injected/pure modules beside it.
 
 import { api } from "./api.js";
+import { createAkashaPanel } from "./akashapanel.js";
 import { createCoachPanel } from "./coachpanel.js";
 import { compareDocuments } from "./comparison.js";
+import { createContextMenu } from "./contextmenu.js";
+import { createDraftState } from "./draftstate.js";
 import { el, fill } from "./dom.js";
 import {
   caretPosition,
@@ -89,6 +92,35 @@ function outline(manuscript, current, base, navigate, createChapter) {
     ]),
     search,
     volumes,
+  ]);
+}
+
+function topbar({ base, manuscript, entry, section, nodes, actions, canCompare }) {
+  const button = (label, onclick, extra = {}) => el("button", {
+    class: "btn ghost sm", type: "button", text: label, onclick, ...extra,
+  });
+  return el("header", { class: "writer-topbar" }, [
+    el("button", {
+      class: "writer-mobile-button", type: "button", text: "Outline",
+      onclick: () => document.body.classList.toggle("show-writer-outline"),
+    }),
+    el("a", {
+      class: "writer-back",
+      href: `${base}/?${new URLSearchParams({ book: manuscript.book })}`,
+      text: `${entry.volume.title} / ${sectionName(section)}`,
+      onclick: actions.navigate,
+    }),
+    nodes.draftSelect, nodes.primaryBadge,
+    button("New draft", actions.newDraft),
+    button("Rename", actions.rename),
+    button("Make primary", actions.makePrimary),
+    button("Compare", actions.compare, { disabled: !canCompare }),
+    nodes.count, nodes.status, nodes.conflictAction,
+    el("button", {
+      class: "writer-mobile-button", type: "button", text: "Tools",
+      onclick: () => document.body.classList.toggle("show-writer-context"),
+    }),
+    el("button", { class: "btn sm", type: "button", text: "Done", onclick: actions.done }),
   ]);
 }
 
@@ -252,12 +284,16 @@ export async function mountWriter({
 }) {
   container.classList.add("writer-content");
   const listing = await api.drafts(manuscript.book, entry.volume.id, section.id);
-  let sectionRev = listing.section_rev;
-  let drafts = listing.drafts;
   const requested = new URLSearchParams(window.location.search).get("draft");
-  let current = drafts.find((draft) => draft.id === requested)
-    || drafts.find((draft) => draft.primary) || drafts[0];
-  let draft = await api.draft(manuscript.book, entry.volume.id, section.id, current.id);
+  const wanted = listing.drafts.find((row) => row.id === requested)
+    || listing.drafts.find((row) => row.primary) || listing.drafts[0];
+  const state = createDraftState({
+    drafts: listing.drafts,
+    sectionRev: listing.section_rev,
+    current: await api.draft(
+      manuscript.book, entry.volume.id, section.id, wanted.id,
+    ),
+  });
   let selection = null;
   let coachTimer = null;
   const dialectKey = `logos-writing-dialect:${encodeURIComponent(user)}`;
@@ -268,7 +304,8 @@ export async function mountWriter({
   try { ignored = new Set(JSON.parse(localStorage.getItem(ignoredKey) || "[]")); } catch (_error) { /* optional */ }
   const recovery = createRecoveryStore();
   const key = recoveryKey({
-    user, book: manuscript.book, volume: entry.volume.id, section: section.id, draft: draft.id,
+    user, book: manuscript.book, volume: entry.volume.id, section: section.id,
+    draft: state.current.id,
   });
 
   const status = el("span", { class: "writer-save-status", text: "Saved" });
@@ -287,15 +324,7 @@ export async function mountWriter({
   const conflictAction = el("button", {
     class: "btn sm", type: "button", text: "Preserve as new draft", hidden: true,
   });
-  const contextMenu = el("div", {
-    class: "writer-context-menu", role: "menu", hidden: true,
-    "aria-label": "Manuscript actions",
-  });
-  document.body.appendChild(contextMenu);
-  const closeContextMenu = () => {
-    contextMenu.hidden = true;
-    fill(contextMenu, []);
-  };
+  const contextMenu = createContextMenu({ host: document.body });
 
   const setStatus = (state, error = null) => {
     status.dataset.state = state;
@@ -305,9 +334,9 @@ export async function mountWriter({
   };
   const snapshot = () => ({
     document: documentFromEditor(editor),
-    name: draft.name,
+    name: state.current.name,
     title: title.value.trim(),
-    draftRev: draft.rev,
+    draftRev: state.current.rev,
     caret: caretPosition(editor, window.getSelection()),
     savedAt: new Date().toISOString(),
   });
@@ -317,20 +346,17 @@ export async function mountWriter({
     saveLocal: (value) => value ? recovery.set(key, value) : recovery.remove(key),
     saveRemote: async (value, urgent) => {
       const saved = await api.saveDraft(
-        manuscript.book, entry.volume.id, section.id, draft.id,
-        { name: value.name, document: value.document }, draft.rev, urgent,
+        manuscript.book, entry.volume.id, section.id, state.current.id,
+        { name: value.name, document: value.document }, state.current.rev, urgent,
       );
-      draft = saved;
-      sectionRev = saved.section_rev;
-      const row = drafts.find((item) => item.id === draft.id);
-      if (row) Object.assign(row, saved);
+      state.saved(saved);
       if (value.title !== (section.title || "")) {
         const updated = await api.updateSectionMetadata(
           manuscript.book, entry.volume.id, section.id,
-          { title: value.title || null }, sectionRev,
+          { title: value.title || null }, state.sectionRev,
         );
         section = updated;
-        sectionRev = updated.rev;
+        state.sectionChanged(updated.rev);
       }
     },
     onState: setStatus,
@@ -344,126 +370,65 @@ export async function mountWriter({
   };
 
   const renderDraftOptions = () => {
-    fill(draftSelect, drafts.map((item) => el("option", {
-      value: item.id,
-      text: `${item.name}${item.primary ? " (Primary)" : ""}`,
+    fill(draftSelect, state.options().map((option) => el("option", {
+      value: option.value, text: option.text,
     })));
-    draftSelect.value = draft.id;
-    primaryBadge.hidden = !draft.primary;
+    draftSelect.value = state.current.id;
+    primaryBadge.hidden = !state.current.primary;
   };
+
+  const akasha = createAkashaPanel({
+    body: context.body,
+    focus: () => {
+      context.select("akasha");
+      document.body.classList.add("show-writer-context");
+    },
+    search: (query) => api.entities(manuscript.book, query),
+  });
+  const openEntity = (ref) => openArticle(akashaUrl, ref);
 
   const showAkashaPrompt = () => {
     if (!selection) return;
-    context.select("akasha");
-    document.body.classList.add("show-writer-context");
-    fill(context.body, [
-      el("p", { class: "writer-context-kicker", text: `Selected: “${selection.text}”` }),
-      el("p", { class: "muted", text: "Searching Akasha..." }),
-    ]);
-    api.entities(manuscript.book, selection.text).then((payload) => {
-      if (!payload.entities.length) {
-        fill(context.body, [el("p", { class: "muted", text: "No readable Akasha entity matched." })]);
-        return;
-      }
-      fill(context.body, payload.entities.map((entity) => el("article", { class: "entity-result" }, [
-        el("strong", { text: entity.title }),
-        el("small", { text: `${entity.database_title} / ${entity.collection_title}` }),
-        entity.fields && entity.fields.length
-          ? el("dl", { class: "entity-fields" }, entity.fields.flatMap((field) => [
-            el("dt", { text: field.name }),
-            el("dd", { text: field.value }),
-          ]))
-          : null,
-        el("div", { class: "entity-actions" }, [
-          el("button", {
-            class: "btn sm", type: "button", text: "Link mention",
-            disabled: !selection.block,
-            title: selection.block ? "Keep this selection linked to Akasha" : "Select within one paragraph to link",
-            onclick: () => {
-              if (linkMention(selection, entity)) changed();
-            },
-          }),
-          el("button", { class: "btn ghost sm", type: "button", text: "Open article",
-            onclick: () => openArticle(akashaUrl, entity) }),
-        ]),
-      ])));
-    }).catch((error) => fill(context.body, [
-      el("p", { class: "form-error", text: error.message || "Akasha lookup failed." }),
-    ]));
+    akasha.showLookup(selection, {
+      onOpen: openEntity,
+      onLink: (entity) => { if (linkMention(selection, entity)) changed(); },
+    });
   };
 
-  // Clicking words that are already linked: the two things worth offering are
-  // the article behind them and a way to take the link off again.
-  const showMentionPanel = (element) => {
-    const ref = mentionRef(element);
-    context.select("akasha");
-    document.body.classList.add("show-writer-context");
-    fill(context.body, [
-      el("p", { class: "writer-context-kicker", text: `Linked: “${ref.text}”` }),
-      el("article", { class: "entity-result" }, [
-        el("strong", { text: ref.text }),
-        el("small", { text: `${ref.database} / ${ref.collection} / ${ref.id}` }),
-        el("div", { class: "entity-actions" }, [
-          el("button", {
-            class: "btn ghost sm", type: "button", text: "Open article",
-            onclick: () => openArticle(akashaUrl, ref),
-          }),
-          el("button", {
-            class: "btn ghost sm", type: "button", text: "Unlink",
-            title: "Keep the words, remove the Akasha reference",
-            onclick: () => {
-              if (!unlinkMention(element)) return;
-              changed();
-              fill(context.body, [el("p", {
-                class: "muted",
-                text: `“${ref.text}” is no longer linked. The words are unchanged.`,
-              })]);
-            },
-          }),
-        ]),
-      ]),
-    ]);
-  };
-
-  const menuItem = (label, run) => el("button", {
-    class: "writer-menu-item", type: "button", role: "menuitem", text: label,
-    // Keep the selection alive: focus must not leave the prose on mousedown,
-    // or the range the action is about is gone before the click lands.
-    onmousedown: (event) => event.preventDefault(),
-    onclick: () => { closeContextMenu(); run(); },
+  // Words that are already linked: the article behind them, or a way off.
+  const showMentionPanel = (element) => akasha.showMention(mentionRef(element), {
+    onOpen: openEntity,
+    onUnlink: () => {
+      if (!unlinkMention(element)) return false;
+      changed();
+      return true;
+    },
   });
 
+  // What the right-click menu offers here. An empty list means the browser's
+  // own menu is left alone -- that is where paste and the spellchecker's
+  // suggestions live, and they are worth more than a uniform rule.
   const contextActions = (event) => {
-    const items = [];
+    const actions = [];
     const mention = mentionAt(event.target, editor);
     if (mention) {
       const ref = mentionRef(mention);
-      items.push(menuItem(`Open “${ref.text}” in Akasha`, () => openArticle(akashaUrl, ref)));
-      items.push(menuItem("Unlink these words", () => {
-        if (unlinkMention(mention)) changed();
-      }));
+      actions.push({
+        label: `Open “${ref.text}” in Akasha`, run: () => openEntity(ref),
+      });
+      actions.push({
+        label: "Unlink these words",
+        run: () => { if (unlinkMention(mention)) changed(); },
+      });
     }
     const found = selectedProse(editor, window.getSelection());
     if (found) {
       selection = found;
-      items.push(menuItem(`Look up “${found.text}” in Akasha`, showAkashaPrompt));
+      actions.push({
+        label: `Look up “${found.text}” in Akasha`, run: showAkashaPrompt,
+      });
     }
-    return items;
-  };
-
-  // Right-click is only intercepted when there is something manuscript-specific
-  // to offer. Otherwise the browser's own menu stands, which is what carries
-  // paste and the spellchecker's suggestions -- worth more than a tidy rule.
-  const openContextMenu = (event) => {
-    const items = contextActions(event);
-    if (!items.length) return;
-    event.preventDefault();
-    fill(contextMenu, items);
-    contextMenu.hidden = false;
-    const { offsetWidth, offsetHeight } = contextMenu;
-    contextMenu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - offsetWidth - 8))}px`;
-    contextMenu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - offsetHeight - 8))}px`;
-    items[0].focus({ preventScroll: true });
+    return actions;
   };
 
   const remember = (key, value) => {
@@ -510,7 +475,7 @@ export async function mountWriter({
     else fill(context.body, [el("p", { class: "muted", text: "Select words in the manuscript to look them up in Akasha." })]);
   });
 
-  const compare = comparisonDialog(drafts, async (leftId, rightId, target) => {
+  const compare = comparisonDialog(state.rows, async (leftId, rightId, target) => {
     fill(target, [el("p", { class: "muted", text: "Aligning drafts..." })]);
     try {
       const [left, right] = await Promise.all([
@@ -555,60 +520,54 @@ export async function mountWriter({
     ]),
   ]);
 
+  // Every draft action pauses for the autosave first: nothing may navigate,
+  // clone or promote on top of words still in flight.
+  const settled = async (urgent = false) => {
+    await autosave.flush(urgent);
+    return !autosave.hasPending();
+  };
+  const actions = {
+    navigate,
+    newDraft: async () => {
+      const name = await askDraftName("Name the new draft", `Draft ${state.count + 1}`);
+      if (!name || !(await settled())) return;
+      const created = await api.createDraft(
+        manuscript.book, entry.volume.id, section.id,
+        { name, source: state.current.id },
+      );
+      window.location.href = writerUrl(
+        base, manuscript.book, entry.volume.id, section.id, created.id,
+      );
+    },
+    rename: async () => {
+      const name = await askDraftName("Rename draft", state.current.name);
+      if (!name || name === state.current.name) return;
+      state.renamed(name);
+      renderDraftOptions();
+      changed();
+    },
+    makePrimary: async () => {
+      if (!(await settled()) || state.current.primary) return;
+      const result = await api.makePrimary(
+        manuscript.book, entry.volume.id, section.id,
+        state.current.id, state.sectionRev,
+      );
+      state.promoted(result.section_rev);
+      renderDraftOptions();
+    },
+    compare: async () => { if (await settled()) compare.showModal(); },
+    done: async () => {
+      if (!(await settled(true))) return;
+      onDone(editor.querySelector("[data-block-id]")?.dataset.blockId || null);
+    },
+  };
+
   const shell = el("div", { class: "writer-shell" }, [
-    el("header", { class: "writer-topbar" }, [
-      el("button", { class: "writer-mobile-button", type: "button", text: "Outline",
-        onclick: () => document.body.classList.toggle("show-writer-outline") }),
-      el("a", { class: "writer-back", href: `${base}/?${new URLSearchParams({ book: manuscript.book })}`,
-        text: `${entry.volume.title} / ${sectionName(section)}`, onclick: navigate }),
-      draftSelect, primaryBadge,
-      el("button", { class: "btn ghost sm", type: "button", text: "New draft", onclick: async () => {
-        const name = await askDraftName("Name the new draft", `Draft ${drafts.length + 1}`);
-        if (!name) return;
-        await autosave.flush();
-        if (autosave.hasPending()) return;
-        const created = await api.createDraft(
-          manuscript.book, entry.volume.id, section.id,
-          { name, source: draft.id },
-        );
-        window.location.href = writerUrl(base, manuscript.book, entry.volume.id, section.id, created.id);
-      } }),
-      el("button", { class: "btn ghost sm", type: "button", text: "Rename", onclick: async () => {
-        const name = await askDraftName("Rename draft", draft.name);
-        if (!name || name === draft.name) return;
-        draft.name = name;
-        // `draft` and its row in `drafts` are separate reads, and the selector
-        // renders from the rows -- without this the new name only appeared
-        // once autosave came back.
-        const row = drafts.find((item) => item.id === draft.id);
-        if (row) row.name = name;
-        renderDraftOptions();
-        changed();
-      } }),
-      el("button", { class: "btn ghost sm", type: "button", text: "Make primary", onclick: async () => {
-        await autosave.flush();
-        if (autosave.hasPending() || draft.primary) return;
-        const result = await api.makePrimary(
-          manuscript.book, entry.volume.id, section.id, draft.id, sectionRev,
-        );
-        sectionRev = result.section_rev;
-        drafts.forEach((item) => { item.primary = item.id === draft.id; });
-        draft.primary = true;
-        renderDraftOptions();
-      } }),
-      el("button", { class: "btn ghost sm", type: "button", text: "Compare", disabled: drafts.length < 2,
-        onclick: async () => {
-          await autosave.flush();
-          if (!autosave.hasPending()) compare.showModal();
-        } }),
-      count, status, conflictAction,
-      el("button", { class: "writer-mobile-button", type: "button", text: "Tools",
-        onclick: () => document.body.classList.toggle("show-writer-context") }),
-      el("button", { class: "btn sm", type: "button", text: "Done", onclick: async () => {
-        await autosave.flush(true);
-        if (!autosave.hasPending()) onDone(editor.querySelector("[data-block-id]")?.dataset.blockId || null);
-      } }),
-    ]),
+    topbar({
+      base, manuscript, entry, section, actions,
+      canCompare: state.count > 1,
+      nodes: { draftSelect, primaryBadge, count, status, conflictAction },
+    }),
     el("div", { class: "writer-columns" }, [
       outline(manuscript, entry, base, navigate, createChapter),
       el("main", { class: "writer-page" }, [
@@ -622,14 +581,14 @@ export async function mountWriter({
   ]);
   fill(container, [shell]);
   renderDraftOptions();
-  renderEditorDocument(draft.document, editor);
+  renderEditorDocument(state.current.document, editor);
   const recovered = await recovery.get(key).catch(() => null);
   let resumedCaret = null;
   if (recovered && recovered.document) {
     renderEditorDocument(recovered.document, editor);
     title.value = recovered.title || title.value;
     resumedCaret = recovered.caret || null;
-    if (recovered.draftRev === draft.rev) autosave.schedule(recovered);
+    if (recovered.draftRev === state.current.rev) autosave.schedule(recovered);
     else setStatus("conflict");
   }
   updateCount();
@@ -655,21 +614,23 @@ export async function mountWriter({
     }
   });
   title.addEventListener("input", changed);
-  editor.addEventListener("contextmenu", openContextMenu);
+  editor.addEventListener("contextmenu", (event) => {
+    contextMenu.open(event, contextActions(event));
+  });
   document.addEventListener("mousedown", (event) => {
-    if (!contextMenu.hidden && !contextMenu.contains(event.target)) closeContextMenu();
+    if (contextMenu.isOpen() && !contextMenu.holds(event.target)) contextMenu.close();
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !contextMenu.hidden) {
-      closeContextMenu();
+    if (event.key === "Escape" && contextMenu.isOpen()) {
+      contextMenu.close();
       editor.focus({ preventScroll: true });
     }
   });
-  window.addEventListener("scroll", closeContextMenu, true);
-  window.addEventListener("resize", closeContextMenu);
+  window.addEventListener("scroll", contextMenu.close, true);
+  window.addEventListener("resize", contextMenu.close);
   draftSelect.addEventListener("change", async () => {
     await autosave.flush(true);
-    if (autosave.hasPending()) { draftSelect.value = draft.id; return; }
+    if (autosave.hasPending()) { draftSelect.value = state.current.id; return; }
     window.location.href = writerUrl(
       base, manuscript.book, entry.volume.id, section.id, draftSelect.value,
     );
@@ -678,7 +639,7 @@ export async function mountWriter({
     const held = snapshot();
     const created = await api.createDraft(
       manuscript.book, entry.volume.id, section.id,
-      { name: `Recovered ${new Date().toLocaleString()}`, source: draft.id },
+      { name: `Recovered ${new Date().toLocaleString()}`, source: state.current.id },
     );
     const saved = await api.saveDraft(
       manuscript.book, entry.volume.id, section.id, created.id,
