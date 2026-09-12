@@ -321,6 +321,13 @@ class VersionedDocuments:
         its revision chain is being re-keyed.  Each step is repeatable: a caller
         may resume after an interrupted request by presenting the same source and
         destination.
+
+        **The revision number does not change.**  A move re-addresses a record; it
+        does not edit it.  Advancing the revision would append a body identical to
+        the one before it and spend one of the retained slots that belong to the
+        prose -- at ``keep`` revisions, a well-organised book would lose its whole
+        editing history to its filing.  A caller that needs a record of the move
+        keeps one of its own.
         """
         source_key = self._key(identity)
         destination_key = self._key(destination)
@@ -328,69 +335,98 @@ class VersionedDocuments:
             return self.get(identity, not_found)
 
         source = self._heads.find_one({"_id": source_key})
-        target = self._heads.find_one({"_id": destination_key})
-        if source is None:
-            if target is not None and not target.get("deleted"):
-                return self._public(target, self._body_of(target))
-            raise not_found(f"'{self._label(identity)}' was not found.")
-        if source.get("deleted"):
-            raise not_found(f"'{self._label(identity)}' was not found.")
-        moving_to = source.get("moving_to")
-        if moving_to not in (None, destination_key):
-            raise self._conflict("The resource is already being moved elsewhere.")
-        if moving_to is None:
-            if source["rev"] != expected_rev:
-                raise self._conflict(
-                    f"Modified since revision {expected_rev}; reload and retry.",
-                    evidence={"expected": expected_rev, "actual": source["rev"]},
-                )
-            locked = self._heads.update_one(
-                {
-                    "_id": source_key,
-                    "rev": expected_rev,
-                    "deleted": False,
-                    "moving_to": {"$exists": False},
-                },
-                {"$set": {"moving_to": destination_key}},
-            )
-            if locked.matched_count == 0:
-                raise self._conflict("Modified concurrently; reload and retry.")
-            source["moving_to"] = destination_key
-
-        if target is None:
-            moved = {
-                **source,
-                "_id": destination_key,
-                **destination,
-                "updated_by": author,
-                "updated_at": self._now(),
-            }
-            moved.pop("moving_to", None)
-            try:
-                self._heads.insert_one(moved)
-            except DuplicateKeyError as exc:
-                target = self._heads.find_one({"_id": destination_key})
-                if target is None:
-                    raise already_exists(
-                        f"'{self._label(destination)}' already exists."
-                    ) from exc
-            else:
-                target = moved
+        if source is None or source.get("deleted"):
+            return self._already_relocated(identity, destination_key, not_found)
+        self._lock_for_move(source, destination_key, expected_rev)
+        target = self._destination_head(
+            source, destination, destination_key, author, already_exists
+        )
         if target.get("deleted") or (
             target["current_revision"] != source["current_revision"]
         ):
-            self._heads.update_one(
-                {"_id": source_key, "moving_to": destination_key},
-                {"$unset": {"moving_to": ""}},
-            )
+            self._release_move_lock(source_key, destination_key)
             raise already_exists(f"'{self._label(destination)}' already exists.")
+        self._rekey_revisions(source_key, destination_key, destination)
+        self._heads.delete_one({"_id": source_key, "moving_to": destination_key})
+        return self._public(target, self._body_of(target))
 
+    def _already_relocated(self, identity: dict, destination_key: str, not_found) -> dict:
+        """A move whose source is gone: it finished already, or was never there."""
+        target = self._heads.find_one({"_id": destination_key})
+        if target is not None and not target.get("deleted"):
+            return self._public(target, self._body_of(target))
+        raise not_found(f"'{self._label(identity)}' was not found.")
+
+    def _lock_for_move(self, source: dict, destination_key: str, expected_rev) -> None:
+        """Claim the head for this destination, or refuse to touch it.
+
+        Idempotent on purpose: a resumed request meets its own claim and passes
+        through, while a claim pointing somewhere else is a conflict rather than
+        a second move racing the first.
+        """
+        moving_to = source.get("moving_to")
+        if moving_to == destination_key:
+            return
+        if moving_to is not None:
+            raise self._conflict("The resource is already being moved elsewhere.")
+        if source["rev"] != expected_rev:
+            raise self._conflict(
+                f"Modified since revision {expected_rev}; reload and retry.",
+                evidence={"expected": expected_rev, "actual": source["rev"]},
+            )
+        locked = self._heads.update_one(
+            {
+                "_id": source["_id"],
+                "rev": expected_rev,
+                "deleted": False,
+                "moving_to": {"$exists": False},
+            },
+            {"$set": {"moving_to": destination_key}},
+        )
+        if locked.matched_count == 0:
+            raise self._conflict("Modified concurrently; reload and retry.")
+        source["moving_to"] = destination_key
+
+    def _destination_head(
+        self, source: dict, destination: dict, destination_key: str, author,
+        already_exists,
+    ) -> dict:
+        """The head at the destination: the copy this move makes, or one already there."""
+        existing = self._heads.find_one({"_id": destination_key})
+        if existing is not None:
+            return existing
+        moved = {
+            **source,
+            "_id": destination_key,
+            **destination,
+            "updated_by": author,
+            "updated_at": self._now(),
+        }
+        moved.pop("moving_to", None)
+        try:
+            self._heads.insert_one(moved)
+        except DuplicateKeyError as exc:
+            raced = self._heads.find_one({"_id": destination_key})
+            if raced is None:
+                raise already_exists(
+                    f"'{self._label(destination)}' already exists."
+                ) from exc
+            return raced
+        return moved
+
+    def _release_move_lock(self, source_key: str, destination_key: str) -> None:
+        self._heads.update_one(
+            {"_id": source_key, "moving_to": destination_key},
+            {"$unset": {"moving_to": ""}},
+        )
+
+    def _rekey_revisions(
+        self, source_key: str, destination_key: str, destination: dict
+    ) -> None:
         self._revisions.update_many(
             {"resource_key": source_key},
             {"$set": {"resource_key": destination_key, **destination}},
         )
-        self._heads.delete_one({"_id": source_key, "moving_to": destination_key})
-        return self._public(target, self._body_of(target))
 
     def restore(
         self, identity: dict, rev: int, expected_rev, author, not_found,

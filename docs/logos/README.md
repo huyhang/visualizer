@@ -95,12 +95,34 @@ search cannot change what another reader finds. While reading, **Contents**
 opens the searchable, paged outline in a compact dialog.
 
 Writers can also organise the manuscript from this page. **New volume** creates
-an appended volume, and each volume has its own **New chapter** action.
+an appended volume, and **New section** writes a chapter, prologue, epilogue or
+glossary into whichever volume is chosen. A volume takes many chapters but one
+each of the rest, so the kind menu always lists all four and shows the ones that
+volume already has as unavailable, naming the reason — choosing a different
+volume re-enables them. Every volume carries its own **New section** action, and
+**Rename volume** while arranging.
+
 **Manage contents** expands the complete outline and adds drag handles plus
-keyboard- and touch-friendly arrow and **Move…** controls. Volumes can be
-reordered; sections can be reordered or moved between volumes. Moving a
-prologue, epilogue or glossary into a volume that already has one is refused
-with an explanation rather than replacing either section.
+arrow and **Move…** controls. Volumes can be reordered; sections can be
+reordered or moved between volumes. Moving a prologue, epilogue or glossary into
+a volume that already has one is refused with an explanation rather than
+replacing either section.
+
+**Dragging works by touch as well as by mouse**, which takes two mechanisms
+rather than one: browsers raise no HTML5 drag events from a finger, so the
+handles carry a pointer gesture alongside the native drag and hand both to the
+same code. On a touch screen the gesture is press-and-hold, matching the
+convention on both mobile platforms — engaging on contact would make the handle
+impossible to scroll past. The outline scrolls itself when a drag nears the top
+or bottom of the screen, since a phone shows about four rows at a time. The
+arrow and **Move…** controls remain the keyboard path, and the quickest one on
+any device for a chapter that has to travel a long way.
+
+A move that fails says whether trying again can help. A refusal — a name already
+taken, a second prologue, an anchor that has gone — names its reason and stands.
+Anything that may have landed halfway keeps a notice on screen with a **Retry**
+beside it, because the way out of a half-finished move should not disappear
+after three seconds.
 
 Akasha mentions and article links render as ordinary prose in both modes. The
 browser builds DOM nodes from the validated rich-text vocabulary and never
@@ -241,11 +263,23 @@ write. The browser autosaves complete drafts through the same guarded API.
 
 Moving a section is a structural write, not delete-and-create. Its current
 prose, named drafts and retained revision chains move together, and private
-reader items and synchronized positions follow it. Completed moves retain a
-small location alias so an older browser-local position or saved URL can find
-the section at its new volume. An interrupted move is safe to retry; the
-contents page shows it as **Move interrupted**, explains that the writing is
-safe, and gives editors a **Finish move** action.
+reader items and synchronized positions follow it. An interrupted move is safe
+to retry; the contents page shows it as **Move interrupted**, explains that the
+writing is safe, and gives editors a **Finish move** action.
+
+**A move does not spend a revision.** Filing a chapter is not editing it, so the
+version list is the one the writer built: no entry appears for the move, and
+none is evicted to make room for one. A book organised twenty times would
+otherwise have lost its entire editing history to its filing.
+
+Completed moves retain a small location alias so an older browser-local position
+or saved URL still finds the section at its new volume. Aliases are collapsed on
+every move — each one re-points at where the section now lives, and the row that
+would name its own home is dropped — so the table is bounded by the volumes a
+section has lived in rather than by how often it has been filed. An alias never
+outranks a real section: writing a new section at an address an alias points
+away from retires that alias, so a name a writer has freed can always be used
+again.
 
 **Every mutation of an existing resource requires `If-Match`**, carrying the
 revision from its last read; without one the request is refused with

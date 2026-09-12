@@ -97,11 +97,17 @@ const volumeForm = document.getElementById("volume-create-form");
 const volumeName = document.getElementById("volume-create-name");
 const volumeOverview = document.getElementById("volume-create-overview");
 const volumeError = document.getElementById("volume-create-error");
-const chapterDialog = document.getElementById("chapter-create-dialog");
-const chapterForm = document.getElementById("chapter-create-form");
-const chapterName = document.getElementById("chapter-create-name");
-const chapterVolume = document.getElementById("chapter-create-volume");
-const chapterError = document.getElementById("chapter-create-error");
+const renameDialog = document.getElementById("volume-rename-dialog");
+const renameForm = document.getElementById("volume-rename-form");
+const renameName = document.getElementById("volume-rename-name");
+const renameOverview = document.getElementById("volume-rename-overview");
+const renameError = document.getElementById("volume-rename-error");
+const sectionDialog = document.getElementById("section-create-dialog");
+const sectionForm = document.getElementById("section-create-form");
+const sectionTitle = document.getElementById("section-create-title");
+const sectionVolume = document.getElementById("section-create-volume");
+const sectionKind = document.getElementById("section-create-kind");
+const sectionError = document.getElementById("section-create-error");
 const moveDialog = document.getElementById("section-move-dialog");
 const moveForm = document.getElementById("section-move-form");
 const moveTitle = document.getElementById("section-move-title");
@@ -300,11 +306,16 @@ function sectionRow(manuscript, volume, section, marks, management = null) {
     el("button", {
       class: "drag-handle", type: "button", text: "⠿", draggable: "true",
       title: `Drag ${sectionName(section)}`,
-      "aria-label": `Drag ${sectionName(section)}`,
+      "aria-label": `Drag to move ${sectionName(section)}`,
       ondragstart: (event) => contentManager.startDrag(event, {
         type: "section", id: section.id, volume, section,
       }),
       ondragend: contentManager.finishDrag,
+      // Touch raises no drag events at all, so the same handle carries a
+      // pointer gesture; it ignores the mouse, which has the native drag.
+      onpointerdown: (event) => contentManager.beginTouchDrag(event, {
+        type: "section", id: section.id, volume, section,
+      }),
     }),
     el("button", {
       class: "order-button", type: "button", text: "↑",
@@ -331,6 +342,10 @@ function sectionRow(manuscript, volume, section, marks, management = null) {
   ]) : null;
   return el("li", {
     class: `section-row${isResume ? " resume" : ""}${management ? " managing" : ""}`,
+    // The touch hit-test reads geometry off the page, since a captured pointer
+    // never reports what is underneath it.
+    "data-volume": volume.id,
+    "data-section": section.id,
     ondragover: management ? (event) => contentManager.acceptDrop(event, "section") : null,
     ondragleave: management ? contentManager.leaveDrop : null,
     ondrop: management ? (event) => {
@@ -434,6 +449,7 @@ function volumeCard(
     : pagedSectionList(volume.sections, page, row, volume.title, rememberPage);
   return el("details", {
     class: `volume-card${managing ? " managing" : ""}`,
+    "data-volume": volume.id,
     open: managing || expanded,
     ontoggle: (event) => rememberOpen(event.currentTarget.open),
   }, [
@@ -467,11 +483,14 @@ function volumeCard(
     managing ? el("div", { class: "volume-manage-actions" }, [
       el("button", {
         class: "drag-handle", type: "button", text: "⠿", draggable: "true",
-        title: `Drag ${volume.title}`, "aria-label": `Drag ${volume.title}`,
+        title: `Drag ${volume.title}`, "aria-label": `Drag to move ${volume.title}`,
         ondragstart: (event) => contentManager.startDrag(event, {
           type: "volume", id: volume.id,
         }),
         ondragend: contentManager.finishDrag,
+        onpointerdown: (event) => contentManager.beginTouchDrag(event, {
+          type: "volume", id: volume.id,
+        }),
       }),
       el("button", {
         class: "order-button", type: "button", text: "↑", title: "Move volume up",
@@ -512,9 +531,13 @@ function volumeCard(
       },
     }, [el("span", { text: "Drop at end" })]) : null,
     manuscript.permissions.write ? el("div", { class: "volume-actions" }, [
+      managing ? el("button", {
+        class: "new-chapter", type: "button", text: "Rename volume",
+        onclick: () => contentManager.openVolumeRenamer(manuscript, volume.id),
+      }) : null,
       el("button", {
-        class: "new-chapter", type: "button", text: "+ New chapter",
-        onclick: () => contentManager.openChapterCreator(manuscript, volume.id),
+        class: "new-chapter", type: "button", text: "+ New section",
+        onclick: () => contentManager.openSectionCreator(manuscript, volume.id),
       }),
     ]) : null,
   ]);
@@ -684,8 +707,8 @@ function renderBook(manuscript, notice = null) {
           onclick: () => contentManager.openVolumeCreator(manuscript),
         }) : null,
         manuscript.permissions.write && manuscript.volumes.length ? el("button", {
-          class: "btn ghost", type: "button", text: "New chapter",
-          onclick: () => contentManager.openChapterCreator(manuscript),
+          class: "btn ghost", type: "button", text: "New section",
+          onclick: () => contentManager.openSectionCreator(manuscript),
         }) : null,
         manuscript.permissions.write && manuscript.volumes.length ? el("button", {
           class: managingContents ? "btn" : "btn ghost",
@@ -1126,10 +1149,38 @@ async function reloadReaderData() {
   await loadReaderData();
 }
 
+function clearToasts() {
+  document.querySelectorAll(".reader-toast").forEach((node) => node.remove());
+}
+
 function showTransientError(message) {
+  clearToasts();
   const notice = el("p", { class: "reader-toast", role: "alert", text: message });
   document.body.appendChild(notice);
   window.setTimeout(() => notice.remove(), 3500);
+}
+
+/**
+ * A failure the writer can act on. It stays until retried or dismissed: a
+ * three-second toast is no place to put the only way out of a half-finished
+ * move.
+ */
+function showRetryError(message, retry) {
+  clearToasts();
+  const notice = el("p", { class: "reader-toast actionable", role: "alert" }, [
+    el("span", { text: message }),
+    el("span", { class: "toast-actions" }, [
+      el("button", {
+        class: "btn sm", type: "button", text: "Retry",
+        onclick: () => { notice.remove(); retry(); },
+      }),
+      el("button", {
+        class: "icon-btn", type: "button", text: "×",
+        "aria-label": "Dismiss", onclick: () => notice.remove(),
+      }),
+    ]),
+  ]);
+  document.body.appendChild(notice);
 }
 
 const contentManager = createContentManager({
@@ -1139,6 +1190,7 @@ const contentManager = createContentManager({
   navigate: (url) => { window.location.href = url; },
   render: renderBook,
   showError: showTransientError,
+  showRetry: showRetryError,
   elements: {
     content,
     volumeDialog,
@@ -1146,11 +1198,17 @@ const contentManager = createContentManager({
     volumeName,
     volumeOverview,
     volumeError,
-    chapterDialog,
-    chapterForm,
-    chapterName,
-    chapterVolume,
-    chapterError,
+    renameDialog,
+    renameForm,
+    renameName,
+    renameOverview,
+    renameError,
+    sectionDialog,
+    sectionForm,
+    sectionTitle,
+    sectionVolume,
+    sectionKind,
+    sectionError,
     moveDialog,
     moveForm,
     moveTitle,

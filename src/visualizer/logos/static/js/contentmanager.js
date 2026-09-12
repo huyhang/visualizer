@@ -7,17 +7,27 @@ import {
   beforeForPosition,
   emptyDocument,
   moveBefore,
+  moveFailure,
   sameOrder,
+  sectionKindChoices,
   singletonConflict,
 } from "./contents.js";
 import { el, fill } from "./dom.js";
 import { sectionName } from "./navigation.js";
+import { createTouchDrag } from "./touchdrag.js";
 
-const option = (value, text, selected = false) =>
-  el("option", { value, text, selected });
+const option = (value, text, selected = false, disabled = false) =>
+  el("option", { value, text, selected, disabled });
+
+const KIND_LABELS = {
+  chapter: "Chapter",
+  prologue: "Prologue",
+  epilogue: "Epilogue",
+  glossary: "Glossary",
+};
 
 export function createContentManager({
-  api, base, elements, editorUrl, navigate, render, showError,
+  api, base, elements, editorUrl, navigate, render, showError, showRetry,
 }) {
   const {
     content,
@@ -26,11 +36,17 @@ export function createContentManager({
     volumeName,
     volumeOverview,
     volumeError,
-    chapterDialog,
-    chapterForm,
-    chapterName,
-    chapterVolume,
-    chapterError,
+    renameDialog,
+    renameForm,
+    renameName,
+    renameOverview,
+    renameError,
+    sectionDialog,
+    sectionForm,
+    sectionTitle,
+    sectionVolume,
+    sectionKind,
+    sectionError,
     moveDialog,
     moveForm,
     moveTitle,
@@ -41,6 +57,7 @@ export function createContentManager({
   } = elements;
   let manuscript = null;
   let moving = null;
+  let renaming = null;
   let dragged = null;
   let preferredVolume = null;
 
@@ -51,8 +68,11 @@ export function createContentManager({
   function reset() {
     manuscript = null;
     moving = null;
+    renaming = null;
     dragged = null;
     preferredVolume = null;
+    // Leaving the book mid-gesture must not strand a captured pointer.
+    touchDrag.release();
   }
 
   function openVolumeCreator(value) {
@@ -84,32 +104,64 @@ export function createContentManager({
     }
   }
 
-  function openChapterCreator(value, selectedVolume = null) {
+  function openSectionCreator(value, selectedVolume = null) {
     setManuscript(value);
-    chapterForm.reset();
-    fill(chapterVolume, manuscript.volumes.map((volume) => option(
+    sectionForm.reset();
+    fill(sectionVolume, manuscript.volumes.map((volume) => option(
       volume.id,
       `Volume ${volume.number} · ${volume.title}`,
       volume.id === selectedVolume,
     )));
-    if (selectedVolume) chapterVolume.value = selectedVolume;
-    chapterError.textContent = "";
-    chapterDialog.showModal();
-    chapterName.focus();
+    if (selectedVolume) sectionVolume.value = selectedVolume;
+    paintKinds();
+    sectionError.textContent = "";
+    sectionDialog.showModal();
+    sectionTitle.focus();
   }
 
-  async function createChapter() {
+  /**
+   * Every kind, with the ones this volume already has shown as unavailable.
+   *
+   * Disabled rather than absent: a menu that quietly drops "Prologue" looks
+   * broken, where one that greys it out and says why explains the rule.
+   */
+  function paintKinds() {
     if (!manuscript) return;
-    const title = chapterName.value.trim();
-    const volume = manuscript.volumes.find(
-      (candidate) => candidate.id === chapterVolume.value,
+    const volume = volumeById(sectionVolume.value);
+    const choices = sectionKindChoices(volume);
+    const usable = choices.filter((choice) => choice.available)
+      .map((choice) => choice.kind);
+    const wanted = usable.includes(sectionKind.value)
+      ? sectionKind.value
+      : usable[0];
+    fill(sectionKind, choices.map((choice) => option(
+      choice.kind,
+      choice.available
+        ? KIND_LABELS[choice.kind]
+        : `${KIND_LABELS[choice.kind]} — already in ${volume.title}`,
+      choice.kind === wanted,
+      !choice.available,
+    )));
+    sectionKind.value = wanted;
+  }
+
+  function volumeById(volumeId) {
+    return (manuscript?.volumes || []).find(
+      (candidate) => candidate.id === volumeId,
     );
+  }
+
+  async function createSection() {
+    if (!manuscript) return;
+    const title = sectionTitle.value.trim();
+    const volume = volumeById(sectionVolume.value);
+    const kind = sectionKind.value || "chapter";
     if (!title || !volume) return;
-    const section = availableId(title, allSectionIds(manuscript), "chapter");
-    chapterError.textContent = "Creating…";
+    const section = availableId(title, allSectionIds(manuscript), kind);
+    sectionError.textContent = "Creating…";
     try {
       await api.createSection(manuscript.book, volume.id, section, {
-        kind: "chapter",
+        kind,
         title,
         overview: "",
         event_ids: [],
@@ -117,7 +169,42 @@ export function createContentManager({
       });
       navigate(editorUrl(base, manuscript.book, volume.id, section));
     } catch (error) {
-      chapterError.textContent = error.message || "The chapter could not be created.";
+      sectionError.textContent = error.message
+        || `The ${KIND_LABELS[kind].toLowerCase()} could not be created.`;
+    }
+  }
+
+  function openVolumeRenamer(value, volumeId) {
+    setManuscript(value);
+    const volume = volumeById(volumeId);
+    if (!volume) return;
+    renaming = volume;
+    renameForm.reset();
+    renameName.value = volume.title || "";
+    renameOverview.value = volume.overview || "";
+    renameError.textContent = "";
+    renameDialog.showModal();
+    renameName.select();
+  }
+
+  async function renameVolume() {
+    if (!manuscript || !renaming) return;
+    const title = renameName.value.trim();
+    if (!title) return;
+    renameError.textContent = "Saving…";
+    try {
+      await api.updateVolume(
+        manuscript.book,
+        renaming.id,
+        { title, overview: renameOverview.value.trim() },
+        renaming.rev,
+      );
+      preferredVolume = renaming.id;
+      renameDialog.close();
+      render(await api.manuscript(manuscript.book), `${title} was renamed.`);
+    } catch (error) {
+      renameError.textContent = error.message
+        || "The volume could not be renamed.";
     }
   }
 
@@ -211,26 +298,55 @@ export function createContentManager({
         "Volume order updated.",
       );
     } catch (error) {
-      showError(error.message || "The volumes could not be reordered.");
+      reportFailure(
+        error,
+        "The volumes could not be reordered",
+        () => retryAfterRefresh(
+          value.book, (fresh) => reorderVolume(fresh, volumeId, before),
+        ),
+      );
     } finally {
       setSaving(false);
     }
   }
 
+  /**
+   * Say what went wrong, and offer a way out only when there is one.
+   *
+   * A refusal is final however often it is repeated, so it gets a plain notice
+   * naming the reason. Anything that might have landed halfway gets a notice
+   * that stays put with a Retry beside it -- the way out must not vanish
+   * before it has been read.
+   */
+  function reportFailure(error, what, retry) {
+    const failure = moveFailure(error);
+    if (!failure.retriable) {
+      showError(`${what}: ${error.message || "the server declined it."}`);
+      return;
+    }
+    showRetry(`${what} because ${failure.detail}. Retry to finish it.`, retry);
+  }
+
+  /** Reload before retrying, so a stale revision cannot fail the attempt twice. */
+  async function retryAfterRefresh(book, attempt) {
+    let fresh;
+    try {
+      fresh = await api.manuscript(book);
+    } catch (error) {
+      showRetry(
+        "The outline could not be reloaded. Retry when the connection is back.",
+        () => retryAfterRefresh(book, attempt),
+      );
+      return;
+    }
+    setManuscript(fresh);
+    await attempt(fresh);
+  }
+
+  /** Where a section lands: a reorder at home, or a move to another volume. */
   async function placeSection(value, source, section, target, before) {
     if (source.id === target.id) {
-      const current = source.sections.map((candidate) => candidate.id);
-      const reordered = moveBefore(current, section.id, before);
-      if (sameOrder(current, reordered)) return;
-      setSaving(true);
-      try {
-        await api.reorderSections(value.book, source.id, reordered, source.rev);
-        render(await api.manuscript(value.book), "Section order updated.");
-      } catch (error) {
-        showError(error.message || "The sections could not be reordered.");
-      } finally {
-        setSaving(false);
-      }
+      await reorderWithin(value, source, section, before);
       return;
     }
     const conflict = singletonConflict(section, target);
@@ -261,8 +377,43 @@ export function createContentManager({
     }
   }
 
+  /** A reorder inside one volume: the whole order is rewritten, nothing moves. */
+  async function reorderWithin(value, source, section, before) {
+    const current = source.sections.map((candidate) => candidate.id);
+    const reordered = moveBefore(current, section.id, before);
+    if (sameOrder(current, reordered)) return;
+    setSaving(true);
+    try {
+      await api.reorderSections(value.book, source.id, reordered, source.rev);
+      render(await api.manuscript(value.book), "Section order updated.");
+    } catch (error) {
+      reportFailure(
+        error,
+        "The sections could not be reordered",
+        () => retryAfterRefresh(
+          value.book, (fresh) => retryReorder(fresh, source.id, section.id, before),
+        ),
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /** Re-attempt a reorder against a freshly read outline, if it still applies. */
+  function retryReorder(fresh, volumeId, sectionId, before) {
+    const home = fresh.volumes.find((volume) => volume.id === volumeId);
+    const still = home?.sections.find((row) => row.id === sectionId);
+    if (!home || !still) {
+      showError("That section is no longer in the outline.");
+      return undefined;
+    }
+    return placeSection(fresh, home, still, home, before);
+  }
+
   async function showPendingMove(error, value, requested) {
-    if (error.status && error.status < 500) return false;
+    // A refusal changed nothing, so there is no partial state to reconcile and
+    // the caller should just say why. Everything else may have landed halfway.
+    if (!moveFailure(error).retriable) return false;
     try {
       const updated = await api.manuscript(value.book);
       const pending = (updated.pending_section_moves || []).length > 0;
@@ -370,6 +521,42 @@ export function createContentManager({
     return held;
   }
 
+  // -- touch dragging --------------------------------------------------------
+
+  /** The rendered outline as geometry: volumes, and the rows inside them. */
+  function dropZones() {
+    return [...content.querySelectorAll(".volume-card[data-volume]")].map((card) => {
+      const box = card.getBoundingClientRect();
+      const rows = [...card.querySelectorAll(".section-row[data-section]")];
+      return {
+        volume: card.dataset.volume,
+        top: box.top,
+        bottom: box.bottom,
+        sections: rows.map((row) => {
+          const rect = row.getBoundingClientRect();
+          return { id: row.dataset.section, top: rect.top, bottom: rect.bottom };
+        }),
+      };
+    });
+  }
+
+  const touchDrag = createTouchDrag({
+    zones: dropZones,
+    onSection: (payload, volumeId, before) => {
+      const target = volumeById(volumeId);
+      if (!manuscript || !target) return;
+      placeSection(manuscript, payload.volume, payload.section, target, before);
+    },
+    onVolume: (payload, before) => {
+      if (!manuscript) return;
+      reorderVolume(manuscript, payload.id, before);
+    },
+  });
+
+  function beginTouchDrag(event, payload) {
+    touchDrag.begin(event, payload);
+  }
+
   function wire() {
     closeButtons.forEach((button) => {
       button.addEventListener("click", () => button.closest("dialog").close());
@@ -378,10 +565,15 @@ export function createContentManager({
       event.preventDefault();
       createVolume();
     });
-    chapterForm.addEventListener("submit", (event) => {
+    renameForm.addEventListener("submit", (event) => {
       event.preventDefault();
-      createChapter();
+      renameVolume();
     });
+    sectionForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      createSection();
+    });
+    sectionVolume.addEventListener("change", paintKinds);
     moveVolume.addEventListener("change", paintMovePositions);
     moveForm.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -391,12 +583,14 @@ export function createContentManager({
 
   return {
     acceptDrop,
+    beginTouchDrag,
     finishDrag,
     finishPendingMove,
     leaveDrop,
-    openChapterCreator,
+    openSectionCreator,
     openSectionMover,
     openVolumeCreator,
+    openVolumeRenamer,
     placeSection,
     preferredVolume: () => preferredVolume,
     reorderVolume,

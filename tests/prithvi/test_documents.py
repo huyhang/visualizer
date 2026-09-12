@@ -191,6 +191,108 @@ def test_relocation_obeys_revision_and_destination_guards(documents):
     assert documents.update(THING, {"n": 3}, 1, "mara", Missing)["n"] == 3
 
 
+def test_relocating_does_not_spend_a_revision(documents):
+    """A move re-addresses a record; it is not an edit and must not read as one."""
+    create(documents, n=1)
+    documents.update(THING, {"n": 2}, 1, "mara", Missing)
+    before = [row["rev"] for row in documents.history(THING, Missing)]
+
+    moved = documents.relocate(THING, OTHER, 2, "devi", Missing, Taken)
+
+    assert moved["rev"] == 2
+    assert [row["rev"] for row in documents.history(OTHER, Missing)] == before
+    assert [row["op"] for row in documents.history(OTHER, Missing)] == [
+        "update", "create",
+    ]
+
+
+def test_relocating_to_where_it_already_is_changes_nothing(documents):
+    create(documents, n=1)
+
+    same = documents.relocate(THING, THING, 1, "mara", Missing, Taken)
+
+    assert (same["rev"], same["n"]) == (1, 1)
+
+
+def test_a_second_destination_is_refused_while_a_move_is_outstanding(documents):
+    """The lock names where the record is going, so a rival move cannot start."""
+    create(documents, n=1)
+    third = {"world": "earth", "map": "north"}
+    documents._heads.update_one(
+        {"_id": documents._key(THING)},
+        {"$set": {"moving_to": documents._key(OTHER)}},
+    )
+
+    with pytest.raises(Stale, match="already being moved elsewhere"):
+        documents.relocate(THING, third, 1, "mara", Missing, Taken)
+
+    # The original destination still completes: the lock is a claim, not a jam.
+    assert documents.relocate(THING, OTHER, 1, "mara", Missing, Taken)["n"] == 1
+
+
+def test_losing_the_lock_race_refuses_rather_than_half_moving(documents, monkeypatch):
+    create(documents, n=1)
+    heads = documents._heads
+
+    class LostRace:
+        matched_count = 0
+
+    monkeypatch.setattr(heads, "update_one", lambda *a, **k: LostRace())
+
+    with pytest.raises(Stale, match="Modified concurrently"):
+        documents.relocate(THING, OTHER, 1, "mara", Missing, Taken)
+
+
+def test_a_destination_inserted_mid_move_is_adopted_not_duplicated(
+    documents, monkeypatch
+):
+    """The copy loses an insert race, so it re-reads rather than reporting a clash.
+
+    Reachable only when two callers relocate the same record at once. The
+    survivor is whichever head landed; both callers must agree on it.
+    """
+    create(documents, n=1)
+    real_insert = documents._heads.insert_one
+    landed = {}
+
+    def insert_then_lose(document):
+        if document["_id"] == documents._key(OTHER) and not landed:
+            landed["yes"] = True
+            real_insert(document)
+        return real_insert(document)
+
+    monkeypatch.setattr(documents._heads, "insert_one", insert_then_lose)
+
+    moved = documents.relocate(THING, OTHER, 1, "mara", Missing, Taken)
+
+    assert (moved["map"], moved["n"]) == ("east", 1)
+    with pytest.raises(Missing):
+        documents.get(THING, Missing)
+
+
+def test_relocating_something_that_was_never_there_is_not_found(documents):
+    with pytest.raises(Missing):
+        documents.relocate(THING, OTHER, 1, "mara", Missing, Taken)
+
+
+def test_relocating_a_deleted_record_is_not_found(documents):
+    create(documents, n=1)
+    documents.delete(THING, 1, "mara", Missing)
+
+    with pytest.raises(Missing):
+        documents.relocate(THING, OTHER, 2, "mara", Missing, Taken)
+
+
+def test_a_finished_move_replayed_returns_the_record_at_its_destination(documents):
+    """The retry that closes an interrupted move must not report it as missing."""
+    create(documents, n=1)
+    documents.relocate(THING, OTHER, 1, "mara", Missing, Taken)
+
+    again = documents.relocate(THING, OTHER, 1, "mara", Missing, Taken)
+
+    assert (again["map"], again["n"]) == ("east", 1)
+
+
 # -- listing ------------------------------------------------------------------
 
 

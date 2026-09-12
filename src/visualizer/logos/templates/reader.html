@@ -259,21 +259,46 @@
     </form>
   </dialog>
 
-  <dialog class="settings contents-dialog" id="chapter-create-dialog"
-          aria-labelledby="chapter-create-title">
-    <form id="chapter-create-form" method="dialog">
+  <dialog class="settings contents-dialog" id="volume-rename-dialog"
+          aria-labelledby="volume-rename-heading">
+    <form id="volume-rename-form" method="dialog">
       <div class="settings-head">
-        <h2 id="chapter-create-title">New chapter</h2>
+        <h2 id="volume-rename-heading">Rename volume</h2>
         <button class="icon-btn" type="button" data-dialog-close
-                aria-label="Close new chapter">×</button>
+                aria-label="Close rename volume">×</button>
       </div>
       <label class="manage-field">Title
-        <input id="chapter-create-name" required maxlength="300" autocomplete="off">
+        <input id="volume-rename-name" required maxlength="300" autocomplete="off">
+      </label>
+      <label class="manage-field">Overview <small>Optional editorial note</small>
+        <textarea id="volume-rename-overview" rows="3" maxlength="10000"></textarea>
+      </label>
+      <p class="form-error" id="volume-rename-error" role="alert"></p>
+      <div class="settings-actions">
+        <span></span><button class="btn" type="submit">Save volume</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="settings contents-dialog" id="section-create-dialog"
+          aria-labelledby="section-create-heading">
+    <form id="section-create-form" method="dialog">
+      <div class="settings-head">
+        <h2 id="section-create-heading">New section</h2>
+        <button class="icon-btn" type="button" data-dialog-close
+                aria-label="Close new section">×</button>
+      </div>
+      <label class="manage-field">Title
+        <input id="section-create-title" required maxlength="300" autocomplete="off">
       </label>
       <label class="manage-field">Volume
-        <select id="chapter-create-volume" required></select>
+        <select id="section-create-volume" required></select>
       </label>
-      <p class="form-error" id="chapter-create-error" role="alert"></p>
+      <label class="manage-field">Kind
+        <small>A volume takes many chapters, but only one of each of the rest.</small>
+        <select id="section-create-kind" required></select>
+      </label>
+      <p class="form-error" id="section-create-error" role="alert"></p>
       <div class="settings-actions">
         <span></span><button class="btn" type="submit">Create and write</button>
       </div>

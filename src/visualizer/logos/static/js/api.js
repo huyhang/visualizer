@@ -72,6 +72,8 @@ export const api = {
   createVolume: (book, volume, body) => json(
     "POST", `/books/${enc(book)}/volumes/${enc(volume)}`, body,
   ),
+  updateVolume: (book, volume, body, revision) =>
+    json("PUT", volumePath(book, volume), body, revision),
   reorderVolumes: (book, volumes, revision) => json(
     "PUT", `/books/${enc(book)}/volume-order`, { volumes }, revision,
   ),

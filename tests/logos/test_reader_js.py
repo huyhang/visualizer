@@ -28,6 +28,7 @@ _MODULES = (
     "position.js", "progress.js", "boundary.js", "readerdata.js",
     "editor.js", "comparison.js", "recovery.js", "coachpanel.js",
     "akashapanel.js", "contextmenu.js", "draftstate.js", "contents.js",
+    "touchdrag.js",
 )
 
 _PREAMBLE = """\
@@ -62,8 +63,9 @@ import { createAkashaPanel } from "./akashapanel.js";
 import { menuPosition } from "./contextmenu.js";
 import { createDraftState } from "./draftstate.js";
 import {
-  allSectionIds, availableId, beforeForPosition, moveBefore, sameOrder,
-  singletonConflict,
+  allSectionIds, availableId, availableKinds, beforeForPosition, dropAt,
+  moveBefore, moveFailure, sameOrder, sectionKindChoices, singletonConflict,
+  volumeDropAt,
 } from "./contents.js";
 
 const INPUT = %s;
@@ -846,13 +848,161 @@ def test_move_positions_and_singleton_conflicts_are_derived_from_the_outline(
     }
     assert run_js(
         "const [one, two] = INPUT.volumes;"
-        "emit([beforeForPosition(one.sections, 'start', 'chapter-1'),"
-        " beforeForPosition(one.sections, 'opening', 'chapter-1'),"
-        " beforeForPosition(one.sections, 'end', 'chapter-1'),"
+        "emit([beforeForPosition(one.sections, 'start'),"
+        " beforeForPosition(one.sections, 'opening'),"
+        " beforeForPosition(one.sections, 'end'),"
+        " beforeForPosition(one.sections, 'nowhere'),"
         " singletonConflict(one.sections[0], two)?.id || null,"
         " singletonConflict(one.sections[1], two)]);",
         manuscript,
-    ) == ["opening", None, None, "other-opening", None]
+    ) == ["opening", "chapter-1", None, None, "other-opening", None]
+
+
+def test_the_kind_menu_always_lists_every_kind(run_js):
+    """A kind a volume cannot take is shown unavailable, never dropped.
+
+    Removing it outright reads as a broken feature: a writer looking for
+    "Prologue" finds it simply missing, with nothing to say whether the option
+    has gone or the app has. This was reported against the first version.
+    """
+    manuscript = {
+        "volumes": [
+            {
+                "id": "one",
+                "sections": [
+                    {"id": "opening", "kind": "prologue"},
+                    {"id": "chapter-1", "kind": "chapter"},
+                    {"id": "closing", "kind": "epilogue"},
+                ],
+            },
+            {"id": "two", "sections": []},
+        ]
+    }
+    listed, unavailable, empty = run_js(
+        "const [one, two] = INPUT.volumes;"
+        "const shown = sectionKindChoices(one);"
+        "emit([shown.map((c) => c.kind),"
+        " shown.filter((c) => !c.available).map((c) => c.kind),"
+        " sectionKindChoices(two).filter((c) => !c.available)]);",
+        manuscript,
+    )
+    assert listed == ["chapter", "prologue", "epilogue", "glossary"]
+    assert unavailable == ["prologue", "epilogue"]
+    assert empty == []
+
+
+def test_the_kinds_a_volume_can_still_take_drive_the_default(run_js):
+    manuscript = {
+        "volumes": [
+            {
+                "id": "one",
+                "sections": [
+                    {"id": "opening", "kind": "prologue"},
+                    {"id": "terms", "kind": "glossary"},
+                ],
+            },
+            {"id": "two", "sections": []},
+        ]
+    }
+    assert run_js(
+        "const [one, two] = INPUT.volumes;"
+        "emit([availableKinds(one), availableKinds(two), availableKinds(undefined)]);",
+        manuscript,
+    ) == [
+        ["chapter", "epilogue"],
+        ["chapter", "prologue", "epilogue", "glossary"],
+        ["chapter", "prologue", "epilogue", "glossary"],
+    ]
+
+
+_ZONES = [
+    {
+        "volume": "one",
+        "top": 0,
+        "bottom": 100,
+        "sections": [
+            {"id": "a", "top": 20, "bottom": 40},
+            {"id": "b", "top": 40, "bottom": 60},
+            {"id": "c", "top": 60, "bottom": 80},
+        ],
+    },
+    {"volume": "empty", "top": 100, "bottom": 140, "sections": []},
+    {
+        "volume": "two",
+        "top": 140,
+        "bottom": 220,
+        "sections": [{"id": "d", "top": 160, "bottom": 200}],
+    },
+]
+
+
+def test_a_touch_drop_lands_in_the_half_of_the_row_it_is_over(run_js):
+    """A captured pointer reports nothing underneath it, so the drop is worked
+    out from geometry: above a row's midpoint goes before it, below goes after."""
+    assert run_js(
+        "emit([dropAt(INPUT, 25), dropAt(INPUT, 35), dropAt(INPUT, 45),"
+        " dropAt(INPUT, 75), dropAt(INPUT, 90)]);",
+        _ZONES,
+    ) == [
+        {"volume": "one", "before": "a"},
+        {"volume": "one", "before": "b"},
+        {"volume": "one", "before": "b"},
+        {"volume": "one", "before": None},
+        {"volume": "one", "before": None},
+    ]
+
+
+def test_an_empty_volume_is_a_place_a_chapter_can_be_dropped(run_js):
+    """Otherwise a new volume could never receive its first chapter by touch."""
+    assert run_js("emit([dropAt(INPUT, 120), dropAt(INPUT, 170)]);", _ZONES) == [
+        {"volume": "empty", "before": None},
+        {"volume": "two", "before": "d"},
+    ]
+
+
+def test_a_drop_outside_every_volume_falls_to_the_nearest(run_js):
+    """A finger that strays into the page margin should not silently do nothing."""
+    assert run_js(
+        "emit([dropAt(INPUT, -500), dropAt(INPUT, 9999), dropAt([], 10)]);",
+        _ZONES,
+    ) == [
+        {"volume": "one", "before": "a"},
+        {"volume": "two", "before": None},
+        None,
+    ]
+
+
+def test_a_volume_never_drops_onto_itself(run_js):
+    assert run_js(
+        "emit([volumeDropAt(INPUT, 10, 'two'), volumeDropAt(INPUT, 200, 'one'),"
+        " volumeDropAt(INPUT, 10, 'one'), volumeDropAt(INPUT, 130, 'one')]);",
+        _ZONES,
+    ) == [
+        {"before": "one"},
+        {"before": None},
+        {"before": "empty"},
+        {"before": "two"},
+    ]
+
+
+def test_only_a_failure_that_retrying_can_fix_offers_a_retry(run_js):
+    """A refusal fails the same way every time; offering Retry would mislead.
+
+    Anything that may have landed halfway is worth repeating, because the move
+    endpoint is idempotent once the outline is refreshed.
+    """
+    assert run_js(
+        "emit([moveFailure({network: true}).retriable,"
+        " moveFailure({status: 409, code: 'REVISION_CONFLICT'}).retriable,"
+        " moveFailure({status: 500}).retriable,"
+        " moveFailure({status: 429}).retriable,"
+        " moveFailure(null).retriable,"
+        " moveFailure({status: 409, code: 'ALREADY_EXISTS'}).retriable,"
+        " moveFailure({status: 409, code: 'SECTION_KIND_IN_USE'}).retriable,"
+        " moveFailure({status: 400, code: 'INVALID_ORDER'}).retriable,"
+        " moveFailure({status: 403}).retriable,"
+        " moveFailure({status: 409, code: 'ALREADY_EXISTS'}).detail]);"
+    ) == [True, True, True, True, True, False, False, False, False, None]
 
 
 def test_a_generated_content_id_is_readable_and_unique(run_js):

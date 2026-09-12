@@ -123,17 +123,30 @@ def test_writers_can_create_and_arrange_the_contents(client):
 
     for dialog in (
         "volume-create-dialog",
-        "chapter-create-dialog",
+        "volume-rename-dialog",
+        "section-create-dialog",
         "section-move-dialog",
     ):
         assert f'id="{dialog}"' in html
-    for label in ("New volume", "New chapter", "Manage contents", "Move…"):
+    for label in (
+        "New volume", "New section", "Rename volume", "Manage contents", "Move…",
+    ):
         assert label in app
     assert "Move interrupted" in app
     assert "Finish move" in app
     assert "Move connection lost" in manager
     assert "Retry move" in manager
-    for operation in ("reorderVolumes", "reorderSections", "moveSection"):
+    # Touch raises no drag events, so the handles carry a pointer gesture too
+    # and the rows carry the geometry its hit-test reads.
+    touch = (_LOGOS / "static" / "js" / "touchdrag.js").read_text()
+    assert "onpointerdown" in app
+    assert '"data-section"' in app and '"data-volume"' in app
+    assert "setPointerCapture" in touch
+    # Every kind a volume can hold is offered, not just chapters.
+    assert 'id="section-create-kind"' in html
+    for operation in (
+        "reorderVolumes", "reorderSections", "moveSection", "updateVolume",
+    ):
         assert operation in api
 
 
@@ -315,6 +328,7 @@ def test_the_reader_assets_are_served(client):
         "/static/js/outline.js",
         "/static/js/contents.js",
         "/static/js/contentmanager.js",
+        "/static/js/touchdrag.js",
         "/static/js/editor.js",
         "/static/js/comparison.js",
         "/static/js/recovery.js",

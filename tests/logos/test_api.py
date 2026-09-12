@@ -1,5 +1,7 @@
 """The Logos API: hierarchy, derived numbering, concurrency and permissions."""
 
+import pytest
+
 from .conftest import BOOK, SECTION, VOLUME, document, mention, section_payload
 
 MANUSCRIPT = f"/books/{BOOK}"
@@ -137,9 +139,13 @@ def test_moving_a_section_preserves_its_history_and_drafts(section, logos_store)
     assert section.get(target).get_json()["document"] == document(
         "A revised opening."
     )
+    # Filing a chapter is not editing it: the version list is the one the
+    # writer built, with no entry for the move and nothing evicted to make
+    # room for one.
     assert [
         row["rev"] for row in section.get(target + "/versions").get_json()["versions"]
-    ] == [3, 2, 1]
+    ] == [2, 1]
+    assert section.get(target).get_json()["rev"] == revised["rev"]
     drafts = section.get(target + "/drafts").get_json()["drafts"]
     assert {row["id"] for row in drafts} == {"draft-1", alternate["id"]}
     draft_history = section.get(target + "/drafts/draft-1/versions").get_json()
@@ -159,6 +165,112 @@ def test_moving_a_section_preserves_its_history_and_drafts(section, logos_store)
             "section": SECTION,
         }
     ]
+
+
+def test_a_name_freed_by_a_move_can_be_used_again(section):
+    """A writer who moves 'Arrival' out of a volume may write a new one there.
+
+    The alias left behind is a convenience for stale links, and it must never
+    outrank a real section: reusing the address retires it rather than locking
+    the name out of the volume forever.
+    """
+    section.post(f"{MANUSCRIPT}/volumes/two", json={"title": "Volume Two"})
+    current = section.get(SECTION_URL).get_json()
+    section.put(
+        SECTION_URL + "/placement",
+        json={"target_volume": "two", "before": None},
+        headers={"If-Match": f'"{current["rev"]}"'},
+    )
+
+    reused = section.post(SECTION_URL, json=section_payload(title="A New One"))
+
+    assert reused.status_code == 201
+    assert section.get(SECTION_URL).get_json()["title"] == "A New One"
+    # The moved section is untouched, and the now-ambiguous alias is gone.
+    target = f"{MANUSCRIPT}/volumes/two/sections/{SECTION}"
+    assert section.get(target).status_code == 200
+    assert section.get(MANUSCRIPT).get_json()["section_aliases"] == []
+
+
+def test_a_name_cannot_be_reused_while_its_move_is_unfinished(
+    section, logos_store, monkeypatch
+):
+    section.post(f"{MANUSCRIPT}/volumes/two", json={"title": "Volume Two"})
+    current = section.get(SECTION_URL).get_json()
+
+    def interrupt(*_args, **_kwargs):
+        raise RuntimeError("simulated interruption")
+
+    monkeypatch.setattr(logos_store, "relocate_draft", interrupt)
+    with pytest.raises(RuntimeError):
+        section.put(
+            SECTION_URL + "/placement",
+            json={"target_volume": "two", "before": None},
+            headers={"If-Match": f'"{current["rev"]}"'},
+        )
+
+    blocked = section.post(SECTION_URL, json=section_payload(title="A New One"))
+
+    assert blocked.status_code == 409
+    assert "Finish that move" in blocked.get_json()["error"]
+
+
+def test_a_round_trip_leaves_one_alias_and_never_a_self_alias(section):
+    """Aliases are bounded by where a section has lived, not by how often it moved.
+
+    Coming home keeps the alias for the volume it visited -- a bookmark made
+    there still resolves -- but the row naming its own home is meaningless and
+    goes, so filing a chapter back and forth cannot grow the table.
+    """
+    section.post(f"{MANUSCRIPT}/volumes/two", json={"title": "Volume Two"})
+    away = section.put(
+        SECTION_URL + "/placement",
+        json={"target_volume": "two", "before": None},
+        headers={"If-Match": f'"{section.get(SECTION_URL).get_json()["rev"]}"'},
+    ).get_json()
+    assert len(away["section_aliases"]) == 1
+    target = f"{MANUSCRIPT}/volumes/two/sections/{SECTION}"
+
+    home = section.put(
+        target + "/placement",
+        json={"target_volume": VOLUME, "before": None},
+        headers={"If-Match": f'"{section.get(target).get_json()["rev"]}"'},
+    ).get_json()
+
+    assert home["section_aliases"] == [
+        {"source_volume": "two", "target_volume": VOLUME, "section": SECTION}
+    ]
+    assert section.get(SECTION_URL).status_code == 200
+    # A second round trip adds nothing: the table tracks places, not journeys.
+    for destination in ("two", VOLUME):
+        at = SECTION_URL if destination == "two" else target
+        last = section.put(
+            at + "/placement",
+            json={"target_volume": destination, "before": None},
+            headers={"If-Match": f'"{section.get(at).get_json()["rev"]}"'},
+        ).get_json()
+    assert len(last["section_aliases"]) == 1
+
+
+def test_an_alias_chain_collapses_to_the_current_home(section):
+    section.post(f"{MANUSCRIPT}/volumes/two", json={"title": "Two"})
+    section.post(f"{MANUSCRIPT}/volumes/three", json={"title": "Three"})
+    at = SECTION_URL
+    for destination in ("two", "three"):
+        rev = section.get(at).get_json()["rev"]
+        moved = section.put(
+            at + "/placement",
+            json={"target_volume": destination, "before": None},
+            headers={"If-Match": f'"{rev}"'},
+        ).get_json()
+        at = f"{MANUSCRIPT}/volumes/{destination}/sections/{SECTION}"
+
+    # Two hops, two aliases -- and both point at where the section is now,
+    # so a stale link resolves in one step rather than walking the chain.
+    assert sorted(
+        (row["source_volume"], row["target_volume"])
+        for row in moved["section_aliases"]
+    ) == [(VOLUME, "three"), ("two", "three")]
 
 
 def test_a_moved_section_can_be_inserted_between_target_sections(section):

@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Logos API",
-    "version": "1.3.0",
+    "version": "1.4.0",
     "description": "Versioned manuscripts for Chronos books, named writing drafts, volume and section organisation, private reader annotations and writing feedback, Akasha lookup, cross-volume search, and whole-series PDF/EPUB publication.\n\nPaths are relative to the service mount. In the combined deployment that is `/logos`; running Logos standalone it is `/`.\n\nUpdates to revisioned resources and reader items require an `If-Match` header carrying the `rev` from the last read."
   },
   "servers": [
@@ -429,7 +429,7 @@
       "put": {
         "tags": ["sections"],
         "summary": "Move a section to another volume",
-        "description": "Moves the section, all named drafts and retained history without recreating prose. The optional `before` id places it before a section in the target volume; null appends it. A target volume that already has the same singleton section kind is refused.",
+        "description": "Moves the section, all named drafts and retained history without recreating prose. The optional `before` id places it before a section in the target volume; null appends it. A target volume that already has the same singleton section kind is refused.\n\nThe section keeps its revision: a move re-addresses a record rather than editing it, so no entry appears in its version list and no retained revision is evicted to make room for one. Retrying an interrupted move with the same body and the same `If-Match` completes it.",
         "parameters": [
           { "$ref": "#/components/parameters/Book" },
           { "$ref": "#/components/parameters/Volume" },
@@ -1378,7 +1378,7 @@
           "word_count": { "type": "integer" },
           "section_aliases": {
             "type": "array",
-            "description": "Previous locations retained so stale reader links and local positions can follow moved sections.",
+            "description": "Previous locations retained so stale reader links and local positions can follow moved sections. Collapsed on every move so each entry points at the section's current volume, and bounded by the volumes it has lived in rather than by how often it has moved. Creating a section at an address an alias points away from retires that alias.",
             "items": {
               "type": "object",
               "required": ["source_volume", "target_volume", "section"],

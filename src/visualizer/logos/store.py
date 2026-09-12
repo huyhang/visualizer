@@ -507,8 +507,16 @@ class LogosStore:
         return {key: value for key, value in record.items() if key != "_id"}
 
     def complete_section_move(
-        self, book: str, source_volume: str, section: str
+        self, book: str, source_volume: str, section: str, target_volume: str
     ) -> None:
+        """Retire a move, then collapse the aliases it leaves behind.
+
+        Every completed alias for this section is re-pointed at the volume it
+        now lives in, and the one that would name its own home is dropped. So a
+        section that has toured five volumes leaves four aliases, not a row per
+        hop, and a round trip leaves none at all -- the table is bounded by the
+        volumes a section has lived in rather than by how often it was filed.
+        """
         self._section_moves.update_one(
             {
                 "book": book,
@@ -516,6 +524,35 @@ class LogosStore:
                 "section": section,
             },
             {"$set": {"state": "complete", "completed_at": self._now()}},
+        )
+        self._section_moves.update_many(
+            {"book": book, "section": section, "state": "complete"},
+            {"$set": {"target_volume": target_volume}},
+        )
+        self._section_moves.delete_many(
+            {
+                "book": book,
+                "section": section,
+                "state": "complete",
+                "source_volume": target_volume,
+            }
+        )
+
+    def release_section_move(self, book: str, volume: str, section: str) -> None:
+        """Forget the alias leaving ``volume``, because that address is in use again.
+
+        An alias only makes sense while nothing lives at the address it points
+        away from. Creating a section there makes it ambiguous, so the alias
+        goes: a stale link stops resolving, which is a smaller loss than
+        refusing to let a writer reuse a name they have freed.
+        """
+        self._section_moves.delete_many(
+            {
+                "book": book,
+                "source_volume": volume,
+                "section": section,
+                "state": "complete",
+            }
         )
 
     def list_section_moves(self, book: str) -> list[dict]:
@@ -557,7 +594,16 @@ class LogosStore:
     def resolve_section_location(
         self, book: str, volume: str, section: str
     ) -> tuple[str, str]:
-        """Follow completed move aliases for stale links and reading marks."""
+        """Follow completed move aliases for stale links and reading marks.
+
+        A live section at the address given wins outright: an alias describes
+        where something *went*, and nothing went anywhere if it is still here.
+        Aliases are collapsed on completion, so the walk below settles in one
+        hop; the loop and its guard remain because a half-collapsed table after
+        an interrupted write must still terminate.
+        """
+        if self.find_section(book, volume, section) is not None:
+            return volume, section
         seen = set()
         current = volume
         while current not in seen:
