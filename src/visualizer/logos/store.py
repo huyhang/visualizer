@@ -58,6 +58,7 @@ READER_SETTINGS = "reader_settings"
 READING_POSITIONS = "reading_positions"
 SEARCH_BLOCKS = "search_blocks"
 EXPORT_JOBS = "export_jobs"
+SECTION_MOVES = "section_moves"
 
 OUTLINE_IDENTITY = ("book",)
 VOLUME_IDENTITY = ("book", "volume")
@@ -111,6 +112,7 @@ class LogosStore:
         self._publication_covers = database[PUBLICATION_COVERS]
         self._search_blocks = database[SEARCH_BLOCKS]
         self._export_jobs = database[EXPORT_JOBS]
+        self._section_moves = database[SECTION_MOVES]
         self._clock = clock or (lambda: datetime.now(UTC))
         self._id_factory = id_factory or (lambda: str(uuid4()))
         self._reader_items.create_index([("username", 1), ("book", 1)])
@@ -134,6 +136,9 @@ class LogosStore:
         self._search_blocks.create_index([("book", 1), ("order", 1)])
         self._export_jobs.create_index([("book", 1), ("owner", 1)])
         self._export_jobs.create_index([("started_at", 1)])
+        self._section_moves.create_index(
+            [("book", 1), ("source_volume", 1), ("section", 1)], unique=True
+        )
 
     @staticmethod
     def _documents(database, heads, revisions, identity, keep, clock):
@@ -299,6 +304,29 @@ class LogosStore:
             preserve_primary,
         )
 
+    def relocate_section(
+        self,
+        book: str,
+        source_volume: str,
+        target_volume: str,
+        section: str,
+        expected_rev: int,
+        author: str,
+    ) -> dict:
+        return self._sections.relocate(
+            self._section_key(book, source_volume, section),
+            self._section_key(book, target_volume, section),
+            expected_rev,
+            author,
+            SectionNotFound,
+            AlreadyExists,
+        )
+
+    def section_identity_exists(self, book: str, volume: str, section: str) -> bool:
+        return self._sections.identity_exists(
+            self._section_key(book, volume, section)
+        )
+
     # -- drafts ---------------------------------------------------------------
 
     def new_draft_id(self) -> str:
@@ -389,6 +417,184 @@ class LogosStore:
             author,
             DraftNotFound,
         )
+
+    def relocate_draft(
+        self,
+        book: str,
+        source_volume: str,
+        target_volume: str,
+        section: str,
+        draft: str,
+        expected_rev: int,
+        author: str,
+    ) -> dict:
+        return self._drafts.relocate(
+            self._draft_key(book, source_volume, section, draft),
+            self._draft_key(book, target_volume, section, draft),
+            expected_rev,
+            author,
+            DraftNotFound,
+            AlreadyExists,
+        )
+
+    def draft_identity_exists(
+        self, book: str, volume: str, section: str, draft: str
+    ) -> bool:
+        return self._drafts.identity_exists(
+            self._draft_key(book, volume, section, draft)
+        )
+
+    # -- section movement ----------------------------------------------------
+
+    def find_section_move(
+        self, book: str, source_volume: str, section: str
+    ) -> dict | None:
+        return self._section_moves.find_one(
+            {
+                "book": book,
+                "source_volume": source_volume,
+                "section": section,
+            },
+            {"_id": 0},
+        )
+
+    def begin_section_move(
+        self,
+        book: str,
+        source_volume: str,
+        target_volume: str,
+        section: str,
+        before: str | None,
+        expected_rev: int,
+        author: str,
+        title: str | None,
+        kind: str,
+        *,
+        restart: bool = False,
+    ) -> dict:
+        existing = self.find_section_move(book, source_volume, section)
+        if existing is not None and not restart:
+            return existing
+        body = {
+            "book": book,
+            "source_volume": source_volume,
+            "target_volume": target_volume,
+            "section": section,
+            "before": before,
+            "section_rev": expected_rev,
+            "author": author,
+            "title": title,
+            "kind": kind,
+            "state": "moving",
+            "started_at": self._now(),
+        }
+        if restart:
+            self._section_moves.update_one(
+                {
+                    "book": book,
+                    "source_volume": source_volume,
+                    "section": section,
+                    "state": "complete",
+                },
+                {"$set": body, "$unset": {"completed_at": ""}},
+            )
+            return self.find_section_move(book, source_volume, section)
+        record = {"_id": self._id_factory(), **body}
+        try:
+            self._section_moves.insert_one(record)
+        except DuplicateKeyError:
+            return self.find_section_move(book, source_volume, section)
+        return {key: value for key, value in record.items() if key != "_id"}
+
+    def complete_section_move(
+        self, book: str, source_volume: str, section: str
+    ) -> None:
+        self._section_moves.update_one(
+            {
+                "book": book,
+                "source_volume": source_volume,
+                "section": section,
+            },
+            {"$set": {"state": "complete", "completed_at": self._now()}},
+        )
+
+    def list_section_moves(self, book: str) -> list[dict]:
+        rows = self._section_moves.find(
+            {"book": book, "state": "complete"},
+            {"_id": 0, "source_volume": 1, "target_volume": 1, "section": 1},
+        ).sort([("source_volume", 1), ("section", 1)])
+        return list(rows)
+
+    def list_pending_section_moves(self, book: str) -> list[dict]:
+        fields = {
+            "_id": 0,
+            "source_volume": 1,
+            "target_volume": 1,
+            "section": 1,
+            "before": 1,
+            "section_rev": 1,
+            "title": 1,
+            "kind": 1,
+        }
+        rows = self._section_moves.find(
+            {"book": book, "state": "moving"}, fields
+        ).sort("started_at", 1)
+        return list(rows)
+
+    def has_pending_section_moves(self, book: str, volume: str) -> bool:
+        return self._section_moves.find_one(
+            {
+                "book": book,
+                "state": "moving",
+                "$or": [
+                    {"source_volume": volume},
+                    {"target_volume": volume},
+                ],
+            },
+            {"_id": 1},
+        ) is not None
+
+    def resolve_section_location(
+        self, book: str, volume: str, section: str
+    ) -> tuple[str, str]:
+        """Follow completed move aliases for stale links and reading marks."""
+        seen = set()
+        current = volume
+        while current not in seen:
+            seen.add(current)
+            moved = self._section_moves.find_one(
+                {
+                    "book": book,
+                    "source_volume": current,
+                    "section": section,
+                    "state": "complete",
+                }
+            )
+            if moved is None:
+                break
+            current = moved["target_volume"]
+        return current, section
+
+    def move_reader_locations(
+        self, book: str, source_volume: str, target_volume: str, section: str
+    ) -> None:
+        match = {"book": book, "volume": source_volume, "section": section}
+        self._reader_items.update_many(match, {"$set": {"volume": target_volume}})
+        for row in self._reading_positions.find({"book": book}):
+            changes = {}
+            for field in ("last", "furthest"):
+                mark = row.get(field)
+                if (
+                    mark
+                    and mark.get("volume") == source_volume
+                    and mark.get("section") == section
+                ):
+                    changes[field] = {**mark, "volume": target_volume}
+            if changes:
+                self._reading_positions.update_one(
+                    {"_id": row["_id"], "rev": row.get("rev", 1)},
+                    {"$set": {**changes, "updated_at": self._now()}, "$inc": {"rev": 1}},
+                )
 
     # -- shelf-wide reads -----------------------------------------------------
 
@@ -688,6 +894,7 @@ class LogosStore:
         self._publication_covers.delete_one({"_id": book})
         self._search_blocks.delete_many({"book": book})
         self._export_jobs.delete_many({"book": book})
+        self._section_moves.delete_many({"book": book})
 
     def purge_user(self, username: str) -> None:
         self._reader_items.delete_many({"username": username})

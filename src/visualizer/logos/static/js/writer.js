@@ -5,6 +5,7 @@ import { api } from "./api.js";
 import { createAkashaPanel } from "./akashapanel.js";
 import { createCoachPanel } from "./coachpanel.js";
 import { compareDocuments } from "./comparison.js";
+import { allSectionIds, availableId, emptyDocument } from "./contents.js";
 import { createContextMenu } from "./contextmenu.js";
 import { createDraftState } from "./draftstate.js";
 import { el, fill } from "./dom.js";
@@ -252,17 +253,6 @@ function askDraftName(heading, value = "") {
   });
 }
 
-function availableId(title, known, fallback) {
-  const stem = title.toLowerCase().normalize("NFKD")
-    .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || fallback;
-  let candidate = stem;
-  let suffix = 2;
-  while (known.has(candidate)) candidate = `${stem}-${suffix++}`;
-  return candidate;
-}
-
-const emptyDocument = () => ({ version: 1, type: "doc", content: [] });
-
 export async function beginWriting(manuscript, base) {
   const title = await askDraftName("Name the new chapter", "Untitled chapter");
   if (!title) return;
@@ -271,7 +261,7 @@ export async function beginWriting(manuscript, base) {
     const id = "volume-1";
     volume = await api.createVolume(manuscript.book, id, { title: "Volume One", overview: "" });
   }
-  const known = new Set(volume.sections.map((item) => item.id));
+  const known = allSectionIds(manuscript);
   const section = availableId(title, known, "chapter");
   await api.createSection(manuscript.book, volume.id, section, {
     kind: "chapter", title, overview: "", event_ids: [], document: emptyDocument(),
@@ -498,9 +488,7 @@ export async function mountWriter({
     if (autosave.hasPending()) return;
     const name = await askDraftName("Name the new chapter", "Untitled chapter");
     if (!name) return;
-    const sectionId = availableId(
-      name, new Set(volume.sections.map((item) => item.id)), "chapter",
-    );
+    const sectionId = availableId(name, allSectionIds(manuscript), "chapter");
     await api.createSection(manuscript.book, volume.id, sectionId, {
       kind: "chapter", title: name, overview: "", event_ids: [], document: emptyDocument(),
     });

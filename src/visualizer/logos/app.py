@@ -469,6 +469,21 @@ def _register_routes(
         )
         return _resource(_with_permissions(result, auth_store, book))
 
+    @app.put(_SECTION + "/placement")
+    @csrf.exempt
+    @login_required
+    def move_section(book, volume, section):
+        _authorize(auth_store, "write", book)
+        result = sections.move(
+            book,
+            volume,
+            section,
+            _json_body(),
+            _expected_rev(),
+            current_user.username,
+        )
+        return _resource(_with_permissions(result, auth_store, book))
+
     @app.post(_SECTION)
     @csrf.exempt
     @login_required

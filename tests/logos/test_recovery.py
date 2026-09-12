@@ -7,6 +7,8 @@ reachable partial state is an order entry naming a record that is not there,
 every read skips it, and the next write heals it.
 """
 
+import pytest
+
 from .conftest import BOOK, SECTION, VOLUME, section_payload
 
 MANUSCRIPT = f"/books/{BOOK}"
@@ -91,3 +93,57 @@ def test_deleting_a_section_twice_does_not_corrupt_the_volume(section):
 
     assert again.status_code == 404
     assert section.get(VOLUME_URL).get_json()["sections"] == []
+
+
+def test_retrying_an_interrupted_section_move_completes_it(
+    section, logos_store, monkeypatch
+):
+    section.post(f"{MANUSCRIPT}/volumes/two", json={"title": "Two"})
+    current = section.get(f"{VOLUME_URL}/sections/{SECTION}").get_json()
+    original = logos_store.relocate_draft
+
+    def interrupt(*_args, **_kwargs):
+        raise RuntimeError("simulated interruption")
+
+    monkeypatch.setattr(logos_store, "relocate_draft", interrupt)
+    with pytest.raises(RuntimeError, match="simulated interruption"):
+        section.put(
+            f"{VOLUME_URL}/sections/{SECTION}/placement",
+            json={"target_volume": "two", "before": None},
+            headers={"If-Match": f'"{current["rev"]}"'},
+        )
+
+    pending = section.get(MANUSCRIPT).get_json()["pending_section_moves"]
+    assert pending == [
+        {
+            "source_volume": VOLUME,
+            "target_volume": "two",
+            "section": SECTION,
+            "before": None,
+            "section_rev": current["rev"],
+            "title": "The Broken Gate",
+            "kind": "chapter",
+        }
+    ]
+    for volume_id in (VOLUME, "two"):
+        volume = section.get(f"{MANUSCRIPT}/volumes/{volume_id}")
+        blocked = section.delete(
+            f"{MANUSCRIPT}/volumes/{volume_id}?cascade=true",
+            headers={"If-Match": volume.headers["ETag"]},
+        )
+        assert blocked.status_code == 409
+        assert "Finish that move" in blocked.get_json()["error"]
+
+    monkeypatch.setattr(logos_store, "relocate_draft", original)
+    recovered = section.put(
+        f"{VOLUME_URL}/sections/{SECTION}/placement",
+        json={"target_volume": "two", "before": None},
+        headers={"If-Match": f'"{current["rev"]}"'},
+    )
+
+    assert recovered.status_code == 200
+    assert recovered.get_json()["pending_section_moves"] == []
+    assert section.get(f"{VOLUME_URL}/sections/{SECTION}").status_code == 404
+    assert section.get(
+        f"{MANUSCRIPT}/volumes/two/sections/{SECTION}/drafts"
+    ).status_code == 200

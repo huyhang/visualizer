@@ -193,6 +193,33 @@ def test_a_mark_in_a_deleted_section_is_dropped_on_save(section):
     assert section.get(POSITION).get_json()["position"] is None
 
 
+def test_private_reader_data_follows_a_section_to_its_new_volume(section):
+    section.post(ITEMS, json=_note())
+    section.put("/me/reader-settings", json={"sync_reading_position": True})
+    section.put(POSITION, json={"last": _spot(), "furthest": _mark()})
+    section.post(f"{BOOK_URL}/volumes/two", json={"title": "Volume Two"})
+    current = section.get(
+        f"{BOOK_URL}/volumes/{VOLUME}/sections/{SECTION}"
+    ).get_json()
+
+    moved = section.put(
+        f"{BOOK_URL}/volumes/{VOLUME}/sections/{SECTION}/placement",
+        json={"target_volume": "two", "before": None},
+        headers={"If-Match": f'"{current["rev"]}"'},
+    )
+
+    assert moved.status_code == 200
+    item = section.get(ITEMS).get_json()["items"][0]
+    assert (item["volume"], item["section"], item["available"]) == (
+        "two",
+        SECTION,
+        True,
+    )
+    position = section.get(POSITION).get_json()["position"]
+    assert position["last"]["volume"] == "two"
+    assert position["furthest"]["volume"] == "two"
+
+
 def test_private_items_are_removed_with_the_manuscript(section, logos_store):
     section.post(ITEMS, json=_note())
     logos_store.purge_book(BOOK)

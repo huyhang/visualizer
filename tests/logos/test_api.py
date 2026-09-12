@@ -113,6 +113,160 @@ def test_reordering_volumes_renumbers_them(volume):
     ] == [("second", 1), (VOLUME, 2)]
 
 
+def test_moving_a_section_preserves_its_history_and_drafts(section, logos_store):
+    section.post(f"{MANUSCRIPT}/volumes/two", json={"title": "Volume Two"})
+    current = section.get(SECTION_URL).get_json()
+    revised = section.put(
+        SECTION_URL,
+        json=section_payload(doc=document("A revised opening.")),
+        headers={"If-Match": f'"{current["rev"]}"'},
+    ).get_json()
+    alternate = section.post(
+        SECTION_URL + "/drafts", json={"name": "Alternate"}
+    ).get_json()
+
+    moved = section.put(
+        SECTION_URL + "/placement",
+        json={"target_volume": "two", "before": None},
+        headers={"If-Match": f'"{revised["rev"]}"'},
+    )
+
+    assert moved.status_code == 200
+    assert section.get(SECTION_URL).status_code == 404
+    target = f"{MANUSCRIPT}/volumes/two/sections/{SECTION}"
+    assert section.get(target).get_json()["document"] == document(
+        "A revised opening."
+    )
+    assert [
+        row["rev"] for row in section.get(target + "/versions").get_json()["versions"]
+    ] == [3, 2, 1]
+    drafts = section.get(target + "/drafts").get_json()["drafts"]
+    assert {row["id"] for row in drafts} == {"draft-1", alternate["id"]}
+    draft_history = section.get(target + "/drafts/draft-1/versions").get_json()
+    assert [row["rev"] for row in draft_history["versions"]] == [2, 1]
+    search = section.get(f"{MANUSCRIPT}/search?q=revised").get_json()
+    assert [(row["volume"], row["section"]) for row in search["results"]] == [
+        ("two", SECTION)
+    ]
+    assert [
+        (row["volume"], row["section"])
+        for row in logos_store.sections_referencing(BOOK, "opening")
+    ] == [("two", SECTION)]
+    assert moved.get_json()["section_aliases"] == [
+        {
+            "source_volume": VOLUME,
+            "target_volume": "two",
+            "section": SECTION,
+        }
+    ]
+
+
+def test_a_moved_section_can_be_inserted_between_target_sections(section):
+    section.post(f"{MANUSCRIPT}/volumes/two", json={"title": "Volume Two"})
+    for section_id in ("first", "last"):
+        section.post(
+            f"{MANUSCRIPT}/volumes/two/sections/{section_id}",
+            json=section_payload(title=section_id.title(), events=()),
+        )
+    current = section.get(SECTION_URL).get_json()
+
+    moved = section.put(
+        SECTION_URL + "/placement",
+        json={"target_volume": "two", "before": "last"},
+        headers={"If-Match": f'"{current["rev"]}"'},
+    ).get_json()
+
+    target = next(volume for volume in moved["volumes"] if volume["id"] == "two")
+    assert [(row["id"], row["number"]) for row in target["sections"]] == [
+        ("first", 1),
+        (SECTION, 2),
+        ("last", 3),
+    ]
+
+
+def test_retrying_the_same_section_move_is_safe(section):
+    section.post(f"{MANUSCRIPT}/volumes/two", json={"title": "Volume Two"})
+    current = section.get(SECTION_URL).get_json()
+    request = {
+        "json": {"target_volume": "two", "before": None},
+        "headers": {"If-Match": f'"{current["rev"]}"'},
+    }
+
+    first = section.put(SECTION_URL + "/placement", **request)
+    retry = section.put(SECTION_URL + "/placement", **request)
+
+    assert first.status_code == retry.status_code == 200
+    assert [
+        row["id"]
+        for volume in retry.get_json()["volumes"]
+        for row in volume["sections"]
+    ] == [SECTION]
+
+
+def test_a_section_can_move_back_through_a_previous_location(section):
+    for volume_id in ("two", "three"):
+        section.post(
+            f"{MANUSCRIPT}/volumes/{volume_id}", json={"title": volume_id.title()}
+        )
+
+    current = section.get(SECTION_URL).get_json()
+    first = section.put(
+        SECTION_URL + "/placement",
+        json={"target_volume": "two", "before": None},
+        headers={"If-Match": f'"{current["rev"]}"'},
+    ).get_json()
+    in_two = next(
+        row
+        for volume in first["volumes"]
+        if volume["id"] == "two"
+        for row in volume["sections"]
+    )
+    second = section.put(
+        f"{MANUSCRIPT}/volumes/two/sections/{SECTION}/placement",
+        json={"target_volume": VOLUME, "before": None},
+        headers={"If-Match": f'"{in_two["rev"]}"'},
+    ).get_json()
+    back = next(
+        row
+        for volume in second["volumes"]
+        if volume["id"] == VOLUME
+        for row in volume["sections"]
+    )
+
+    moved_again = section.put(
+        SECTION_URL + "/placement",
+        json={"target_volume": "three", "before": None},
+        headers={"If-Match": f'"{back["rev"]}"'},
+    )
+
+    assert moved_again.status_code == 200
+    assert section.get(
+        f"{MANUSCRIPT}/volumes/three/sections/{SECTION}"
+    ).status_code == 200
+
+
+def test_moving_a_singleton_to_a_volume_that_has_one_is_blocked(volume):
+    volume.post(f"{MANUSCRIPT}/volumes/two", json={"title": "Volume Two"})
+    source = volume.post(
+        f"{VOLUME_URL}/sections/before",
+        json=section_payload("prologue", "Before", ()),
+    ).get_json()
+    volume.post(
+        f"{MANUSCRIPT}/volumes/two/sections/other-before",
+        json=section_payload("prologue", "Other", ()),
+    )
+
+    moved = volume.put(
+        f"{VOLUME_URL}/sections/before/placement",
+        json={"target_volume": "two", "before": None},
+        headers={"If-Match": f'"{source["rev"]}"'},
+    )
+
+    assert moved.status_code == 409
+    assert moved.get_json()["code"] == "SECTION_KIND_IN_USE"
+    assert volume.get(f"{VOLUME_URL}/sections/before").status_code == 200
+
+
 def test_a_volume_update_cannot_rearrange_or_drop_its_prose(section):
     before = section.get(VOLUME_URL).get_json()
 
@@ -131,6 +285,10 @@ def test_every_mutation_needs_the_revision_the_caller_read(section):
     payload = section_payload()
 
     assert section.put(SECTION_URL, json=payload).status_code == 428
+    assert section.put(
+        SECTION_URL + "/placement",
+        json={"target_volume": "somewhere", "before": None},
+    ).status_code == 428
     assert section.put(
         SECTION_URL, json=payload, headers={"If-Match": '"*"'}
     ).status_code == 400
@@ -284,6 +442,11 @@ def test_a_reader_may_read_everything_and_write_nothing(reader, section):
         f"{MANUSCRIPT}/volumes/second", json={"title": "Second"}
     ).status_code == 403
     assert reader.delete(SECTION_URL, headers={"If-Match": '"1"'}).status_code == 403
+    assert reader.put(
+        SECTION_URL + "/placement",
+        json={"target_volume": "second", "before": None},
+        headers={"If-Match": '"1"'},
+    ).status_code == 403
 
 
 def test_the_book_list_shows_only_books_the_caller_can_read(client, chronos_gateway):

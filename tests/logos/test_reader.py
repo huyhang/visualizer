@@ -112,7 +112,29 @@ def test_the_reader_offers_search_and_jump_controls(client):
     app = (_LOGOS / "static" / "js" / "app.js").read_text()
     assert "filterOutline" in app
     assert "SECTION_PAGE_SIZE" in app
-    assert 'class: "volume-card"' in app and "pagedSectionList" in app
+    assert "volume-card" in app and "pagedSectionList" in app
+
+
+def test_writers_can_create_and_arrange_the_contents(client):
+    html = client.get("/").get_data(as_text=True)
+    app = (_LOGOS / "static" / "js" / "app.js").read_text()
+    api = (_LOGOS / "static" / "js" / "api.js").read_text()
+    manager = (_LOGOS / "static" / "js" / "contentmanager.js").read_text()
+
+    for dialog in (
+        "volume-create-dialog",
+        "chapter-create-dialog",
+        "section-move-dialog",
+    ):
+        assert f'id="{dialog}"' in html
+    for label in ("New volume", "New chapter", "Manage contents", "Move…"):
+        assert label in app
+    assert "Move interrupted" in app
+    assert "Finish move" in app
+    assert "Move connection lost" in manager
+    assert "Retry move" in manager
+    for operation in ("reorderVolumes", "reorderSections", "moveSection"):
+        assert operation in api
 
 
 def test_logos_folds_a_thing_the_way_its_siblings_do():
@@ -291,6 +313,8 @@ def test_the_reader_assets_are_served(client):
         "/static/js/progress.js",
         "/static/js/navigation.js",
         "/static/js/outline.js",
+        "/static/js/contents.js",
+        "/static/js/contentmanager.js",
         "/static/js/editor.js",
         "/static/js/comparison.js",
         "/static/js/recovery.js",

@@ -205,6 +205,7 @@ class ReaderService:
         # every book on the shelf at once.
         order = set(self.manuscripts.reading_order(book))
         current = self.store.get_reading_position(username, book)
+        current = self._relocated(book, current)
         return {"book": book, "position": self._placed(order, current)}
 
     def set_position(self, username: str, book: str, payload: Any) -> dict:
@@ -216,13 +217,15 @@ class ReaderService:
         # marks is further on -- so no prose is read.
         order = self.manuscripts.reading_order(book)
         placed = set(order)
-        incoming = self._placed(placed, validate_position(payload)) or {
+        incoming = self._placed(
+            placed, self._relocated(book, validate_position(payload))
+        ) or {
             "last": None,
             "furthest": None,
         }
         for _attempt in range(3):
             stored = self.store.get_reading_position(username, book)
-            current = self._placed(placed, stored)
+            current = self._placed(placed, self._relocated(book, stored))
             merged = {
                 "last": incoming.get("last") or (current or {}).get("last"),
                 "furthest": self._furthest(
@@ -239,6 +242,20 @@ class ReaderService:
             except RevisionConflict:
                 continue
         raise RevisionConflict("Reading position kept changing; retry the update.")
+
+    def _relocated(self, book: str, position: dict | None) -> dict | None:
+        if not position:
+            return position
+        result = dict(position)
+        for field in ("last", "furthest"):
+            mark = result.get(field)
+            if not mark:
+                continue
+            volume, section = self.store.resolve_section_location(
+                book, mark["volume"], mark["section"]
+            )
+            result[field] = {**mark, "volume": volume, "section": section}
+        return result
 
     @staticmethod
     def _anchors(manuscript: dict) -> dict:

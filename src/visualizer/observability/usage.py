@@ -42,6 +42,7 @@ from visualizer.logos.store import (
     READER_SETTINGS,
     READING_POSITIONS,
     SEARCH_BLOCKS,
+    SECTION_MOVES,
     SECTION_REVISIONS,
     SECTIONS,
     VOLUME_REVISIONS,
@@ -297,7 +298,7 @@ class MongoDocumentSource:
             (PUBLICATIONS, PUBLICATION_REVISIONS),
         ):
             yield from _rejoined_by_book(database[heads], database[revisions])
-        for name in (PUBLICATION_COVERS, SEARCH_BLOCKS):
+        for name in (PUBLICATION_COVERS, SEARCH_BLOCKS, SECTION_MOVES):
             for stored in database[name].find():
                 yield StoredDocument(
                     resource=("book", stored.get("book") or stored.get("_id")),

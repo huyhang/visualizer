@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Logos API",
-    "version": "1.2.0",
-    "description": "Versioned manuscripts for Chronos books, named writing drafts, private reader annotations and writing feedback, Akasha lookup, cross-volume search, and whole-series PDF/EPUB publication.\n\nPaths are relative to the service mount. In the combined deployment that is `/logos`; running Logos standalone it is `/`.\n\nUpdates to revisioned resources and reader items require an `If-Match` header carrying the `rev` from the last read."
+    "version": "1.3.0",
+    "description": "Versioned manuscripts for Chronos books, named writing drafts, volume and section organisation, private reader annotations and writing feedback, Akasha lookup, cross-volume search, and whole-series PDF/EPUB publication.\n\nPaths are relative to the service mount. In the combined deployment that is `/logos`; running Logos standalone it is `/`.\n\nUpdates to revisioned resources and reader items require an `If-Match` header carrying the `rev` from the last read."
   },
   "servers": [
     { "url": "/logos", "description": "Combined single-origin deployment" },
@@ -416,6 +416,29 @@
         ],
         "responses": {
           "204": { "description": "Gone." },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "428": { "$ref": "#/components/responses/PreconditionRequired" }
+        }
+      }
+    },
+    "/books/{book}/volumes/{volume}/sections/{section}/placement": {
+      "put": {
+        "tags": ["sections"],
+        "summary": "Move a section to another volume",
+        "description": "Moves the section, all named drafts and retained history without recreating prose. The optional `before` id places it before a section in the target volume; null appends it. A target volume that already has the same singleton section kind is refused.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Book" },
+          { "$ref": "#/components/parameters/Volume" },
+          { "$ref": "#/components/parameters/Section" },
+          { "$ref": "#/components/parameters/IfMatch" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/SectionMove" },
+        "responses": {
+          "200": { "description": "The updated manuscript.", "headers": { "ETag": { "$ref": "#/components/headers/ETag" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Manuscript" } } } },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/Forbidden" },
@@ -940,6 +963,14 @@
           }
         }
       },
+      "SectionMove": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/SectionMove" }
+          }
+        }
+      },
       "PublicationBody": {
         "required": true,
         "content": {
@@ -1345,6 +1376,36 @@
           },
           "section_count": { "type": "integer" },
           "word_count": { "type": "integer" },
+          "section_aliases": {
+            "type": "array",
+            "description": "Previous locations retained so stale reader links and local positions can follow moved sections.",
+            "items": {
+              "type": "object",
+              "required": ["source_volume", "target_volume", "section"],
+              "properties": {
+                "source_volume": { "type": "string" },
+                "target_volume": { "type": "string" },
+                "section": { "type": "string" }
+              }
+            }
+          },
+          "pending_section_moves": {
+            "type": "array",
+            "description": "Interrupted moves that an editor can safely resume.",
+            "items": {
+              "type": "object",
+              "required": ["source_volume", "target_volume", "section", "before", "section_rev", "title", "kind"],
+              "properties": {
+                "source_volume": { "type": "string" },
+                "target_volume": { "type": "string" },
+                "section": { "type": "string" },
+                "before": { "type": "string", "nullable": true },
+                "section_rev": { "type": "integer" },
+                "title": { "type": "string", "nullable": true },
+                "kind": { "type": "string", "enum": ["prologue", "chapter", "epilogue", "glossary"] }
+              }
+            }
+          },
           "_links": { "type": "object" },
           "rev": { "type": "integer" },
           "created_by": { "type": "string", "nullable": true },
@@ -1818,6 +1879,20 @@
           "sections": { "type": "array", "items": { "type": "string" } }
         },
         "example": { "sections": ["before", "the-broken-gate", "the-oath"] }
+      },
+      "SectionMove": {
+        "type": "object",
+        "required": ["target_volume"],
+        "additionalProperties": false,
+        "properties": {
+          "target_volume": { "type": "string" },
+          "before": {
+            "type": "string",
+            "nullable": true,
+            "description": "Insert before this target section, or append when null."
+          }
+        },
+        "example": { "target_volume": "the-second-pact", "before": null }
       }
     }
   }

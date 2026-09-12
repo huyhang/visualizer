@@ -94,6 +94,14 @@ searching is a read and nothing else: it issues no writes, and one reader's
 search cannot change what another reader finds. While reading, **Contents**
 opens the searchable, paged outline in a compact dialog.
 
+Writers can also organise the manuscript from this page. **New volume** creates
+an appended volume, and each volume has its own **New chapter** action.
+**Manage contents** expands the complete outline and adds drag handles plus
+keyboard- and touch-friendly arrow and **Move…** controls. Volumes can be
+reordered; sections can be reordered or moved between volumes. Moving a
+prologue, epilogue or glossary into a volume that already has one is refused
+with an explanation rather than replacing either section.
+
 Akasha mentions and article links render as ordinary prose in both modes. The
 browser builds DOM nodes from the validated rich-text vocabulary and never
 inserts manuscript content as HTML; a link whose URL is not http, https or
@@ -230,6 +238,14 @@ structure around it.
 
 `PUT` replaces a whole volume, section or draft. There is no paragraph-level
 write. The browser autosaves complete drafts through the same guarded API.
+
+Moving a section is a structural write, not delete-and-create. Its current
+prose, named drafts and retained revision chains move together, and private
+reader items and synchronized positions follow it. Completed moves retain a
+small location alias so an older browser-local position or saved URL can find
+the section at its new volume. An interrupted move is safe to retry; the
+contents page shows it as **Move interrupted**, explains that the writing is
+safe, and gives editors a **Finish move** action.
 
 **Every mutation of an existing resource requires `If-Match`**, carrying the
 revision from its last read; without one the request is refused with

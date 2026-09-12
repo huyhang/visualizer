@@ -238,6 +238,69 @@
     </form>
   </dialog>
 
+  <dialog class="settings contents-dialog" id="volume-create-dialog"
+          aria-labelledby="volume-create-title">
+    <form id="volume-create-form" method="dialog">
+      <div class="settings-head">
+        <h2 id="volume-create-title">New volume</h2>
+        <button class="icon-btn" type="button" data-dialog-close
+                aria-label="Close new volume">×</button>
+      </div>
+      <label class="manage-field">Title
+        <input id="volume-create-name" required maxlength="300" autocomplete="off">
+      </label>
+      <label class="manage-field">Overview <small>Optional editorial note</small>
+        <textarea id="volume-create-overview" rows="3" maxlength="10000"></textarea>
+      </label>
+      <p class="form-error" id="volume-create-error" role="alert"></p>
+      <div class="settings-actions">
+        <span></span><button class="btn" type="submit">Create volume</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="settings contents-dialog" id="chapter-create-dialog"
+          aria-labelledby="chapter-create-title">
+    <form id="chapter-create-form" method="dialog">
+      <div class="settings-head">
+        <h2 id="chapter-create-title">New chapter</h2>
+        <button class="icon-btn" type="button" data-dialog-close
+                aria-label="Close new chapter">×</button>
+      </div>
+      <label class="manage-field">Title
+        <input id="chapter-create-name" required maxlength="300" autocomplete="off">
+      </label>
+      <label class="manage-field">Volume
+        <select id="chapter-create-volume" required></select>
+      </label>
+      <p class="form-error" id="chapter-create-error" role="alert"></p>
+      <div class="settings-actions">
+        <span></span><button class="btn" type="submit">Create and write</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="settings contents-dialog" id="section-move-dialog"
+          aria-labelledby="section-move-title">
+    <form id="section-move-form" method="dialog">
+      <div class="settings-head">
+        <h2 id="section-move-title">Move section</h2>
+        <button class="icon-btn" type="button" data-dialog-close
+                aria-label="Close move section">×</button>
+      </div>
+      <label class="manage-field">Volume
+        <select id="section-move-volume" required></select>
+      </label>
+      <label class="manage-field">Position
+        <select id="section-move-position" required></select>
+      </label>
+      <p class="form-error" id="section-move-error" role="alert"></p>
+      <div class="settings-actions">
+        <span></span><button class="btn" type="submit">Move section</button>
+      </div>
+    </form>
+  </dialog>
+
   <div class="boundary-cue" id="boundary-cue" hidden aria-live="polite">
     <span id="boundary-cue-label"></span><progress id="boundary-cue-meter" max="100" value="0"></progress>
   </div>

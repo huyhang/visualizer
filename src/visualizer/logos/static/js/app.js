@@ -4,6 +4,7 @@
 
 import { ApiError, BASE, api } from "./api.js";
 import { boundaryGesture } from "./boundary.js";
+import { createContentManager } from "./contentmanager.js";
 import { el, fill, nodeFactory, svgEl } from "./dom.js";
 import {
   findSection,
@@ -91,6 +92,22 @@ const syncControl = document.getElementById("sync-reading-position");
 const boundaryCue = document.getElementById("boundary-cue");
 const boundaryCueLabel = document.getElementById("boundary-cue-label");
 const boundaryCueMeter = document.getElementById("boundary-cue-meter");
+const volumeDialog = document.getElementById("volume-create-dialog");
+const volumeForm = document.getElementById("volume-create-form");
+const volumeName = document.getElementById("volume-create-name");
+const volumeOverview = document.getElementById("volume-create-overview");
+const volumeError = document.getElementById("volume-create-error");
+const chapterDialog = document.getElementById("chapter-create-dialog");
+const chapterForm = document.getElementById("chapter-create-form");
+const chapterName = document.getElementById("chapter-create-name");
+const chapterVolume = document.getElementById("chapter-create-volume");
+const chapterError = document.getElementById("chapter-create-error");
+const moveDialog = document.getElementById("section-move-dialog");
+const moveForm = document.getElementById("section-move-form");
+const moveTitle = document.getElementById("section-move-title");
+const moveVolume = document.getElementById("section-move-volume");
+const movePosition = document.getElementById("section-move-position");
+const moveError = document.getElementById("section-move-error");
 const nodes = nodeFactory();
 const storage = window.localStorage;
 const readerUser = window.__READER_USER__ || "";
@@ -116,6 +133,7 @@ let touchY = null;
 let boundaryTimer = null;
 const edgeGesture = boundaryGesture();
 let searchMatches = [];
+let managingContents = false;
 
 const MODE_TEXT = {
   focused: ["Focused", "Prose and bookmarks — nothing from any other service. Switch to Full view."],
@@ -196,6 +214,8 @@ function bookCard(row) {
 
 function renderShelf(books) {
   hideReaderChrome();
+  managingContents = false;
+  contentManager.reset();
   pageManuscript = null;
   document.title = "Logos — manuscripts";
   prunePositions(
@@ -231,7 +251,14 @@ function bookmarks(manuscript) {
   if (!saved) return null;
   const locate = (mark) => {
     const entry = mark && findSection(manuscript, mark.volume, mark.section);
-    return entry ? { mark, entry } : null;
+    return entry ? {
+      mark: {
+        ...mark,
+        volume: entry.volume.id,
+        section: entry.section.id,
+      },
+      entry,
+    } : null;
   };
   const last = locate(saved.last);
   const furthest = locate(saved.furthest);
@@ -239,7 +266,17 @@ function bookmarks(manuscript) {
     forgetPosition(storage, readerUser, manuscript.book);
     return null;
   }
-  return { last: last || furthest, furthest: furthest || last };
+  const result = { last: last || furthest, furthest: furthest || last };
+  if (
+    result.last.mark.volume !== saved.last?.volume
+    || result.furthest.mark.volume !== saved.furthest?.volume
+  ) {
+    storePosition(storage, readerUser, manuscript.book, {
+      last: result.last.mark,
+      furthest: result.furthest.mark,
+    });
+  }
+  return result;
 }
 
 /**
@@ -249,7 +286,7 @@ function bookmarks(manuscript) {
  * heading has just been told what kind it is -- unless the label carries a
  * number the heading does not.
  */
-function sectionRow(manuscript, volume, section, marks) {
+function sectionRow(manuscript, volume, section, marks, management = null) {
   const resume = marks && marks.furthest;
   const isResume = resume
     && resume.mark.volume === volume.id
@@ -259,7 +296,54 @@ function sectionRow(manuscript, volume, section, marks) {
   // its own, which is why a heading above a run of them has nothing to add.
   const kind = section.title ? sectionLabel(section) : null;
   const count = words(section.word_count);
-  return el("li", { class: `section-row${isResume ? " resume" : ""}` }, [
+  const controls = management ? el("span", { class: "section-manage-actions" }, [
+    el("button", {
+      class: "drag-handle", type: "button", text: "⠿", draggable: "true",
+      title: `Drag ${sectionName(section)}`,
+      "aria-label": `Drag ${sectionName(section)}`,
+      ondragstart: (event) => contentManager.startDrag(event, {
+        type: "section", id: section.id, volume, section,
+      }),
+      ondragend: contentManager.finishDrag,
+    }),
+    el("button", {
+      class: "order-button", type: "button", text: "↑",
+      title: "Move up", "aria-label": `Move ${sectionName(section)} up`,
+      disabled: management.index === 0,
+      onclick: () => contentManager.placeSection(
+        manuscript, volume, section, volume,
+        volume.sections[management.index - 1]?.id || null,
+      ),
+    }),
+    el("button", {
+      class: "order-button", type: "button", text: "↓",
+      title: "Move down", "aria-label": `Move ${sectionName(section)} down`,
+      disabled: management.index === volume.sections.length - 1,
+      onclick: () => contentManager.placeSection(
+        manuscript, volume, section, volume,
+        volume.sections[management.index + 2]?.id || null,
+      ),
+    }),
+    manuscript.volumes.length > 1 ? el("button", {
+      class: "move-button", type: "button", text: "Move…",
+      onclick: () => contentManager.openSectionMover(manuscript, volume, section),
+    }) : null,
+  ]) : null;
+  return el("li", {
+    class: `section-row${isResume ? " resume" : ""}${management ? " managing" : ""}`,
+    ondragover: management ? (event) => contentManager.acceptDrop(event, "section") : null,
+    ondragleave: management ? contentManager.leaveDrop : null,
+    ondrop: management ? (event) => {
+      const dragged = contentManager.takeDragged("section");
+      if (!dragged) return;
+      event.preventDefault();
+      event.stopPropagation();
+      contentManager.finishDrag(event);
+      contentManager.placeSection(
+        manuscript, dragged.volume, dragged.section, volume, section.id,
+      );
+    } : null,
+  }, [
     el("a", {
       class: "section-link",
       href: readerUrl(manuscript.book, volume.id, section.id),
@@ -276,12 +360,13 @@ function sectionRow(manuscript, volume, section, marks) {
           })
         : null,
     ]),
-    manuscript.permissions.write ? el("a", {
+    manuscript.permissions.write && !management ? el("a", {
       class: "section-edit-link",
       href: writerUrl(BASE, manuscript.book, volume.id, section.id),
       text: "Edit",
       "aria-label": `Edit ${sectionName(section)}`,
     }) : null,
+    controls,
   ]);
 }
 
@@ -331,6 +416,7 @@ function pagedSectionList(
 
 function volumeCard(
   manuscript, volume, marks, expanded, searching, page, rememberPage, rememberOpen,
+  managing = false, volumeIndex = 0,
 ) {
   const summary = searching
     ? `${volume.sections.length} matching ${volume.sections.length === 1 ? "section" : "sections"}`
@@ -340,16 +426,30 @@ function volumeCard(
       );
   // One argument on purpose: `Array.map` would otherwise hand the row builder
   // an index as its second.
-  const row = (section) => sectionRow(manuscript, volume, section, marks);
-  const sectionList = searching
+  const row = (section, index) => sectionRow(
+    manuscript, volume, section, marks, managing ? { index } : null,
+  );
+  const sectionList = searching || managing
     ? el("ol", { class: "section-list" }, volume.sections.map(row))
     : pagedSectionList(volume.sections, page, row, volume.title, rememberPage);
   return el("details", {
-    class: "volume-card",
-    open: expanded,
+    class: `volume-card${managing ? " managing" : ""}`,
+    open: managing || expanded,
     ontoggle: (event) => rememberOpen(event.currentTarget.open),
   }, [
-    el("summary", { class: "volume-summary" }, [
+    el("summary", {
+      class: "volume-summary",
+      ondragover: managing ? (event) => contentManager.acceptDrop(event, "volume") : null,
+      ondragleave: managing ? contentManager.leaveDrop : null,
+      ondrop: managing ? (event) => {
+        const dragged = contentManager.takeDragged("volume");
+        if (!dragged) return;
+        event.preventDefault();
+        event.stopPropagation();
+        contentManager.finishDrag(event);
+        contentManager.reorderVolume(manuscript, dragged.id, volume.id);
+      } : null,
+    }, [
       el("span", { class: "volume-summary-copy" }, [
         el("span", { class: "eyebrow", text: `Volume ${volume.number}` }),
         el("strong", {
@@ -364,20 +464,72 @@ function volumeCard(
       }),
       el("span", { class: "twisty", "aria-hidden": "true" }),
     ]),
+    managing ? el("div", { class: "volume-manage-actions" }, [
+      el("button", {
+        class: "drag-handle", type: "button", text: "⠿", draggable: "true",
+        title: `Drag ${volume.title}`, "aria-label": `Drag ${volume.title}`,
+        ondragstart: (event) => contentManager.startDrag(event, {
+          type: "volume", id: volume.id,
+        }),
+        ondragend: contentManager.finishDrag,
+      }),
+      el("button", {
+        class: "order-button", type: "button", text: "↑", title: "Move volume up",
+        "aria-label": `Move ${volume.title} up`, disabled: volumeIndex === 0,
+        onclick: () => contentManager.reorderVolume(
+          manuscript,
+          volume.id,
+          manuscript.volumes[volumeIndex - 1]?.id || null,
+        ),
+      }),
+      el("button", {
+        class: "order-button", type: "button", text: "↓", title: "Move volume down",
+        "aria-label": `Move ${volume.title} down`,
+        disabled: volumeIndex === manuscript.volumes.length - 1,
+        onclick: () => contentManager.reorderVolume(
+          manuscript,
+          volume.id,
+          manuscript.volumes[volumeIndex + 2]?.id || null,
+        ),
+      }),
+      el("span", { class: "manage-hint", text: "Drag to reorder" }),
+    ]) : null,
     volume.sections.length
       ? sectionList
       : el("p", { class: "volume-empty", text: "No sections yet." }),
+    managing ? el("div", {
+      class: "section-drop-end",
+      ondragover: (event) => contentManager.acceptDrop(event, "section"),
+      ondragleave: contentManager.leaveDrop,
+      ondrop: (event) => {
+        const dragged = contentManager.takeDragged("section");
+        if (!dragged) return;
+        event.preventDefault();
+        contentManager.finishDrag(event);
+        contentManager.placeSection(
+          manuscript, dragged.volume, dragged.section, volume, null,
+        );
+      },
+    }, [el("span", { text: "Drop at end" })]) : null,
+    manuscript.permissions.write ? el("div", { class: "volume-actions" }, [
+      el("button", {
+        class: "new-chapter", type: "button", text: "+ New chapter",
+        onclick: () => contentManager.openChapterCreator(manuscript, volume.id),
+      }),
+    ]) : null,
   ]);
 }
 
-function outlineBrowser(manuscript, marks) {
+function outlineBrowser(manuscript, marks, managing = false) {
   const total = sectionCount(manuscript.volumes);
   const list = el("div", { class: "volume-list" });
   // The volume that opens is the one you were last in, not the one you got
   // furthest into: after going back to re-read, the page should show you
   // where you are and leave "Continue reading" to offer the way forward.
   const here = marks && marks.last;
-  const opened = defaultOpenVolume(manuscript, here && here.mark);
+  const opened = manuscript.volumes.some(
+    (volume) => volume.id === contentManager.preferredVolume(),
+  ) ? contentManager.preferredVolume() : defaultOpenVolume(manuscript, here && here.mark);
   const expanded = new Map(
     manuscript.volumes.map((volume) => [volume.id, volume.id === opened]),
   );
@@ -400,24 +552,39 @@ function outlineBrowser(manuscript, marks) {
       ? `${found} ${found === 1 ? "section" : "sections"} found`
       : "";
     fill(list, filtered.length
-      ? filtered.map((volume) => volumeCard(
+      ? filtered.map((volume, index) => volumeCard(
           manuscript,
           volume,
           marks,
-          searching || expanded.get(volume.id),
+          managing || searching || expanded.get(volume.id),
           searching,
           pages.get(volume.id) || 0,
           (page) => pages.set(volume.id, page),
           (isOpen) => {
             if (!searching) expanded.set(volume.id, isOpen);
           },
+          managing,
+          index,
         ))
       : [el("p", { class: "empty outline-empty", text: "No sections match your search." })]);
   };
 
-  if (!total) {
+  if (!total || managing) {
     render("");
-    return list;
+    return el("div", { class: `outline-browser${managing ? " managing" : ""}` }, [
+      managing ? el("p", {
+        class: "manage-help muted",
+      }, [
+        el("span", {
+          text: "Drag sections or volumes into place, or use the arrow and Move controls.",
+        }),
+        el("span", {
+          id: "contents-save-status", class: "contents-save-status",
+          role: "status", "aria-live": "polite",
+        }),
+      ]) : null,
+      list,
+    ]);
   }
   const search = el("input", {
     id: "outline-search",
@@ -456,9 +623,44 @@ function resumeCallout(manuscript, marks) {
   ]);
 }
 
+function pendingMoveNotices(manuscript) {
+  return (manuscript.pending_section_moves || []).map((pending) => {
+    const target = manuscript.volumes.find(
+      (volume) => volume.id === pending.target_volume,
+    );
+    const label = pending.title || pending.section;
+    const destination = target ? target.title : pending.target_volume;
+    const status = el("span", {
+      class: "move-warning-status",
+      role: "status",
+      "aria-live": "polite",
+    });
+    return el("section", { class: "reader-notice move-warning", role: "alert" }, [
+      el("span", { class: "move-warning-copy" }, [
+        el("strong", { text: "Move interrupted" }),
+        el("span", {
+          text: `${label} is safe but has not finished moving to ${destination}.`,
+        }),
+        status,
+      ]),
+      manuscript.permissions.write ? el("button", {
+        class: "btn sm", type: "button", text: "Finish move",
+        onclick: async (event) => {
+          event.currentTarget.disabled = true;
+          await contentManager.finishPendingMove(manuscript, pending, status);
+          if (event.currentTarget.isConnected) event.currentTarget.disabled = false;
+        },
+      }) : el("span", {
+        class: "muted", text: "An editor must finish this move.",
+      }),
+    ]);
+  });
+}
+
 function renderBook(manuscript, notice = null) {
   hideReaderChrome();
   pageManuscript = manuscript;
+  contentManager.setManuscript(manuscript);
   const marks = bookmarks(manuscript);
   const totalSections = sectionCount(manuscript.volumes);
   document.title = `${manuscript.title || manuscript.book} — Logos`;
@@ -478,9 +680,22 @@ function renderBook(manuscript, notice = null) {
       }),
       (manuscript.volumes.length || manuscript.permissions.write) ? el("div", { class: "book-actions" }, [
         manuscript.permissions.write ? el("button", {
-          class: "btn", type: "button", text: "New chapter",
-          onclick: () => beginWriting(manuscript, BASE)
-            .catch((error) => showTransientError(error.message || "The chapter could not be created.")),
+          class: "btn", type: "button", text: "New volume",
+          onclick: () => contentManager.openVolumeCreator(manuscript),
+        }) : null,
+        manuscript.permissions.write && manuscript.volumes.length ? el("button", {
+          class: "btn ghost", type: "button", text: "New chapter",
+          onclick: () => contentManager.openChapterCreator(manuscript),
+        }) : null,
+        manuscript.permissions.write && manuscript.volumes.length ? el("button", {
+          class: managingContents ? "btn" : "btn ghost",
+          type: "button",
+          text: managingContents ? "Done arranging" : "Manage contents",
+          "aria-pressed": String(managingContents),
+          onclick: () => {
+            managingContents = !managingContents;
+            renderBook(manuscript);
+          },
         }) : null,
         manuscript.volumes.length ? el("button", { class: "btn ghost", type: "button", text: "Search series", onclick: openSearch }) : null,
         manuscript.volumes.length ? el("button", { class: "btn ghost", type: "button", text: "Bookmarks", onclick: () => openBookmarks().catch((error) => showTransientError(error.message)) }) : null,
@@ -488,9 +703,10 @@ function renderBook(manuscript, notice = null) {
       ]) : null,
     ]),
     notice ? el("p", { class: "reader-notice", role: "status", text: notice }) : null,
+    pendingMoveNotices(manuscript),
     resumeCallout(manuscript, marks),
     manuscript.volumes.length
-      ? outlineBrowser(manuscript, marks)
+      ? outlineBrowser(manuscript, marks, managingContents)
       : el("p", { class: "empty", text: "This book has no manuscript volumes yet." }),
   ]);
 }
@@ -916,6 +1132,35 @@ function showTransientError(message) {
   window.setTimeout(() => notice.remove(), 3500);
 }
 
+const contentManager = createContentManager({
+  api,
+  base: BASE,
+  editorUrl: writerUrl,
+  navigate: (url) => { window.location.href = url; },
+  render: renderBook,
+  showError: showTransientError,
+  elements: {
+    content,
+    volumeDialog,
+    volumeForm,
+    volumeName,
+    volumeOverview,
+    volumeError,
+    chapterDialog,
+    chapterForm,
+    chapterName,
+    chapterVolume,
+    chapterError,
+    moveDialog,
+    moveForm,
+    moveTitle,
+    moveVolume,
+    movePosition,
+    moveError,
+    closeButtons: document.querySelectorAll("[data-dialog-close]"),
+  },
+});
+
 // -- bookmarks and manuscript search ---------------------------------------
 
 function renderBookmarks() {
@@ -1322,6 +1567,7 @@ function update(patch) {
 }
 
 function wire() {
+  contentManager.wire();
   writeButton.addEventListener("click", () => {
     if (!open) return;
     const url = new URL(writerUrl(
@@ -1522,6 +1768,15 @@ async function start() {
     // section needs no cleanup here beyond showing the outline again.
     renderBook(manuscript, "That section is no longer available. Choose another section.");
     return;
+  }
+  if (entry.volume.id !== volume) {
+    const moved = readerUrl(
+      manuscript.book,
+      entry.volume.id,
+      entry.section.id,
+      query.get("block"),
+    );
+    window.history.replaceState(null, "", moved);
   }
   await openSection(manuscript, entry);
 }

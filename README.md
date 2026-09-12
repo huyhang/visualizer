@@ -87,7 +87,8 @@ docker compose -f docker/docker-compose.nas.yml up --build -d
   and a map with its pins drawn on is at `…/maps/{map}/render.svg`.
 - **http://localhost:5002/logos/** — the manuscript workspace: write with local
   recovery and a private writing coach, keep alternate chapter drafts, compare
-  them, and look up or link selected Akasha entities without leaving the page.
+  them, organise volumes and sections, and look up or link selected Akasha
+  entities without leaving the page.
   The existing focused/full reader, search, private notes, progress sync and
   whole-series PDF/EPUB publication remain available.
 - **http://localhost:5002/health** — akasha liveness; **/timeline/health**,

@@ -16,6 +16,7 @@ from .errors import (
     BookNotFound,
     CascadeRequired,
     ChronosEventNotFound,
+    InvalidOrder,
     InvalidSection,
     ManuscriptNotFound,
     PrimaryDraftConflict,
@@ -44,6 +45,7 @@ from .validation import (
     validate_new_draft,
     validate_order,
     validate_primary_draft,
+    validate_section_move,
     validate_section_payload,
     validate_volume_payload,
 )
@@ -264,7 +266,10 @@ class ManuscriptService(_Service):
             self._volume_view(book, record)
             for record in self._ordered_volumes(book)
         ]
-        return present_manuscript(book, chronos_book, volumes, outline)
+        result = present_manuscript(book, chronos_book, volumes, outline)
+        result["section_aliases"] = self.store.list_section_moves(book)
+        result["pending_section_moves"] = self.store.list_pending_section_moves(book)
+        return result
 
     def publication(self, book: str) -> dict:
         """The whole current manuscript, including prose, in reading order.
@@ -443,6 +448,11 @@ class VolumeService(_Service):
         self._book(book)
         record = self._require_volume(book, volume_id)
         self._check_rev(record, expected_rev)
+        if self.store.has_pending_section_moves(book, volume_id):
+            raise RevisionConflict(
+                "This volume is part of an unfinished section move. "
+                "Finish that move before deleting the volume."
+            )
         sections = self.store.list_sections(book, volume_id)
         if sections and not cascade:
             raise CascadeRequired(
@@ -502,6 +512,11 @@ class SectionService(_Service):
         if self.store.find_section(book, volume_id, section_id) is not None:
             raise AlreadyExists(
                 f"Section '{section_id}' already exists in volume '{volume_id}'."
+            )
+        if self.store.find_section_move(book, volume_id, section_id) is not None:
+            raise AlreadyExists(
+                f"Section id '{section_id}' is reserved by a section moved from "
+                f"volume '{volume_id}'."
             )
         primary = "draft-1"
         section = replace(section, primary_draft_id=primary)
@@ -694,6 +709,219 @@ class SectionService(_Service):
         # Section order renumbers chapters, and the number is in the hit label.
         self._reindex_search(book)
         return self._volume_view(book, updated)
+
+    def move(
+        self,
+        book: str,
+        source_volume: str,
+        section_id: str,
+        payload,
+        expected_rev: int,
+        author: str,
+    ) -> dict:
+        """Move a section and its complete versioned bundle to another volume."""
+        self._book(book)
+        target_volume, before = validate_section_move(payload)
+        if target_volume == source_volume:
+            raise InvalidOrder(
+                "Use section ordering to move a section within its current volume."
+            )
+        pending = self._move_intent(
+            book,
+            source_volume,
+            target_volume,
+            section_id,
+            before,
+            expected_rev,
+            author,
+        )
+
+        if pending.get("state") == "complete":
+            return ManuscriptService(self.store, self.chronos, self.articles).get(book)
+
+        self._relocate_bundle(
+            book,
+            source_volume,
+            target_volume,
+            section_id,
+            pending["section_rev"],
+            author,
+        )
+        target_record = self._require_volume(book, target_volume)
+        moved_section = self.store.get_section(book, target_volume, section_id)
+        self._check_kind(
+            book,
+            target_record,
+            Section.from_storage(moved_section),
+            ignore=section_id,
+        )
+        self._remove_from_volume(book, source_volume, section_id, author)
+        self._insert_into_volume(
+            book, target_volume, section_id, pending.get("before"), author
+        )
+        self.store.move_reader_locations(
+            book, source_volume, target_volume, section_id
+        )
+        self._reindex_search(book)
+        self.store.complete_section_move(book, source_volume, section_id)
+        return ManuscriptService(self.store, self.chronos, self.articles).get(book)
+
+    def _move_intent(
+        self,
+        book: str,
+        source_volume: str,
+        target_volume: str,
+        section_id: str,
+        before: str | None,
+        expected_rev: int,
+        author: str,
+    ) -> dict:
+        pending = self.store.find_section_move(book, source_volume, section_id)
+        source = (
+            self.store.find_section(book, source_volume, section_id)
+            if pending is not None and pending.get("state") == "complete"
+            else None
+        )
+        starting = pending is None or source is not None
+        if starting:
+            source = source or self._require_section(
+                book, source_volume, section_id
+            )
+            self._check_rev(source, expected_rev)
+            self._require_volume(book, source_volume)
+            target_record = self._require_volume(book, target_volume)
+            target_ids = [
+                row["section"] for row in self._ordered_sections(book, target_record)
+            ]
+            if section_id in target_ids:
+                raise AlreadyExists(
+                    f"Volume '{target_volume}' already has a section named "
+                    f"'{section_id}'."
+                )
+            drafts = self.store.list_drafts(book, source_volume, section_id)
+            identity_taken = self.store.section_identity_exists(
+                book, target_volume, section_id
+            ) or any(
+                self.store.draft_identity_exists(
+                    book, target_volume, section_id, draft["draft"]
+                )
+                for draft in drafts
+            )
+            if identity_taken:
+                raise AlreadyExists(
+                    "That section location is retained by deleted history; "
+                    "choose a different section id."
+                )
+            if before is not None and before not in target_ids:
+                raise InvalidOrder(
+                    f"The insertion point '{before}' is not in volume "
+                    f"'{target_volume}'."
+                )
+            self._check_kind(book, target_record, Section.from_storage(source))
+            pending = self.store.begin_section_move(
+                book,
+                source_volume,
+                target_volume,
+                section_id,
+                before,
+                expected_rev,
+                author,
+                source.get("title"),
+                source["kind"],
+                restart=pending is not None,
+            )
+        if (
+            pending["target_volume"] != target_volume
+            or pending.get("before") != before
+        ):
+            raise RevisionConflict(
+                "That section has already been moved; reload the manuscript."
+            )
+        return pending
+
+    def _relocate_bundle(
+        self,
+        book: str,
+        source_volume: str,
+        target_volume: str,
+        section_id: str,
+        expected_rev: int,
+        author: str,
+    ) -> None:
+        # Moving the section first prevents any new draft save through its old
+        # path. Drafts can then move at their current revisions without a race.
+        moved = self.store.relocate_section(
+            book,
+            source_volume,
+            target_volume,
+            section_id,
+            expected_rev,
+            author,
+        )
+        if moved["rev"] == expected_rev:
+            self.store.update_section(
+                book,
+                target_volume,
+                section_id,
+                Section.from_storage(moved).to_storage(),
+                expected_rev,
+                author,
+            )
+        for draft in self.store.list_drafts(book, source_volume, section_id):
+            self.store.relocate_draft(
+                book,
+                source_volume,
+                target_volume,
+                section_id,
+                draft["draft"],
+                draft["rev"],
+                author,
+            )
+
+    def _remove_from_volume(
+        self, book: str, volume_id: str, section_id: str, author: str
+    ) -> None:
+        def remove(volume: Volume) -> Volume:
+            return replace(
+                volume,
+                sections=[item for item in volume.sections if item != section_id],
+            )
+
+        self._patch_volume(book, volume_id, remove, author)
+
+    def _insert_into_volume(
+        self,
+        book: str,
+        volume_id: str,
+        section_id: str,
+        before: str | None,
+        author: str,
+    ) -> None:
+        def insert(volume: Volume) -> Volume:
+            if section_id in volume.sections:
+                return volume
+            sections = list(volume.sections)
+            at = sections.index(before) if before in sections else len(sections)
+            sections.insert(at, section_id)
+            return replace(volume, sections=sections)
+
+        self._patch_volume(book, volume_id, insert, author)
+
+    def _patch_volume(self, book: str, volume_id: str, change, author: str) -> None:
+        for _attempt in range(3):
+            record = self._require_volume(book, volume_id)
+            current = Volume.from_storage(record)
+            updated = change(current)
+            if updated.sections == current.sections:
+                return
+            try:
+                self.store.update_volume(
+                    book, volume_id, updated.to_storage(), record["rev"], author
+                )
+                return
+            except RevisionConflict:
+                continue
+        raise RevisionConflict("The volume order kept changing; retry the move.")
 
     def history(self, book: str, volume_id: str, section_id: str) -> dict:
         self._book(book)

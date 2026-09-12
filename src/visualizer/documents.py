@@ -255,7 +255,11 @@ class VersionedDocuments:
         One query for the heads and one for their bodies, rather than one per
         record: a world with fifty maps should not cost fifty round trips.
         """
-        heads = list(self._heads.find({**filters, "deleted": False}))
+        heads = list(
+            self._heads.find(
+                {**filters, "deleted": False, "moving_to": {"$exists": False}}
+            )
+        )
         if not heads:
             return []
         ids = [head["current_revision"] for head in heads]
@@ -264,7 +268,13 @@ class VersionedDocuments:
         return sorted(rows, key=lambda row: tuple(row[f] for f in self._fields))
 
     def count(self, filters: dict) -> int:
-        return self._heads.count_documents({**filters, "deleted": False})
+        return self._heads.count_documents(
+            {**filters, "deleted": False, "moving_to": {"$exists": False}}
+        )
+
+    def identity_exists(self, identity: dict) -> bool:
+        """Whether an identity is reserved, including by a retained tombstone."""
+        return self._heads.find_one({"_id": self._key(identity)}, {"_id": 1}) is not None
 
     def history(self, identity: dict, not_found) -> list[dict]:
         """Retained revisions, newest first, including a delete."""
@@ -294,6 +304,93 @@ class VersionedDocuments:
     def delete(self, identity: dict, expected_rev, author, not_found) -> None:
         head = self._live_head(identity, not_found)
         self._advance(head, None, DELETE, expected_rev, author)
+
+    def relocate(
+        self,
+        identity: dict,
+        destination: dict,
+        expected_rev,
+        author,
+        not_found,
+        already_exists,
+    ) -> dict:
+        """Move a live record to another composite identity without losing history.
+
+        The head is locked before its replacement is inserted.  Ordinary writes
+        include that lock in their compare-and-swap, so prose cannot change while
+        its revision chain is being re-keyed.  Each step is repeatable: a caller
+        may resume after an interrupted request by presenting the same source and
+        destination.
+        """
+        source_key = self._key(identity)
+        destination_key = self._key(destination)
+        if source_key == destination_key:
+            return self.get(identity, not_found)
+
+        source = self._heads.find_one({"_id": source_key})
+        target = self._heads.find_one({"_id": destination_key})
+        if source is None:
+            if target is not None and not target.get("deleted"):
+                return self._public(target, self._body_of(target))
+            raise not_found(f"'{self._label(identity)}' was not found.")
+        if source.get("deleted"):
+            raise not_found(f"'{self._label(identity)}' was not found.")
+        moving_to = source.get("moving_to")
+        if moving_to not in (None, destination_key):
+            raise self._conflict("The resource is already being moved elsewhere.")
+        if moving_to is None:
+            if source["rev"] != expected_rev:
+                raise self._conflict(
+                    f"Modified since revision {expected_rev}; reload and retry.",
+                    evidence={"expected": expected_rev, "actual": source["rev"]},
+                )
+            locked = self._heads.update_one(
+                {
+                    "_id": source_key,
+                    "rev": expected_rev,
+                    "deleted": False,
+                    "moving_to": {"$exists": False},
+                },
+                {"$set": {"moving_to": destination_key}},
+            )
+            if locked.matched_count == 0:
+                raise self._conflict("Modified concurrently; reload and retry.")
+            source["moving_to"] = destination_key
+
+        if target is None:
+            moved = {
+                **source,
+                "_id": destination_key,
+                **destination,
+                "updated_by": author,
+                "updated_at": self._now(),
+            }
+            moved.pop("moving_to", None)
+            try:
+                self._heads.insert_one(moved)
+            except DuplicateKeyError as exc:
+                target = self._heads.find_one({"_id": destination_key})
+                if target is None:
+                    raise already_exists(
+                        f"'{self._label(destination)}' already exists."
+                    ) from exc
+            else:
+                target = moved
+        if target.get("deleted") or (
+            target["current_revision"] != source["current_revision"]
+        ):
+            self._heads.update_one(
+                {"_id": source_key, "moving_to": destination_key},
+                {"$unset": {"moving_to": ""}},
+            )
+            raise already_exists(f"'{self._label(destination)}' already exists.")
+
+        self._revisions.update_many(
+            {"resource_key": source_key},
+            {"$set": {"resource_key": destination_key, **destination}},
+        )
+        self._heads.delete_one({"_id": source_key, "moving_to": destination_key})
+        return self._public(target, self._body_of(target))
 
     def restore(
         self, identity: dict, rev: int, expected_rev, author, not_found,
@@ -349,7 +446,11 @@ class VersionedDocuments:
         )
         self._revisions.insert_one(revision)
         moved = self._heads.update_one(
-            {"_id": head["_id"], "rev": head["rev"]},
+            {
+                "_id": head["_id"],
+                "rev": head["rev"],
+                "moving_to": {"$exists": False},
+            },
             {
                 "$set": {
                     "rev": rev,
@@ -396,6 +497,8 @@ class VersionedDocuments:
         head = self._any_head(identity, not_found)
         if head.get("deleted"):
             raise not_found(f"'{self._label(identity)}' was not found.")
+        if head.get("moving_to"):
+            raise self._conflict("The resource is being moved; retry shortly.")
         return head
 
     def _any_head(self, identity: dict, not_found) -> dict:

@@ -72,8 +72,20 @@ export const api = {
   createVolume: (book, volume, body) => json(
     "POST", `/books/${enc(book)}/volumes/${enc(volume)}`, body,
   ),
+  reorderVolumes: (book, volumes, revision) => json(
+    "PUT", `/books/${enc(book)}/volume-order`, { volumes }, revision,
+  ),
   createSection: (book, volume, section, body) => json(
     "POST", `${volumePath(book, volume)}/sections/${enc(section)}`, body,
+  ),
+  reorderSections: (book, volume, sections, revision) => json(
+    "PUT", `${volumePath(book, volume)}/section-order`, { sections }, revision,
+  ),
+  moveSection: (book, volume, section, targetVolume, before, revision) => json(
+    "PUT", `${sectionPath(book, volume, section)}/placement`, {
+      target_volume: targetVolume,
+      before,
+    }, revision,
   ),
   section: (book, volume, section) =>
     get(sectionPath(book, volume, section)),

@@ -27,7 +27,7 @@ _MODULES = (
     "dom.js", "prose.js", "preferences.js", "navigation.js", "outline.js",
     "position.js", "progress.js", "boundary.js", "readerdata.js",
     "editor.js", "comparison.js", "recovery.js", "coachpanel.js",
-    "akashapanel.js", "contextmenu.js", "draftstate.js",
+    "akashapanel.js", "contextmenu.js", "draftstate.js", "contents.js",
 )
 
 _PREAMBLE = """\
@@ -61,6 +61,10 @@ import { createCoachPanel } from "./coachpanel.js";
 import { createAkashaPanel } from "./akashapanel.js";
 import { menuPosition } from "./contextmenu.js";
 import { createDraftState } from "./draftstate.js";
+import {
+  allSectionIds, availableId, beforeForPosition, moveBefore, sameOrder,
+  singletonConflict,
+} from "./contents.js";
 
 const INPUT = %s;
 
@@ -106,6 +110,18 @@ def _node_binary():
     exe = "node.exe" if sys.platform == "win32" else "node"
     candidate = Path(nodejs_wheel.__file__).parent / "bin" / exe
     return str(candidate) if candidate.exists() else None
+
+
+def test_browser_entrypoint_is_valid_javascript():
+    node = _node_binary()
+    if node is None:
+        pytest.skip("no node available")
+    subprocess.run(
+        [node, "--check", str(_JS_DIR / "app.js")],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
 
 @pytest.fixture(scope="module")
@@ -794,6 +810,72 @@ def test_the_display_fields_are_every_choice_but_the_mode(run_js):
 # -- moving between sections and volumes --------------------------------------
 
 
+def test_content_ordering_moves_an_item_without_losing_its_siblings(run_js):
+    assert run_js(
+        "emit([moveBefore(['a', 'b', 'c'], 'c', 'b'),"
+        " moveBefore(['a', 'b', 'c'], 'a', null),"
+        " moveBefore(['a', 'b'], 'a', 'a'),"
+        " sameOrder(['a', 'b'], ['a', 'b']),"
+        " sameOrder(['a', 'b'], ['b', 'a'])]);"
+    ) == [
+        ["a", "c", "b"],
+        ["b", "c", "a"],
+        ["a", "b"],
+        True,
+        False,
+    ]
+
+
+def test_move_positions_and_singleton_conflicts_are_derived_from_the_outline(
+    run_js,
+):
+    manuscript = {
+        "volumes": [
+            {
+                "id": "one",
+                "sections": [
+                    {"id": "opening", "kind": "prologue"},
+                    {"id": "chapter-1", "kind": "chapter"},
+                ],
+            },
+            {
+                "id": "two",
+                "sections": [{"id": "other-opening", "kind": "prologue"}],
+            },
+        ]
+    }
+    assert run_js(
+        "const [one, two] = INPUT.volumes;"
+        "emit([beforeForPosition(one.sections, 'start', 'chapter-1'),"
+        " beforeForPosition(one.sections, 'opening', 'chapter-1'),"
+        " beforeForPosition(one.sections, 'end', 'chapter-1'),"
+        " singletonConflict(one.sections[0], two)?.id || null,"
+        " singletonConflict(one.sections[1], two)]);",
+        manuscript,
+    ) == ["opening", None, None, "other-opening", None]
+
+
+def test_a_generated_content_id_is_readable_and_unique(run_js):
+    manuscript = {
+        "volumes": [
+            {"sections": [{"id": "the-broken-gate"}]},
+            {"sections": [{"id": "the-broken-gate-2"}]},
+        ]
+    }
+    assert run_js(
+        "emit([availableId('The Broken Gate', new Set(), 'chapter'),"
+        " availableId('The Broken Gate', new Set(['the-broken-gate']), 'chapter'),"
+        " availableId('***', new Set(['chapter']), 'chapter'),"
+        " [...allSectionIds(INPUT)].sort()]);",
+        manuscript,
+    ) == [
+        "the-broken-gate",
+        "the-broken-gate-2",
+        "chapter-2",
+        ["the-broken-gate", "the-broken-gate-2"],
+    ]
+
+
 def test_the_pager_stops_at_both_ends(run_js):
     """Both pagers share this. A "next" on the last section that reloads the
     same section is the bug, and it is invisible until you reach the end."""
@@ -864,6 +946,25 @@ def test_section_navigation_crosses_volume_boundaries(run_js):
             },
         },
     ]
+
+
+def test_old_section_locations_follow_move_aliases(run_js):
+    manuscript = {
+        "volumes": [
+            {"id": "one", "sections": []},
+            {"id": "two", "sections": []},
+            {"id": "three", "sections": [{"id": "opening"}]},
+        ],
+        "section_aliases": [
+            {"source_volume": "one", "target_volume": "two", "section": "opening"},
+            {"source_volume": "two", "target_volume": "three", "section": "opening"},
+        ],
+    }
+    assert run_js(
+        "const found = findSection(INPUT, 'one', 'opening');"
+        "emit([found.volume.id, found.section.id]);",
+        manuscript,
+    ) == ["three", "opening"]
 
 
 def test_outline_search_matches_section_metadata_and_volume_titles(run_js):

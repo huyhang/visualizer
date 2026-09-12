@@ -164,6 +164,33 @@ def test_a_retained_revision_can_still_be_read(documents):
     assert older["world"] == "earth"
 
 
+def test_relocating_a_record_keeps_its_revision_chain(documents):
+    create(documents, n=1)
+    documents.update(THING, {"n": 2}, 1, "mara", Missing)
+
+    moved = documents.relocate(THING, OTHER, 2, "devi", Missing, Taken)
+
+    assert moved["map"] == "east"
+    assert moved["n"] == 2
+    assert [row["rev"] for row in documents.history(OTHER, Missing)] == [2, 1]
+    assert documents.revision(OTHER, 1, Missing)["n"] == 1
+    with pytest.raises(Missing):
+        documents.get(THING, Missing)
+
+
+def test_relocation_obeys_revision_and_destination_guards(documents):
+    create(documents)
+    with pytest.raises(Stale):
+        documents.relocate(THING, OTHER, 99, "mara", Missing, Taken)
+
+    create(documents, identity=OTHER)
+    with pytest.raises(Taken):
+        documents.relocate(THING, OTHER, 1, "mara", Missing, Taken)
+
+    # A refused destination must not leave the source locked.
+    assert documents.update(THING, {"n": 3}, 1, "mara", Missing)["n"] == 3
+
+
 # -- listing ------------------------------------------------------------------
 
 

@@ -140,6 +140,17 @@ def validate_order(payload: Any, field: str, known: list[str]) -> list[str]:
     return requested
 
 
+def validate_section_move(payload: Any) -> tuple[str, str | None]:
+    """Read a move destination and its optional insertion anchor."""
+    body = _mapping(payload, InvalidOrder, "A section move body")
+    _only(body, {"target_volume", "before"}, InvalidOrder, "section move")
+    target = validate_identifier(body.get("target_volume"), "target volume")
+    before = body.get("before")
+    if before is not None:
+        before = validate_identifier(before, "before section")
+    return target, before
+
+
 def _title(value: Any) -> str | None:
     if value is None:
         return None

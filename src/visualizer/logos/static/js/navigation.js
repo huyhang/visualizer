@@ -24,9 +24,28 @@ export function readingOrder(manuscript) {
 }
 
 export function findSection(manuscript, volumeId, sectionId) {
-  return readingOrder(manuscript).find(
-    (entry) => entry.volume.id === volumeId && entry.section.id === sectionId,
+  const ordered = readingOrder(manuscript);
+  const direct = (volume) => ordered.find(
+    (entry) => entry.volume.id === volume && entry.section.id === sectionId,
   ) || null;
+  let found = direct(volumeId);
+  if (found) return found;
+
+  // A move keeps old bookmarks and URLs useful. Follow the short alias chain
+  // until the section's current volume is found; a malformed cycle fails shut.
+  const seen = new Set();
+  let volume = volumeId;
+  while (!seen.has(volume)) {
+    seen.add(volume);
+    const moved = (manuscript.section_aliases || []).find(
+      (alias) => alias.source_volume === volume && alias.section === sectionId,
+    );
+    if (!moved) return null;
+    volume = moved.target_volume;
+    found = direct(volume);
+    if (found) return found;
+  }
+  return null;
 }
 
 /** Previous and next sections in book order, including volume boundaries. */
