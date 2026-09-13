@@ -65,18 +65,36 @@
         rather than a line of standing text beside the prose.
       #}
       <div class="reader-toolbar" id="reader-toolbar" hidden>
-        <button class="btn sm" id="write-open" type="button" hidden>Edit</button>
-        <button class="btn ghost" id="mode-toggle" type="button"
-                aria-pressed="false">Focused</button>
-        <button class="btn ghost sm" id="settings-open" type="button">
-          Reading settings
+        <button class="btn sm compact-action" id="write-open" type="button"
+                title="Edit" hidden>
+          <span class="compact-action-glyph" aria-hidden="true">✎</span>
+          <span class="compact-action-label">Edit</span>
         </button>
-        <button class="btn ghost sm" id="jump-open" type="button"
-                aria-label="Jump to section" title="Jump to section">
-          Contents
+        <button class="btn ghost compact-action" id="mode-toggle" type="button"
+                title="Focused" aria-pressed="false">
+          <span class="compact-action-glyph" aria-hidden="true">▯</span>
+          <span class="compact-action-label">Focused</span>
         </button>
-        <button class="btn ghost sm" id="search-open" type="button">Search</button>
-        <button class="btn ghost sm" id="bookmarks-open" type="button">Bookmarks</button>
+        <button class="btn ghost sm compact-action" id="settings-open" type="button"
+                title="Reading settings">
+          <span class="compact-action-glyph" aria-hidden="true">⚙</span>
+          <span class="compact-action-label">Reading settings</span>
+        </button>
+        <button class="btn ghost sm compact-action" id="jump-open" type="button"
+                title="Jump to section">
+          <span class="compact-action-glyph" aria-hidden="true">☷</span>
+          <span class="compact-action-label">Contents</span>
+        </button>
+        <button class="btn ghost sm compact-action" id="search-open" type="button"
+                title="Search">
+          <span class="compact-action-glyph" aria-hidden="true">⌕</span>
+          <span class="compact-action-label">Search</span>
+        </button>
+        <button class="btn ghost sm compact-action" id="bookmarks-open" type="button"
+                title="Bookmarks">
+          <span class="compact-action-glyph" aria-hidden="true">◆</span>
+          <span class="compact-action-label">Bookmarks</span>
+        </button>
       </div>
 
       <div class="reading-progress" id="reading-progress" hidden>

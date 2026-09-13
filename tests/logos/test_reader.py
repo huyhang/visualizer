@@ -318,6 +318,7 @@ def test_the_reader_assets_are_served(client):
         "/static/logos-glyph.svg",
         "/static/logos-icon.svg",
         "/static/js/app.js",
+        "/static/js/compactaction.js",
         "/static/js/api.js",
         "/static/js/dom.js",
         "/static/js/prose.js",
@@ -339,6 +340,108 @@ def test_the_reader_assets_are_served(client):
         response = client.get(path)
         assert response.status_code == 200, path
         assert response.get_data(), path
+
+
+def test_logos_has_a_deliberate_mobile_action_hierarchy(client):
+    html = client.get("/").get_data(as_text=True)
+    sheet = (_LOGOS / "static" / "reader.css").read_text()
+    app = (_LOGOS / "static" / "js" / "app.js").read_text()
+    writer = (_LOGOS / "static" / "js" / "writer.js").read_text()
+
+    assert html.count("compact-action") >= 6
+    assert "compact-actions" in app
+    assert "writer-draft-actions" in writer
+    assert "format-insertOrderedList" in sheet
+    assert "writer-block-style-compact" in writer
+    assert '["P", "H1", "H2", "H3"]' in writer
+    assert "grid-template-columns: repeat(7, 32px) 48px" in sheet
+    assert ".compact-action-label" in sheet
+    assert ".compact-action-glyph" in sheet
+    assert "min-height: 44px" in sheet
+    assert "var(--service-nav-h)" in sheet
+    assert "100dvh" in sheet
+
+
+def _function_body(source: str, declaration: str) -> str:
+    """The brace-matched body of a named function, so a glyph in one action
+    group is never confused with the same glyph in another. The parameter list
+    is skipped first: `function topbar({ base, ... })` opens a brace of its own
+    that is not the body."""
+    start = source.index(declaration) + len(declaration)
+    opening = source.index("{", source.index(")", start))
+    depth, index = 0, opening
+    while index < len(source):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        index += 1
+    return source[opening:index]
+
+
+def _between(source: str, opening: str, closing: str) -> str:
+    start = source.index(opening) + len(opening)
+    return source[start:source.index(closing, start)]
+
+
+def _glyphs_in(body: str) -> list[str]:
+    """Every glyph a group draws: the second positional argument of a local
+    ``button``/``formatButton`` helper, a named ``glyph:``, the two arms of a
+    state ternary, and the bare ``text:`` marks on the drawer toggles."""
+    found = re.findall(r'\w+\(\s*"[^"]*",\s*"([^"]+)"', body)
+    found += re.findall(r'glyph:\s*"([^"]+)"', body)
+    found += re.findall(r'text:\s*"(\S{1,2})"', body)
+    found += [
+        arm
+        for pair in re.findall(r'\?\s*"([^"]+)"\s*:\s*"([^"]+)"', body)
+        for arm in pair
+        if len(arm) <= 2
+    ]
+    return found
+
+
+def test_one_action_group_never_draws_two_actions_the_same_way(client):
+    """A glyph is the whole of a compacted button, so two actions wearing the
+    same mark in one row are indistinguishable -- the reader cannot tell which
+    of them makes a volume and which makes a section. Distinctness is a
+    property of the *group*: `Search` and `Search series` sharing a mark across
+    two different surfaces is correct, and is why this is not one global set.
+    """
+    app = (_LOGOS / "static" / "js" / "app.js").read_text()
+    writer = (_LOGOS / "static" / "js" / "writer.js").read_text()
+    groups = {
+        "book actions": _glyphs_in(_function_body(app, "function bookActions(")),
+        "writer topbar": _glyphs_in(_function_body(writer, "function topbar(")),
+        "formatting bar": _glyphs_in(
+            _between(writer, "const toolbar = el(", "]);")
+        ),
+    }
+    html = client.get("/").get_data(as_text=True)
+    toolbar = html.split('id="reader-toolbar"', 1)[1].split("</div>", 1)[0]
+    groups["reader toolbar"] = re.findall(
+        r'class="compact-action-glyph"[^>]*>([^<]+)<', toolbar
+    )
+
+    for name, glyphs in groups.items():
+        # Without this the regex could quietly match nothing and the test would
+        # pass by finding no duplicates among no glyphs.
+        assert len(glyphs) >= 4, (name, glyphs)
+        duplicates = {g for g in glyphs if glyphs.count(g) > 1}
+        assert not duplicates, (name, sorted(duplicates), glyphs)
+
+
+def test_the_reading_mode_button_says_which_mode_it_is_in(client):
+    """The label is visually hidden on a phone, so a mode toggle whose glyph
+    never changes tells a phone reader nothing about which view they are in."""
+    app = (_LOGOS / "static" / "js" / "app.js").read_text()
+    modes = _between(app, "const MODE_TEXT = {", "};")
+    marks = re.findall(r'\[\s*"[^"]+",\s*"([^"]+)"', modes)
+
+    assert len(marks) == 2, modes
+    assert marks[0] != marks[1], marks
+    assert 'querySelector(".compact-action-glyph").textContent' in app
 
 
 # -- the scene projection -----------------------------------------------------

@@ -4,6 +4,7 @@
 
 import { ApiError, BASE, api } from "./api.js";
 import { boundaryGesture } from "./boundary.js";
+import { compactAction } from "./compactaction.js";
 import { createContentManager } from "./contentmanager.js";
 import { el, fill, nodeFactory, svgEl } from "./dom.js";
 import {
@@ -141,9 +142,12 @@ const edgeGesture = boundaryGesture();
 let searchMatches = [];
 let managingContents = false;
 
+// The glyph carries the state too, not just the word: the label is visually
+// hidden on a phone, so a fixed mark would leave the compacted button saying
+// nothing about which view you are in.
 const MODE_TEXT = {
-  focused: ["Focused", "Prose and bookmarks — nothing from any other service. Switch to Full view."],
-  full: ["Full view", "With the Chronos scenes this section was written from. Switch to Focused."],
+  focused: ["Focused", "▯", "Prose and bookmarks — nothing from any other service. Switch to Full view."],
+  full: ["Full view", "◫", "With the Chronos scenes this section was written from. Switch to Focused."],
 };
 
 // A stable line near the top of the viewport is anchored to a manuscript block
@@ -171,6 +175,45 @@ const meta = (...parts) => parts.filter(Boolean).join(" · ");
 
 function percent(value) {
   return `${Math.round(value * 100)}%`;
+}
+
+function bookActions(manuscript) {
+  const canWrite = manuscript.permissions.write;
+  const hasVolumes = manuscript.volumes.length > 0;
+  const actions = [];
+  const button = (label, glyph, onclick, className = "btn ghost", extra = {}) =>
+    compactAction({ label, glyph, className, onclick, ...extra });
+
+  if (canWrite) {
+    actions.push(button(
+      "New volume", "▤", () => contentManager.openVolumeCreator(manuscript), "btn",
+    ));
+  }
+  if (canWrite && hasVolumes) {
+    actions.push(button(
+      "New section", "+", () => contentManager.openSectionCreator(manuscript),
+    ));
+    actions.push(button(
+      managingContents ? "Done arranging" : "Manage contents",
+      managingContents ? "✓" : "↕",
+      () => {
+        managingContents = !managingContents;
+        renderBook(manuscript);
+      },
+      managingContents ? "btn" : "btn ghost",
+      { "aria-pressed": String(managingContents) },
+    ));
+  }
+  if (hasVolumes) {
+    actions.push(
+      button("Search series", "⌕", openSearch),
+      button("Bookmarks", "◆", () => openBookmarks().catch(
+        (error) => showTransientError(error.message),
+      )),
+    );
+    if (canWrite) actions.push(button("Publish series", "⇩", openPublication));
+  }
+  return el("div", { class: "book-actions compact-actions" }, actions);
 }
 
 function hideReaderChrome() {
@@ -532,7 +575,8 @@ function volumeCard(
     }, [el("span", { text: "Drop at end" })]) : null,
     manuscript.permissions.write ? el("div", { class: "volume-actions" }, [
       managing ? el("button", {
-        class: "new-chapter", type: "button", text: "Rename volume",
+        class: "new-chapter", type: "button", text: "Rename",
+        "aria-label": `Rename volume ${volume.title}`,
         onclick: () => contentManager.openVolumeRenamer(manuscript, volume.id),
       }) : null,
       el("button", {
@@ -701,29 +745,8 @@ function renderBook(manuscript, notice = null) {
           words(manuscript.word_count),
         ),
       }),
-      (manuscript.volumes.length || manuscript.permissions.write) ? el("div", { class: "book-actions" }, [
-        manuscript.permissions.write ? el("button", {
-          class: "btn", type: "button", text: "New volume",
-          onclick: () => contentManager.openVolumeCreator(manuscript),
-        }) : null,
-        manuscript.permissions.write && manuscript.volumes.length ? el("button", {
-          class: "btn ghost", type: "button", text: "New section",
-          onclick: () => contentManager.openSectionCreator(manuscript),
-        }) : null,
-        manuscript.permissions.write && manuscript.volumes.length ? el("button", {
-          class: managingContents ? "btn" : "btn ghost",
-          type: "button",
-          text: managingContents ? "Done arranging" : "Manage contents",
-          "aria-pressed": String(managingContents),
-          onclick: () => {
-            managingContents = !managingContents;
-            renderBook(manuscript);
-          },
-        }) : null,
-        manuscript.volumes.length ? el("button", { class: "btn ghost", type: "button", text: "Search series", onclick: openSearch }) : null,
-        manuscript.volumes.length ? el("button", { class: "btn ghost", type: "button", text: "Bookmarks", onclick: () => openBookmarks().catch((error) => showTransientError(error.message)) }) : null,
-        manuscript.volumes.length ? el("button", { class: "btn ghost", type: "button", text: "Publish series", onclick: openPublication }) : null,
-      ]) : null,
+      (manuscript.volumes.length || manuscript.permissions.write)
+        ? bookActions(manuscript) : null,
     ]),
     notice ? el("p", { class: "reader-notice", role: "status", text: notice }) : null,
     pendingMoveNotices(manuscript),
@@ -1612,8 +1635,9 @@ function applyPreferences() {
     if (control) control.value = preferences[field];
   }
   root.dataset.mode = preferences.mode;
-  const [label, hint] = MODE_TEXT[preferences.mode];
-  modeButton.textContent = label;
+  const [label, glyph, hint] = MODE_TEXT[preferences.mode];
+  modeButton.querySelector(".compact-action-label").textContent = label;
+  modeButton.querySelector(".compact-action-glyph").textContent = glyph;
   modeButton.title = hint;
   modeButton.setAttribute("aria-pressed", String(preferences.mode === FULL));
 }

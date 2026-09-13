@@ -28,7 +28,7 @@ body {
   -webkit-font-smoothing: antialiased;
   overscroll-behavior-y: contain;
 }
-button, input, select { font: inherit; color: inherit; }
+button, input, select, textarea { max-width: 100%; font: inherit; color: inherit; }
 button { cursor: pointer; }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
@@ -83,7 +83,13 @@ h1, h2, h3, p { margin-top: 0; }
 .btn.ghost { color: var(--accent-strong); background: var(--accent-soft); }
 .btn.sm { padding: .3rem .58rem; font-size: .8rem; }
 
-/* the toolbar: two buttons, beside the prose rather than in the header */
+/* Like Chronos' heading actions, these controls carry both representations:
+   words on roomy screens and a glyph on narrow ones. The label remains in the
+   accessibility tree when CSS visually compacts it. */
+.compact-action { gap: .4rem; }
+.compact-action-glyph { display: none; }
+
+/* Reader actions stay beside the prose rather than in the global header. */
 .reader-toolbar {
   flex: none; display: flex; align-items: center; gap: .6rem;
   padding: .55rem 1.5rem; background: var(--surface-2);
@@ -165,6 +171,7 @@ h1, h2, h3, p { margin-top: 0; }
   color: var(--accent-strong); background: var(--accent-soft); text-decoration: none;
 }
 .jump-section.current { font-weight: 700; }
+.jump-section > :first-child { min-width: 0; overflow-wrap: anywhere; }
 .jump-kind { color: var(--muted); font-size: .72rem; white-space: nowrap; }
 .jump-empty { padding: 1rem 0; }
 .dialog-search { display: grid; gap: .35rem; margin-top: .9rem; }
@@ -222,6 +229,7 @@ h1, h2, h3, p { margin-top: 0; }
   font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
 }
 h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.02em; }
+h1, h2, h3, .lead { overflow-wrap: anywhere; }
 .lead { color: var(--muted); margin: 0; }
 .empty { color: var(--muted); padding: 2.5rem 0; text-align: center; }
 .back-link { display: inline-block; margin-bottom: .8rem; font-size: .84rem; font-weight: 600; }
@@ -449,7 +457,7 @@ h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.
 .prose {
   max-width: var(--prose-measure);
   font-family: var(--prose-font); line-height: var(--prose-leading);
-  text-align: var(--prose-align);
+  text-align: var(--prose-align); overflow-wrap: anywhere;
   hyphens: auto;
 }
 .prose p { margin: 0 0 1em; }
@@ -542,6 +550,11 @@ h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.
   border-radius: 10px; color: var(--text); background: var(--surface); box-shadow: var(--shadow);
   font-size: .78rem; font-weight: 700;
 }
+.reader-toast, .boundary-cue {
+  left: calc(50% + var(--service-nav-w) / 2);
+  bottom: calc(1.25rem + var(--service-nav-h));
+  max-width: min(36rem, calc(100vw - var(--service-nav-w) - 2rem));
+}
 .reader-toast { color: var(--danger); }
 .reader-toast.actionable {
   display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .7rem;
@@ -565,22 +578,62 @@ h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.
   .app-header { flex-wrap: nowrap; padding: .5rem .75rem; }
   .header-actions { flex-wrap: nowrap; gap: .4rem; min-width: 0; }
   .username, .userchip { display: none; }
-  .reader-toolbar { padding: .55rem .9rem; }
-  .reading-progress { padding: .35rem .9rem; }
+  .btn, .icon-btn { min-height: 44px; }
+  .icon-btn { width: 44px; height: 44px; }
+  input, select, textarea { font-size: max(16px, 1rem); }
+  .publication-field input, .manage-field input, .manage-field select,
+  .manage-field textarea, .setting-row select, .jump-search, .outline-search {
+    font-size: max(16px, 1rem);
+  }
+  .reader-toolbar {
+    justify-content: flex-end; gap: 4px; padding: .45rem .9rem;
+  }
+  .btn.compact-action {
+    flex: 0 0 auto; width: 36px; min-width: 36px; height: 36px; min-height: 36px;
+    padding: 0; border-radius: 9px;
+  }
+  .compact-action-glyph {
+    width: 18px; height: 18px; display: grid; place-items: center;
+    font-size: 1rem; line-height: 1;
+  }
+  .compact-action-label {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+  .book-actions { flex-wrap: nowrap; gap: 4px; }
+  .reading-progress {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: .25rem .6rem; padding: .35rem .9rem;
+  }
+  .reading-progress progress { grid-column: 1 / -1; grid-row: 2; }
   .content { padding: 1.25rem .9rem 3rem; }
+  .move-warning { align-items: stretch; flex-direction: column; }
+  .move-warning > .btn { align-self: flex-start; }
+  .manage-help { display: grid; gap: .3rem; }
   .outline-search-row { grid-template-columns: 1fr; gap: .3rem; }
   .outline-search-status { text-align: left; }
   .volume-summary { grid-template-columns: minmax(0, 1fr) auto; gap: .5rem; }
-  .volume-summary-meta { grid-column: 1; }
+  .volume-summary-meta { grid-column: 1; white-space: normal; }
   .volume-summary .twisty { grid-column: 2; grid-row: 1 / span 2; }
   .section-link { grid-template-columns: minmax(0, 1fr); }
   .section-row.managing { grid-template-columns: minmax(0, 1fr); }
   .section-manage-actions { padding: 0 .75rem .65rem; }
+  .section-manage-actions, .volume-manage-actions, .volume-actions {
+    max-width: 100%;
+  }
+  .section-manage-actions, .volume-manage-actions { flex-wrap: nowrap; }
+  .volume-actions {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding-inline: .6rem;
+  }
+  .volume-actions .new-chapter { margin-top: 0; white-space: nowrap; }
   .manage-hint { display: none; }
   .section-stats { grid-row: 2; }
   .section-pages { gap: .25rem; padding-inline: .65rem; }
   .page-btn { font-size: .72rem; }
   .section-pager { gap: .6rem; }
+  .pager-link { min-width: 0; }
+  .pager-link strong, .pager-volume { overflow-wrap: anywhere; }
   .reading-section { padding: 1.25rem 1.15rem 2.25rem; border-inline: 0; box-shadow: none; }
   .section-head { padding-top: 3vh; }
   /* No hover on a phone, so the controls sit at a readable weight all the time. */
@@ -589,6 +642,43 @@ h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.
   .settings form { padding: .9rem 1rem 1rem; }
   .setting-row { flex-wrap: wrap; gap: .3rem; }
   .setting-row select { min-width: 100%; }
+  .reader-toast, .boundary-cue {
+    bottom: calc(1rem + var(--service-nav-h) + env(safe-area-inset-bottom, 0px));
+    max-width: calc(100vw - 1.5rem);
+  }
+}
+
+@media (max-width: 600px) {
+  .settings, .jump, .draft-comparison {
+    position: fixed; inset: auto 0 0; width: 100%; max-width: none;
+    max-height: calc(100dvh - max(.75rem, env(safe-area-inset-top, 0px)));
+    margin: auto 0 0; border-width: 1px 0 0;
+    border-radius: 16px 16px 0 0;
+  }
+  .settings form, .jump-shell {
+    max-height: calc(100dvh - max(.75rem, env(safe-area-inset-top, 0px)));
+    overflow-y: auto; overscroll-behavior: contain;
+    padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  }
+  .dialog-search > div { grid-template-columns: minmax(0, 1fr); }
+  .dialog-search .btn { width: 100%; }
+  .settings-actions {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .settings-actions > .btn { width: 100%; }
+  .publish-actions { grid-template-columns: minmax(0, 1fr); }
+  .publish-actions span { display: none; }
+  .publish-actions #cover-delete { grid-column: 1 / -1; }
+  .publish-actions button[type="submit"] { grid-column: 1 / -1; }
+}
+
+@media (max-width: 420px) {
+  .settings-actions { grid-template-columns: minmax(0, 1fr); }
+  .settings-actions > span { display: none; }
+  .settings-actions > .btn { white-space: nowrap; }
+  .section-pages { grid-template-columns: 1fr 1fr; }
+  .page-range { grid-column: 1 / -1; grid-row: 1; }
+  .page-btn { grid-row: 2; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -629,8 +719,14 @@ h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.
   display: none; padding: .3rem .45rem; border: 0; border-radius: 7px;
   color: var(--accent-strong); background: var(--accent-soft); font-weight: 700;
 }
+.writer-secondary-row, .writer-draft-actions { display: contents; }
+/* `minmax(0, 1fr)`, not `minmax(30rem, 1fr)`: a 30rem floor made the three
+   tracks demand 64rem, more than the viewport leaves once the service rail is
+   subtracted, so the Akasha/Coach panel was pushed off the right edge between
+   roughly 900px and 1250px. The centre column yields before the panel leaves
+   the screen. */
 .writer-columns {
-  display: grid; grid-template-columns: 15rem minmax(30rem, 1fr) 19rem;
+  display: grid; grid-template-columns: 15rem minmax(0, 1fr) 19rem;
   min-height: calc(100dvh - 105px);
 }
 .writer-outline, .writer-context {
@@ -667,16 +763,21 @@ h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.
   font-size: 2.1rem; font-weight: 600;
 }
 .writer-title::placeholder { color: var(--muted); }
+/* `overflow-x: auto` is the containment guarantee, not a layout preference.
+   The labelled bar needs about 1410px of viewport before the centre column is
+   wide enough to hold it; between the narrow breakpoint and there the tools
+   used to spill straight through the bar's own border. Scrolling the bar is
+   the graceful version of that, and it costs the desktop nothing above 1410px
+   where the row fits with room to spare. */
 .writer-format {
   position: sticky; top: 50px; z-index: 10; display: flex; gap: .25rem;
   margin: 0 -.55rem 1rem; padding: .42rem .55rem;
   border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
   box-shadow: 0 6px 20px rgb(0 0 0 / .05);
+  overflow-x: auto;
 }
-/* `flex: 0 0 auto` is load-bearing: `overflow-x: auto` on the bar does not stop
-   flex children shrinking, so without it the wide labels ("Bullets",
-   "Numbered") were squeezed under their 2rem floor and their text collided
-   instead of the bar scrolling. */
+/* Formatting controls keep their own width on desktop; the phone bar swaps
+   their labels for glyphs and lays them out on a fixed grid instead. */
 .writer-tool {
   flex: 0 0 auto;
   min-width: 2rem; height: 2rem; padding: 0 .45rem; border: 0; border-radius: 7px;
@@ -684,6 +785,7 @@ h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.
 }
 .writer-tool:hover, .writer-tool:focus-visible { background: var(--accent-soft); color: var(--accent-strong); }
 .writer-block-style { flex: 0 0 auto; margin-left: auto; min-width: 7.5rem; font-size: .75rem; }
+.writer-block-style-compact { display: none; }
 .draft-editor {
   min-height: 60vh; padding: .5rem 0 5rem; outline: 0; caret-color: var(--accent);
   font-size: 1.05rem;
@@ -697,10 +799,11 @@ h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.
 }
 .writer-context-menu {
   position: fixed; z-index: 100; display: flex; flex-direction: column;
-  min-width: 12rem; max-width: 20rem; padding: .25rem;
+  min-width: min(12rem, calc(100vw - 1rem)); max-width: min(20rem, calc(100vw - 1rem)); padding: .25rem;
   border: 1px solid var(--border); border-radius: 9px;
   background: var(--surface); box-shadow: var(--shadow);
 }
+.writer-drawer-backdrop { display: none; }
 .writer-menu-item {
   padding: .4rem .55rem; border: 0; border-radius: 6px; color: var(--text);
   background: transparent; text-align: left; font-size: .8rem; font-weight: 600;
@@ -750,24 +853,49 @@ h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.
 .compare-block.removed { background: var(--danger-soft); }
 .compare-block.absent { color: var(--muted); font-style: italic; }
 
-@media (max-width: 900px) {
+/* 1100px, for three reasons that all point the same way.
+
+   It is where `service-nav.css` itself drops to the glyph-only rail, so the
+   whole app changes over together rather than Logos switching in the middle of
+   someone else's layout. It keeps the arithmetic below to two cases instead of
+   three: everything pinned in this band is offset by `--service-nav-w`, which
+   is 64px here and 0px once the rail becomes the bottom tab bar at 820px, and
+   never the full 216px. And the three-column layout has stopped paying for
+   itself by then — at 1100px the centre track leaves the prose 382px between
+   its `5vw` gutters, where the drawer layout gives it 736px. Two panels are
+   not worth halving the thing they are there to serve. */
+@media (max-width: 1100px) {
   .writer-topbar { gap: .35rem; overflow-x: auto; }
   .writer-back { min-width: 7rem; max-width: 10rem; }
   .writer-word-count { margin-left: 0; white-space: nowrap; }
   .writer-save-status { min-width: 4.5rem; white-space: nowrap; }
-  .writer-mobile-button, .writer-panel-close { display: inline-flex; }
+  .writer-mobile-button, .writer-panel-close {
+    display: inline-flex; min-height: 44px; align-items: center; justify-content: center;
+  }
   .writer-columns { display: block; min-height: calc(100dvh - 105px); }
   .writer-outline, .writer-context {
-    position: fixed; inset: 55px auto 0 0; z-index: 50; width: min(19rem, 86vw);
-    height: auto; transform: translateX(-105%); transition: transform .18s ease;
+    position: fixed; inset: 55px auto 0 var(--service-nav-w); z-index: 50;
+    width: min(19rem, 86vw);
+    /* The rail's own width has to come off the parked position too, or the
+       drawer stops with a sliver of itself still over the rail. */
+    height: auto; transform: translateX(calc(-105% - var(--service-nav-w)));
+    transition: transform .18s ease;
     box-shadow: var(--shadow); border: 0;
   }
+  .writer-drawer-backdrop {
+    position: fixed; inset: 0; z-index: 45; border: 0;
+    background: rgb(0 0 0 / .38);
+  }
+  .show-writer-outline .writer-drawer-backdrop,
+  .show-writer-context .writer-drawer-backdrop { display: block; }
+  body.show-writer-outline, body.show-writer-context { overflow: hidden; }
   .writer-context { right: 0; left: auto; transform: translateX(105%); }
   .show-writer-outline .writer-outline, .show-writer-context .writer-context { transform: none; }
   .writer-page { padding: 1.25rem 1rem 6rem; }
   .writer-title { font-size: 1.65rem; }
   .writer-format {
-    position: fixed; top: auto; right: 0; bottom: var(--writer-keyboard-offset, 0); left: 0; z-index: 40;
+    position: fixed; top: auto; right: 0; bottom: var(--writer-keyboard-offset, 0);
+    left: var(--service-nav-w); z-index: 40;
     margin: 0; padding: .5rem max(.6rem, env(safe-area-inset-right))
       calc(.5rem + env(safe-area-inset-bottom)) max(.6rem, env(safe-area-inset-left));
     border-radius: 0; overflow-x: auto;
@@ -784,7 +912,78 @@ h1 { margin: 0 0 .3rem; font-size: 1.75rem; font-weight: 800; letter-spacing: -.
   .writer-active .app-shell-main { padding-bottom: 0; }
   .writer-active .writer-shell { min-height: 100dvh; }
   .writer-active .writer-outline, .writer-active .writer-context { inset-block-start: 0; }
-  .writer-topbar { min-height: 48px; padding-inline: .5rem; }
-  .writer-topbar .btn.ghost { display: none; }
-  .draft-select { min-width: 7.5rem; max-width: 9rem; }
+  .writer-topbar {
+    display: grid; grid-template-columns: 36px minmax(4rem, 1fr) 36px 36px;
+    gap: .25rem; min-height: 0; padding: .25rem .5rem;
+    overflow: visible;
+  }
+  .writer-back, .primary-badge, .writer-word-count { display: none; }
+  .writer-outline-button { grid-column: 1; grid-row: 1; }
+  .draft-select { grid-column: 2; grid-row: 1; }
+  .writer-tools-button { grid-column: 3; grid-row: 1; }
+  .writer-done { grid-column: 4; grid-row: 1; }
+  .writer-mobile-button, .writer-done {
+    width: 36px; min-width: 36px; height: 36px; min-height: 36px; padding: 0;
+    align-items: center; justify-content: center; font-size: 1rem;
+  }
+  .writer-panel-close {
+    width: 44px; min-width: 44px; height: 44px; min-height: 44px; padding: 0;
+  }
+  .draft-select {
+    width: 100%; min-width: 0; max-width: none; height: 36px;
+    padding-block: 0; font-size: max(16px, 1rem);
+  }
+  .writer-outline-search, .coach-dialect select { font-size: max(16px, 1rem); }
+  .writer-secondary-row {
+    grid-column: 1 / -1; grid-row: 2; display: flex; align-items: center;
+    min-width: 0; gap: .25rem;
+  }
+  .writer-draft-actions { display: flex; flex: none; gap: .25rem; }
+  .writer-draft-action.compact-action, .writer-conflict-action.compact-action {
+    width: 36px; min-width: 36px; height: 36px; min-height: 36px; padding: 0;
+  }
+  .writer-save-status {
+    min-width: 0; margin-left: auto; padding: .1rem .2rem;
+    overflow: hidden; text-overflow: ellipsis; font-size: .68rem;
+    white-space: nowrap; pointer-events: none;
+  }
+  .writer-save-status[data-state="saving"] { opacity: .85; }
+  .writer-secondary-row:has(.writer-conflict-action:not([hidden]))
+    .writer-save-status { display: none; }
+  .writer-page {
+    padding-top: 1.25rem;
+    padding-inline: max(1rem, env(safe-area-inset-left, 0px))
+      max(1rem, env(safe-area-inset-right, 0px));
+  }
+  .writer-format {
+    display: grid; grid-template-columns: repeat(7, 32px) 48px;
+    justify-content: center; gap: 2px; overflow-x: auto;
+    padding-inline: max(.35rem, env(safe-area-inset-left, 0px))
+      max(.35rem, env(safe-area-inset-right, 0px));
+  }
+  .writer-tool.compact-action {
+    width: 32px; min-width: 32px; height: 36px; min-height: 36px; padding: 0;
+  }
+  .writer-block-style-wide { display: none; }
+  .writer-block-style-compact {
+    display: block; width: 48px; min-width: 48px; height: 36px;
+    margin-left: 0; padding: 0 2px;
+    font-size: max(16px, 1rem);
+  }
+  .format-insertOrderedList .compact-action-glyph { font-size: .72rem; }
+  .coach-dialect { display: grid; gap: .35rem; }
+  .coach-dialect select { width: 100%; }
+}
+
+@media (max-width: 600px) {
+  .draft-comparison {
+    width: 100%; max-width: none;
+    height: calc(100dvh - max(.75rem, env(safe-area-inset-top, 0px)));
+    border-width: 1px 0 0; border-radius: 16px 16px 0 0;
+    padding: .85rem max(.85rem, env(safe-area-inset-right, 0px))
+      max(.85rem, env(safe-area-inset-bottom, 0px))
+      max(.85rem, env(safe-area-inset-left, 0px));
+  }
+  .draft-comparison[open] { display: flex; flex-direction: column; }
+  .draft-comparison-results { flex: 1; min-height: 0; max-height: none; }
 }

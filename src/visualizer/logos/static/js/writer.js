@@ -4,6 +4,7 @@
 import { api } from "./api.js";
 import { createAkashaPanel } from "./akashapanel.js";
 import { createCoachPanel } from "./coachpanel.js";
+import { compactAction } from "./compactaction.js";
 import { compareDocuments } from "./comparison.js";
 import { allSectionIds, availableId, emptyDocument } from "./contents.js";
 import { createContextMenu } from "./contextmenu.js";
@@ -40,9 +41,9 @@ export const writerUrl = (base, book, volume, section, draft = null) => {
   return `${base}/?${new URLSearchParams(query)}`;
 };
 
-function formatButton(label, command, title = label) {
-  return el("button", {
-    class: "writer-tool", type: "button", text: label, title,
+function formatButton(label, glyph, command, title = label) {
+  return compactAction({
+    label, glyph, className: `writer-tool format-${command}`, title,
     onmousedown: (event) => event.preventDefault(),
     onclick: () => document.execCommand(command, false, null),
   });
@@ -69,7 +70,7 @@ function outlineVolume(volume, manuscript, current, base, navigate, createChapte
   ]);
 }
 
-function outline(manuscript, current, base, navigate, createChapter) {
+function outline(manuscript, current, base, navigate, createChapter, close) {
   const volumes = el("div", { class: "writer-outline-volumes" });
   const paint = (query) => {
     const shown = filterOutline(manuscript, query);
@@ -85,11 +86,11 @@ function outline(manuscript, current, base, navigate, createChapter) {
     oninput: (event) => paint(event.target.value),
   });
   paint("");
-  return el("nav", { class: "writer-outline", "aria-label": "Manuscript outline" }, [
+  return el("nav", { id: "writer-outline", class: "writer-outline", "aria-label": "Manuscript outline" }, [
     el("div", { class: "writer-panel-head" }, [
       el("strong", { text: "Outline" }),
-      el("button", { class: "writer-panel-close", type: "button", text: "x",
-        "aria-label": "Close outline", onclick: () => document.body.classList.remove("show-writer-outline") }),
+      el("button", { class: "writer-panel-close", type: "button", text: "×",
+        "aria-label": "Close outline", onclick: close }),
     ]),
     search,
     volumes,
@@ -97,13 +98,14 @@ function outline(manuscript, current, base, navigate, createChapter) {
 }
 
 function topbar({ base, manuscript, entry, section, nodes, actions, canCompare }) {
-  const button = (label, onclick, extra = {}) => el("button", {
-    class: "btn ghost sm", type: "button", text: label, onclick, ...extra,
+  const button = (label, glyph, onclick, extra = {}) => compactAction({
+    label, glyph, className: "btn ghost sm writer-draft-action", onclick, ...extra,
   });
   return el("header", { class: "writer-topbar" }, [
     el("button", {
-      class: "writer-mobile-button", type: "button", text: "Outline",
-      onclick: () => document.body.classList.toggle("show-writer-outline"),
+      class: "writer-mobile-button writer-outline-button", type: "button", text: "☰",
+      title: "Outline", "aria-label": "Open outline", "aria-controls": "writer-outline",
+      "aria-expanded": "false", onclick: actions.toggleOutline,
     }),
     el("a", {
       class: "writer-back",
@@ -112,20 +114,29 @@ function topbar({ base, manuscript, entry, section, nodes, actions, canCompare }
       onclick: actions.navigate,
     }),
     nodes.draftSelect, nodes.primaryBadge,
-    button("New draft", actions.newDraft),
-    button("Rename", actions.rename),
-    button("Make primary", actions.makePrimary),
-    button("Compare", actions.compare, { disabled: !canCompare }),
-    nodes.count, nodes.status, nodes.conflictAction,
+    el("div", { class: "writer-secondary-row" }, [
+      el("div", { class: "writer-draft-actions" }, [
+        button("New draft", "+", actions.newDraft),
+        button("Rename", "✎", actions.rename),
+        button("Make primary", "★", actions.makePrimary),
+        button("Compare", "⇄", actions.compare, { disabled: !canCompare }),
+      ]),
+      nodes.count, nodes.status, nodes.conflictAction,
+    ]),
     el("button", {
-      class: "writer-mobile-button", type: "button", text: "Tools",
-      onclick: () => document.body.classList.toggle("show-writer-context"),
+      class: "writer-mobile-button writer-tools-button", type: "button", text: "✦",
+      title: "Writing tools", "aria-label": "Open writing tools",
+      "aria-controls": "writer-context", "aria-expanded": "false",
+      onclick: actions.toggleTools,
     }),
-    el("button", { class: "btn sm", type: "button", text: "Done", onclick: actions.done }),
+    compactAction({
+      label: "Done", glyph: "✓", className: "btn sm writer-done",
+      title: "Done writing", onclick: actions.done,
+    }),
   ]);
 }
 
-function contextPanel() {
+function contextPanel(close) {
   const body = el("div", { class: "writer-context-body" });
   const tabs = ["Akasha", "Coach"].map((name, index) => el("button", {
     class: `writer-tab${index === 0 ? " active" : ""}`,
@@ -139,11 +150,11 @@ function contextPanel() {
   }));
   return {
     body,
-    node: el("aside", { class: "writer-context", "aria-label": "Writing tools" }, [
+    node: el("aside", { id: "writer-context", class: "writer-context", "aria-label": "Writing tools" }, [
       el("div", { class: "writer-panel-head" }, [
         el("div", { class: "writer-tabs" }, tabs),
-        el("button", { class: "writer-panel-close", type: "button", text: "x",
-          "aria-label": "Close writing tools", onclick: () => document.body.classList.remove("show-writer-context") }),
+        el("button", { class: "writer-panel-close", type: "button", text: "×",
+          "aria-label": "Close writing tools", onclick: close }),
       ]),
       body,
     ]),
@@ -298,7 +309,33 @@ export async function mountWriter({
     draft: state.current.id,
   });
 
-  const status = el("span", { class: "writer-save-status", text: "Saved" });
+  let drawerTrigger = null;
+  const drawerClass = (name) => `show-writer-${name}`;
+  const drawerButton = (name) => document.querySelector(`.writer-${name}-button`);
+  const closeDrawers = (restoreFocus = false) => {
+    document.body.classList.remove(drawerClass("outline"), drawerClass("context"));
+    for (const name of ["outline", "tools"]) {
+      drawerButton(name)?.setAttribute("aria-expanded", "false");
+    }
+    if (restoreFocus) drawerTrigger?.focus();
+    drawerTrigger = null;
+  };
+  const openDrawer = (name, trigger = null) => {
+    closeDrawers();
+    document.body.classList.add(drawerClass(name));
+    const button = trigger || drawerButton(name === "context" ? "tools" : name);
+    button?.setAttribute("aria-expanded", "true");
+    drawerTrigger = button;
+  };
+  const toggleDrawer = (name, event) => {
+    const wasOpen = document.body.classList.contains(drawerClass(name));
+    closeDrawers();
+    if (!wasOpen) openDrawer(name, event.currentTarget);
+  };
+
+  const status = el("span", {
+    class: "writer-save-status", text: "Saved", title: "Saved",
+  });
   const count = el("span", { class: "writer-word-count" });
   const title = el("input", {
     class: "writer-title", value: section.title || "", maxlength: "300",
@@ -308,18 +345,19 @@ export async function mountWriter({
     class: "draft-editor prose", contenteditable: "true", spellcheck: "true",
     role: "textbox", "aria-multiline": "true", "aria-label": `Edit ${sectionName(section)}`,
   });
-  const context = contextPanel();
+  const context = contextPanel(() => closeDrawers(true));
   const draftSelect = el("select", { class: "draft-select", "aria-label": "Current draft" });
   const primaryBadge = el("span", { class: "primary-badge", text: "Primary" });
-  const conflictAction = el("button", {
-    class: "btn sm", type: "button", text: "Preserve as new draft", hidden: true,
+  const conflictAction = compactAction({
+    label: "Preserve as new draft", glyph: "↥",
+    className: "btn sm writer-conflict-action", hidden: true,
   });
   const contextMenu = createContextMenu({ host: document.body });
 
   const setStatus = (state, error = null) => {
     status.dataset.state = state;
     status.textContent = STATUS[state] || state;
-    status.title = error ? error.message : "";
+    status.title = error ? error.message : (STATUS[state] || state);
     conflictAction.hidden = state !== "conflict";
   };
   const snapshot = () => ({
@@ -371,7 +409,7 @@ export async function mountWriter({
     body: context.body,
     focus: () => {
       context.select("akasha");
-      document.body.classList.add("show-writer-context");
+      openDrawer("context");
     },
     search: (query) => api.entities(manuscript.book, query),
   });
@@ -494,18 +532,39 @@ export async function mountWriter({
     });
     window.location.href = writerUrl(base, manuscript.book, volume.id, sectionId);
   };
+  const blockStyles = [];
+  const blockStyle = (className, labels) => {
+    const control = el("select", {
+      class: `writer-block-style ${className}`, "aria-label": "Block style",
+      onchange: (event) => {
+        for (const peer of blockStyles) peer.value = event.target.value;
+        document.execCommand("formatBlock", false, event.target.value);
+        editor.focus();
+        changed();
+      },
+    }, [
+      el("option", { value: "p", text: labels[0] }),
+      el("option", { value: "h2", text: labels[1] }),
+      el("option", { value: "h3", text: labels[2] }),
+      el("option", { value: "h4", text: labels[3] }),
+    ]);
+    blockStyles.push(control);
+    return control;
+  };
+  const fullBlockStyle = blockStyle(
+    "writer-block-style-wide", ["Paragraph", "Heading 1", "Heading 2", "Heading 3"],
+  );
+  const compactBlockStyle = blockStyle(
+    "writer-block-style-compact", ["P", "H1", "H2", "H3"],
+  );
   const toolbar = el("div", { class: "writer-format", role: "toolbar", "aria-label": "Formatting" }, [
-    formatButton("Undo", "undo"), formatButton("Redo", "redo"),
-    formatButton("B", "bold", "Bold"), formatButton("I", "italic", "Italic"),
-    formatButton("S", "strikeThrough", "Strikethrough"),
-    formatButton("Bullets", "insertUnorderedList"), formatButton("Numbered", "insertOrderedList"),
-    el("select", { class: "writer-block-style", "aria-label": "Block style",
-      onchange: (event) => { document.execCommand("formatBlock", false, event.target.value); editor.focus(); changed(); } }, [
-      el("option", { value: "p", text: "Paragraph" }),
-      el("option", { value: "h2", text: "Heading 1" }),
-      el("option", { value: "h3", text: "Heading 2" }),
-      el("option", { value: "h4", text: "Heading 3" }),
-    ]),
+    formatButton("Undo", "↶", "undo"), formatButton("Redo", "↷", "redo"),
+    formatButton("B", "B", "bold", "Bold"),
+    formatButton("I", "I", "italic", "Italic"),
+    formatButton("S", "S", "strikeThrough", "Strikethrough"),
+    formatButton("Bullets", "•", "insertUnorderedList"),
+    formatButton("Numbered", "1.", "insertOrderedList"),
+    fullBlockStyle, compactBlockStyle,
   ]);
 
   // Every draft action pauses for the autosave first: nothing may navigate,
@@ -516,6 +575,8 @@ export async function mountWriter({
   };
   const actions = {
     navigate,
+    toggleOutline: (event) => toggleDrawer("outline", event),
+    toggleTools: (event) => toggleDrawer("context", event),
     newDraft: async () => {
       const name = await askDraftName("Name the new draft", `Draft ${state.count + 1}`);
       if (!name || !(await settled())) return;
@@ -557,7 +618,10 @@ export async function mountWriter({
       nodes: { draftSelect, primaryBadge, count, status, conflictAction },
     }),
     el("div", { class: "writer-columns" }, [
-      outline(manuscript, entry, base, navigate, createChapter),
+      outline(
+        manuscript, entry, base, navigate, createChapter,
+        () => closeDrawers(true),
+      ),
       el("main", { class: "writer-page" }, [
         el("p", { class: "eyebrow", text: `Volume ${entry.volume.number} / ${sectionLabel(section)}` }),
         title,
@@ -566,6 +630,10 @@ export async function mountWriter({
       ]),
       context.node,
     ]),
+    el("button", {
+      class: "writer-drawer-backdrop", type: "button",
+      "aria-label": "Close open writing panel", onclick: () => closeDrawers(true),
+    }),
   ]);
   fill(container, [shell]);
   renderDraftOptions();
@@ -609,6 +677,13 @@ export async function mountWriter({
     if (contextMenu.isOpen() && !contextMenu.holds(event.target)) contextMenu.close();
   });
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && (
+      document.body.classList.contains(drawerClass("outline"))
+      || document.body.classList.contains(drawerClass("context"))
+    )) {
+      closeDrawers(true);
+      return;
+    }
     if (event.key === "Escape" && contextMenu.isOpen()) {
       contextMenu.close();
       editor.focus({ preventScroll: true });

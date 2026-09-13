@@ -28,7 +28,7 @@ _MODULES = (
     "position.js", "progress.js", "boundary.js", "readerdata.js",
     "editor.js", "comparison.js", "recovery.js", "coachpanel.js",
     "akashapanel.js", "contextmenu.js", "draftstate.js", "contents.js",
-    "touchdrag.js",
+    "touchdrag.js", "compactaction.js",
 )
 
 _PREAMBLE = """\
@@ -62,6 +62,7 @@ import { createCoachPanel } from "./coachpanel.js";
 import { createAkashaPanel } from "./akashapanel.js";
 import { menuPosition } from "./contextmenu.js";
 import { createDraftState } from "./draftstate.js";
+import { compactAction } from "./compactaction.js";
 import {
   allSectionIds, availableId, availableKinds, beforeForPosition, dropAt,
   moveBefore, moveFailure, sameOrder, sectionKindChoices, singletonConflict,
@@ -170,6 +171,22 @@ def test_a_fragment_ignores_optional_children(run_js):
         "createNodes(owner).fragment([{id: 1}, null, undefined, {id: 2}]);"
         "emit(appended);"
     ) == [{"id": 1}, {"id": 2}]
+
+
+def test_compact_action_keeps_its_label_beside_its_glyph(run_js):
+    result = run_js(
+        "emit(compactAction({label: 'Publish series', glyph: 'down',"
+        " className: 'btn', onclick: 'save'}, nodes.element));"
+    )
+
+    assert result["attrs"]["class"] == "btn compact-action"
+    assert result["attrs"]["title"] == "Publish series"
+    assert result["children"][0]["attrs"] == {
+        "class": "compact-action-glyph", "text": "down", "aria-hidden": "true"
+    }
+    assert result["children"][1]["attrs"] == {
+        "class": "compact-action-label", "text": "Publish series"
+    }
 
 
 def test_draft_comparison_aligns_stable_blocks_and_reports_flow_stats(run_js):

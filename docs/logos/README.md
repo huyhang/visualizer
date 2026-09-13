@@ -15,11 +15,22 @@ to that mount.
 
 ## The writer
 
-Open a section and choose **Edit**. The desktop workspace places the manuscript
-outline beside a centered rich-text page and a collapsible Akasha/Writing Coach
-panel. On a phone those panels become drawers, the global navigation disappears
-temporarily, and the formatting bar stays above the software keyboard. **Done**
-returns to the same passage in the reader.
+Open a section and choose **Edit**. Above 1100px the workspace places the
+manuscript outline beside a centered rich-text page and a collapsible
+Akasha/Writing Coach panel. Below that the two panels become drawers and the
+formatting bar docks to the foot of the screen — the same width at which the
+shared service navigation drops to its glyph rail, so the whole application
+changes over together rather than Logos switching in the middle of someone
+else's layout. Three columns need about 64rem before the outline is wider than
+the prose between them, which is more than a narrow laptop has left once the
+rail has taken its share. On a phone the global navigation disappears
+temporarily as well, and the formatting bar stays above the software keyboard.
+The current draft, panel controls and **Done** remain visible; action labels
+compact to icons rather than wrapping unpredictably. The formatting controls
+stay in one row, using a compact P/H1/H2/H3 style selector; on a squeezed
+desktop column the labelled row scrolls within its own bar rather than spilling
+through it. Only one drawer opens at a time, and tapping its backdrop or
+pressing Escape closes it. **Done** returns to the same passage in the reader.
 
 **Akasha lookup lives on the right-click menu.** Select a name and right-click
 it for *Look up in Akasha*; right-click words that are already linked for *Open
@@ -117,6 +128,17 @@ impossible to scroll past. The outline scrolls itself when a drag nears the top
 or bottom of the screen, since a phone shows about four rows at a time. The
 arrow and **Move…** controls remain the keyboard path, and the quickest one on
 any device for a chapter that has to travel a long way.
+
+On narrow screens, reader and contents-page action labels compact to icons,
+following the same convention as Chronos. Every action stays directly visible,
+and its full label remains available to assistive technology and as a desktop
+tooltip. No two actions in one row wear the same mark — a glyph is the whole of
+a compacted button, so a shared one would leave two controls indistinguishable.
+A button that reports state changes its glyph as well as its hidden label: the
+reading-mode toggle shows a single column when focused and a split one in full
+view, since the word beside it is not on screen to say so. Mobile dialogs rise
+from the bottom of the viewport and scroll internally, so their actions remain
+reachable when the on-screen keyboard is present.
 
 A move that fails says whether trying again can help. A refusal — a name already
 taken, a second prologue, an anchor that has gone — names its reason and stands.
