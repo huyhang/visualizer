@@ -49,6 +49,7 @@ import {
   removeItem,
   replaceItem,
 } from "./readerdata.js";
+import { filterAnnotations, filterIssues, sectionKindName } from "./review.js";
 import { beginWriting, mountWriter, writerUrl } from "./writer.js";
 
 const root = document.documentElement;
@@ -75,6 +76,7 @@ const bookmarksButton = document.getElementById("bookmarks-open");
 const bookmarksDialog = document.getElementById("bookmarks-dialog");
 const bookmarksStatus = document.getElementById("bookmarks-status");
 const bookmarksResults = document.getElementById("bookmarks-results");
+const reviewButton = document.getElementById("review-open");
 const itemEditor = document.getElementById("item-editor");
 const itemEditorForm = document.getElementById("item-editor-form");
 const itemEditorTitle = document.getElementById("item-editor-title");
@@ -141,6 +143,7 @@ let boundaryTimer = null;
 const edgeGesture = boundaryGesture();
 let searchMatches = [];
 let managingContents = false;
+let reviewState = null;
 
 // The glyph carries the state too, not just the word: the label is visually
 // hidden on a phone, so a fixed mark would leave the compacted button saying
@@ -159,9 +162,14 @@ function bookUrl(book) {
   return `${home()}?${new URLSearchParams({ book })}`;
 }
 
-function readerUrl(book, volume, section, block = null) {
+function reviewUrl(book, tab = "notes") {
+  return `${home()}?${new URLSearchParams({ book, review: tab })}`;
+}
+
+function readerUrl(book, volume, section, block = null, draft = null) {
   const query = { book, volume, section };
   if (block) query.block = block;
+  if (draft) query.draft = draft;
   return `${home()}?${new URLSearchParams(query)}`;
 }
 
@@ -213,6 +221,11 @@ function bookActions(manuscript) {
     );
     if (canWrite) actions.push(button("Publish series", "⇩", openPublication));
   }
+  if (manuscript.rev) {
+    actions.push(
+      button("Review series", "◎", () => { window.location.href = reviewUrl(manuscript.book); }),
+    );
+  }
   return el("div", { class: "book-actions compact-actions" }, actions);
 }
 
@@ -222,6 +235,7 @@ function hideReaderChrome() {
   content.classList.remove("writer-content");
   document.body.classList.remove("writer-active", "show-writer-outline", "show-writer-context");
   open = null;
+  reviewState = null;
 }
 
 // -- shelf -------------------------------------------------------------------
@@ -745,8 +759,7 @@ function renderBook(manuscript, notice = null) {
           words(manuscript.word_count),
         ),
       }),
-      (manuscript.volumes.length || manuscript.permissions.write)
-        ? bookActions(manuscript) : null,
+      bookActions(manuscript),
     ]),
     notice ? el("p", { class: "reader-notice", role: "status", text: notice }) : null,
     pendingMoveNotices(manuscript),
@@ -830,6 +843,7 @@ function renderReader(manuscript, entry, section) {
         class: "section-meta",
         text: meta(sectionLabel(section), words(section.word_count)),
       }),
+      open.drafts && open.drafts.length > 1 ? readerDraftPicker() : null,
     ]),
     el("div", { class: "section-body" }, [proseNode, insightPanel(section)]),
   ]);
@@ -843,6 +857,30 @@ function renderReader(manuscript, entry, section) {
     }),
     article,
     sectionPager(manuscript, entry.volume, section),
+  ]);
+}
+
+function readerDraftPicker() {
+  const selected = open.draft;
+  return el("label", { class: "reader-draft-picker" }, [
+    el("span", { text: selected.primary ? "Reading draft" : "Previewing alternate draft" }),
+    el("select", {
+      "aria-label": "Reader draft",
+      onchange: (event) => {
+        const chosen = open.drafts.find((draft) => draft.id === event.target.value);
+        window.location.href = readerUrl(
+          open.manuscript.book,
+          open.volume.id,
+          open.section.id,
+          null,
+          chosen && !chosen.primary ? chosen.id : null,
+        );
+      },
+    }, open.drafts.map((draft) => el("option", {
+      value: draft.id,
+      text: `${draft.name}${draft.primary ? " (Primary)" : ""}`,
+      selected: draft.id === selected.id,
+    }))),
   ]);
 }
 
@@ -960,14 +998,18 @@ async function loadReaderData() {
 
 function currentReaderData() {
   if (!open) return { notes: [], bookmarks: [], sectionChecklist: [], bookChecklist: [] };
-  return dataForSection(readerItems, open.volume.id, open.section.id);
+  return dataForSection(
+    readerItems, open.volume.id, open.section.id, open.draft && open.draft.id,
+  );
 }
 
 function refreshReaderData() {
-  if (!open) return;
-  decorateParagraphs();
-  renderPersonalPanel();
-  if (bookmarksDialog.open) renderBookmarks();
+  if (open) {
+    decorateParagraphs();
+    renderPersonalPanel();
+    if (bookmarksDialog.open) renderBookmarks();
+  }
+  if (reviewState && reviewState.tab === "notes") renderReviewAnnotations();
 }
 
 // A ribbon, not a star: filled versus hollow has to be legible at a glance and
@@ -995,7 +1037,13 @@ function decorateParagraphs() {
   const data = currentReaderData();
   for (const block of open.prose.querySelectorAll('[data-block-type="paragraph"]')) {
     const blockId = block.dataset.blockId;
-    const bookmark = bookmarkAt(data.bookmarks, open.volume.id, open.section.id, blockId);
+    const bookmark = bookmarkAt(
+      data.bookmarks,
+      open.volume.id,
+      open.section.id,
+      blockId,
+      open.draft && open.draft.id,
+    );
     const noteCount = data.notes.filter((note) => note.block === blockId).length;
     const tools = el("span", { class: "reader-block-tools" }, [
       el("button", {
@@ -1034,6 +1082,7 @@ async function toggleBookmark(block, held) {
         section: open.section.id,
         block,
         text: "",
+        ...(!open.draft.primary ? { draft: open.draft.id } : {}),
       });
       readerItems = replaceItem(readerItems, saved);
     }
@@ -1129,9 +1178,10 @@ function openItemEditor(context) {
 
 async function saveEditorItem() {
   const context = editorContext;
-  if (!context || !open) return;
+  if (!context) return;
   const text = itemEditorText.value.trim();
   const editing = context.item || null;
+  if (!editing && !open) return;
   let saved;
   if (editing) {
     saved = await api.updateReaderItem(
@@ -1141,6 +1191,7 @@ async function saveEditorItem() {
     saved = await api.createReaderItem(pageManuscript.book, {
       kind: "note", volume: open.volume.id, section: open.section.id,
       block: context.block, text,
+      ...(!open.draft.primary ? { draft: open.draft.id } : {}),
     });
   } else {
     saved = await api.createReaderItem(pageManuscript.book, {
@@ -1242,6 +1293,331 @@ const contentManager = createContentManager({
   },
 });
 
+// -- series review -----------------------------------------------------------
+
+function reviewTab(manuscript, tab, label) {
+  return el("a", {
+    class: `review-tab${reviewState.tab === tab ? " active" : ""}`,
+    href: reviewUrl(manuscript.book, tab),
+    text: label,
+    ...(reviewState.tab === tab ? { "aria-current": "page" } : {}),
+  });
+}
+
+function reviewSelect(label, options, value, onChange) {
+  return el("label", { class: "review-filter" }, [
+    el("span", { text: label }),
+    el("select", { onchange: onChange }, options.map(([key, text]) => el("option", {
+      value: key, text, selected: key === value,
+    }))),
+  ]);
+}
+
+function reviewLocationSelect(includeSeries, render) {
+  const options = [["all", "All locations"]];
+  if (includeSeries) options.push(["series", "Series"]);
+  for (const volume of pageManuscript.volumes) {
+    options.push([`volume:${volume.id}`, `Volume ${volume.number} · ${volume.title}`]);
+    for (const section of volume.sections) {
+      options.push([
+        `section:${volume.id}:${section.id}`,
+        `\u00a0\u00a0${sectionName(section)}`,
+      ]);
+    }
+  }
+  return reviewSelect("Location", options, "all", (event) => {
+    reviewState.filters.location = event.target.value;
+    render();
+  });
+}
+
+function annotationContext(item) {
+  const entry = item.scope === "book" ? null : findSection(
+    pageManuscript, item.volume, item.section,
+  );
+  return {
+    ...item,
+    volume_title: entry ? entry.volume.title : "Series",
+    section_title: entry ? sectionName(entry.section) : "Series checklist",
+    entry,
+  };
+}
+
+function annotationHref(item) {
+  if (item.available === false) return null;
+  if (item.scope === "book") return bookUrl(pageManuscript.book);
+  if (!item.entry) return null;
+  return readerUrl(
+    pageManuscript.book,
+    item.volume,
+    item.section,
+    item.kind === "note" ? item.block : null,
+    item.kind === "note" ? item.draft : null,
+  );
+}
+
+function annotationCard(item) {
+  const location = item.scope === "book"
+    ? "Series"
+    : `${item.volume_title} · ${item.section_title}`;
+  const draft = item.kind === "note" && !item.draft_primary
+    ? ` · ${item.draft_name || "Alternate draft"}` : "";
+  const destination = annotationHref(item);
+  return el("article", {
+    class: `review-card review-${item.kind}${item.available === false ? " unavailable" : ""}`,
+  }, [
+    el("div", { class: "review-card-main" }, [
+      item.kind === "checklist" ? el("input", {
+        type: "checkbox",
+        ...(item.done ? { checked: true } : {}),
+        "aria-label": `${item.done ? "Reopen" : "Complete"} ${item.text}`,
+        onchange: (event) => updateChecklist(item, { done: event.target.checked }),
+      }) : el("span", { class: "review-note-mark", "aria-hidden": "true", text: "✎" }),
+      el("div", {}, [
+        el("strong", { class: item.done ? "done" : "", text: item.text }),
+        item.excerpt ? el("q", { text: item.excerpt }) : null,
+        el("small", {
+          text: item.available === false
+            ? `${location}${draft} · Location unavailable` : `${location}${draft}`,
+        }),
+      ]),
+    ]),
+    el("div", { class: "review-card-actions" }, [
+      destination ? el("a", { class: "btn ghost sm", href: destination, text: "Open" }) : null,
+      el("button", {
+        class: "btn ghost sm", type: "button", text: "Edit",
+        onclick: () => openItemEditor({
+          kind: item.kind,
+          scope: item.scope,
+          block: item.block,
+          item,
+        }),
+      }),
+    ]),
+  ]);
+}
+
+function annotationOrder(item) {
+  if (item.scope === "book") return -1;
+  return reviewState.sectionOrder.get(`${item.volume}/${item.section}`)
+    ?? Number.MAX_SAFE_INTEGER;
+}
+
+function renderReviewAnnotations() {
+  if (!reviewState || reviewState.tab !== "notes" || !readerItemsLoaded) return;
+  const all = readerItems.map(annotationContext);
+  const shown = filterAnnotations(all, reviewState.filters)
+    .sort((left, right) => annotationOrder(left) - annotationOrder(right));
+  reviewState.status.textContent = `${shown.length} of ${all.filter(
+    (item) => ["note", "checklist"].includes(item.kind),
+  ).length} items`;
+  const groups = new Map();
+  for (const item of shown) {
+    const key = item.scope === "book"
+      ? "Series"
+      : `${item.volume_title} · ${item.section_title}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  }
+  fill(reviewState.results, groups.size
+    ? [...groups].map(([label, items]) => el("section", { class: "review-group" }, [
+        el("h2", { text: label }),
+        el("div", { class: "review-card-list" }, items.map(annotationCard)),
+      ]))
+    : [el("p", { class: "empty", text: "No notes or checklists match these filters." })]);
+}
+
+function ignoredWritingRules() {
+  try {
+    return JSON.parse(localStorage.getItem(
+      `logos-writing-ignored:${encodeURIComponent(readerUser)}`,
+    ) || "[]");
+  } catch (_error) {
+    return [];
+  }
+}
+
+function writingDialect() {
+  try {
+    return localStorage.getItem(
+      `logos-writing-dialect:${encodeURIComponent(readerUser)}`,
+    ) || "en-US";
+  } catch (_error) {
+    return "en-US";
+  }
+}
+
+function issueHref(issue) {
+  const target = new URL(writerUrl(
+    BASE, pageManuscript.book, issue.volume, issue.section, issue.draft,
+  ), window.location.origin);
+  target.searchParams.set("block", issue.block);
+  target.searchParams.set("coach", issue.id);
+  return target.href;
+}
+
+function coachingCard(issue) {
+  return el("article", { class: "review-card coaching-card" }, [
+    el("div", { class: "review-card-main" }, [
+      el("span", { class: "review-category", text: issue.category }),
+      el("div", {}, [
+        el("strong", { text: issue.title }),
+        el("p", { text: issue.message }),
+        el("q", { text: issue.excerpt }),
+        el("small", {
+          text: `${issue.volume_title} · ${sectionKindName(issue)}`
+            + `${issue.primary ? "" : ` · ${issue.draft_name}`}`,
+        }),
+      ]),
+    ]),
+    el("div", { class: "review-card-actions" }, [
+      el("a", { class: "btn sm", href: issueHref(issue), text: "Open in editor" }),
+    ]),
+  ]);
+}
+
+function renderReviewCoaching() {
+  if (!reviewState || reviewState.tab !== "coaching" || !reviewState.coaching) return;
+  const all = reviewState.coaching.issues || [];
+  const shown = filterIssues(all, {
+    ...reviewState.filters,
+    ignored: ignoredWritingRules(),
+  });
+  reviewState.status.textContent = `${shown.length} ${shown.length === 1 ? "suggestion" : "suggestions"}`
+    + ` across ${reviewState.coaching.reviewed_drafts} drafts`;
+  fill(reviewState.results, shown.length
+    ? shown.map(coachingCard)
+    : [el("p", { class: "empty", text: "No coaching suggestions match these filters." })]);
+}
+
+async function loadReviewCoaching() {
+  const requestToken = Symbol("series-review");
+  reviewState.requestToken = requestToken;
+  reviewState.status.textContent = "Reviewing the series…";
+  fill(reviewState.results, [el("p", { class: "empty", text: "Checking each draft…" })]);
+  try {
+    const result = await api.seriesWritingReview(
+      pageManuscript.book, reviewState.dialect, reviewState.includeAlternates,
+    );
+    if (!reviewState || reviewState.requestToken !== requestToken) return;
+    reviewState.coaching = result;
+    renderReviewCoaching();
+  } catch (error) {
+    if (!reviewState || reviewState.requestToken !== requestToken) return;
+    reviewState.status.textContent = "Review unavailable";
+    fill(reviewState.results, [el("p", {
+      class: "form-error", text: error.message || "The series could not be reviewed.",
+    })]);
+  }
+}
+
+function reviewControls(tab) {
+  const query = el("input", {
+    class: "review-search", type: "search", placeholder: "Filter this review",
+    "aria-label": "Filter review results",
+    oninput: (event) => {
+      reviewState.filters.query = event.target.value;
+      tab === "notes" ? renderReviewAnnotations() : renderReviewCoaching();
+    },
+  });
+  if (tab === "notes") {
+    return el("div", { class: "review-controls" }, [
+      query,
+      reviewLocationSelect(true, renderReviewAnnotations),
+      reviewSelect("Type", [["all", "All items"], ["note", "Notes"],
+        ["checklist", "Checklists"]], "all", (event) => {
+        reviewState.filters.kind = event.target.value;
+        renderReviewAnnotations();
+      }),
+      reviewSelect("Status", [["all", "Any status"], ["open", "Open"],
+        ["completed", "Completed"]], "all", (event) => {
+        reviewState.filters.status = event.target.value;
+        renderReviewAnnotations();
+      }),
+    ]);
+  }
+  return el("div", { class: "review-controls" }, [
+    query,
+    reviewLocationSelect(false, renderReviewCoaching),
+    reviewSelect("Category", [["all", "All suggestions"], ["spelling", "Spelling"],
+      ["grammar", "Grammar"], ["punctuation", "Punctuation"], ["spacing", "Spacing"],
+      ["flow", "Flow"], ["style", "Style"]], "all", (event) => {
+      reviewState.filters.category = event.target.value;
+      renderReviewCoaching();
+    }),
+    reviewSelect("English", [["en-US", "US"], ["en-GB", "UK"]],
+      reviewState.dialect, (event) => {
+        reviewState.dialect = event.target.value;
+        try {
+          localStorage.setItem(
+            `logos-writing-dialect:${encodeURIComponent(readerUser)}`,
+            reviewState.dialect,
+          );
+        } catch (_error) { /* optional */ }
+        loadReviewCoaching();
+      }),
+    el("label", { class: "review-alternates" }, [
+      el("input", {
+        type: "checkbox",
+        onchange: (event) => {
+          reviewState.includeAlternates = event.target.checked;
+          loadReviewCoaching();
+        },
+      }),
+      el("span", { text: "Include alternate drafts" }),
+    ]),
+  ]);
+}
+
+async function renderReview(manuscript, requestedTab) {
+  hideReaderChrome();
+  pageManuscript = manuscript;
+  const tab = requestedTab === "coaching" && manuscript.permissions.write
+    ? "coaching" : "notes";
+  const status = el("p", { class: "review-status muted", "aria-live": "polite" });
+  const results = el("div", { class: "review-results" });
+  reviewState = {
+    tab,
+    status,
+    results,
+    filters: {
+      query: "", kind: "all", status: "all", category: "all", location: "all",
+    },
+    dialect: writingDialect(),
+    includeAlternates: false,
+    coaching: null,
+    sectionOrder: new Map(pageManuscript.volumes.flatMap((volume) =>
+      volume.sections.map((section) => `${volume.id}/${section.id}`))
+      .map((key, index) => [key, index])),
+  };
+  document.title = `Review — ${manuscript.title || manuscript.book}`;
+  fill(content, [
+    el("div", { class: "review-page" }, [
+      el("a", { class: "back-link", href: bookUrl(manuscript.book), text: "← Series contents" }),
+      el("header", { class: "review-heading" }, [
+        el("p", { class: "eyebrow", text: manuscript.title || manuscript.book }),
+        el("h1", { text: "Review series" }),
+        el("p", { class: "lead", text: "Everything that needs another look, in one place." }),
+      ]),
+      el("nav", { class: "review-tabs", "aria-label": "Review sections" }, [
+        reviewTab(manuscript, "notes", "Notes & checklists"),
+        manuscript.permissions.write
+          ? reviewTab(manuscript, "coaching", "Coaching") : null,
+      ]),
+      reviewControls(tab),
+      status,
+      results,
+    ]),
+  ]);
+  if (tab === "notes") {
+    readerItems = [];
+    readerItemsLoaded = false;
+    await loadReaderData();
+  } else {
+    await loadReviewCoaching();
+  }
+}
+
 // -- bookmarks and manuscript search ---------------------------------------
 
 function renderBookmarks() {
@@ -1253,10 +1629,15 @@ function renderBookmarks() {
     return el("div", { class: "bookmark-row" }, [
       item.available !== false && entry
         ? el("a", {
-            href: readerUrl(pageManuscript.book, item.volume, item.section, item.block),
+            href: readerUrl(
+              pageManuscript.book, item.volume, item.section, item.block, item.draft,
+            ),
           }, [
             el("strong", { text: label }),
-            el("span", { text: `${entry.volume.title} · ${sectionName(entry.section)}` }),
+            el("span", {
+              text: `${entry.volume.title} · ${sectionName(entry.section)}`
+                + `${item.draft_primary ? "" : ` · ${item.draft_name || "Alternate draft"}`}`,
+            }),
           ])
         : el("span", {}, [
             el("strong", { text: label }),
@@ -1654,6 +2035,7 @@ function wire() {
     if (!open) return;
     const url = new URL(writerUrl(
       BASE, open.manuscript.book, open.volume.id, open.section.id,
+      open.draft && open.draft.id,
     ), window.location.origin);
     const anchor = blockSnapshot().block;
     if (anchor) url.searchParams.set("block", anchor);
@@ -1694,6 +2076,9 @@ function wire() {
   bookmarksButton.addEventListener("click", () => openBookmarks().catch(
     (error) => showTransientError(error.message || "Bookmarks could not be loaded."),
   ));
+  reviewButton.addEventListener("click", () => {
+    if (pageManuscript) window.location.href = reviewUrl(pageManuscript.book);
+  });
   document.getElementById("item-editor-close").addEventListener("click", () => itemEditor.close());
   itemEditorForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -1762,7 +2147,7 @@ function showFailure(error) {
 }
 
 async function openSection(manuscript, entry) {
-  const section = await api.section(
+  let section = await api.section(
     manuscript.book, entry.volume.id, entry.section.id,
   );
   const query = new URLSearchParams(window.location.search);
@@ -1777,13 +2162,32 @@ async function openSection(manuscript, entry) {
       user: readerUser,
       base: BASE,
       akashaUrl: window.__AKASHA_URL__ || "/",
-      onDone: (block) => {
+      onDone: (block, draft) => {
         window.location.href = readerUrl(
-          manuscript.book, entry.volume.id, entry.section.id, block,
+          manuscript.book, entry.volume.id, entry.section.id, block, draft,
         );
       },
     });
     return;
+  }
+  let draft = {
+    id: section.primary_draft_id,
+    name: "Primary draft",
+    primary: true,
+  };
+  let availableDrafts = [draft];
+  if (manuscript.permissions.write) {
+    const listing = await api.drafts(manuscript.book, entry.volume.id, entry.section.id);
+    availableDrafts = listing.drafts;
+    const requested = query.get("draft");
+    draft = availableDrafts.find((row) => row.id === requested)
+      || availableDrafts.find((row) => row.primary) || draft;
+    if (!draft.primary) {
+      const alternate = await api.draft(
+        manuscript.book, entry.volume.id, entry.section.id, draft.id,
+      );
+      section = { ...section, document: alternate.document, word_count: alternate.word_count };
+    }
   }
   open = {
     manuscript,
@@ -1794,6 +2198,8 @@ async function openSection(manuscript, entry) {
     scenesLoaded: false,
     restoring: true,
     navigating: false,
+    draft,
+    drafts: availableDrafts,
   };
   readerItems = [];
   readerItemsLoaded = false;
@@ -1837,6 +2243,10 @@ async function start() {
 
   const manuscript = await api.manuscript(book);
   await syncStoredPosition(book);
+  if (query.get("review")) {
+    await renderReview(manuscript, query.get("review"));
+    return;
+  }
   const volume = query.get("volume");
   const section = query.get("section");
   if (!volume || !section) {
@@ -1857,6 +2267,7 @@ async function start() {
       entry.volume.id,
       entry.section.id,
       query.get("block"),
+      query.get("draft"),
     );
     window.history.replaceState(null, "", moved);
   }

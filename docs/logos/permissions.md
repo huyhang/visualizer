@@ -30,7 +30,7 @@ anything on a reusable Chronos calendar.
 
 | Chronos book role | Permissions | What it can do in Logos |
 | --- | --- | --- |
-| Reader | `read` | Read, search and export the manuscript; manage only their own private notes, checklists, bookmarks and reading position |
+| Reader | `read` | Read, search and export the primary manuscript; manage only their own private notes, checklists, bookmarks and reading position |
 | Editor | `read`, `write` | The above, plus use the writing workspace, create and update drafts, choose the primary, reorder and restore manuscript content, and edit publication metadata |
 | Owner | `read`, `write`, `delete` | The above, plus delete drafts, sections, volumes and the manuscript, and manage sharing |
 
@@ -45,6 +45,9 @@ management, not the content itself.
   like changing it does.
 - Private reader-item and position writes require `read`; they address only the
   signed-in account and cannot alter another account or the manuscript.
+- Previewing alternate prose and creating a paragraph note or bookmark on an
+  alternate draft require `write`. Those annotations remain private to their
+  creator; the stronger permission protects the draft they resolve against.
 - Creating, updating, reordering and restoring require `write`. Alternate drafts
   are not exposed to read-only collaborators.
 - **Preconditions are asymmetric by design.** Every write carries `If-Match`,

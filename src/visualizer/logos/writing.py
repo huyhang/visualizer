@@ -76,7 +76,7 @@ class RuleBasedWritingAdvisor:
 
     private = True
 
-    _REPEATED_WORD = re.compile(r"\b([A-Za-z][A-Za-z'-]*)\s+\1\b", re.IGNORECASE)
+    _REPEATED_WORD = re.compile(r"\b([A-Za-z][A-Za-z\u2019'-]*)\s+\1\b", re.IGNORECASE)
     _SPACE_BEFORE_PUNCT = re.compile(r"[ \t]+([,.;:!?])")
     _MULTIPLE_SPACES = re.compile(r" {2,}")
     _SENTENCE = re.compile(r"[^.!?]+(?:[.!?]+|$)")
@@ -84,7 +84,7 @@ class RuleBasedWritingAdvisor:
         r"\b(?:am|is|are|was|were|be|been|being)\s+([a-z]+ed)\b", re.IGNORECASE
     )
 
-    _WORD = re.compile(r"[A-Za-z][A-Za-z'-]*")
+    _WORD = re.compile(r"[A-Za-z][A-Za-z\u2019'-]*")
 
     def review(self, document: dict, dialect: str = "en-US") -> list[dict]:
         clean = validate_document(document)
@@ -189,7 +189,7 @@ class RuleBasedWritingAdvisor:
     def _openings(self, block: str, text: str) -> list[tuple[str, str, str]]:
         found = []
         for sentence in self._SENTENCE.findall(text):
-            words = re.findall(r"[A-Za-z][A-Za-z'-]*", sentence)
+            words = re.findall(r"[A-Za-z][A-Za-z\u2019'-]*", sentence)
             if len(words) >= 2:
                 found.append((" ".join(words[:2]).casefold(), block, sentence.strip()))
         return found
@@ -211,6 +211,94 @@ class RuleBasedWritingAdvisor:
                 )
             )
         return issues
+
+
+class SeriesWritingReview:
+    """Apply an injected advisor across ordered manuscript drafts."""
+
+    def __init__(self, store, manuscripts, advisor: WritingAdvisor):
+        self.store = store
+        self.manuscripts = manuscripts
+        self.advisor = advisor
+
+    def review(
+        self, book: str, dialect: str = "en-US", *, include_alternates: bool = False
+    ) -> dict:
+        manuscript = self.manuscripts.publication(book)
+        drafts = self.store.list_book_drafts(book) if include_alternates else []
+        by_section: dict[tuple[str, str], list[dict]] = {}
+        for draft in drafts:
+            by_section.setdefault((draft["volume"], draft["section"]), []).append(
+                draft
+            )
+
+        findings = []
+        reviewed = 0
+        for volume in manuscript["volumes"]:
+            for section in volume["sections"]:
+                rows = by_section.get((volume["id"], section["id"]), [])
+                primary_id = section["primary_draft_id"]
+                candidates = [
+                    {
+                        "draft": primary_id,
+                        "name": _draft_name(rows, primary_id),
+                        "document": section["document"],
+                        "primary": True,
+                        "rev": _draft_revision(rows, primary_id, section["rev"]),
+                    }
+                ]
+                if include_alternates:
+                    candidates.extend(
+                        {
+                            "draft": row["draft"],
+                            "name": row["name"],
+                            "document": row["document"],
+                            "primary": False,
+                            "rev": row["rev"],
+                        }
+                        for row in rows
+                        if row["draft"] != primary_id
+                    )
+                for candidate in candidates:
+                    reviewed += 1
+                    for issue in self.advisor.review(candidate["document"], dialect):
+                        findings.append(
+                            {
+                                **issue,
+                                "id": (
+                                    f'{volume["id"]}:{section["id"]}:'
+                                    f'{candidate["draft"]}:{issue["id"]}'
+                                ),
+                                "volume": volume["id"],
+                                "volume_title": volume["title"],
+                                "section": section["id"],
+                                "section_title": section.get("title"),
+                                "section_kind": section["kind"],
+                                "section_number": section.get("number"),
+                                "draft": candidate["draft"],
+                                "draft_name": candidate["name"],
+                                "draft_rev": candidate["rev"],
+                                "primary": candidate["primary"],
+                            }
+                        )
+        return {
+            "book": book,
+            "dialect": dialect,
+            "include_alternates": include_alternates,
+            "reviewed_drafts": reviewed,
+            "private": bool(getattr(self.advisor, "private", False)),
+            "issues": findings,
+        }
+
+
+def _draft_name(rows: list[dict], draft_id: str) -> str:
+    row = next((item for item in rows if item["draft"] == draft_id), None)
+    return row["name"] if row else "Primary draft"
+
+
+def _draft_revision(rows: list[dict], draft_id: str, fallback: int) -> int:
+    row = next((item for item in rows if item["draft"] == draft_id), None)
+    return row["rev"] if row else fallback
 
 
 def _excerpt(text: str, limit: int = 100) -> str:

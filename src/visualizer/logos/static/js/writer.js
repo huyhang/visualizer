@@ -8,7 +8,7 @@ import { compactAction } from "./compactaction.js";
 import { compareDocuments } from "./comparison.js";
 import { allSectionIds, availableId, emptyDocument } from "./contents.js";
 import { createContextMenu } from "./contextmenu.js";
-import { createDraftState } from "./draftstate.js";
+import { createDraftState, draftCapabilities } from "./draftstate.js";
 import { el, fill } from "./dom.js";
 import {
   caretPosition,
@@ -16,6 +16,7 @@ import {
   linkMention,
   mentionAt,
   mentionRef,
+  normalizeEditorTypography,
   placeCaret,
   renderEditorDocument,
   selectedProse,
@@ -97,7 +98,7 @@ function outline(manuscript, current, base, navigate, createChapter, close) {
   ]);
 }
 
-function topbar({ base, manuscript, entry, section, nodes, actions, canCompare }) {
+function topbar({ base, manuscript, entry, section, nodes, actions, capabilities }) {
   const button = (label, glyph, onclick, extra = {}) => compactAction({
     label, glyph, className: "btn ghost sm writer-draft-action", onclick, ...extra,
   });
@@ -118,8 +119,9 @@ function topbar({ base, manuscript, entry, section, nodes, actions, canCompare }
       el("div", { class: "writer-draft-actions" }, [
         button("New draft", "+", actions.newDraft),
         button("Rename", "✎", actions.rename),
-        button("Make primary", "★", actions.makePrimary),
-        button("Compare", "⇄", actions.compare, { disabled: !canCompare }),
+        capabilities.canPromote
+          ? button("Make primary", "★", actions.makePrimary) : null,
+        capabilities.canCompare ? button("Compare", "⇄", actions.compare) : null,
       ]),
       nodes.count, nodes.status, nodes.conflictAction,
     ]),
@@ -391,6 +393,7 @@ export async function mountWriter({
   });
 
   const changed = () => {
+    normalizeEditorTypography(editor, window.getSelection());
     updateCount();
     autosave.schedule(snapshot());
     clearTimeout(coachTimer);
@@ -402,7 +405,9 @@ export async function mountWriter({
       value: option.value, text: option.text,
     })));
     draftSelect.value = state.current.id;
-    primaryBadge.hidden = !state.current.primary;
+    const capabilities = draftCapabilities(state.count, state.current.primary);
+    draftSelect.hidden = !capabilities.canSwitch;
+    primaryBadge.hidden = !capabilities.showPrimaryBadge;
   };
 
   const akasha = createAkashaPanel({
@@ -595,7 +600,7 @@ export async function mountWriter({
       renderDraftOptions();
       changed();
     },
-    makePrimary: async () => {
+    makePrimary: async (event) => {
       if (!(await settled()) || state.current.primary) return;
       const result = await api.makePrimary(
         manuscript.book, entry.volume.id, section.id,
@@ -603,18 +608,22 @@ export async function mountWriter({
       );
       state.promoted(result.section_rev);
       renderDraftOptions();
+      event?.currentTarget?.remove();
     },
     compare: async () => { if (await settled()) compare.showModal(); },
     done: async () => {
       if (!(await settled(true))) return;
-      onDone(editor.querySelector("[data-block-id]")?.dataset.blockId || null);
+      onDone(
+        editor.querySelector("[data-block-id]")?.dataset.blockId || null,
+        state.current.id,
+      );
     },
   };
 
   const shell = el("div", { class: "writer-shell" }, [
     topbar({
       base, manuscript, entry, section, actions,
-      canCompare: state.count > 1,
+      capabilities: draftCapabilities(state.count, state.current.primary),
       nodes: { draftSelect, primaryBadge, count, status, conflictAction },
     }),
     el("div", { class: "writer-columns" }, [
@@ -723,6 +732,10 @@ export async function mountWriter({
     window.visualViewport.addEventListener("resize", placeToolbar);
     window.visualViewport.addEventListener("scroll", placeToolbar);
     placeToolbar();
+  }
+  if (new URLSearchParams(window.location.search).has("coach")) {
+    context.select("coach");
+    openDrawer("context");
   }
   // Where to land, best first: exactly where the writer stopped typing, then
   // the block the reader deep-linked, then the top of the draft.

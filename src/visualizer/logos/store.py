@@ -26,7 +26,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from pymongo import ReturnDocument
-from pymongo.errors import DuplicateKeyError
+from pymongo.errors import DuplicateKeyError, OperationFailure
 
 from visualizer.documents import VersionedDocuments
 
@@ -116,6 +116,15 @@ class LogosStore:
         self._clock = clock or (lambda: datetime.now(UTC))
         self._id_factory = id_factory or (lambda: str(uuid4()))
         self._reader_items.create_index([("username", 1), ("book", 1)])
+        legacy_bookmark_index = (
+            "username_1_book_1_kind_1_volume_1_section_1_block_1"
+        )
+        if legacy_bookmark_index in self._reader_items.index_information():
+            try:
+                self._reader_items.drop_index(legacy_bookmark_index)
+            except OperationFailure as error:
+                if error.code != 27:  # another process may have removed it
+                    raise
         self._reader_items.create_index(
             [
                 ("username", 1),
@@ -123,8 +132,10 @@ class LogosStore:
                 ("kind", 1),
                 ("volume", 1),
                 ("section", 1),
+                ("draft", 1),
                 ("block", 1),
             ],
+            name="reader_bookmark_target",
             unique=True,
             partialFilterExpression={"kind": "bookmark"},
         )
@@ -362,6 +373,10 @@ class LogosStore:
         return self._drafts.list(
             {"book": book, "volume": volume, "section": section}
         )
+
+    def list_book_drafts(self, book: str) -> list[dict]:
+        """All live drafts for a series in one store read."""
+        return self._drafts.list({"book": book})
 
     def update_draft(
         self, book: str, volume: str, section: str, draft: str,

@@ -649,6 +649,12 @@ h1, h2, h3, .lead { overflow-wrap: anywhere; }
 }
 
 @media (max-width: 600px) {
+  .review-page { padding-inline: .2rem; }
+  .review-controls { align-items: stretch; }
+  .review-search, .review-filter, .review-filter select { width: 100%; }
+  .review-card { align-items: stretch; flex-direction: column; }
+  .review-card-actions { justify-content: flex-end; }
+  .reader-draft-picker { align-items: start; flex-direction: column; }
   .settings, .jump, .draft-comparison {
     position: fixed; inset: auto 0 0; width: 100%; max-width: none;
     max-height: calc(100dvh - max(.75rem, env(safe-area-inset-top, 0px)));
@@ -830,6 +836,69 @@ h1, h2, h3, .lead { overflow-wrap: anywhere; }
 .coach-clear { color: var(--accent-strong); }
 .coach-dialect { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: .72rem; font-weight: 700; }
 .coach-dialect select { padding: .25rem .4rem; border: 1px solid var(--border); border-radius: 7px; color: var(--text); background: var(--surface-2); }
+
+/* Series review ----------------------------------------------------------- */
+.review-page { width: min(76rem, 100%); margin: 0 auto; padding-bottom: 5rem; }
+.review-heading { margin: 1.25rem 0 1.5rem; }
+.review-heading h1 { margin: .15rem 0 .35rem; }
+.review-tabs { display: flex; gap: .35rem; border-bottom: 1px solid var(--border); }
+.review-tab {
+  padding: .7rem .9rem; border-bottom: 2px solid transparent; color: var(--muted);
+  font-size: .84rem; font-weight: 750; text-decoration: none;
+}
+.review-tab:hover { color: var(--text); text-decoration: none; }
+.review-tab.active { border-color: var(--accent); color: var(--accent-strong); }
+.review-controls {
+  display: flex; align-items: end; flex-wrap: wrap; gap: .7rem;
+  margin: 1rem 0 .45rem; padding: .85rem; border: 1px solid var(--border);
+  border-radius: 12px; background: var(--surface);
+}
+.review-search {
+  flex: 1 1 18rem; min-width: 12rem; padding: .55rem .7rem;
+  border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); background: var(--surface-2);
+}
+.review-filter { display: grid; gap: .25rem; color: var(--muted); font-size: .7rem; font-weight: 750; }
+.review-filter select {
+  min-width: 8rem; padding: .5rem .65rem; border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text); background: var(--surface-2);
+}
+.review-alternates {
+  display: flex; align-items: center; gap: .45rem; min-height: 2.15rem;
+  color: var(--text); font-size: .78rem; font-weight: 700;
+}
+.review-status { min-height: 1.2rem; margin: .7rem 0; font-size: .78rem; }
+.review-results { display: grid; gap: 1.25rem; }
+.review-group { display: grid; gap: .55rem; }
+.review-group h2 { margin: 0; color: var(--muted); font-size: .78rem; letter-spacing: .03em; }
+.review-card-list { display: grid; gap: .55rem; }
+.review-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  padding: .85rem 1rem; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface); box-shadow: var(--shadow);
+}
+.review-card.unavailable { border-color: color-mix(in srgb, var(--danger) 55%, var(--border)); }
+.review-card-main { display: flex; align-items: start; gap: .75rem; min-width: 0; }
+.review-card-main > div { display: grid; gap: .22rem; min-width: 0; }
+.review-card-main p, .review-card-main q { margin: 0; font-size: .82rem; }
+.review-card-main q { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.review-card-main small { color: var(--muted); font-size: .7rem; }
+.review-card-main .done { color: var(--muted); text-decoration: line-through; }
+.review-note-mark { color: var(--accent-strong); }
+.review-category {
+  padding: .2rem .38rem; border-radius: 999px; color: var(--accent-strong);
+  background: var(--accent-soft); font-size: .64rem; font-weight: 800;
+  text-transform: uppercase;
+}
+.review-card-actions { display: flex; flex: 0 0 auto; gap: .35rem; }
+.reader-draft-picker {
+  display: inline-flex; align-items: center; gap: .5rem; margin-top: .65rem;
+  color: var(--muted); font-size: .72rem; font-weight: 700;
+}
+.reader-draft-picker select {
+  max-width: 18rem; padding: .35rem .5rem; border: 1px solid var(--border);
+  border-radius: 8px; color: var(--text); background: var(--surface-2);
+}
 .draft-comparison {
   width: min(74rem, calc(100vw - 2rem)); height: min(48rem, calc(100dvh - 2rem));
   padding: 1rem; color: var(--text); background: var(--surface);

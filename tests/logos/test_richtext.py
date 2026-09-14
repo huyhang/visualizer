@@ -164,6 +164,31 @@ def test_validation_never_mutates_or_aliases_the_caller_s_payload():
     assert result["content"][0] is not payload["content"][0]
 
 
+def test_validation_curls_prose_quotes_but_preserves_code():
+    payload = _doc(
+        {
+            "type": "paragraph",
+            "id": "p1",
+            "content": [
+                {"type": "text", "text": '"Don\'t," she said. '},
+                {
+                    "type": "text",
+                    "text": 'print("don\'t")',
+                    "marks": [{"type": "code"}],
+                },
+                {"type": "text", "text": " 'Twas enough."},
+            ],
+        }
+    )
+
+    nodes = validate_document(payload)["content"][0]["content"]
+
+    assert nodes[0]["text"] == "\u201cDon\u2019t,\u201d she said. "
+    assert nodes[1]["text"] == 'print("don\'t")'
+    assert nodes[2]["text"] == " \u2019Twas enough."
+    assert payload["content"][0]["content"][0]["text"] == '"Don\'t," she said. '
+
+
 def test_a_document_that_is_not_a_document_is_refused():
     for payload in ([], "prose", {"version": 2, "type": "doc", "content": []},
                     {"version": 1, "type": "page", "content": []},

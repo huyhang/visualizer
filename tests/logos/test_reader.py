@@ -83,6 +83,7 @@ def test_the_display_choices_live_in_a_dialog_not_on_the_strip(client):
     assert 'id="mode-toggle"' in toolbar
     assert 'id="settings-open"' in toolbar
     assert 'id="jump-open"' in toolbar
+    assert 'id="review-open"' in toolbar
     for field in ("typeface", "leading", "measure", "align"):
         assert f'id="display-{field}"' not in toolbar, field
         assert f'id="display-{field}"' in dialog, field
@@ -333,6 +334,8 @@ def test_the_reader_assets_are_served(client):
         "/static/js/editor.js",
         "/static/js/comparison.js",
         "/static/js/recovery.js",
+        "/static/js/review.js",
+        "/static/js/typography.js",
         "/static/js/writer.js",
         "/static/js/shared/prefs.js",
         "/static/shared/service-nav.css",

@@ -667,6 +667,18 @@
       }
     },
     "/books/{book}/ui/writing-review": {
+      "get": {
+        "tags": ["writer"], "summary": "Review writing across the series",
+        "parameters": [
+          { "$ref": "#/components/parameters/Book" },
+          { "name": "dialect", "in": "query", "schema": { "type": "string", "enum": ["en-US", "en-GB"], "default": "en-US" } },
+          { "name": "include_alternates", "in": "query", "schema": { "type": "boolean", "default": false } }
+        ],
+        "responses": {
+          "200": { "description": "Ephemeral findings with exact volume, section, draft and block locations; prose and findings are not retained.", "content": { "application/json": { "schema": { "type": "object" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
       "post": {
         "tags": ["writer"], "summary": "Run the configured private writing advisor",
         "parameters": [{ "$ref": "#/components/parameters/Book" }],
@@ -1725,7 +1737,7 @@
         "properties": {
           "kind": { "type": "string", "enum": ["note", "checklist", "bookmark"] },
           "scope": { "type": "string", "enum": ["book", "section"] },
-          "volume": { "type": "string" }, "section": { "type": "string" }, "block": { "type": "string" },
+          "volume": { "type": "string" }, "section": { "type": "string" }, "draft": { "type": "string", "description": "Exact named draft for a paragraph item; omitted legacy items follow the current primary." }, "block": { "type": "string" },
           "text": { "type": "string", "maxLength": 10000 }, "done": { "type": "boolean" }
         }
       },
@@ -1736,7 +1748,7 @@
           "id": { "type": "string" }, "book": { "type": "string" },
           "kind": { "type": "string", "enum": ["note", "checklist", "bookmark"] },
           "scope": { "type": "string", "enum": ["book", "section", "paragraph"] },
-          "volume": { "type": "string" }, "section": { "type": "string" }, "block": { "type": "string" },
+          "volume": { "type": "string" }, "section": { "type": "string" }, "draft": { "type": "string" }, "draft_name": { "type": "string" }, "draft_primary": { "type": "boolean" }, "block": { "type": "string" },
           "text": { "type": "string" }, "done": { "type": "boolean" }, "available": { "type": "boolean" },
           "excerpt": { "type": "string" }, "rev": { "type": "integer", "minimum": 1 },
           "created_at": { "type": "string" }, "updated_at": { "type": "string" }

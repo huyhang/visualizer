@@ -19,6 +19,7 @@ import json
 from typing import Any
 
 from .errors import InvalidDocument
+from .typography import curl_quotes
 
 DOCUMENT_VERSION = 1
 
@@ -60,7 +61,9 @@ def validate_document(payload: Any) -> dict:
         )
     seen: set[str] = set()
     blocks = [_block(node, index, seen) for index, node in enumerate(content)]
-    document = {"version": DOCUMENT_VERSION, "type": "doc", "content": blocks}
+    document = curl_quotes(
+        {"version": DOCUMENT_VERSION, "type": "doc", "content": blocks}
+    )
     _check_size(document)
     return document
 

@@ -1,6 +1,6 @@
 """Private annotations, bookmarks, checklists and optional position sync."""
 
-from .conftest import BOOK, SECTION, VOLUME, section_payload
+from .conftest import BOOK, SECTION, VOLUME, document, section_payload
 
 BOOK_URL = f"/books/{BOOK}"
 ITEMS = f"{BOOK_URL}/me/items"
@@ -129,6 +129,55 @@ def test_book_and_section_checklists_and_bookmarks(section):
     )
     assert same.get_json()["id"] == bookmark.get_json()["id"]
     assert len(section.get(ITEMS).get_json()["items"]) == 3
+
+
+def test_an_alternate_draft_note_keeps_its_exact_reader_target(section, reader):
+    created = section.post(
+        f"{BOOK_URL}/volumes/{VOLUME}/sections/{SECTION}/drafts",
+        json={"name": "Quiet opening"},
+    ).get_json()
+    changed = section.put(
+        f"{BOOK_URL}/volumes/{VOLUME}/sections/{SECTION}/drafts/{created['id']}",
+        json={"name": created["name"], "document": document("Wait. Wait.")},
+        headers={"If-Match": str(created["rev"])},
+    ).get_json()
+
+    saved = section.post(
+        ITEMS,
+        json={**_note("Tighten this."), "draft": created["id"]},
+    )
+
+    assert saved.status_code == 201
+    body = saved.get_json()
+    assert {key: body[key] for key in (
+        "draft", "draft_name", "draft_primary", "excerpt"
+    )} == {
+        "draft": created["id"],
+        "draft_name": "Quiet opening",
+        "draft_primary": False,
+        "excerpt": "Wait. Wait.",
+    }
+    listed = section.get(ITEMS).get_json()["items"][0]
+    assert listed["draft"] == created["id"]
+    assert listed["draft_name"] == "Quiet opening"
+    assert listed["available"] is True
+    assert changed["primary"] is False
+
+    primary_bookmark = section.post(ITEMS, json={
+        "kind": "bookmark", "volume": VOLUME, "section": SECTION,
+        "block": "p1", "text": "Primary",
+    }).get_json()
+    alternate_bookmark = section.post(ITEMS, json={
+        "kind": "bookmark", "volume": VOLUME, "section": SECTION,
+        "draft": created["id"], "block": "p1", "text": "Alternate",
+    }).get_json()
+    assert alternate_bookmark["id"] != primary_bookmark["id"]
+
+    forbidden = reader.post(
+        ITEMS,
+        json={**_note("Cannot inspect alternates."), "draft": created["id"]},
+    )
+    assert forbidden.status_code == 403
 
 
 def test_position_sync_is_opt_in_and_furthest_never_regresses(section):

@@ -36,7 +36,7 @@ from .richtext import validate_document
 from .search import SearchService
 from .services import DraftService, ManuscriptService, SectionService, VolumeService
 from .store import LogosStore
-from .writing import RuleBasedWritingAdvisor, WritingAdvisor
+from .writing import RuleBasedWritingAdvisor, SeriesWritingReview, WritingAdvisor
 
 # Logos reads the Chronos book grant directly -- one resource kind, one grant,
 # no second sharing model and no migration for books that already exist.
@@ -102,6 +102,7 @@ def create_app(
     search = SearchService(store, manuscripts)
     publications = PublicationService(store, manuscripts, pdf_renderer)
     advisor = writing_advisor or RuleBasedWritingAdvisor()
+    series_review = SeriesWritingReview(store, manuscripts, advisor)
     jobs = ExportJobs(
         store, publications, **({} if export_runner is None else
                                 {"runner": export_runner})
@@ -120,6 +121,7 @@ def create_app(
         jobs,
         articles,
         advisor,
+        series_review,
     )
     if observability is not None:
         observability.install(app, "logos")
@@ -129,7 +131,7 @@ def create_app(
 
 def _register_routes(
     app, csrf, auth_store, manuscripts, volumes, sections, drafts, readers, search,
-    publications, export_jobs, articles, writing_advisor,
+    publications, export_jobs, articles, writing_advisor, series_review,
 ):
     @app.get("/")
     @login_required
@@ -221,9 +223,7 @@ def _register_routes(
         body = _json_body()
         if not isinstance(body, dict) or set(body) - {"document", "dialect"}:
             raise InvalidSearch("A writing review requires a document and dialect.")
-        dialect = body.get("dialect", "en-US")
-        if dialect not in {"en-US", "en-GB"}:
-            raise InvalidSearch("The writing dialect must be 'en-US' or 'en-GB'.")
+        dialect = _writing_dialect(body.get("dialect", "en-US"))
         document = validate_document(body.get("document"))
         return jsonify(
             {
@@ -233,20 +233,43 @@ def _register_routes(
             }
         )
 
+    @app.get(_BOOK + "/ui/writing-review")
+    @csrf.exempt
+    @login_required
+    def review_series_writing(book):
+        _authorize(auth_store, "write", book)
+        dialect = _writing_dialect(request.args.get("dialect", "en-US"))
+        return jsonify(
+            series_review.review(
+                book,
+                dialect,
+                include_alternates=_truthy(request.args.get("include_alternates")),
+            )
+        )
+
     @app.get(_BOOK + "/me/items")
     @csrf.exempt
     @login_required
     def list_reader_items(book):
         _authorize(auth_store, "read", book)
-        return jsonify(readers.list_items(current_user.username, book))
+        return jsonify(
+            readers.list_items(
+                current_user.username,
+                book,
+                include_alternates=_allowed(auth_store, "write", book),
+            )
+        )
 
     @app.post(_BOOK + "/me/items")
     @csrf.exempt
     @login_required
     def create_reader_item(book):
         _authorize(auth_store, "read", book)
+        body = _json_body()
+        if isinstance(body, dict) and body.get("draft") is not None:
+            _authorize(auth_store, "write", book)
         return _resource(
-            readers.create_item(current_user.username, book, _json_body()), 201
+            readers.create_item(current_user.username, book, body), 201
         )
 
     @app.put(_BOOK + "/me/items/<item>")
@@ -744,6 +767,12 @@ def _expected_rev() -> int:
 
 def _truthy(value) -> bool:
     return value is not None and str(value).strip().lower() in _TRUTHY
+
+
+def _writing_dialect(value) -> str:
+    if value not in {"en-US", "en-GB"}:
+        raise InvalidSearch("The writing dialect must be 'en-US' or 'en-GB'.")
+    return value
 
 
 def _resource(result: dict, status: int = 200):

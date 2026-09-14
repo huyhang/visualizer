@@ -55,3 +55,12 @@ export function createDraftState({ drafts, current, sectionRev }) {
     },
   };
 }
+
+export function draftCapabilities(count, currentIsPrimary) {
+  return {
+    canSwitch: count > 1,
+    canCompare: count > 1,
+    canPromote: count > 1 && !currentIsPrimary,
+    showPrimaryBadge: count > 1 && currentIsPrimary,
+  };
+}

@@ -1,22 +1,24 @@
 // Pure selectors for the private reader layer. DOM rendering and persistence
 // stay with the caller; these rules are independently testable.
 
-export function dataForSection(items, volume, section) {
+export function dataForSection(items, volume, section, draft = null) {
   const all = Array.isArray(items) ? items : [];
+  const onDraft = (item) => !draft || !item.draft || item.draft === draft;
   return {
     notes: all.filter((item) => item.kind === "note"
-      && item.volume === volume && item.section === section),
+      && item.volume === volume && item.section === section && onDraft(item)),
     bookmarks: all.filter((item) => item.kind === "bookmark"
-      && item.volume === volume && item.section === section),
+      && item.volume === volume && item.section === section && onDraft(item)),
     sectionChecklist: all.filter((item) => item.kind === "checklist"
       && item.scope === "section" && item.volume === volume && item.section === section),
     bookChecklist: all.filter((item) => item.kind === "checklist" && item.scope === "book"),
   };
 }
 
-export function bookmarkAt(items, volume, section, block) {
+export function bookmarkAt(items, volume, section, block, draft = null) {
   return (items || []).find((item) => item.kind === "bookmark"
-    && item.volume === volume && item.section === section && item.block === block) || null;
+    && item.volume === volume && item.section === section && item.block === block
+    && (!draft || !item.draft || item.draft === draft)) || null;
 }
 
 export function bookmarks(items) {

@@ -168,12 +168,12 @@ def run() -> None:
             page.goto(base + "/?book=ember-pact")
             assert_no_horizontal_overflow(page, "book contents")
             expect(page.get_by_role("button", name="Search series")).to_be_visible()
-            assert_compact_actions(page, ".book-actions .compact-action", 6)
+            assert_compact_actions(page, ".book-actions .compact-action", 7)
 
             page.goto(base + "/?book=ember-pact&volume=one&section=gate")
             assert_no_horizontal_overflow(page, "section reader")
             page.get_by_role("button", name="Reading settings").click()
-            assert_compact_actions(page, ".reader-toolbar .compact-action", 6)
+            assert_compact_actions(page, ".reader-toolbar .compact-action", 7)
             expect(page.get_by_role("heading", name="Reading settings")).to_be_visible()
             assert_inside_viewport(page, "#reading-settings")
             page.get_by_role("button", name="Close reading settings").click()
@@ -184,7 +184,7 @@ def run() -> None:
             expect(page.get_by_role("button", name="New draft")).to_be_visible()
             expect(page.get_by_role("button", name="Numbered")).to_be_visible()
             assert_no_horizontal_overflow(page, "writing workspace")
-            assert_compact_actions(page, ".writer-draft-action", 4)
+            assert_compact_actions(page, ".writer-draft-action", 3)
             assert_compact_actions(page, ".writer-format .compact-action", 7)
 
             page.get_by_role("button", name="Open outline").click()

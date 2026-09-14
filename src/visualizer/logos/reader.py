@@ -31,8 +31,8 @@ def validate_reader_item(payload: Any) -> dict:
             evidence={"kind": kind},
         )
     allowed = {
-        "note": {"kind", "volume", "section", "block", "text"},
-        "bookmark": {"kind", "volume", "section", "block", "text"},
+        "note": {"kind", "volume", "section", "draft", "block", "text"},
+        "bookmark": {"kind", "volume", "section", "draft", "block", "text"},
         "checklist": {"kind", "scope", "volume", "section", "text", "done"},
     }[kind]
     _only(body, allowed, InvalidReaderItem, kind)
@@ -41,7 +41,7 @@ def validate_reader_item(payload: Any) -> dict:
         text = _text(
             body.get("text", ""), "text", maximum, allow_empty=kind == "bookmark"
         )
-        return {
+        result = {
             "kind": kind,
             "scope": "paragraph",
             "volume": _required_id(body.get("volume"), "volume"),
@@ -49,6 +49,9 @@ def validate_reader_item(payload: Any) -> dict:
             "block": _required_id(body.get("block"), "block"),
             "text": text,
         }
+        if body.get("draft") is not None:
+            result["draft"] = _required_id(body["draft"], "draft")
+        return result
 
     scope = body.get("scope")
     if scope not in {"book", "section"}:
@@ -122,51 +125,62 @@ class ReaderService:
         self.store = store
         self.manuscripts = manuscripts
 
-    def list_items(self, username: str, book: str) -> dict:
+    def list_items(
+        self, username: str, book: str, *, include_alternates: bool = False
+    ) -> dict:
         manuscript = self.manuscripts.publication(book)
-        anchors = self._anchors(manuscript)
+        sections = self._sections(manuscript)
+        stored_items = self.store.list_reader_items(username, book)
+        draft_rows = {
+            (row["volume"], row["section"], row["draft"]): row
+            for row in self.store.list_book_drafts(book)
+        } if include_alternates and any(item.get("draft") for item in stored_items) else {}
         items = []
-        for item in self.store.list_reader_items(username, book):
-            key = (item.get("volume"), item.get("section"), item.get("block"))
+        for item in stored_items:
             anchored = item["scope"] == "paragraph"
             section_scoped = item["scope"] == "section"
             section_key = (item.get("volume"), item.get("section"))
-            item["available"] = (
-                key in anchors
-                if anchored
-                else section_key in anchors
-                if section_scoped
-                else True
-            )
-            if anchored and key in anchors:
-                item["excerpt"] = anchors[key]
+            if anchored:
+                context = self._item_draft(item, sections, draft_rows)
+                item.update(context["metadata"])
+                anchors = context["anchors"]
+                item["available"] = item.get("block") in anchors
+                if item["available"]:
+                    item["excerpt"] = anchors[item["block"]]
+            else:
+                item["available"] = (
+                    section_key in sections if section_scoped else True
+                )
             items.append(item)
         return {"book": book, "items": items}
 
     def create_item(self, username: str, book: str, payload: Any) -> dict:
         item = validate_reader_item(payload)
         manuscript = self.manuscripts.publication(book)
-        anchors = self._anchors(manuscript)
-        self._require_target(item, anchors)
+        sections = self._sections(manuscript)
+        section = sections.get((item.get("volume"), item.get("section")))
+        anchors = self._target_anchors(book, item, section)
+        self._require_target(item, sections, anchors)
         if item["kind"] == "bookmark":
             for current in self.store.list_reader_items(username, book):
                 if current["kind"] == "bookmark" and all(
                     current.get(field) == item.get(field)
-                    for field in ("volume", "section", "block")
+                    for field in ("volume", "section", "draft", "block")
                 ):
                     return {
                         **current,
                         "available": True,
-                        "excerpt": anchors[
-                            (item["volume"], item["section"], item["block"])
-                        ],
+                        "excerpt": anchors[item["block"]],
+                        **self._draft_metadata(item, section, None),
                     }
         created = self.store.create_reader_item(username, book, item)
         created["available"] = True
         if item["scope"] == "paragraph":
-            created["excerpt"] = anchors[
-                (item["volume"], item["section"], item["block"])
-            ]
+            created["excerpt"] = anchors[item["block"]]
+            row = self.store.find_draft(
+                book, item["volume"], item["section"], item.get("draft", "")
+            ) if item.get("draft") else None
+            created.update(self._draft_metadata(item, section, row))
         return created
 
     def update_item(
@@ -258,27 +272,77 @@ class ReaderService:
         return result
 
     @staticmethod
-    def _anchors(manuscript: dict) -> dict:
-        anchors = {}
+    def _sections(manuscript: dict) -> dict:
+        sections = {}
         for volume in manuscript["volumes"]:
             for section in volume["sections"]:
-                anchors[(volume["id"], section["id"])] = ""
-                for block in section["document"].get("content", []):
-                    if block.get("type") != "paragraph":
-                        continue
-                    anchors[(volume["id"], section["id"], block["id"])] = block_text(
-                        block
-                    ).strip()[:240]
-        return anchors
+                sections[(volume["id"], section["id"])] = {
+                    **section,
+                    "book": manuscript["book"],
+                }
+        return sections
 
     @staticmethod
-    def _require_target(item: dict, anchors: dict) -> None:
+    def _anchors(document: dict) -> dict[str, str]:
+        anchors = {}
+        for block in document.get("content", []):
+            if block.get("type") == "paragraph":
+                anchors[block["id"]] = block_text(block).strip()[:240]
+        return anchors
+
+    def _target_anchors(
+        self, book: str, item: dict, section: dict | None
+    ) -> dict[str, str]:
+        if item["scope"] != "paragraph" or section is None:
+            return {}
+        draft_id = item.get("draft")
+        if not draft_id or draft_id == section["primary_draft_id"]:
+            return self._anchors(section["document"])
+        draft = self.store.find_draft(
+            book, item["volume"], item["section"], draft_id
+        )
+        return self._anchors(draft["document"]) if draft else {}
+
+    def _item_draft(self, item: dict, sections: dict, draft_rows: dict) -> dict:
+        section = sections.get((item.get("volume"), item.get("section")))
+        if section is None:
+            return {"anchors": {}, "metadata": {}}
+        draft_id = item.get("draft") or section["primary_draft_id"]
+        if draft_id == section["primary_draft_id"]:
+            return {
+                "anchors": self._anchors(section["document"]),
+                "metadata": self._draft_metadata(item, section, None),
+            }
+        row = draft_rows.get((item["volume"], item["section"], draft_id))
+        return {
+            "anchors": self._anchors(row["document"]) if row else {},
+            "metadata": self._draft_metadata(item, section, row),
+        }
+
+    @staticmethod
+    def _draft_metadata(item: dict, section: dict | None, row: dict | None) -> dict:
+        if section is None:
+            return {}
+        draft_id = item.get("draft") or section["primary_draft_id"]
+        primary = draft_id == section["primary_draft_id"]
+        return {
+            "draft": draft_id,
+            "draft_name": row["name"] if row else (
+                "Primary draft" if primary else "Alternate draft"
+            ),
+            "draft_primary": primary,
+        }
+
+    @staticmethod
+    def _require_target(item: dict, sections: dict, anchors: dict) -> None:
         if item["scope"] == "book":
             return
         key = (item.get("volume"), item.get("section"))
         if item["scope"] == "paragraph":
-            key += (item.get("block"),)
-        if key not in anchors:
+            valid = key in sections and item.get("block") in anchors
+        else:
+            valid = key in sections
+        if not valid:
             raise InvalidReaderItem("The item target is not in the current manuscript.")
 
     @staticmethod

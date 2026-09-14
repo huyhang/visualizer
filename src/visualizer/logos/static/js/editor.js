@@ -1,6 +1,8 @@
 // Structured rich text <-> editable DOM. Stored prose remains the source of
 // truth; contenteditable is only a view and never leaks arbitrary HTML to the API.
 
+import { curlDocument } from "./typography.js";
+
 const MARK_TAGS = { em: "em", strong: "strong", strike: "del", code: "code" };
 const TAG_MARKS = { EM: "em", I: "em", STRONG: "strong", B: "strong", DEL: "strike", S: "strike", CODE: "code" };
 const MARK_ORDER = ["em", "strong", "strike", "code"];
@@ -172,12 +174,26 @@ export function newBlockId() {
   return `p-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
-export function documentFromEditor(root, idFactory = newBlockId) {
+function documentFromDom(root, idFactory) {
   return {
     version: 1,
     type: "doc",
     content: [...root.childNodes].map((node) => asBlock(node, idFactory)).filter(Boolean),
   };
+}
+
+export function documentFromEditor(root, idFactory = newBlockId) {
+  return curlDocument(documentFromDom(root, idFactory));
+}
+
+export function normalizeEditorTypography(root, selection, idFactory = newBlockId) {
+  const current = documentFromDom(root, idFactory);
+  const position = caretPosition(root, selection);
+  const document = curlDocument(current);
+  if (JSON.stringify(current) === JSON.stringify(document)) return document;
+  renderEditorDocument(document, root);
+  if (position) placeCaret(root, position, false);
+  return document;
 }
 
 export function selectedProse(root, selection) {
@@ -238,7 +254,7 @@ export function caretPosition(root, selection) {
   return { block: block.dataset.blockId, offset: measure.toString().length };
 }
 
-export function placeCaret(root, position) {
+export function placeCaret(root, position, scroll = true) {
   if (!position || !position.block) return false;
   const block = root.querySelector(`[data-block-id="${CSS.escape(position.block)}"]`);
   if (!block) return false;
@@ -261,7 +277,7 @@ export function placeCaret(root, position) {
   if (!browserSelection) return false;
   browserSelection.removeAllRanges();
   browserSelection.addRange(caret);
-  block.scrollIntoView({ block: "center" });
+  if (scroll) block.scrollIntoView({ block: "center" });
   return true;
 }
 

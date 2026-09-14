@@ -29,6 +29,7 @@ _MODULES = (
     "editor.js", "comparison.js", "recovery.js", "coachpanel.js",
     "akashapanel.js", "contextmenu.js", "draftstate.js", "contents.js",
     "touchdrag.js", "compactaction.js",
+    "typography.js", "review.js",
 )
 
 _PREAMBLE = """\
@@ -61,8 +62,10 @@ import { createAutosave, recoveryKey } from "./recovery.js";
 import { createCoachPanel } from "./coachpanel.js";
 import { createAkashaPanel } from "./akashapanel.js";
 import { menuPosition } from "./contextmenu.js";
-import { createDraftState } from "./draftstate.js";
+import { createDraftState, draftCapabilities } from "./draftstate.js";
 import { compactAction } from "./compactaction.js";
+import { curlDocument, curlText } from "./typography.js";
+import { filterAnnotations, filterIssues, sectionKindName } from "./review.js";
 import {
   allSectionIds, availableId, availableKinds, beforeForPosition, dropAt,
   moveBefore, moveFailure, sameOrder, sectionKindChoices, singletonConflict,
@@ -189,6 +192,63 @@ def test_compact_action_keeps_its_label_beside_its_glyph(run_js):
     }
 
 
+def test_smart_quotes_handle_dialogue_apostrophes_and_code(run_js):
+    payload = _doc(_para(
+        {"type": "text", "text": '"Don\'t," she said. '},
+        {"type": "text", "text": 'print("don\'t")', "marks": [{"type": "code"}]},
+        {"type": "text", "text": " 'Twas enough."},
+    ))
+
+    result = run_js("emit(curlDocument(INPUT));", payload)
+
+    assert [node["text"] for node in result["content"][0]["content"]] == [
+        "\u201cDon\u2019t,\u201d she said. ",
+        'print("don\'t")',
+        " \u2019Twas enough.",
+    ]
+    assert run_js("emit(curlText(INPUT));", "'Hello,' and can't") == (
+        "\u2018Hello,\u2019 and can\u2019t"
+    )
+
+
+def test_review_filters_private_items_and_coaching_findings(run_js):
+    result = run_js(
+        "const annotations = filterAnnotations(INPUT.items,"
+        " {query: 'gate', kind: 'all', status: 'open'});"
+        "const issues = filterIssues(INPUT.issues,"
+        " {query: 'opening', category: 'grammar', ignored: ['Hidden']});"
+        "emit({annotations: annotations.map((item) => item.id),"
+        " issues: issues.map((issue) => issue.id),"
+        " located: filterAnnotations(INPUT.items,"
+        "  {location: 'section:v:s'}).map((item) => item.id),"
+        " chapter: sectionKindName({section_kind: 'chapter', section_number: 3}),"
+        " prologue: sectionKindName({section_kind: 'prologue'})});",
+        {
+            "items": [
+                {"id": "n", "kind": "note", "text": "Fix gate",
+                 "volume": "v", "section": "s"},
+                {"id": "done", "kind": "checklist", "text": "Gate", "done": True,
+                 "scope": "book"},
+                {"id": "bookmark", "kind": "bookmark", "text": "Gate"},
+            ],
+            "issues": [
+                {"id": "shown", "category": "grammar", "title": "Repeat",
+                 "section_title": "Opening"},
+                {"id": "hidden", "category": "grammar", "title": "Hidden",
+                 "section_title": "Opening"},
+            ],
+        },
+    )
+
+    assert result == {
+        "annotations": ["n"],
+        "issues": ["shown"],
+        "located": ["n"],
+        "chapter": "Chapter 3",
+        "prologue": "Prologue",
+    }
+
+
 def test_draft_comparison_aligns_stable_blocks_and_reports_flow_stats(run_js):
     left = _doc(_para({"type": "text", "text": "The gate opened."}, node_id="a"))
     right = _doc(
@@ -290,6 +350,20 @@ def test_promoting_moves_the_primary_flag_off_every_other_draft(run_js):
     assert result["open"] is True
     assert [option["text"] for option in result["options"]] == [
         "First", "Second (Primary)",
+    ]
+
+
+def test_draft_actions_only_appear_when_they_can_change_state(run_js):
+    assert run_js(
+        "emit([draftCapabilities(1, true), draftCapabilities(2, true),"
+        " draftCapabilities(2, false)]);"
+    ) == [
+        {"canSwitch": False, "canCompare": False, "canPromote": False,
+         "showPrimaryBadge": False},
+        {"canSwitch": True, "canCompare": True, "canPromote": False,
+         "showPrimaryBadge": True},
+        {"canSwitch": True, "canCompare": True, "canPromote": True,
+         "showPrimaryBadge": False},
     ]
 
 

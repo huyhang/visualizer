@@ -133,6 +133,20 @@ def test_draft_saves_require_the_revision_the_writer_read(section):
     assert section.get(SECTION_PATH).get_json()["document"] == document("First tab.")
 
 
+def test_saving_a_draft_normalizes_straight_quotes(section):
+    draft = section.get(f"{DRAFTS}/draft-1").get_json()
+
+    saved = section.put(
+        f"{DRAFTS}/draft-1",
+        json={"name": draft["name"], "document": document('"Don\'t go," she said.')},
+        headers={"If-Match": str(draft["rev"])},
+    ).get_json()
+
+    assert saved["document"]["content"][0]["content"][0]["text"] == (
+        "\u201cDon\u2019t go,\u201d she said."
+    )
+
+
 def test_a_draft_revision_can_be_restored_without_rewinding_history(section):
     draft = section.get(f"{DRAFTS}/draft-1").get_json()
     changed = section.put(
@@ -229,3 +243,36 @@ def test_the_private_writing_advisor_reports_mechanics_and_flow(section):
         "Extra spaces",
         "Long sentence",
     }
+
+
+def test_series_review_defaults_to_primary_and_can_include_alternates(section, reader):
+    primary = section.get(f"{DRAFTS}/draft-1").get_json()
+    section.put(
+        f"{DRAFTS}/draft-1",
+        json={"name": primary["name"], "document": document("Gate gate.")},
+        headers={"If-Match": str(primary["rev"])},
+    )
+    alternate = section.post(DRAFTS, json={"name": "Quiet pass"}).get_json()
+    section.put(
+        f"{DRAFTS}/{alternate['id']}",
+        json={"name": alternate["name"], "document": document("Wait wait.")},
+        headers={"If-Match": str(alternate["rev"])},
+    )
+
+    primary_only = section.get(f"/books/{BOOK}/ui/writing-review").get_json()
+    every = section.get(
+        f"/books/{BOOK}/ui/writing-review?include_alternates=true"
+    ).get_json()
+
+    assert primary_only["reviewed_drafts"] == 1
+    assert {issue["draft"] for issue in primary_only["issues"]} == {"draft-1"}
+    assert every["reviewed_drafts"] == 2
+    assert {issue["draft"] for issue in every["issues"]} == {
+        "draft-1", alternate["id"]
+    }
+    alternate_issue = next(
+        issue for issue in every["issues"] if issue["draft"] == alternate["id"]
+    )
+    assert alternate_issue["draft_name"] == "Quiet pass"
+    assert alternate_issue["block"] == "p1"
+    assert reader.get(f"/books/{BOOK}/ui/writing-review").status_code == 403

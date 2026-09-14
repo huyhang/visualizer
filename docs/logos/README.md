@@ -50,17 +50,20 @@ opens their entity in the side panel rather than the menu — the panel shows
 what the entity *is*, the menu does something to it.
 
 The Writing Coach uses only local deterministic rules; it sends no prose to an
-external service. Alongside mechanics and flow it checks dialect consistency:
+external service. Its series Review workspace checks every primary draft in one
+place and can include named alternatives on demand. Alongside mechanics and
+flow it checks dialect consistency:
 choose US or UK and it reports spellings from the other side, offering the
 local form. Which dialect a manuscript uses is the writer's choice, so it
 reports the mismatch rather than deciding. Its injected advisor interface
 leaves room for a separately configured opt-in AI implementation later.
 
-Each section has one or more named drafts and exactly one primary draft. New
+Each section has one or more named drafts and exactly one primary draft. Authors
+can preview any named draft in the reader without changing that primary. New
 drafts clone an existing draft, retaining stable block ids so the comparison
-view can align paragraphs. Only the primary appears in the reader, manuscript
-search and exports. Saving one alternative therefore cannot accidentally alter
-the published manuscript.
+view can align paragraphs. The primary is the reader default and the only draft
+available to read-only collaborators, manuscript search and exports. Saving one
+alternative therefore cannot accidentally alter the published manuscript.
 
 Typing is recovered in two layers: a local IndexedDB copy is written promptly,
 then the complete validated draft is autosaved with its last-read revision.
@@ -208,6 +211,16 @@ records are private to the signed-in account, are available on every device,
 and may be created by a read-only collaborator because they never alter the
 shared manuscript. An anchor removed by a prose edit is reported as unavailable
 instead of causing the private item to be discarded.
+
+**Review** gathers the current account's notes and checklists across the series,
+with filters and exact links back to their chapters. A note made while previewing
+an alternate draft belongs to that draft; alternate-draft annotations therefore
+remain an author feature, while existing primary-draft annotations keep their
+original behaviour.
+
+Straight single and double quotes in natural-language prose are converted to
+contextual curly quotes when a draft is saved. Code-formatted text and link
+destinations remain literal, and older drafts are normalized only when next saved.
 
 A bookmarked paragraph is marked with a filled orange ribbon in the margin,
 which stays visible without hovering; the controls for a paragraph you have not
