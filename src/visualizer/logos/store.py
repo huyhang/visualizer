@@ -374,9 +374,12 @@ class LogosStore:
             {"book": book, "volume": volume, "section": section}
         )
 
-    def list_book_drafts(self, book: str) -> list[dict]:
-        """All live drafts for a series in one store read."""
-        return self._drafts.list({"book": book})
+    def list_book_drafts(self, book: str, volume: str | None = None) -> list[dict]:
+        """Every live draft in a series, or in one of its volumes, in one read."""
+        query = {"book": book}
+        if volume is not None:
+            query["volume"] = volume
+        return self._drafts.list(query)
 
     def update_draft(
         self, book: str, volume: str, section: str, draft: str,

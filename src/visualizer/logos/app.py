@@ -36,6 +36,7 @@ from .richtext import validate_document
 from .search import SearchService
 from .services import DraftService, ManuscriptService, SectionService, VolumeService
 from .store import LogosStore
+from .validation import validate_identifier
 from .writing import RuleBasedWritingAdvisor, SeriesWritingReview, WritingAdvisor
 
 # Logos reads the Chronos book grant directly -- one resource kind, one grant,
@@ -239,11 +240,13 @@ def _register_routes(
     def review_series_writing(book):
         _authorize(auth_store, "write", book)
         dialect = _writing_dialect(request.args.get("dialect", "en-US"))
+        volume = request.args.get("volume")
         return jsonify(
             series_review.review(
                 book,
                 dialect,
                 include_alternates=_truthy(request.args.get("include_alternates")),
+                volume=validate_identifier(volume, "volume") if volume else None,
             )
         )
 

@@ -22,6 +22,7 @@ from .errors import (
 )
 from .models import Draft, Section, Volume
 from .richtext import validate_document
+from .typography import curl_text
 
 SECTION_KINDS = ("prologue", "chapter", "epilogue", "glossary")
 # One prologue, one epilogue and one glossary per volume; chapters are the
@@ -173,10 +174,14 @@ def _only(body: dict, allowed: set[str], error, what: str) -> None:
         )
 
 
+# Every free-text field a writer types passes through these two, so curling
+# here is what makes "titles and overviews read curly" true of each of them --
+# including the ones added later. The length check runs on what is stored,
+# since a curl is one character for one.
 def _required_text(value: Any, field: str, maximum: int, error) -> str:
     if not isinstance(value, str) or not value.strip():
         raise error(f"'{field}' must be a non-empty string.")
-    text = value.strip()
+    text = curl_text(value.strip())
     if len(text) > maximum:
         raise error(
             f"'{field}' must be at most {maximum} characters.",
@@ -188,12 +193,13 @@ def _required_text(value: Any, field: str, maximum: int, error) -> str:
 def _optional_text(value: Any, field: str, maximum: int, error) -> str:
     if not isinstance(value, str):
         raise error(f"'{field}' must be a string.")
-    if len(value) > maximum:
+    text = curl_text(value)
+    if len(text) > maximum:
         raise error(
             f"'{field}' must be at most {maximum} characters.",
-            evidence={"characters": len(value), "max": maximum},
+            evidence={"characters": len(text), "max": maximum},
         )
-    return value
+    return text
 
 
 def _id_list(value: Any, field: str, error) -> list[str]:

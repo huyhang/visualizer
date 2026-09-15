@@ -12,11 +12,13 @@ import { createDraftState, draftCapabilities } from "./draftstate.js";
 import { el, fill } from "./dom.js";
 import {
   caretPosition,
+  curlAtCaret,
+  curlPastedQuotes,
+  dedupeBlockIds,
   documentFromEditor,
   linkMention,
   mentionAt,
   mentionRef,
-  normalizeEditorTypography,
   placeCaret,
   renderEditorDocument,
   selectedProse,
@@ -98,10 +100,22 @@ function outline(manuscript, current, base, navigate, createChapter, close) {
   ]);
 }
 
-function topbar({ base, manuscript, entry, section, nodes, actions, capabilities }) {
-  const button = (label, glyph, onclick, extra = {}) => compactAction({
-    label, glyph, className: "btn ghost sm writer-draft-action", onclick, ...extra,
+// The draft actions that can do anything right now; the rest are absent rather
+// than disabled. Repainted from state after every transition that changes the
+// answer, so the row and the draft it describes cannot drift apart.
+function draftActionButtons(actions, capabilities) {
+  const button = (label, glyph, onclick) => compactAction({
+    label, glyph, className: "btn ghost sm writer-draft-action", onclick,
   });
+  return [
+    button("New draft", "+", actions.newDraft),
+    button("Rename", "✎", actions.rename),
+    capabilities.canPromote ? button("Make primary", "★", actions.makePrimary) : null,
+    capabilities.canCompare ? button("Compare", "⇄", actions.compare) : null,
+  ];
+}
+
+function topbar({ base, manuscript, entry, section, nodes, actions, draftActions }) {
   return el("header", { class: "writer-topbar" }, [
     el("button", {
       class: "writer-mobile-button writer-outline-button", type: "button", text: "☰",
@@ -116,13 +130,7 @@ function topbar({ base, manuscript, entry, section, nodes, actions, capabilities
     }),
     nodes.draftSelect, nodes.primaryBadge,
     el("div", { class: "writer-secondary-row" }, [
-      el("div", { class: "writer-draft-actions" }, [
-        button("New draft", "+", actions.newDraft),
-        button("Rename", "✎", actions.rename),
-        capabilities.canPromote
-          ? button("Make primary", "★", actions.makePrimary) : null,
-        capabilities.canCompare ? button("Compare", "⇄", actions.compare) : null,
-      ]),
+      draftActions,
       nodes.count, nodes.status, nodes.conflictAction,
     ]),
     el("button", {
@@ -393,13 +401,13 @@ export async function mountWriter({
   });
 
   const changed = () => {
-    normalizeEditorTypography(editor, window.getSelection());
     updateCount();
     autosave.schedule(snapshot());
     clearTimeout(coachTimer);
     coachTimer = setTimeout(() => reviewWriting(), 1800);
   };
 
+  const draftActions = el("div", { class: "writer-draft-actions" });
   const renderDraftOptions = () => {
     fill(draftSelect, state.options().map((option) => el("option", {
       value: option.value, text: option.text,
@@ -408,6 +416,7 @@ export async function mountWriter({
     const capabilities = draftCapabilities(state.count, state.current.primary);
     draftSelect.hidden = !capabilities.canSwitch;
     primaryBadge.hidden = !capabilities.showPrimaryBadge;
+    fill(draftActions, draftActionButtons(actions, capabilities));
   };
 
   const akasha = createAkashaPanel({
@@ -600,7 +609,7 @@ export async function mountWriter({
       renderDraftOptions();
       changed();
     },
-    makePrimary: async (event) => {
+    makePrimary: async () => {
       if (!(await settled()) || state.current.primary) return;
       const result = await api.makePrimary(
         manuscript.book, entry.volume.id, section.id,
@@ -608,7 +617,6 @@ export async function mountWriter({
       );
       state.promoted(result.section_rev);
       renderDraftOptions();
-      event?.currentTarget?.remove();
     },
     compare: async () => { if (await settled()) compare.showModal(); },
     done: async () => {
@@ -622,8 +630,7 @@ export async function mountWriter({
 
   const shell = el("div", { class: "writer-shell" }, [
     topbar({
-      base, manuscript, entry, section, actions,
-      capabilities: draftCapabilities(state.count, state.current.primary),
+      base, manuscript, entry, section, actions, draftActions,
       nodes: { draftSelect, primaryBadge, count, status, conflictAction },
     }),
     el("div", { class: "writer-columns" }, [
@@ -659,7 +666,23 @@ export async function mountWriter({
   updateCount();
   fill(context.body, [el("p", { class: "muted", text: "Select words in the manuscript to look them up in Akasha." })]);
 
-  editor.addEventListener("input", changed);
+  // Curl as the writer types, not on the way to the server, so the page shows
+  // what will be stored. Composition is left alone until it commits -- an IME
+  // is mid-word and rewriting the run under it would cancel the candidate.
+  editor.addEventListener("input", (event) => {
+    // Before the caret is touched, not after: splitting a paragraph clones its
+    // id, and the curl below records the caret by id to put it back.
+    dedupeBlockIds(editor);
+    if (!event.isComposing) curlAtCaret(editor, window.getSelection());
+    changed();
+  });
+  // Pasted prose arrives straight, and after the paste has landed the text
+  // either side of each mark is known, so it gets the careful rule.
+  editor.addEventListener("paste", () => {
+    window.setTimeout(() => {
+      if (curlPastedQuotes(editor)) changed();
+    }, 0);
+  });
   editor.addEventListener("click", (event) => {
     const mention = mentionAt(event.target, editor);
     if (mention) showMentionPanel(mention);

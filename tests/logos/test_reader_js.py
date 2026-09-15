@@ -55,7 +55,8 @@ import {
   sectionCount, sectionPage,
 } from "./outline.js";
 import {
-  documentFromEditor, mentionRef, unlinkMention, wordCount as editorWordCount,
+  dedupeBlockIds, documentFromEditor, mentionRef, unlinkMention,
+  wordCount as editorWordCount,
 } from "./editor.js";
 import { compareDocuments, draftStats } from "./comparison.js";
 import { createAutosave, recoveryKey } from "./recovery.js";
@@ -64,8 +65,10 @@ import { createAkashaPanel } from "./akashapanel.js";
 import { menuPosition } from "./contextmenu.js";
 import { createDraftState, draftCapabilities } from "./draftstate.js";
 import { compactAction } from "./compactaction.js";
-import { curlDocument, curlText } from "./typography.js";
-import { filterAnnotations, filterIssues, sectionKindName } from "./review.js";
+import { curlDocument, curlText, curlTypedMark, fixElisions } from "./typography.js";
+import {
+  filterAnnotations, filterIssues, reviewPage, sectionKindName,
+} from "./review.js";
 import {
   allSectionIds, availableId, availableKinds, beforeForPosition, dropAt,
   moveBefore, moveFailure, sameOrder, sectionKindChoices, singletonConflict,
@@ -209,6 +212,113 @@ def test_smart_quotes_handle_dialogue_apostrophes_and_code(run_js):
     assert run_js("emit(curlText(INPUT));", "'Hello,' and can't") == (
         "\u2018Hello,\u2019 and can\u2019t"
     )
+
+
+@pytest.mark.parametrize(
+    "typed,expected",
+    [
+        # The writer types the mark before the word, so nothing follows it yet.
+        # Deciding from what is behind the caret is the only rule available --
+        # a rule that looked ahead would close every quotation it opened.
+        ("She said ", "\u201c"),
+        ("", "\u201c"),
+        ("(", "\u201c"),
+        ("She said \u201chello", "\u201d"),
+        ("end.", "\u201d"),
+    ],
+)
+def test_a_typed_double_quote_opens_on_what_precedes_it(run_js, typed, expected):
+    assert run_js('emit(curlTypedMark(INPUT, "\\""));', typed) == expected
+
+
+def test_a_typed_single_quote_tells_an_apostrophe_from_an_opening(run_js):
+    assert run_js(
+        "emit(['don', 'shootin', '', 'said ', 'the '].map("
+        "  (before) => curlTypedMark(before, \"'\")));"
+    ) == ["\u2019", "\u2019", "\u2018", "\u2018", "\u2018"]
+
+
+def test_a_long_review_is_drawn_a_page_at_a_time(run_js):
+    """Filtering thousands of findings is cheap; drawing them is not. Each
+    card is about ten elements, so a whole series at once is a six-figure node
+    count built in one synchronous pass and a tab that stops responding."""
+    result = run_js(
+        "const all = Array.from({length: 450}, (_, i) => i);"
+        "emit([reviewPage(all, 200, 200), reviewPage(all, 400, 200),"
+        " reviewPage(all, 600, 200), reviewPage([], 200, 200),"
+        " reviewPage(null, 200, 200)].map((page) =>"
+        "  [page.visible.length, page.remaining, page.next]));"
+    )
+
+    assert result == [
+        [200, 250, 200],   # first page, more behind it
+        [400, 50, 50],     # the button offers only what is left
+        [450, 0, 0],       # asked for more than there is
+        [0, 0, 0],
+        [0, 0, 0],
+    ]
+
+
+def test_a_repeated_block_id_is_renamed_on_the_way_out(run_js):
+    """Splitting a paragraph clones the block element, id and all. Two blocks
+    with one id is a document the API refuses outright, and the caret lookup
+    resolves ids with `querySelector`, so the writer would be typing into
+    whichever copy came first. The duplicate is renamed, and the new id written
+    back to the element the next read and the next caret lookup will see."""
+    result = run_js(
+        "let n = 0;"
+        "const text = (value) => ({nodeType: 3, nodeValue: value, childNodes: []});"
+        "const p = (id, value) => ({nodeType: 1, tagName: 'P', childNodes: [text(value)],"
+        "  dataset: id ? {blockId: id} : {}, matches: () => false});"
+        "const root = {childNodes: [p('a', 'One.'), p('a', 'Two.'),"
+        "  p('b', 'Three.'), p(null, 'Four.')]};"
+        "const document = documentFromEditor(root, () => `new-${n += 1}`);"
+        "emit({emitted: document.content.map((block) => block.id),"
+        " stamped: root.childNodes.map((node) => node.dataset.blockId),"
+        " texts: document.content.map((block) => block.content[0].text)});"
+    )
+
+    assert result["emitted"] == ["a", "new-1", "b", "new-2"]
+    assert result["stamped"] == result["emitted"], "the DOM must agree with the save"
+    assert result["texts"] == ["One.", "Two.", "Three.", "Four."]
+
+
+def test_ids_can_be_made_unique_without_reading_the_document(run_js):
+    """The caret records where it is by id and looks that id up again with
+    `querySelector`, so it must not run while two blocks share one -- it would
+    come back in whichever of them is first. Reading the whole document would
+    also fix the ids, but it happens after the caret has already moved."""
+    result = run_js(
+        "let n = 0;"
+        "const p = (id) => ({nodeType: 1, tagName: 'P', childNodes: [],"
+        "  dataset: id ? {blockId: id} : {}, matches: () => false});"
+        "const root = {childNodes: [p('a'), p('a'), p('a'), p(null)]};"
+        "dedupeBlockIds(root, () => `new-${n += 1}`);"
+        "dedupeBlockIds(root, () => 'must-not-be-called');"
+        "emit(root.childNodes.map((node) => node.dataset.blockId));"
+    )
+
+    assert result == ["a", "new-1", "new-2", "new-3"]
+    assert len(set(result)) == len(result)
+
+
+def test_a_leading_apostrophe_is_corrected_once_its_word_arrives(run_js):
+    """Backwards alone cannot tell \u2018tis from an opening quote, so the caret
+    rule guesses the quote and this repairs it as the letters land."""
+    assert run_js(
+        "emit(['\u2018t', '\u2018ti', '\u2018tis so', '\u2018Twas night',"
+        " '\u2018em all', 'rock \u2018n\u2019 roll', 'the \u201890s',"
+        " '\u2018Hello,\u2019 she said'].map(fixElisions));"
+    ) == [
+        "\u2018t",
+        "\u2018ti",
+        "\u2019tis so",
+        "\u2019Twas night",
+        "\u2019em all",
+        "rock \u2019n\u2019 roll",
+        "the \u201990s",
+        "\u2018Hello,\u2019 she said",
+    ]
 
 
 def test_review_filters_private_items_and_coaching_findings(run_js):

@@ -132,10 +132,21 @@ or bottom of the screen, since a phone shows about four rows at a time. The
 arrow and **Move…** controls remain the keyboard path, and the quickest one on
 any device for a chapter that has to travel a long way.
 
-On narrow screens, reader and contents-page action labels compact to icons,
-following the same convention as Chronos. Every action stays directly visible,
-and its full label remains available to assistive technology and as a desktop
-tooltip. No two actions in one row wear the same mark — a glyph is the whole of
+Reader and contents-page action labels compact to icons, following the same
+convention as Chronos. A row compacts on its own width rather than the
+window's, because "do these words still fit in this row" is not the same
+question as "is this a phone" — and the words come first: a glyph is what a row
+falls back to when it has genuinely run out of room, not the resting state of a
+roomy one. The threshold is proportional to the text, so turning the reading
+size up trades words for marks instead of spilling the row onto a second line;
+a threshold in pixels cannot see that happen, since the window has not moved.
+Every action stays directly visible, and its full label remains available to
+assistive technology and as a desktop tooltip.
+
+Contents-page actions are named for what they do and not for what they do it
+to — **Search**, **Publish**, **Review**, under a heading that already says
+*Book contents* and the series title. Saying "series" three times in one row
+cost the row more width than the reading measure had. No two actions in one row wear the same mark — a glyph is the whole of
 a compacted button, so a shared one would leave two controls indistinguishable.
 A button that reports state changes its glyph as well as its hidden label: the
 reading-mode toggle shows a single column when focused and a split one in full
@@ -213,14 +224,36 @@ shared manuscript. An anchor removed by a prose edit is reported as unavailable
 instead of causing the private item to be discarded.
 
 **Review** gathers the current account's notes and checklists across the series,
-with filters and exact links back to their chapters. A note made while previewing
+with filters and exact links back to their chapters. Its coaching tab runs the
+same local advisor over every section at once, which on a ten-volume series
+means reading a few million words, so it is bounded in three places. The
+location filter narrows the *request* to one volume rather than filtering what
+came back — on a ten-volume series that is measured at roughly six times
+faster. At most two reviews run at once across the service and a third is
+refused rather than queued, on the same reasoning as the export renderer's one
+slot. And the response carries at most 2000 findings, with the true count
+beside them: a manuscript written consistently in the other dialect produces a
+finding per paragraph, and nobody reads the ten-thousandth. Both lists draw a
+page at a time, because filtering thousands of rows is cheap and drawing them
+is not. A note made while previewing
 an alternate draft belongs to that draft; alternate-draft annotations therefore
 remain an author feature, while existing primary-draft annotations keep their
 original behaviour.
 
-Straight single and double quotes in natural-language prose are converted to
-contextual curly quotes when a draft is saved. Code-formatted text and link
-destinations remain literal, and older drafts are normalized only when next saved.
+Straight single and double quotes become curly ones on their own, in two
+places that agree. The workspace curls each mark as it is typed and the whole
+of a paste once it lands, so the page shows what will be stored; every write
+that reaches the API is curled again, so prose, section and volume titles,
+overviews, draft names and the publication's title page all read curly whatever
+path the words took. Code-formatted text and link destinations keep their
+literal characters, and prose written before this existed is normalized the
+next time it is saved.
+
+Deciding an opening quote from a closing one needs the character on each side
+of the mark, which is available on a save and on a paste but never at a caret —
+the writer types the mark before the word. So the caret decides from the text
+behind it alone, and a leading apostrophe (`’tis`, `’90s`, `rock ’n’ roll`) is
+corrected as soon as its word is complete rather than guessed at.
 
 A bookmarked paragraph is marked with a filled orange ribbon in the margin,
 which stays visible without hovering; the controls for a paragraph you have not

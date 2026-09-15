@@ -131,10 +131,14 @@ class ReaderService:
         manuscript = self.manuscripts.publication(book)
         sections = self._sections(manuscript)
         stored_items = self.store.list_reader_items(username, book)
+        # One extra read, and only when an item actually names a draft.
+        needs_drafts = include_alternates and any(
+            item.get("draft") for item in stored_items
+        )
         draft_rows = {
             (row["volume"], row["section"], row["draft"]): row
-            for row in self.store.list_book_drafts(book)
-        } if include_alternates and any(item.get("draft") for item in stored_items) else {}
+            for row in (self.store.list_book_drafts(book) if needs_drafts else [])
+        }
         items = []
         for item in stored_items:
             anchored = item["scope"] == "paragraph"

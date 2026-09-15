@@ -45,6 +45,24 @@ export function filterIssues(issues, {
   });
 }
 
+/**
+ * One page of a result list, and what is left after it.
+ *
+ * A card is about ten elements, so rendering an epic series' findings in one
+ * pass is a six-figure node count built synchronously -- the tab stops
+ * responding long before the writer has read the first screen. Filtering all
+ * of them is cheap; drawing all of them is not.
+ */
+export function reviewPage(items, shown, size) {
+  const all = items || [];
+  const visible = all.slice(0, Math.max(0, shown));
+  return {
+    visible,
+    remaining: all.length - visible.length,
+    next: Math.min(size, all.length - visible.length),
+  };
+}
+
 export function sectionKindName(issue) {
   if (issue.section_title) return issue.section_title;
   if (issue.section_kind === "chapter") return `Chapter ${issue.section_number}`;

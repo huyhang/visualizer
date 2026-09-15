@@ -167,7 +167,7 @@ def run() -> None:
 
             page.goto(base + "/?book=ember-pact")
             assert_no_horizontal_overflow(page, "book contents")
-            expect(page.get_by_role("button", name="Search series")).to_be_visible()
+            expect(page.get_by_role("button", name="Search")).to_be_visible()
             assert_compact_actions(page, ".book-actions .compact-action", 7)
 
             page.goto(base + "/?book=ember-pact&volume=one&section=gate")

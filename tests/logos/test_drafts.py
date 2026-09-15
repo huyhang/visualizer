@@ -1,11 +1,21 @@
 """Named manuscript drafts, primary projection, and private writing aids."""
 
-from visualizer.logos.services import DraftService
+import pytest
+
+from visualizer.logos.errors import ReviewUnavailable, VolumeNotFound
+from visualizer.logos.models import Volume
+from visualizer.logos.services import DraftService, ManuscriptService
+from visualizer.logos.writing import RuleBasedWritingAdvisor, SeriesWritingReview
 
 from .conftest import BOOK, SECTION, VOLUME, document, section_payload
 
 SECTION_PATH = f"/books/{BOOK}/volumes/{VOLUME}/sections/{SECTION}"
 DRAFTS = SECTION_PATH + "/drafts"
+
+
+def _manuscripts(store, chronos, articles):
+    """The same service the app builds, over the same fixtures' store."""
+    return ManuscriptService(store, chronos, articles)
 
 
 def test_a_section_starts_with_one_primary_draft(section):
@@ -276,3 +286,205 @@ def test_series_review_defaults_to_primary_and_can_include_alternates(section, r
     assert alternate_issue["draft_name"] == "Quiet pass"
     assert alternate_issue["block"] == "p1"
     assert reader.get(f"/books/{BOOK}/ui/writing-review").status_code == 403
+
+
+def test_a_clean_series_reports_nothing_and_still_says_what_it_read(section):
+    payload = section.get(f"/books/{BOOK}/ui/writing-review").get_json()
+
+    assert payload["issues"] == []
+    assert payload["reviewed_drafts"] == 1
+    assert payload["private"] is True
+    assert payload["include_alternates"] is False
+
+
+def test_the_series_review_dialect_follows_the_request(section):
+    current = section.get(f"{DRAFTS}/draft-1").get_json()
+    section.put(
+        f"{DRAFTS}/draft-1",
+        json={"name": current["name"], "document": document("The harbour was quiet.")},
+        headers={"If-Match": str(current["rev"])},
+    )
+
+    british = section.get(
+        f"/books/{BOOK}/ui/writing-review?dialect=en-GB"
+    ).get_json()
+    american = section.get(
+        f"/books/{BOOK}/ui/writing-review?dialect=en-US"
+    ).get_json()
+
+    assert british["issues"] == []
+    assert [issue["category"] for issue in american["issues"]] == ["spelling"]
+    assert american["dialect"] == "en-US"
+    assert section.get(
+        f"/books/{BOOK}/ui/writing-review?dialect=en-AU"
+    ).status_code == 400
+
+
+def test_reviewing_a_section_written_before_drafts_materializes_nothing(
+    volume, logos_store,
+):
+    """Reviewing reads. A section that predates named drafts has no draft
+    record at all, and asking about it must not quietly create one."""
+    legacy = "written-before-drafts"
+    logos_store.create_section(BOOK, VOLUME, legacy, section_payload(), "mara")
+    record = logos_store.get_volume(BOOK, VOLUME)
+    outline = Volume.from_storage(record)
+    outline.sections.append(legacy)
+    logos_store.update_volume(
+        BOOK, VOLUME, outline.to_storage(), record["rev"], "mara"
+    )
+    assert logos_store.list_drafts(BOOK, VOLUME, legacy) == []
+
+    payload = volume.get(
+        f"/books/{BOOK}/ui/writing-review?include_alternates=true"
+    ).get_json()
+
+    assert payload["reviewed_drafts"] == 1
+    assert logos_store.list_drafts(BOOK, VOLUME, legacy) == []
+
+
+def test_a_review_can_be_narrowed_to_one_volume(client, logos_store):
+    """The cost of a review is the prose it reads, so on a ten-volume series
+    the volume filter is not a convenience -- it is the difference between
+    reading two million words and two hundred thousand."""
+    for volume_id in ("one", "two"):
+        assert client.post(
+            f"/books/{BOOK}/volumes/{volume_id}",
+            json={"title": volume_id, "overview": ""},
+        ).status_code == 201
+        assert client.post(
+            f"/books/{BOOK}/volumes/{volume_id}/sections/{volume_id}-gate",
+            json=section_payload(doc=document(f"The the {volume_id} gate.")),
+        ).status_code == 201
+
+    whole = client.get(f"/books/{BOOK}/ui/writing-review").get_json()
+    just_one = client.get(
+        f"/books/{BOOK}/ui/writing-review?volume=one"
+    ).get_json()
+
+    assert whole["reviewed_drafts"] == 2
+    assert whole["volume"] is None
+    assert {issue["volume"] for issue in whole["issues"]} == {"one", "two"}
+    assert just_one["reviewed_drafts"] == 1
+    assert just_one["volume"] == "one"
+    assert {issue["volume"] for issue in just_one["issues"]} == {"one"}
+    assert client.get(
+        f"/books/{BOOK}/ui/writing-review?volume=never-written"
+    ).status_code == 404
+
+
+def test_asking_for_one_volume_s_prose_leaves_the_others_unread(
+    client, logos_store, chronos_gateway, article_gateway,
+):
+    """`publication` totals itself up over every volume, so it cannot honestly
+    be handed a subset -- hence a separate question. The volume still has to
+    know its own number, which is its position in the *outline*, so the loop
+    walks them all; ordering records carry no prose, which is why walking them
+    costs nothing and loading them would cost everything.
+    """
+    for volume_id in ("one", "two", "three"):
+        client.post(f"/books/{BOOK}/volumes/{volume_id}",
+                    json={"title": volume_id.title(), "overview": ""})
+        client.post(
+            f"/books/{BOOK}/volumes/{volume_id}/sections/{volume_id}-gate",
+            json=section_payload(doc=document(f"The {volume_id} gate.")),
+        )
+    manuscripts = _manuscripts(logos_store, chronos_gateway, article_gateway)
+
+    everything = manuscripts.prose(BOOK)
+    middle = manuscripts.prose(BOOK, "two")
+
+    assert [entry["id"] for entry in everything] == ["one", "two", "three"]
+    assert [entry["id"] for entry in middle] == ["two"]
+    # Numbered by where it sits in the series, not by where it sits in the
+    # answer -- a filtered second volume is still "Volume 2".
+    assert middle[0]["number"] == 2
+    assert middle[0]["sections"][0]["document"] == everything[1]["sections"][0][
+        "document"
+    ]
+    with pytest.raises(VolumeNotFound):
+        manuscripts.prose(BOOK, "never-written")
+
+
+def test_a_review_returns_a_bounded_list_and_says_what_it_left_out(
+    section, logos_store, chronos_gateway, article_gateway,
+):
+    """One consistent habit -- a manuscript written in the other dialect, say
+    -- produces a finding per paragraph. The work is bounded by the prose, but
+    the answer is bounded here, because nobody reads the ten-thousandth."""
+    current = section.get(f"{DRAFTS}/draft-1").get_json()
+    section.put(
+        f"{DRAFTS}/draft-1",
+        json={
+            "name": current["name"],
+            "document": document(*[f"The the gate {n}." for n in range(40)]),
+        },
+        headers={"If-Match": str(current["rev"])},
+    )
+
+    everything = section.get(f"/books/{BOOK}/ui/writing-review").get_json()
+    found = everything["issue_count"]
+    assert found > 10
+    assert len(everything["issues"]) == found
+    assert everything["truncated"] is False
+
+    capped = SeriesWritingReview(
+        logos_store, _manuscripts(logos_store, chronos_gateway, article_gateway),
+        RuleBasedWritingAdvisor(),
+        max_findings=10,
+    ).review(BOOK)
+
+    assert len(capped["issues"]) == 10
+    # The count is what was found, not what was returned -- the UI says "first
+    # 10 of N" off this, so truncating it too would hide the truncation.
+    assert capped["issue_count"] == found
+    assert capped["truncated"] is True
+
+
+def test_a_third_concurrent_review_is_refused_rather_than_queued(
+    section, logos_store, chronos_gateway, article_gateway,
+):
+    """Each review holds a whole series in memory. Two at once is a cost the
+    container can carry; an unbounded queue of them is how one writer's click
+    takes the database down with it."""
+    review = SeriesWritingReview(
+        logos_store, _manuscripts(logos_store, chronos_gateway, article_gateway),
+        RuleBasedWritingAdvisor(),
+        concurrent_reviews=2,
+    )
+    held = [review._slots.acquire(blocking=False) for _ in range(2)]
+    assert held == [True, True]
+    try:
+        with pytest.raises(ReviewUnavailable) as refused:
+            review.review(BOOK)
+    finally:
+        for _ in held:
+            review._slots.release()
+
+    assert refused.value.status_code == 503
+    assert refused.value.code == "REVIEW_UNAVAILABLE"
+    # The slot is given back, so the next caller is served.
+    assert review.review(BOOK)["book"] == BOOK
+
+
+def test_a_series_review_names_the_primary_even_without_a_draft_record(
+    volume, logos_store,
+):
+    legacy = "no-draft-record"
+    logos_store.create_section(
+        BOOK, VOLUME, legacy,
+        section_payload(doc=document("The the gate stood open.")), "mara",
+    )
+    record = logos_store.get_volume(BOOK, VOLUME)
+    outline = Volume.from_storage(record)
+    outline.sections.append(legacy)
+    logos_store.update_volume(
+        BOOK, VOLUME, outline.to_storage(), record["rev"], "mara"
+    )
+
+    (issue,) = volume.get(f"/books/{BOOK}/ui/writing-review").get_json()["issues"]
+
+    assert issue["title"] == "Repeated word"
+    assert issue["section"] == legacy
+    assert issue["draft_name"] == "Primary draft"
+    assert issue["primary"] is True

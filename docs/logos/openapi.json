@@ -546,7 +546,7 @@
       "post": {
         "tags": ["drafts"], "summary": "Clone a new named draft",
         "parameters": [{ "$ref": "#/components/parameters/Book" }, { "$ref": "#/components/parameters/Volume" }, { "$ref": "#/components/parameters/Section" }],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["name"], "properties": { "name": { "type": "string" }, "source": { "type": "string" } } } } } },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["name"], "description": "`name` is prose: straight quotes in it are stored curled, here and on every later save, so the name never changes under the writer.", "properties": { "name": { "type": "string" }, "source": { "type": "string" } } } } } },
         "responses": {
           "201": { "description": "The cloned draft.", "headers": { "ETag": { "$ref": "#/components/headers/ETag" } }, "content": { "application/json": { "schema": { "type": "object" } } } },
           "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }
@@ -669,14 +669,17 @@
     "/books/{book}/ui/writing-review": {
       "get": {
         "tags": ["writer"], "summary": "Review writing across the series",
+        "description": "Runs the configured private advisor over every section's primary prose, and over named alternates when asked.\n\nThe cost of this scales with the manuscript: a ten-volume series is a few million words, all of which are read into memory at once. Two bounds follow from that. `volume` narrows the review to one volume and is the cheaper request by roughly the volume count — prefer it. And the response carries at most 2000 findings: `issue_count` is how many were found, `truncated` says whether the list was cut, and prose with one consistent habit (a whole manuscript in the other dialect, say) will reach that easily.\n\nAt most two reviews run at once across the service; a third is refused with `REVIEW_UNAVAILABLE` rather than queued.",
         "parameters": [
           { "$ref": "#/components/parameters/Book" },
           { "name": "dialect", "in": "query", "schema": { "type": "string", "enum": ["en-US", "en-GB"], "default": "en-US" } },
-          { "name": "include_alternates", "in": "query", "schema": { "type": "boolean", "default": false } }
+          { "name": "include_alternates", "in": "query", "schema": { "type": "boolean", "default": false } },
+          { "name": "volume", "in": "query", "description": "Review only this volume. Omitted, the whole series is reviewed.", "schema": { "type": "string" } }
         ],
         "responses": {
-          "200": { "description": "Ephemeral findings with exact volume, section, draft and block locations; prose and findings are not retained.", "content": { "application/json": { "schema": { "type": "object" } } } },
-          "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }
+          "200": { "description": "Ephemeral findings with exact volume, section, draft and block locations; prose and findings are not retained.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SeriesReview" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" },
+          "503": { "description": "Two reviews are already running. Retry; nothing has changed.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       },
       "post": {
@@ -1092,6 +1095,7 @@
               "PRIMARY_DRAFT_CONFLICT",
               "PUBLICATION_COVER_NOT_FOUND",
               "READER_ITEM_NOT_FOUND",
+              "REVIEW_UNAVAILABLE",
               "REVISION_CONFLICT",
               "REVISION_NOT_RETAINED",
               "SECTION_KIND_IN_USE",
@@ -1795,8 +1799,45 @@
           "total": { "type": "integer" }, "next_offset": { "type": "integer", "nullable": true }
         }
       },
+      "SeriesReview": {
+        "type": "object",
+        "required": ["book", "volume", "dialect", "include_alternates", "reviewed_drafts", "private", "issue_count", "truncated", "issues"],
+        "properties": {
+          "book": { "type": "string" },
+          "volume": { "type": "string", "nullable": true, "description": "The volume reviewed, or null for the whole series." },
+          "dialect": { "type": "string", "enum": ["en-US", "en-GB"] },
+          "include_alternates": { "type": "boolean" },
+          "reviewed_drafts": { "type": "integer" },
+          "private": { "type": "boolean", "description": "Whether the configured advisor kept the prose local." },
+          "issue_count": { "type": "integer", "description": "Findings made, which may exceed the number returned." },
+          "truncated": { "type": "boolean", "description": "True when `issues` holds fewer than `issue_count`." },
+          "issues": {
+            "type": "array",
+            "description": "At most 2000, in reading order.",
+            "items": { "$ref": "#/components/schemas/SeriesReviewIssue" }
+          }
+        }
+      },
+      "SeriesReviewIssue": {
+        "type": "object",
+        "description": "One finding, with everything needed to open the passage it is about.",
+        "properties": {
+          "id": { "type": "string" }, "block": { "type": "string" },
+          "category": { "type": "string" }, "title": { "type": "string" },
+          "message": { "type": "string" }, "excerpt": { "type": "string" },
+          "replacement": { "type": "string", "nullable": true },
+          "volume": { "type": "string" }, "volume_title": { "type": "string" },
+          "section": { "type": "string" },
+          "section_title": { "type": "string", "nullable": true },
+          "section_kind": { "type": "string" },
+          "section_number": { "type": "integer", "nullable": true },
+          "draft": { "type": "string" }, "draft_name": { "type": "string" },
+          "draft_rev": { "type": "integer" }, "primary": { "type": "boolean" }
+        }
+      },
       "PublicationBody": {
         "type": "object", "required": ["title", "subtitle", "author", "language", "publisher", "copyright"],
+        "description": "Every field but `language` is prose and is stored with straight quotes converted to curly ones, so a value may read back with different characters than were sent.",
         "properties": {
           "title": { "type": "string", "maxLength": 500 }, "subtitle": { "type": "string", "maxLength": 500 },
           "author": { "type": "string", "maxLength": 500 }, "language": { "type": "string", "maxLength": 500 },
@@ -1832,6 +1873,7 @@
         "type": "object",
         "required": ["title"],
         "additionalProperties": false,
+        "description": "Free text is stored with straight quotes converted to curly ones, so a title or overview may read back with different characters than were sent. Length limits apply to the stored form; a curl is one character for one.",
         "properties": {
           "title": { "type": "string", "maxLength": 300 },
           "overview": { "type": "string", "maxLength": 10000 }
@@ -1842,6 +1884,7 @@
         "type": "object",
         "required": ["kind", "document"],
         "additionalProperties": false,
+        "description": "Prose, the title and the overview are all stored with straight quotes converted to curly ones. Code-marked text and link destinations keep their literal characters.",
         "properties": {
           "kind": {
             "type": "string",

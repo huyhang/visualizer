@@ -1,7 +1,19 @@
 // Context-aware quote normalization for structured manuscript prose.
+//
+// Two rules, because there are two moments. `curlText` looks both ways and is
+// the one for prose that already exists -- a save, a paste, an API write; it
+// mirrors `logos/typography.py` character for character. `curlTypedMark` looks
+// only backwards, because at a caret there is nothing ahead of the mark yet.
+// `fixElisions` is what lets the cheap rule catch up with the careful one: a
+// leading apostrophe is indistinguishable from an opening single quote until
+// its word arrives, so both rules guess the quote and this corrects it.
 
-const OPENING_CONTEXT = new Set(["(", "[", "{", "\u2014", "\u2013", "\u2018", "\u201c"]);
-const ELISIONS = ["'cause", "'em", "'round", "'til", "'tis", "'twas"];
+const OPENING_CONTEXT = new Set(["(", "[", "{", "—", "–", "‘", "“"]);
+
+// Words that begin with an elided letter, and decades written '90s. Anchored on
+// the curl rather than the straight mark so it can correct an earlier guess.
+const LEADING_ELISION =
+  /‘(?=(?:cause|em|n|round|til|tis|twas)\b|\d\ds\b)/giu;
 
 const alphaNumeric = (value) => Boolean(value && /[\p{L}\p{N}]/u.test(value));
 
@@ -10,8 +22,20 @@ function opens(previous, following) {
     && (!previous || /\s/u.test(previous) || OPENING_CONTEXT.has(previous));
 }
 
-export function curlText(text, before = "", after = "") {
-  if (!text || (!text.includes("'") && !text.includes('"'))) return text;
+/** Re-curl a leading apostrophe that was guessed as an opening quote. */
+export function fixElisions(text) {
+  return text.includes("‘") ? text.replace(LEADING_ELISION, "’") : text;
+}
+
+/** The mark just typed, decided from the text behind the caret alone. */
+export function curlTypedMark(before, mark) {
+  const previous = Array.from(before).at(-1) || "";
+  const opening = !previous || /\s/u.test(previous) || OPENING_CONTEXT.has(previous);
+  if (mark === '"') return opening ? "“" : "”";
+  return opening ? "‘" : "’";
+}
+
+function convert(text, before, after) {
   const result = [];
   const characters = Array.from(text);
   for (let index = 0; index < characters.length; index += 1) {
@@ -19,18 +43,22 @@ export function curlText(text, before = "", after = "") {
     const previous = result.at(-1) || Array.from(before).at(-1) || "";
     const following = characters[index + 1] || Array.from(after)[0] || "";
     if (character === '"') {
-      result.push(opens(previous, following) ? "\u201c" : "\u201d");
+      result.push(opens(previous, following) ? "“" : "”");
     } else if (character === "'") {
-      const tail = characters.slice(index).join("").toLocaleLowerCase();
-      const elision = ELISIONS.some((word) => tail.startsWith(word))
-        || (/\d/u.test(following) && (!previous || /\s/u.test(previous)));
       result.push(alphaNumeric(previous) && alphaNumeric(following)
-        ? "\u2019" : elision ? "\u2019" : opens(previous, following) ? "\u2018" : "\u2019");
+        ? "’"
+        : opens(previous, following) ? "‘" : "’");
     } else {
       result.push(character);
     }
   }
   return result.join("");
+}
+
+export function curlText(text, before = "", after = "") {
+  if (!text) return text;
+  const straight = text.includes("'") || text.includes('"');
+  return fixElisions(straight ? convert(text, before, after) : text);
 }
 
 function isCode(node) {

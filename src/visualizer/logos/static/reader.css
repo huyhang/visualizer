@@ -89,6 +89,54 @@ h1, h2, h3, p { margin-top: 0; }
 .compact-action { gap: .4rem; }
 .compact-action-glyph { display: none; }
 
+/* A group that compacts on *its own* width rather than the window's. The
+   window breakpoint below answers "is this a phone"; this answers "do the
+   words still fit in this row", which is the question a row of actions
+   actually has -- and the words come first. Glyphs are the fallback for a row
+   that has genuinely run out of space, not the resting state of a roomy one.
+
+   Measured on the contents page: the reading measure gives the row 59rem, and
+   its seven labelled actions want about 49rem. 56rem leaves the words in place
+   on any desktop while still compacting before a wider system font (Windows
+   runs ~10% wider than macOS here) could push them onto a second line.
+
+   The threshold is in rem because that is the only unit that notices the
+   reader's text-size control: `.content` is capped in rem, so turning the size
+   up shrinks this row *in rem* while the window stands perfectly still. A px
+   threshold -- like the window query below -- cannot see that at all, which is
+   how the row came to wrap at one size and not another.
+
+   Re-measure after changing a label, on the contents page:
+     const r = document.querySelector('.book-actions'), b = [...r.children];
+     b.reduce((s, n) => s + n.getBoundingClientRect().width, 0)
+       + parseFloat(getComputedStyle(r).columnGap) * (b.length - 1);   // need
+     r.clientWidth;                                                    // have
+
+   No `flex-wrap` inside: a container query styles a container's *contents*,
+   never the container, so a rule naming `.compact-actions` alone would be dead
+   -- and it is not needed, since seven glyphs come to about 300px and the
+   query never fires that narrow. Pixels for the mark, deliberately: the
+   threshold is proportional because it asks a question about text, but the
+   glyph is an icon, and one that grew with the reading size would overflow a
+   phone at the largest -- which is why the window rules below settled on 36px
+   too. Both can match at once and these are the more specific, so they agree. */
+.compact-actions { container-type: inline-size; }
+
+@container (max-width: 56rem) {
+  .compact-actions .compact-action-glyph {
+    width: 18px; height: 18px; display: grid; place-items: center;
+    font-size: 16px; line-height: 1;
+  }
+  .compact-actions .compact-action-label {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+  .compact-actions .btn.compact-action {
+    flex: 0 0 auto; width: 36px; min-width: 36px; height: 36px; min-height: 36px;
+    padding: 0; border-radius: 9px;
+  }
+}
+
 /* Reader actions stay beside the prose rather than in the global header. */
 .reader-toolbar {
   flex: none; display: flex; align-items: center; gap: .6rem;
@@ -891,6 +939,7 @@ h1, h2, h3, .lead { overflow-wrap: anywhere; }
   text-transform: uppercase;
 }
 .review-card-actions { display: flex; flex: 0 0 auto; gap: .35rem; }
+.review-more { justify-self: center; margin-top: .35rem; }
 .reader-draft-picker {
   display: inline-flex; align-items: center; gap: .5rem; margin-top: .65rem;
   color: var(--muted); font-size: .72rem; font-weight: 700;

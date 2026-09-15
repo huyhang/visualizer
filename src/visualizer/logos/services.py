@@ -164,10 +164,21 @@ class _Service:
 
     # -- the whole manuscript, and the cheap questions asked about it ---------
 
-    def _publication_volumes(self, book: str) -> list[dict]:
-        """Every volume with its prose, in reading order. No Chronos round trip."""
+    def _publication_volumes(
+        self, book: str, only: str | None = None
+    ) -> list[dict]:
+        """Every volume with its prose, in reading order. No Chronos round trip.
+
+        `only` narrows to one volume. The loop still walks them all, because a
+        volume's number is its position in the outline and skipping the others
+        would renumber it -- but ordering records carry no prose, so the nine
+        volumes not asked for cost two indexed reads between them rather than
+        every word they contain.
+        """
         volumes = []
         for number, record in enumerate(self._ordered_volumes(book), 1):
+            if only is not None and record["volume"] != only:
+                continue
             sections = self._ordered_sections(book, record)
             numbers = section_numbers(sections)
             volumes.append(
@@ -284,6 +295,24 @@ class ManuscriptService(_Service):
         return present_manuscript(
             book, chronos_book, self._publication_volumes(book), outline
         )
+
+    # Quoted for the same reason as `reading_order` below: this class defines
+    # `list`, so an unquoted annotation resolves to the method, not the builtin.
+    def prose(self, book: str, volume: str | None = None) -> "list[dict]":
+        """Volumes with their prose, in reading order; one of them if named.
+
+        :meth:`publication` answers "the whole manuscript" and totals itself up
+        over every volume, so it cannot honestly be handed a subset. This
+        answers the narrower question a pass over the text actually asks, and
+        lets that pass name one volume: on a ten-volume series the other nine
+        are the entire cost, and nothing here needs them.
+        """
+        self._book(book)
+        self._require_outline(book)
+        volumes = self._publication_volumes(book, only=volume)
+        if volume is not None and not volumes:
+            raise VolumeNotFound(f"Volume '{volume}' was not found in '{book}'.")
+        return volumes
 
     def require(self, book: str) -> dict:
         """The Chronos book, or raise. Two indexed lookups and no prose.

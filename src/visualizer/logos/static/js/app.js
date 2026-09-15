@@ -49,7 +49,9 @@ import {
   removeItem,
   replaceItem,
 } from "./readerdata.js";
-import { filterAnnotations, filterIssues, sectionKindName } from "./review.js";
+import {
+  filterAnnotations, filterIssues, reviewPage, sectionKindName,
+} from "./review.js";
 import { beginWriting, mountWriter, writerUrl } from "./writer.js";
 
 const root = document.documentElement;
@@ -185,6 +187,10 @@ function percent(value) {
   return `${Math.round(value * 100)}%`;
 }
 
+// The page is headed "Book contents" above the series title, so an action that
+// says "series" says it three times over. Dropping the word is what lets all
+// seven keep their words in the reading measure -- with it they needed about
+// 964px against 944, and a row of seven unexplained glyphs was the price.
 function bookActions(manuscript) {
   const canWrite = manuscript.permissions.write;
   const hasVolumes = manuscript.volumes.length > 0;
@@ -214,16 +220,16 @@ function bookActions(manuscript) {
   }
   if (hasVolumes) {
     actions.push(
-      button("Search series", "⌕", openSearch),
+      button("Search", "⌕", openSearch),
       button("Bookmarks", "◆", () => openBookmarks().catch(
         (error) => showTransientError(error.message),
       )),
     );
-    if (canWrite) actions.push(button("Publish series", "⇩", openPublication));
+    if (canWrite) actions.push(button("Publish", "⇩", openPublication));
   }
   if (manuscript.rev) {
     actions.push(
-      button("Review series", "◎", () => { window.location.href = reviewUrl(manuscript.book); }),
+      button("Review", "◎", () => { window.location.href = reviewUrl(manuscript.book); }),
     );
   }
   return el("div", { class: "book-actions compact-actions" }, actions);
@@ -844,6 +850,10 @@ function renderReader(manuscript, entry, section) {
         text: meta(sectionLabel(section), words(section.word_count)),
       }),
       open.drafts && open.drafts.length > 1 ? readerDraftPicker() : null,
+      open.draftMissing ? el("p", {
+        class: "reader-draft-notice", role: "status",
+        text: "That draft is no longer available. Showing the primary draft.",
+      }) : null,
     ]),
     el("div", { class: "section-body" }, [proseNode, insightPanel(section)]),
   ]);
@@ -1325,10 +1335,16 @@ function reviewLocationSelect(includeSeries, render) {
       ]);
     }
   }
-  return reviewSelect("Location", options, "all", (event) => {
+  return reviewSelect("Location", options, reviewState.filters.location, (event) => {
     reviewState.filters.location = event.target.value;
     render();
   });
+}
+
+/** The volume a location filter narrows to, if it narrows to one. */
+function locationVolume(location) {
+  const [kind, volume] = (location || "").split(":");
+  return kind === "volume" || kind === "section" ? volume : null;
 }
 
 function annotationContext(item) {
@@ -1403,16 +1419,24 @@ function annotationOrder(item) {
     ?? Number.MAX_SAFE_INTEGER;
 }
 
+function showMoreButton(next, render) {
+  return el("button", {
+    class: "btn ghost review-more", type: "button",
+    text: `Show ${next.toLocaleString()} more`,
+    onclick: () => { reviewState.shown += COACHING_PAGE; render(); },
+  });
+}
+
 function renderReviewAnnotations() {
   if (!reviewState || reviewState.tab !== "notes" || !readerItemsLoaded) return;
   const all = readerItems.map(annotationContext);
-  const shown = filterAnnotations(all, reviewState.filters)
+  const matched = filterAnnotations(all, reviewState.filters)
     .sort((left, right) => annotationOrder(left) - annotationOrder(right));
-  reviewState.status.textContent = `${shown.length} of ${all.filter(
-    (item) => ["note", "checklist"].includes(item.kind),
-  ).length} items`;
+  const page = reviewPage(matched, reviewState.shown, COACHING_PAGE);
+  reviewState.status.textContent = `${page.visible.length.toLocaleString()} of `
+    + `${matched.length.toLocaleString()} items`;
   const groups = new Map();
-  for (const item of shown) {
+  for (const item of page.visible) {
     const key = item.scope === "book"
       ? "Series"
       : `${item.volume_title} · ${item.section_title}`;
@@ -1420,18 +1444,24 @@ function renderReviewAnnotations() {
     groups.get(key).push(item);
   }
   fill(reviewState.results, groups.size
-    ? [...groups].map(([label, items]) => el("section", { class: "review-group" }, [
-        el("h2", { text: label }),
-        el("div", { class: "review-card-list" }, items.map(annotationCard)),
-      ]))
+    ? [
+        ...[...groups].map(([label, items]) => el("section", { class: "review-group" }, [
+          el("h2", { text: label }),
+          el("div", { class: "review-card-list" }, items.map(annotationCard)),
+        ])),
+        page.remaining ? showMoreButton(page.next, renderReviewAnnotations) : null,
+      ]
     : [el("p", { class: "empty", text: "No notes or checklists match these filters." })]);
 }
 
+// The writing workspace's own keys, so the Review page and the coach panel
+// share one dialect and one set of dismissed rules. See `mountWriter`.
+const writingDialectKey = () => `logos-writing-dialect:${encodeURIComponent(readerUser)}`;
+const writingIgnoredKey = () => `logos-writing-ignored:${encodeURIComponent(readerUser)}`;
+
 function ignoredWritingRules() {
   try {
-    return JSON.parse(localStorage.getItem(
-      `logos-writing-ignored:${encodeURIComponent(readerUser)}`,
-    ) || "[]");
+    return JSON.parse(localStorage.getItem(writingIgnoredKey()) || "[]");
   } catch (_error) {
     return [];
   }
@@ -1439,20 +1469,27 @@ function ignoredWritingRules() {
 
 function writingDialect() {
   try {
-    return localStorage.getItem(
-      `logos-writing-dialect:${encodeURIComponent(readerUser)}`,
-    ) || "en-US";
+    return localStorage.getItem(writingDialectKey()) || "en-US";
   } catch (_error) {
     return "en-US";
   }
+}
+
+function rememberWritingDialect(dialect) {
+  try {
+    localStorage.setItem(writingDialectKey(), dialect);
+  } catch (_error) { /* the choice still applies to this page */ }
 }
 
 function issueHref(issue) {
   const target = new URL(writerUrl(
     BASE, pageManuscript.book, issue.volume, issue.section, issue.draft,
   ), window.location.origin);
+  // `block` lands the caret on the passage; `coach` opens the panel beside it.
+  // A flag, not the finding's id -- the panel reviews the draft afresh on open
+  // and has no way to be pointed at one row of a list it has yet to build.
   target.searchParams.set("block", issue.block);
-  target.searchParams.set("coach", issue.id);
+  target.searchParams.set("coach", "1");
   return target.href;
 }
 
@@ -1476,28 +1513,54 @@ function coachingCard(issue) {
   ]);
 }
 
+// A card is about ten elements, so a whole epic series at once would be a
+// six-figure node count built in one synchronous pass -- the tab stops
+// responding long before the writer has read the first screen. A page at a
+// time, extended on request, costs the same to read and nothing to render.
+const COACHING_PAGE = 200;
+
+function coachingSummary(shown, total) {
+  const suffix = reviewState.coaching.truncated
+    ? ` · first ${total.toLocaleString()} of ${
+      reviewState.coaching.issue_count.toLocaleString()}`
+    : "";
+  const scope = reviewState.volume
+    ? "this volume" : `${reviewState.coaching.reviewed_drafts} drafts`;
+  return `${shown.toLocaleString()} of ${total.toLocaleString()} `
+    + `${total === 1 ? "suggestion" : "suggestions"} across ${scope}${suffix}`;
+}
+
 function renderReviewCoaching() {
   if (!reviewState || reviewState.tab !== "coaching" || !reviewState.coaching) return;
   const all = reviewState.coaching.issues || [];
-  const shown = filterIssues(all, {
+  const matched = filterIssues(all, {
     ...reviewState.filters,
     ignored: ignoredWritingRules(),
   });
-  reviewState.status.textContent = `${shown.length} ${shown.length === 1 ? "suggestion" : "suggestions"}`
-    + ` across ${reviewState.coaching.reviewed_drafts} drafts`;
-  fill(reviewState.results, shown.length
-    ? shown.map(coachingCard)
+  const page = reviewPage(matched, reviewState.shown, COACHING_PAGE);
+  reviewState.status.textContent = coachingSummary(
+    page.visible.length, matched.length,
+  );
+  fill(reviewState.results, matched.length
+    ? [
+        ...page.visible.map(coachingCard),
+        page.remaining ? showMoreButton(page.next, renderReviewCoaching) : null,
+      ]
     : [el("p", { class: "empty", text: "No coaching suggestions match these filters." })]);
 }
 
 async function loadReviewCoaching() {
   const requestToken = Symbol("series-review");
   reviewState.requestToken = requestToken;
-  reviewState.status.textContent = "Reviewing the series…";
+  reviewState.shown = COACHING_PAGE;
+  reviewState.volume = locationVolume(reviewState.filters.location);
+  reviewState.status.textContent = reviewState.volume
+    ? "Reviewing this volume…" : "Reviewing the series…";
   fill(reviewState.results, [el("p", { class: "empty", text: "Checking each draft…" })]);
   try {
     const result = await api.seriesWritingReview(
       pageManuscript.book, reviewState.dialect, reviewState.includeAlternates,
+      reviewState.volume,
     );
     if (!reviewState || reviewState.requestToken !== requestToken) return;
     reviewState.coaching = result;
@@ -1512,48 +1575,57 @@ async function loadReviewCoaching() {
 }
 
 function reviewControls(tab) {
+  // Narrowing the filters starts the page again: "show more" is a position in
+  // one list, and keeping it across a change of list shows an arbitrary slice.
+  const rerender = tab === "notes" ? renderReviewAnnotations : renderReviewCoaching;
+  const refilter = () => { reviewState.shown = COACHING_PAGE; rerender(); };
   const query = el("input", {
     class: "review-search", type: "search", placeholder: "Filter this review",
     "aria-label": "Filter review results",
     oninput: (event) => {
       reviewState.filters.query = event.target.value;
-      tab === "notes" ? renderReviewAnnotations() : renderReviewCoaching();
+      refilter();
     },
   });
   if (tab === "notes") {
     return el("div", { class: "review-controls" }, [
       query,
-      reviewLocationSelect(true, renderReviewAnnotations),
+      reviewLocationSelect(true, refilter),
       reviewSelect("Type", [["all", "All items"], ["note", "Notes"],
         ["checklist", "Checklists"]], "all", (event) => {
         reviewState.filters.kind = event.target.value;
-        renderReviewAnnotations();
+        refilter();
       }),
       reviewSelect("Status", [["all", "Any status"], ["open", "Open"],
         ["completed", "Completed"]], "all", (event) => {
         reviewState.filters.status = event.target.value;
-        renderReviewAnnotations();
+        refilter();
       }),
     ]);
   }
   return el("div", { class: "review-controls" }, [
     query,
-    reviewLocationSelect(false, renderReviewCoaching),
+    // Choosing a volume is not a filter over what was fetched -- it is a
+    // smaller request. On a ten-volume series that is a tenth of the prose
+    // read, a tenth of the payload, and the one control that makes reviewing
+    // an epic practical at all.
+    reviewLocationSelect(false, () => {
+      if (locationVolume(reviewState.filters.location) !== reviewState.volume) {
+        loadReviewCoaching();
+      } else {
+        refilter();
+      }
+    }),
     reviewSelect("Category", [["all", "All suggestions"], ["spelling", "Spelling"],
       ["grammar", "Grammar"], ["punctuation", "Punctuation"], ["spacing", "Spacing"],
       ["flow", "Flow"], ["style", "Style"]], "all", (event) => {
       reviewState.filters.category = event.target.value;
-      renderReviewCoaching();
+      refilter();
     }),
     reviewSelect("English", [["en-US", "US"], ["en-GB", "UK"]],
       reviewState.dialect, (event) => {
         reviewState.dialect = event.target.value;
-        try {
-          localStorage.setItem(
-            `logos-writing-dialect:${encodeURIComponent(readerUser)}`,
-            reviewState.dialect,
-          );
-        } catch (_error) { /* optional */ }
+        rememberWritingDialect(reviewState.dialect);
         loadReviewCoaching();
       }),
     el("label", { class: "review-alternates" }, [
@@ -1586,6 +1658,8 @@ async function renderReview(manuscript, requestedTab) {
     dialect: writingDialect(),
     includeAlternates: false,
     coaching: null,
+    volume: null,
+    shown: COACHING_PAGE,
     sectionOrder: new Map(pageManuscript.volumes.flatMap((volume) =>
       volume.sections.map((section) => `${volume.id}/${section.id}`))
       .map((key, index) => [key, index])),
@@ -2176,12 +2250,17 @@ async function openSection(manuscript, entry) {
     primary: true,
   };
   let availableDrafts = [draft];
+  let draftMissing = false;
   if (manuscript.permissions.write) {
     const listing = await api.drafts(manuscript.book, entry.volume.id, entry.section.id);
     availableDrafts = listing.drafts;
     const requested = query.get("draft");
-    draft = availableDrafts.find((row) => row.id === requested)
-      || availableDrafts.find((row) => row.primary) || draft;
+    const found = availableDrafts.find((row) => row.id === requested);
+    // A link to a draft that has since been deleted falls back to the primary,
+    // but says so: silently showing different prose than the link promised is
+    // how a writer edits the wrong draft.
+    draftMissing = Boolean(requested && !found);
+    draft = found || availableDrafts.find((row) => row.primary) || draft;
     if (!draft.primary) {
       const alternate = await api.draft(
         manuscript.book, entry.volume.id, entry.section.id, draft.id,
@@ -2200,6 +2279,7 @@ async function openSection(manuscript, entry) {
     navigating: false,
     draft,
     drafts: availableDrafts,
+    draftMissing,
   };
   readerItems = [];
   readerItemsLoaded = false;

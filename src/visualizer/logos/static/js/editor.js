@@ -1,7 +1,7 @@
 // Structured rich text <-> editable DOM. Stored prose remains the source of
 // truth; contenteditable is only a view and never leaks arbitrary HTML to the API.
 
-import { curlDocument } from "./typography.js";
+import { curlDocument, curlText, curlTypedMark, fixElisions } from "./typography.js";
 
 const MARK_TAGS = { em: "em", strong: "strong", strike: "del", code: "code" };
 const TAG_MARKS = { EM: "em", I: "em", STRONG: "strong", B: "strong", DEL: "strike", S: "strike", CODE: "code" };
@@ -138,20 +138,32 @@ function inlineNodes(node, context = {}) {
   return compact([...node.childNodes].flatMap((child) => inlineNodes(child, next)));
 }
 
-function blockId(node, idFactory) {
-  const held = node.nodeType === 1 && node.dataset.blockId;
-  const id = held || idFactory();
-  if (node.nodeType === 1) node.dataset.blockId = id;
+// Splitting a paragraph clones the block element, so the new one can arrive
+// holding an id that another block already uses. Two blocks with one id is a
+// document the API refuses outright, and `placeCaret` resolves ids with
+// `querySelector`, so the caret would land in whichever copy came first. The
+// second copy is renamed here and the new id written back to the element,
+// because the DOM is what the next read and the next caret lookup both see.
+function blockId(node, idFactory, seen) {
+  const held = node.nodeType === 1 ? node.dataset.blockId : "";
+  const id = held && !seen.has(held) ? held : idFactory();
+  seen.add(id);
+  if (node.nodeType === 1 && id !== held) node.dataset.blockId = id;
   return id;
 }
 
-function asBlock(node, idFactory) {
+function asBlock(node, idFactory, seen) {
   if (node.nodeType === 3) {
     return node.nodeValue.trim()
-      ? { type: "paragraph", id: idFactory(), content: inlineNodes(node) } : null;
+      ? {
+          type: "paragraph",
+          id: blockId(node, idFactory, seen),
+          content: inlineNodes(node),
+        }
+      : null;
   }
   if (node.nodeType !== 1) return null;
-  const id = blockId(node, idFactory);
+  const id = blockId(node, idFactory, seen);
   if (node.tagName === "UL" || node.tagName === "OL") {
     return {
       type: node.tagName === "UL" ? "bullet_list" : "ordered_list",
@@ -174,11 +186,29 @@ export function newBlockId() {
   return `p-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
+/**
+ * Give every block its own id, renaming duplicates in place.
+ *
+ * Reading the document does this anyway, but the caret cannot wait for the
+ * next read: `caretPosition` records where it is *by id*, and `placeCaret`
+ * looks that id up with `querySelector`, so while two blocks share one the
+ * caret comes back in whichever of them comes first. Run before touching the
+ * caret, not after.
+ */
+export function dedupeBlockIds(root, idFactory = newBlockId) {
+  const seen = new Set();
+  for (const node of root.childNodes) {
+    if (node.nodeType === 1) blockId(node, idFactory, seen);
+  }
+}
+
 function documentFromDom(root, idFactory) {
+  const seen = new Set();
   return {
     version: 1,
     type: "doc",
-    content: [...root.childNodes].map((node) => asBlock(node, idFactory)).filter(Boolean),
+    content: [...root.childNodes]
+      .map((node) => asBlock(node, idFactory, seen)).filter(Boolean),
   };
 }
 
@@ -186,14 +216,59 @@ export function documentFromEditor(root, idFactory = newBlockId) {
   return curlDocument(documentFromDom(root, idFactory));
 }
 
-export function normalizeEditorTypography(root, selection, idFactory = newBlockId) {
-  const current = documentFromDom(root, idFactory);
-  const position = caretPosition(root, selection);
-  const document = curlDocument(current);
-  if (JSON.stringify(current) === JSON.stringify(document)) return document;
-  renderEditorDocument(document, root);
-  if (position) placeCaret(root, position, false);
-  return document;
+// -- typography at the caret ---------------------------------------------------
+// `curlText` reads the character *after* a mark to tell an opening quote from a
+// closing one. That is the right rule for prose that already exists and the
+// wrong one mid-sentence: the writer types the mark before the word, so there
+// is never a following character and every opener would come out closed. So
+// the caret gets a backwards-only decision, and `fixElisions` corrects the one
+// case backwards cannot see -- a leading apostrophe -- as soon as the word
+// lands. Both rewrite one run and put the caret back: assigning `nodeValue`
+// collapses any range inside that run to its front.
+
+const isCode = (node) => Boolean(node.parentElement
+  && node.parentElement.closest("code"));
+
+function rewriteRun(root, node, value) {
+  if (value === node.nodeValue) return false;
+  const owner = node.ownerDocument;
+  const caret = caretPosition(root, owner.defaultView.getSelection());
+  node.nodeValue = value;
+  if (caret) placeCaret(root, caret, false);
+  return true;
+}
+
+/**
+ * Curl the mark the writer just typed, and repair a leading apostrophe once
+ * its word is complete. One run, one caret restore, nothing re-rendered.
+ */
+export function curlAtCaret(root, selection) {
+  if (!selection || selection.rangeCount !== 1 || !selection.isCollapsed) return false;
+  const range = selection.getRangeAt(0);
+  const node = range.startContainer;
+  if (!node || node.nodeType !== 3 || !root.contains(node) || isCode(node)) return false;
+  const at = range.startOffset - 1;
+  const mark = at >= 0 ? node.nodeValue[at] : "";
+  const text = mark === '"' || mark === "'"
+    ? node.nodeValue.slice(0, at) + curlTypedMark(node.nodeValue.slice(0, at), mark)
+      + node.nodeValue.slice(at + 1)
+    : node.nodeValue;
+  return rewriteRun(root, node, fixElisions(text));
+}
+
+/** Curl every straight mark in the editor, for prose that arrived whole. */
+export function curlPastedQuotes(root) {
+  const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const runs = [];
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    if (!isCode(node)) runs.push(node);
+  }
+  let changed = false;
+  for (const node of runs) {
+    changed = rewriteRun(root, node, curlText(node.nodeValue)) || changed;
+  }
+  return changed;
 }
 
 export function selectedProse(root, selection) {

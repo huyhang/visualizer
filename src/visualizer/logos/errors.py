@@ -165,6 +165,18 @@ class ExportUnavailable(LogosError):
     code = "EXPORT_UNAVAILABLE"
 
 
+class ReviewUnavailable(LogosError):
+    """A series review was turned away rather than queued behind others.
+
+    Reviewing a long series reads every word of it into memory at once. Two at
+    a time is a bounded cost the container can carry; an unbounded queue of
+    them is how one writer's click takes the database down with it.
+    """
+
+    status_code = 503
+    code = "REVIEW_UNAVAILABLE"
+
+
 class PreconditionRequired(LogosError):
     status_code = 428
     code = "PRECONDITION_REQUIRED"

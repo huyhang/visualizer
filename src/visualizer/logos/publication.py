@@ -19,6 +19,7 @@ from .errors import (
     InvalidPublication,
     LogosError,
 )
+from .typography import curl_text
 
 MAX_COVER_BYTES = 5 * 1024 * 1024
 MAX_PUBLICATION_FIELD = 500
@@ -266,6 +267,11 @@ def validate_publication(payload: Any) -> dict:
         if not isinstance(value, str):
             raise InvalidPublication(f"'{field}' must be text.")
         value = value.strip()
+        # The title page is the most typeset surface there is, so its prose is
+        # curled like any other. `language` is a tag matched against a pattern
+        # below, not prose, and carries no quotes to curl.
+        if field != "language":
+            value = curl_text(value)
         if len(value) > MAX_PUBLICATION_FIELD:
             raise InvalidPublication(
                 f"'{field}' must be at most {MAX_PUBLICATION_FIELD} characters."

@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from threading import BoundedSemaphore
 from typing import Protocol
 
-from .richtext import block_text, validate_document
+from .errors import ReviewUnavailable
+from .richtext import block_text
 
 # US spelling paired with its UK counterpart. Curated rather than derived: a
 # "-our" -> "-or" rule would flag "four" and "hour", and an "-ise" -> "-ize"
@@ -87,10 +89,16 @@ class RuleBasedWritingAdvisor:
     _WORD = re.compile(r"[A-Za-z][A-Za-z\u2019'-]*")
 
     def review(self, document: dict, dialect: str = "en-US") -> list[dict]:
-        clean = validate_document(document)
+        """Findings for one validated document.
+
+        The caller validates: the route does it to client-supplied prose before
+        it gets here, and prose out of the store was validated on the way in.
+        Re-validating deep-copied every document a second time, which on a long
+        series is the difference between reading the prose once and twice.
+        """
         issues: list[dict] = []
         openings: list[tuple[str, str, str]] = []
-        for block in clean["content"]:
+        for block in document["content"]:
             text = block_text(block)
             if not text:
                 continue
@@ -214,91 +222,149 @@ class RuleBasedWritingAdvisor:
 
 
 class SeriesWritingReview:
-    """Apply an injected advisor across ordered manuscript drafts."""
+    """Apply an injected advisor across ordered manuscript drafts.
 
-    def __init__(self, store, manuscripts, advisor: WritingAdvisor):
+    Two bounds, because the cost of this scales with the manuscript and a long
+    series is very long indeed. ``concurrent_reviews`` is the same shape as the
+    export renderer's slot limit: reading a whole series into memory is a cost
+    the container can carry a couple of times over and not an unbounded number
+    of times, so the third caller is turned away rather than queued behind the
+    others. ``max_findings`` bounds the answer instead of the work -- prose
+    with one consistent habit (a whole manuscript in the other dialect, say)
+    produces a finding per paragraph, and nobody reads the ten-thousandth.
+    """
+
+    def __init__(
+        self,
+        store,
+        manuscripts,
+        advisor: WritingAdvisor,
+        *,
+        concurrent_reviews: int = 2,
+        max_findings: int = 2000,
+    ):
         self.store = store
         self.manuscripts = manuscripts
         self.advisor = advisor
+        self.max_findings = max_findings
+        self._slots = BoundedSemaphore(concurrent_reviews)
 
     def review(
-        self, book: str, dialect: str = "en-US", *, include_alternates: bool = False
+        self,
+        book: str,
+        dialect: str = "en-US",
+        *,
+        include_alternates: bool = False,
+        volume: str | None = None,
     ) -> dict:
-        manuscript = self.manuscripts.publication(book)
-        drafts = self.store.list_book_drafts(book) if include_alternates else []
-        by_section: dict[tuple[str, str], list[dict]] = {}
-        for draft in drafts:
-            by_section.setdefault((draft["volume"], draft["section"]), []).append(
-                draft
+        if not self._slots.acquire(blocking=False):
+            raise ReviewUnavailable(
+                "Another review of this size is already running. Try again shortly."
             )
+        try:
+            return self._review(book, dialect, include_alternates, volume)
+        finally:
+            self._slots.release()
 
-        findings = []
+    def _review(
+        self, book: str, dialect: str, include_alternates: bool, volume: str | None
+    ) -> dict:
+        volumes = self.manuscripts.prose(book, volume)
+        alternates = self._alternates(book, volume) if include_alternates else {}
+        findings: list[dict] = []
+        counted = 0
         reviewed = 0
-        for volume in manuscript["volumes"]:
-            for section in volume["sections"]:
-                rows = by_section.get((volume["id"], section["id"]), [])
-                primary_id = section["primary_draft_id"]
-                candidates = [
-                    {
-                        "draft": primary_id,
-                        "name": _draft_name(rows, primary_id),
-                        "document": section["document"],
-                        "primary": True,
-                        "rev": _draft_revision(rows, primary_id, section["rev"]),
-                    }
-                ]
-                if include_alternates:
-                    candidates.extend(
-                        {
-                            "draft": row["draft"],
-                            "name": row["name"],
-                            "document": row["document"],
-                            "primary": False,
-                            "rev": row["rev"],
-                        }
-                        for row in rows
-                        if row["draft"] != primary_id
-                    )
-                for candidate in candidates:
+        for entry in volumes:
+            for section in entry["sections"]:
+                rows = alternates.get((entry["id"], section["id"]), [])
+                for draft in _candidates(section, rows, include_alternates):
                     reviewed += 1
-                    for issue in self.advisor.review(candidate["document"], dialect):
-                        findings.append(
-                            {
-                                **issue,
-                                "id": (
-                                    f'{volume["id"]}:{section["id"]}:'
-                                    f'{candidate["draft"]}:{issue["id"]}'
-                                ),
-                                "volume": volume["id"],
-                                "volume_title": volume["title"],
-                                "section": section["id"],
-                                "section_title": section.get("title"),
-                                "section_kind": section["kind"],
-                                "section_number": section.get("number"),
-                                "draft": candidate["draft"],
-                                "draft_name": candidate["name"],
-                                "draft_rev": candidate["rev"],
-                                "primary": candidate["primary"],
-                            }
-                        )
+                    found = self._findings(entry, section, draft, dialect)
+                    counted += len(found)
+                    if len(findings) < self.max_findings:
+                        findings.extend(found[: self.max_findings - len(findings)])
         return {
             "book": book,
+            "volume": volume,
             "dialect": dialect,
             "include_alternates": include_alternates,
             "reviewed_drafts": reviewed,
             "private": bool(getattr(self.advisor, "private", False)),
+            "issue_count": counted,
+            "truncated": counted > len(findings),
             "issues": findings,
         }
 
+    def _alternates(
+        self, book: str, volume: str | None
+    ) -> dict[tuple[str, str], list[dict]]:
+        """Live drafts by section, in one store read, for only what is reviewed."""
+        grouped: dict[tuple[str, str], list[dict]] = {}
+        for row in self.store.list_book_drafts(book, volume):
+            grouped.setdefault((row["volume"], row["section"]), []).append(row)
+        return grouped
 
-def _draft_name(rows: list[dict], draft_id: str) -> str:
-    row = next((item for item in rows if item["draft"] == draft_id), None)
-    return row["name"] if row else "Primary draft"
+    def _findings(
+        self, volume: dict, section: dict, draft: dict, dialect: str
+    ) -> list[dict]:
+        """One draft's findings, each carrying where the writer has to go."""
+        return [
+            {
+                **issue,
+                **_location(volume, section),
+                **draft["identity"],
+                "id": (
+                    f'{volume["id"]}:{section["id"]}:'
+                    f'{draft["identity"]["draft"]}:{issue["id"]}'
+                ),
+            }
+            for issue in self.advisor.review(draft["document"], dialect)
+        ]
 
 
-def _draft_revision(rows: list[dict], draft_id: str, fallback: int) -> int:
-    row = next((item for item in rows if item["draft"] == draft_id), None)
-    return row["rev"] if row else fallback
+def _candidates(
+    section: dict, rows: list[dict], include_alternates: bool
+) -> list[dict]:
+    """The primary's prose first, then the named alternates if asked for."""
+    primary_id = section["primary_draft_id"]
+    row = next((item for item in rows if item["draft"] == primary_id), None)
+    drafts = [
+        {
+            "document": section["document"],
+            "identity": {
+                "draft": primary_id,
+                "draft_name": row["name"] if row else "Primary draft",
+                "draft_rev": row["rev"] if row else section["rev"],
+                "primary": True,
+            },
+        }
+    ]
+    if include_alternates:
+        drafts.extend(
+            {
+                "document": item["document"],
+                "identity": {
+                    "draft": item["draft"],
+                    "draft_name": item["name"],
+                    "draft_rev": item["rev"],
+                    "primary": False,
+                },
+            }
+            for item in rows
+            if item["draft"] != primary_id
+        )
+    return drafts
+
+
+def _location(volume: dict, section: dict) -> dict:
+    return {
+        "volume": volume["id"],
+        "volume_title": volume["title"],
+        "section": section["id"],
+        "section_title": section.get("title"),
+        "section_kind": section["kind"],
+        "section_number": section.get("number"),
+    }
 
 
 def _excerpt(text: str, limit: int = 100) -> str:

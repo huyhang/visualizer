@@ -117,3 +117,63 @@ def test_an_account_and_a_book_cannot_be_confused_for_another_pair(logos_store):
 
     assert logos_store.get_reading_position("alice::x", "y") is None
     assert logos_store.get_reading_position("alice", "x::y")["last"] == mark
+
+
+def test_drafts_can_be_listed_for_a_series_or_one_of_its_volumes(logos_store):
+    """The series-wide read is what keeps a whole-series review to a handful of
+    queries; the volume filter is what keeps a volume-scoped one from paying
+    for the other nine."""
+    _seed(logos_store)
+    logos_store.create_volume(
+        BOOK, "two", {"title": "Two", "overview": "", "sections": ["hall"]}, "mara"
+    )
+    logos_store.create_section(BOOK, "two", "hall", section_payload(), "mara")
+    # A store-level section carries no draft record; the service layer makes
+    # those, so this makes them by hand.
+    logos_store.create_draft(
+        BOOK, VOLUME, SECTION, "draft-1",
+        {"name": "Draft 1", "document": document("The gate.")}, "mara",
+    )
+    logos_store.create_draft(
+        BOOK, "two", "hall", "draft-1",
+        {"name": "Draft 1", "document": document("The hall.")}, "mara",
+    )
+
+    everywhere = logos_store.list_book_drafts(BOOK)
+    here = logos_store.list_book_drafts(BOOK, VOLUME)
+
+    assert {row["volume"] for row in everywhere} == {VOLUME, "two"}
+    assert {row["volume"] for row in here} == {VOLUME}
+    assert logos_store.list_book_drafts(BOOK, "never-written") == []
+
+
+_LEGACY_BOOKMARK_INDEX = "username_1_book_1_kind_1_volume_1_section_1_block_1"
+
+
+def test_the_pre_draft_bookmark_index_is_dropped_on_the_way_past(mongo_client):
+    """A bookmark is unique per *draft* now, so the old index is not merely
+    redundant -- left in place it keeps enforcing uniqueness without `draft`
+    and refuses the second bookmark on the same paragraph of an alternate.
+    Deployments keep their database across releases, so the only place this
+    ever runs is on a collection that already has the old index.
+    """
+    items = mongo_client["_logos"]["reader_items"]
+    items.create_index(
+        [("username", 1), ("book", 1), ("kind", 1), ("volume", 1),
+         ("section", 1), ("block", 1)],
+        unique=True,
+        partialFilterExpression={"kind": "bookmark"},
+    )
+    assert _LEGACY_BOOKMARK_INDEX in items.index_information()
+
+    store = LogosStore(mongo_client, section_revisions_keep=20)
+
+    assert _LEGACY_BOOKMARK_INDEX not in items.index_information()
+    assert "reader_bookmark_target" in items.index_information()
+    anchor = {"kind": "bookmark", "scope": "paragraph", "volume": VOLUME,
+              "section": SECTION, "block": "p1", "text": ""}
+    primary = store.create_reader_item("mara", BOOK, dict(anchor))
+    alternate = store.create_reader_item(
+        "mara", BOOK, {**anchor, "draft": "draft-2"}
+    )
+    assert primary["id"] != alternate["id"]

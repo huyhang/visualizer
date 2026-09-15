@@ -114,9 +114,12 @@ export const api = {
   writingReview: (book, document, dialect = "en-US") => json(
     "POST", `/books/${enc(book)}/ui/writing-review`, { document, dialect },
   ),
-  seriesWritingReview: (book, dialect = "en-US", includeAlternates = false) => get(
+  seriesWritingReview: (
+    book, dialect = "en-US", includeAlternates = false, volume = null,
+  ) => get(
     `/books/${enc(book)}/ui/writing-review?${new URLSearchParams({
       dialect, include_alternates: String(includeAlternates),
+      ...(volume ? { volume } : {}),
     })}`,
   ),
   // Full View only. Focused never reaches this, which is what makes "no

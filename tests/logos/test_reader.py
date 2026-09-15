@@ -151,6 +151,57 @@ def test_writers_can_create_and_arrange_the_contents(client):
         assert operation in api
 
 
+def _container_block(sheet: str, condition: str) -> str:
+    body = sheet.split(f"@container ({condition}) {{", 1)[1].split("\n}\n", 1)[0]
+    return re.sub(r"/\*.*?\*/", "", body, flags=re.DOTALL)
+
+
+def test_an_action_group_compacts_on_its_own_width_not_the_window_s():
+    """A row of actions asks "do the words still fit in this row", which the
+    window cannot answer: the text-size control sets a root font-size, and a
+    `max-width: 820px` query measures CSS pixels and never moves, so the row
+    used to wrap at one reading size and not another. The hook is
+    `.compact-actions`, which the markup has always carried and no stylesheet
+    defined, and the threshold is in rem because `.content` is capped in rem --
+    turning the size up shrinks the row in rem while the window stands still.
+
+    Glyphs are the fallback for a row that has run out of room, not the resting
+    state of a roomy one, so the threshold sits below the measure: the words
+    stay put on a desktop and give way only when the row genuinely narrows.
+    """
+    sheet = (_LOGOS / "static" / "reader.css").read_text()
+    app = (_LOGOS / "static" / "js" / "app.js").read_text()
+    assert 'class: "book-actions compact-actions"' in app
+    assert ".compact-actions { container-type: inline-size; }" in sheet
+
+    block = _container_block(sheet, "max-width: 56rem")
+    assert ".compact-actions .compact-action-glyph" in block
+    assert ".compact-actions .compact-action-label" in block
+    # A container query styles a container's contents, never the container, so
+    # a rule naming `.compact-actions` alone in here would never apply.
+    assert "flex-wrap" not in block, "dead rule: cannot style the container"
+    # The glyph box stays in px. It is an icon, and the largest reading size on
+    # the narrowest phone is where a rem-sized one would spill.
+    assert "width: 36px" in block
+
+    # A threshold only means anything if the words fit above it, and this row
+    # is the one that did not: with "series" on three of the labels it wanted
+    # about 964px against the 944 the measure gives, so one action dropped to a
+    # second line. Estimated the same way, from the widest seven labels the row
+    # can draw at once -- 8.5px a character plus each button's padding and
+    # border, plus the gaps between them.
+    body = _function_body(app, "function bookActions(")
+    labels = sorted(
+        re.findall(r'"([A-Z][A-Za-z ]{2,})"', body), key=len, reverse=True,
+    )[:7]
+    # Pessimistic on purpose: both arms of the arranging toggle are counted,
+    # though only one is ever on screen.
+    assert len(labels) == 7, labels
+    assert "Manage contents" in labels, labels
+    width = sum(len(label) * 8.5 + 25.6 + 2 for label in labels) + 8.8 * 6
+    assert width < 56 * 16, (round(width), labels, "wider than the threshold")
+
+
 def test_logos_folds_a_thing_the_way_its_siblings_do():
     """Akasha's tree browser and Chronos's story graph both mark a closed
     disclosure `+` and an open one `−`. A fourth service inventing its own
@@ -409,14 +460,21 @@ def test_one_action_group_never_draws_two_actions_the_same_way(client):
     """A glyph is the whole of a compacted button, so two actions wearing the
     same mark in one row are indistinguishable -- the reader cannot tell which
     of them makes a volume and which makes a section. Distinctness is a
-    property of the *group*: `Search` and `Search series` sharing a mark across
-    two different surfaces is correct, and is why this is not one global set.
+    property of the *group*: the contents page's `Search` and the reader
+    toolbar's share both a mark and a word, and that is correct because they
+    never appear together, which is why this is not one global set.
     """
     app = (_LOGOS / "static" / "js" / "app.js").read_text()
     writer = (_LOGOS / "static" / "js" / "writer.js").read_text()
     groups = {
         "book actions": _glyphs_in(_function_body(app, "function bookActions(")),
-        "writer topbar": _glyphs_in(_function_body(writer, "function topbar(")),
+        # The draft actions are built by their own function so that promotion
+        # can repaint them from state, but they draw into the topbar's one row,
+        # so distinctness is still a property of the two bodies together.
+        "writer topbar": _glyphs_in(
+            _function_body(writer, "function topbar(")
+            + _function_body(writer, "function draftActionButtons(")
+        ),
         "formatting bar": _glyphs_in(
             _between(writer, "const toolbar = el(", "]);")
         ),
