@@ -105,6 +105,11 @@ export const api = {
   // The book's scenes in story order — what the editor picks from.
   listEvents: (book, opts) => request("GET", `${bookPath(book)}/events${pageQuery(opts)}`),
 
+  // All lightweight scene summaries in one stable snapshot. The timeline
+  // virtualises cards locally, so moving its cursor never waits on the network.
+  timelineEvents: (book, opts) =>
+    request("GET", `${bookPath(book)}/ui/timeline${pageQuery(opts)}`),
+
   getPlotline: (book, id, { expand, calendar } = {}) =>
     request("GET", plPath(book, id) + viewQuery(calendar, expand ? "expand=events" : "")),
 

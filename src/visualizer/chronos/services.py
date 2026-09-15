@@ -20,6 +20,11 @@ from .browsing import (
     browse_plotlines,
     dominant_database,
 )
+
+# Its own statement because ruff's isort does not combine `as` imports. Aliased
+# because `VisualizerService.timeline_events` owns the plain name: the method is
+# the orchestration, this is the pure presentation under it.
+from .browsing import timeline_events as build_timeline
 from .calendar import codec_for, codec_for_attachment
 from .continuation import effective_paths, resolve, resolve_all, would_cycle
 from .entity_gate import EntityGate
@@ -761,6 +766,29 @@ class CalendarService:
         return [present_calendar(c) for c in self.calendars.list_all()]
 
 
+def _date_row(row: dict, codec) -> None:
+    """Write the calendar's reading of a scene row's ticks into it, in place.
+
+    Only the timeline asks for these. The table shows the ``when`` phrase the row
+    already carries, so dating every scene on that path as well was work nobody
+    read. ``parts`` is the label pre-split coarse-to-fine, which is what lets the
+    rail band itself by the book's own cycles rather than re-parsing a display
+    string -- the same pair ``present_event`` hands the plotline view.
+    """
+    if not row.get("scheduled"):
+        row.update({
+            "start_label": None, "end_label": None,
+            "start_parts": None, "end_parts": None,
+        })
+        return
+    row.update({
+        "start_label": codec.format(row["start_tick"]),
+        "end_label": codec.format(row["end_tick"]),
+        "start_parts": codec.parts(row["start_tick"]),
+        "end_parts": codec.parts(row["end_tick"]),
+    })
+
+
 class VisualizerService(_Service):
     """Orchestration behind the plotline visualiser and its editor.
 
@@ -823,19 +851,44 @@ class VisualizerService(_Service):
 
     # -- scenes ---------------------------------------------------------------
 
+    def _scene_rows(self, book_id, calendar_id):
+        """The book's scenes as browse rows, with the pieces both views need.
+
+        The table and the timeline are two readings of one list, and the read
+        itself -- the book, its codec, the resolved thread paths -- is the same
+        for both.
+        """
+        book = self._require_book(book_id)
+        codec = codec_for(book, calendar_id)
+        plotlines = self._plotlines(book_id)
+        paths = effective_paths(plotlines)
+        rows = [
+            self._event_row(event, codec, paths, book_id)
+            for event in self._events_by_id(book_id).values()
+        ]
+        return plotlines, codec, rows
+
     def browse_events(
         self, book_id, query: str = "", page: int = 1, per_page: int = DEFAULT_PER_PAGE,
         calendar_id=None,
     ) -> dict:
         """The book's scenes in story order -- what the editor picks from."""
-        book = self._require_book(book_id)
-        codec = codec_for(book, calendar_id)
-        paths = effective_paths(self._plotlines(book_id))
-        rows = [
-            self._event_row(event, codec, paths, book_id)
-            for event in self._events_by_id(book_id).values()
-        ]
+        _, _, rows = self._scene_rows(book_id, calendar_id)
         return browse_events(rows, query=query, page=page, per_page=per_page)
+
+    def timeline_events(self, book_id, query: str = "", calendar_id=None) -> dict:
+        """Every lightweight scene summary needed by the virtual timeline."""
+        plotlines, codec, rows = self._scene_rows(book_id, calendar_id)
+        for row in rows:
+            _date_row(row, codec)
+        result = build_timeline(rows, query=query)
+        result["plotlines"] = [
+            {"id": plotline.id, "title": plotline.display_title}
+            for plotline in sorted(
+                plotlines, key=lambda item: (item.display_title.lower(), item.id)
+            )
+        ]
+        return result
 
     @staticmethod
     def _event_row(event: Event, codec, paths, book_id) -> dict:

@@ -759,6 +759,41 @@ letting you hit a 422. Deleting a thread that others continue into is refused
 until you agree to absorb it into them (the `?inline=true` path), which keeps
 their stories intact.
 
+### The Scenes library
+
+**Scenes** in the book header opens `#/<book>/~scenes`: every scene the book
+holds, in two views over one list. It is where scenes are written, read and —
+the part that has no other home — removed.
+
+It opens on the **Timeline**. A cursor sits fixed across the middle of the rail
+and the book's clock scrolls beneath it; scenes near that moment come into view
+as cards either side of the rail, and fade out as they fall away. Scenes that
+begin together share an anchor and take parallel lanes, because simultaneous is
+not sequential. Each card carries a bar for how long its scene runs, so a long
+scene still reads as present while the cursor is inside it.
+
+Three things the rail does that a list cannot:
+
+- **It is banded by the book's own calendar.** Where a year, a moon or whatever
+  this book counts in turns over, the rail says so. The bands come from the same
+  coarse-to-fine split the plotline view groups by (`start_parts` on each scene),
+  so the two views cannot disagree about where a period starts. A book with no
+  calendar attached has nothing coarser than its ticks, and gets no bands.
+- **Empty stretches are compressed, and said to be.** A book whose ending sits a
+  thousand ticks after everything else would otherwise be mostly blank rail. The
+  gap is capped and drawn as an explicit *N ticks later* break, so the time is
+  admitted rather than either scrolled through or silently removed.
+- **It is navigable without scrolling.** **Beginning** and **End** jump to the
+  book's ends, the zoom control trades detail for reach, and the scrubber down
+  the right edge is a density map of where the scenes actually are.
+
+**List** switches to the compact table: earliest first, filtered and paged, for
+working down rows. Undated scenes are never given an invented place on the
+clock — the timeline collects them in a shelf below the rail, and the table puts
+them last. The filter, the calendar switcher and **+ New scene** stay above both
+views, and the view, the filter and where the cursor was left are remembered per
+book.
+
 ### The book's report
 
 **Report** in the book's header — and the **conflicted** pill on its card, which

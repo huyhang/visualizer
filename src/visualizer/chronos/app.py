@@ -352,6 +352,18 @@ def _register_routes(app, csrf, auth_store, books, plotlines, events, visualizer
             visualizer.browse_events(book, calendar_id=_calendar_arg(), **_browse_args())
         )
 
+    @app.get(_BOOK + "/ui/timeline")
+    @csrf.exempt
+    @login_required
+    def scene_timeline(book):
+        """One lightweight snapshot for the virtual, book-wide timeline."""
+        _authorize(auth_store, "GET", book)
+        return jsonify(visualizer.timeline_events(
+            book,
+            query=request.args.get("filter", ""),
+            calendar_id=_calendar_arg(),
+        ))
+
     @app.post(_EVENT)
     @csrf.exempt
     @login_required

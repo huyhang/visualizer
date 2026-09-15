@@ -9,6 +9,7 @@ from visualizer.chronos.browsing import (
     dominant_database,
     matches_all_words,
     searchable_text,
+    timeline_events,
 )
 
 
@@ -174,6 +175,17 @@ def test_scenes_are_ordered_by_time_not_by_name():
     assert [e["id"] for e in browse_events(rows)["events"]] == ["z", "a"]
 
 
+def test_simultaneous_scenes_are_longest_first_then_name_and_id():
+    rows = [
+        {**scene("short", name="Zulu", start=10), "end_tick": 12},
+        {**scene("long-z", name="Zulu", start=10), "end_tick": 30},
+        {**scene("long-a", name="Alpha", start=10), "end_tick": 30},
+    ]
+    assert [e["id"] for e in browse_events(rows)["events"]] == [
+        "long-a", "long-z", "short",
+    ]
+
+
 def test_undated_scenes_sort_last_by_name():
     rows = [scene("u2", name="Wake"), scene("u1", name="Ambush"), scene("s", name="Set", start=99)]
     assert [e["id"] for e in browse_events(rows)["events"]] == ["s", "u1", "u2"]
@@ -212,6 +224,25 @@ def test_scene_pagination_reports_the_same_facts_as_plotlines():
     page2 = browse_events(rows, page=2, per_page=10)
     assert page2["total"] == 25 and page2["pages"] == 3 and page2["page"] == 2
     assert page2["events"][0]["id"] == "e10"
+
+
+def test_timeline_is_unpaginated_with_bounds_and_undated_scenes_apart():
+    rows = [scene(f"e{i}", start=i * 10) for i in range(120)]
+    rows.append(scene("someday", name="Someday"))
+    out = timeline_events(rows)
+    assert len(out["events"]) == 120
+    assert [event["id"] for event in out["unscheduled"]] == ["someday"]
+    assert out["bounds"] == {"start_tick": 0, "end_tick": 1200}
+    assert out["total"] == 121
+
+
+def test_timeline_filter_recomputes_its_bounds():
+    out = timeline_events([
+        scene("departure", name="Departure", start=-20),
+        scene("arrival", name="Arrival", start=80),
+    ], query="arrival")
+    assert [event["id"] for event in out["events"]] == ["arrival"]
+    assert out["bounds"] == {"start_tick": 80, "end_tick": 90}
 
 
 # -- entity scope ------------------------------------------------------------

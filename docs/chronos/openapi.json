@@ -1339,6 +1339,50 @@
         }
       }
     },
+    "/books/{book}/ui/timeline": {
+      "get": {
+        "tags": [
+          "visualizer"
+        ],
+        "summary": "Read the book-wide scene timeline",
+        "description": "Returns one lightweight, unpaginated snapshot for the interactive scene timeline. Scheduled scenes are ordered by tick; scenes beginning together are ordered longest-first, then by title and id. Undated scenes are returned separately because they have no honest position on the clock.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/BookId"
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Space-separated words; a scene matches only if it contains all of them."
+          },
+          {
+            "$ref": "#/components/parameters/CalendarView"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The complete lightweight scene timeline.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SceneTimeline"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/books/{book}/ui/ticks": {
       "get": {
         "tags": [
@@ -4647,6 +4691,114 @@
           "per_page": 20,
           "total": 1,
           "pages": 1
+        }
+      },
+      "TimelineEvent": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EventRow"
+          },
+          {
+            "type": "object",
+            "required": [
+              "start_label",
+              "end_label",
+              "start_parts",
+              "end_parts"
+            ],
+            "properties": {
+              "start_label": {
+                "type": "string",
+                "nullable": true,
+                "description": "The start tick formatted through the selected calendar."
+              },
+              "end_label": {
+                "type": "string",
+                "nullable": true,
+                "description": "The end tick formatted through the selected calendar."
+              },
+              "start_parts": {
+                "type": "array",
+                "nullable": true,
+                "items": {
+                  "type": "string"
+                },
+                "description": "`start_label` pre-split into coarse-to-fine components by the codec, so a client can group scenes by the book's own cycles without re-parsing the string. Null when unscheduled."
+              },
+              "end_parts": {
+                "type": "array",
+                "nullable": true,
+                "items": {
+                  "type": "string"
+                },
+                "description": "`end_label` pre-split into coarse-to-fine components. Null when unscheduled."
+              }
+            }
+          }
+        ]
+      },
+      "TimelineBounds": {
+        "type": "object",
+        "nullable": true,
+        "required": [
+          "start_tick",
+          "end_tick"
+        ],
+        "properties": {
+          "start_tick": {
+            "type": "integer"
+          },
+          "end_tick": {
+            "type": "integer"
+          }
+        }
+      },
+      "SceneTimeline": {
+        "type": "object",
+        "required": [
+          "events",
+          "unscheduled",
+          "bounds",
+          "total",
+          "plotlines"
+        ],
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimelineEvent"
+            }
+          },
+          "unscheduled": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimelineEvent"
+            }
+          },
+          "bounds": {
+            "$ref": "#/components/schemas/TimelineBounds"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "plotlines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "title"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                }
+              }
+            }
+          }
         }
       },
       "PlotlinePreview": {

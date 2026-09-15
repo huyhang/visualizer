@@ -32,7 +32,7 @@
 // return to the table. Entity references open an article "peek" card in #peek.
 
 import { api, ApiError, BASE } from "./api.js";
-import { $ } from "./dom.js";
+import { $, runTeardowns } from "./dom.js";
 import { clearPeek, showArticle } from "./peek.js";
 import { mountBooks } from "./books.js";
 import { mountCalendarLibrary } from "./calendarlibrary.js";
@@ -98,6 +98,9 @@ let currentBook = null;
 let me = null;
 
 function route() {
+  // Whatever the outgoing view still owns — listeners, timers, observers — goes
+  // first. Replacing the content node does not stop any of them.
+  runTeardowns();
   clearPeek();
   const parts = parseHash();
   currentBook = parts[0] === CALENDARS ? null : (parts[0] || null);

@@ -143,9 +143,16 @@ def _event_sort_key(row: Mapping):
     place on that clock, so it sorts to the end instead of to tick zero.
     """
     name = (row.get("name") or row.get("id") or "").lower()
+    identity = row.get("id") or ""
     if row.get("scheduled"):
-        return (0, row.get("start_tick") or 0, name)
-    return (1, 0, name)
+        start = row.get("start_tick") or 0
+        end = row.get("end_tick")
+        duration = (end - start) if end is not None else 0
+        # Simultaneous starts are not a chronology. Longest first gives their
+        # parallel spans a stable outside-to-inside order; names and ids make
+        # the answer total without inventing a story relationship.
+        return (0, start, -duration, name, identity)
+    return (1, 0, 0, name, identity)
 
 
 def browse_events(
@@ -156,6 +163,46 @@ def browse_events(
 ) -> dict:
     """Filter by ``query``, order by time, and return one page of scenes."""
     return _browse(rows, query, _event_sort_key, _present_event_row, page, per_page, "events")
+
+
+def timeline_events(rows: Iterable[Mapping], query: str = "") -> dict:
+    """Return the lightweight, unpaginated read model for the scene timeline.
+
+    Scrolling is a client-side interaction: one stable snapshot avoids a request
+    for every cursor movement, while the browser still materialises only the
+    handful of nearby cards. Undated scenes are explicit rather than being
+    assigned a fictional point on the clock.
+    """
+    matched = [dict(row) for row in rows if matches_all_words(row, query)]
+    matched.sort(key=_event_sort_key)
+    scheduled = [_present_timeline_event(row) for row in matched if row.get("scheduled")]
+    unscheduled = [_present_timeline_event(row) for row in matched if not row.get("scheduled")]
+    bounds = None
+    if scheduled:
+        bounds = {
+            "start_tick": min(row["start_tick"] for row in scheduled),
+            "end_tick": max(row["end_tick"] for row in scheduled),
+        }
+    return {
+        "events": scheduled,
+        "unscheduled": unscheduled,
+        "bounds": bounds,
+        "total": len(matched),
+    }
+
+
+def _present_timeline_event(row: Mapping) -> dict:
+    event = _present_event_row(row)
+    event.update({
+        "start_label": row.get("start_label"),
+        "end_label": row.get("end_label"),
+        # The labels pre-split coarse-to-fine by the codec. The rail draws the
+        # book's own period boundaries from these, so it never parses a display
+        # string and never needs a second request to know where a year turns.
+        "start_parts": row.get("start_parts"),
+        "end_parts": row.get("end_parts"),
+    })
+    return event
 
 
 def _present_event_row(row: Mapping) -> dict:

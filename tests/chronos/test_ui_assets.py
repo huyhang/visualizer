@@ -335,6 +335,53 @@ def test_the_stylesheet_lets_hidden_win():
     )
 
 
+def test_the_timeline_layers_share_one_rail_gutter():
+    """The cursor, the cards and the two marker layers must agree where the rail
+    ends, or they line up against different centres.
+
+    They are four absolutely-positioned siblings inset from the right by the
+    width of the overview scrubber. The cursor rule is drawn across one of them
+    and the cards are anchored on another, so a gutter that drifts on any single
+    layer tilts every connector against the rule by half the difference. Nothing
+    else can see it: the JS tests run against no layout at all, and the numbers
+    are individually plausible.
+    """
+    css = _CSS.read_text()
+    layers = (
+        ".scene-timeline-layer", ".timeline-break-layer",
+        ".timeline-period-layer", ".scene-time-cursor", ".timeline-fade",
+    )
+    gutters = {}
+    for selector in layers:
+        rule = re.search(rf"{re.escape(selector)}\s*\{{([^}}]*)\}}", css)
+        assert rule, f"no {selector} rule: the rail has a layer with no gutter"
+        inset = re.search(r"(?:inset|right)\s*:\s*[^;]*?(\d+)px", rule.group(1))
+        assert inset, f"{selector} sets no pixel gutter: {rule.group(1)!r}"
+        gutters[selector] = inset.group(1)
+    assert len(set(gutters.values())) == 1, f"the rail's layers disagree: {gutters}"
+
+
+def test_the_narrow_timeline_lane_wins_on_specificity_not_force():
+    """One card lane on a phone must override the two-lane rules on their terms.
+
+    `.scene-timeline-item.side-N .scene-timeline-card` is a two-class selector,
+    so the single-lane override needs two classes of its own -- and to come
+    later in the file. Writing it with one class and reaching for `!important`
+    instead works, and then quietly outranks anything a later rule wants to say
+    about a card's position. Only the cascade can see this.
+    """
+    # Comments come out first: the rule right below carries an explanation that
+    # names the very thing this forbids, and would fail its own test.
+    css = re.sub(r"/\*.*?\*/", "", _CSS.read_text(), flags=re.DOTALL)
+    narrow = css.split("@media (max-width: 720px)", 1)
+    assert len(narrow) == 2, "the timeline's narrow-screen block is gone"
+    block = narrow[1].split("\n}\n", 1)[0]
+    assert "scene-timeline-card" in block, "the narrow block no longer places the card"
+    assert "!important" not in block, (
+        f"the narrow timeline block leans on !important: {block!r}"
+    )
+
+
 def test_no_module_builds_dom_from_untrusted_html():
     """The DOM helpers take `text`, never `innerHTML`, for anything user-supplied.
 

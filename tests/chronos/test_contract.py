@@ -216,6 +216,7 @@ def story_client(app, fake_gate):
         (f"/books/{BOOK}/events/m/plotlines", "EventNeighborhood"),
         (f"/books/{BOOK}/validate", "ValidateReport"),
         (f"/books/{BOOK}/ui/issues", "BookReport"),
+        (f"/books/{BOOK}/ui/timeline", "SceneTimeline"),
         (f"/books/{BOOK}/graph", "Graph"),
     ],
 )

@@ -1,5 +1,6 @@
-// The scene library for one book: every scene it holds, in story order, with
-// the writing, editing and — the part that had no home before — the removing.
+// The scene library for one book: a unified, scrollable timeline by default and
+// the compact maintenance list one toggle away. Both keep the same writing,
+// editing and removing actions.
 //
 // Until now a scene could only be written from *inside* a plotline, which made
 // two things awkward. A scene the writer abandoned mid-edit stayed in the book
@@ -9,7 +10,7 @@
 //
 // It is a route rather than a modal, unlike the plotline and scene editors:
 // those are detours from reading one thread, while this is somewhere you go and
-// stay a while — filtering, paging, working down a list.
+// stay a while — moving through the book's clock or working down a filtered list.
 //
 // Three notes on the deletions, which are the only irreversible thing here:
 //
@@ -26,22 +27,25 @@
 
 import { api } from "./api.js";
 import { calendarSwitcher, currentFor } from "./calendarview.js";
-import { clear, el, toast } from "./dom.js";
+import { clear, el, onTeardown, toast } from "./dom.js";
 import { entityTitle } from "./entities.js";
 import { pager } from "./paging.js";
 import { clearPeek, showScene } from "./peek.js";
 import { confirmModal, modal } from "./picker.js";
 import { loadScope, sceneForm } from "./sceneform.js";
+import { sceneTimeline } from "./scenetimeline.js";
 
 const PER_PAGE = 20;
 
-// The last filter+page per book, so coming back from a scene lands where you
-// left — the same courtesy the plotline table extends.
+// The last filter, view and timeline position per book, so coming back lands
+// where the writer left it. Timeline is deliberately the first visit's default.
 const lastState = {};
 
 export async function mountScenes(container, book, { onBooks, onBook }) {
   clear(container);
-  const state = lastState[book] || { query: "", page: 1 };
+  const state = lastState[book] || {
+    query: "", page: 1, mode: "timeline", cursorTick: null, zoom: 1,
+  };
   lastState[book] = state;
 
   let bookMeta = { title: book, permissions: {} };
@@ -69,22 +73,36 @@ export async function mountScenes(container, book, { onBooks, onBook }) {
   });
   const results = el("div", { class: "scene-results" },
     el("p", { class: "muted", text: "Loading…" }));
+  const lead = el("p", { class: "view-lead muted" });
+  const timelineButton = viewButton("Timeline", "timeline");
+  const listButton = viewButton("List", "list");
+  let activeTimeline = null;
+  let renderVersion = 0;
+  // The timeline keeps listeners, a timer and a resize observer alive. Every
+  // re-render destroys the old one; navigating away is the case no render
+  // covers, so the router is told about it too.
+  onTeardown(() => {
+    renderVersion += 1; // an in-flight fetch must not mount into a dead view
+    activeTimeline?.destroy();
+    activeTimeline = null;
+  });
 
-  container.appendChild(el("div", { class: "view table-view" }, [
+  container.appendChild(el("div", { class: "view scene-library-view" }, [
     breadcrumb(bookMeta.title || book, onBooks, onBook),
     el("div", { class: "book-head" }, [
       el("h1", { class: "view-title", text: "Scenes" }),
       el("span", { class: "muted", text: bookMeta.title || book }),
+      el("div", { class: "scene-view-toggle", role: "group", "aria-label": "Scene view" }, [
+        timelineButton, listButton,
+      ]),
       // Only when the book keeps more than one reckoning. Switching re-reads
-      // the table: the labels come from the server's codec, never from here.
+      // the view: the labels come from the server's codec, never from here.
       calendarSwitcher(book, bookMeta.calendars, (chosen) => {
         calendar = chosen;
         render();
       }),
     ].filter(Boolean)),
-    el("p", { class: "view-lead muted", text:
-      "Every scene in this book, earliest first. Undated ones come last — they "
-      + "are waiting for a place on the timeline, not missing one." }),
+    lead,
     el("div", { class: "filter-bar" }, [
       filterBox,
       canWrite ? el("button", {
@@ -94,18 +112,73 @@ export async function mountScenes(container, book, { onBooks, onBook }) {
     results,
   ]));
 
-  // -- the table -------------------------------------------------------------
+  function viewButton(label, mode) {
+    return el("button", {
+      class: "scene-view-option", type: "button", text: label,
+      onclick: () => {
+        if (state.mode === mode) return;
+        state.mode = mode;
+        render();
+      },
+    });
+  }
+
+  function reflectMode() {
+    for (const [button, mode] of [[timelineButton, "timeline"], [listButton, "list"]]) {
+      const active = state.mode === mode;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
+    }
+    lead.textContent = state.mode === "timeline"
+      ? "Scroll through the book's clock. Scenes nearest the cursor come into view; undated scenes wait below."
+      : "Every scene in this book, earliest first. Undated ones come last.";
+  }
+
+  // -- timeline and list -----------------------------------------------------
 
   async function render() {
+    const version = ++renderVersion;
+    activeTimeline?.destroy();
+    activeTimeline = null;
+    reflectMode();
+    clear(results);
+    results.appendChild(el("p", { class: "muted", text: "Loading…" }));
     try {
+      if (state.mode === "timeline") {
+        const data = await api.timelineEvents(book, { filter: state.query, calendar });
+        if (version !== renderVersion) return;
+        for (const plotline of data.plotlines || []) {
+          threadNames.set(plotline.id, plotline.title);
+        }
+        activeTimeline = sceneTimeline({
+          events: data.events,
+          unscheduled: data.unscheduled,
+          bounds: data.bounds,
+          cursorTick: state.cursorTick,
+          zoom: state.zoom,
+          renderScene: sceneSummary,
+          formatTick: async (tick) => {
+            const answer = await api.formatTicks(book, [tick], { calendar });
+            return answer.ticks[0]?.label;
+          },
+          onCursor: (tick) => { state.cursorTick = tick; },
+          onZoom: (value) => { state.zoom = value; },
+        });
+        clear(results);
+        results.appendChild(activeTimeline.element);
+        return;
+      }
+
       const data = await api.listEvents(book, {
         filter: state.query, page: state.page, perPage: PER_PAGE, calendar,
       });
+      if (version !== renderVersion) return;
       state.page = data.page; // the server clamps an out-of-range page
       clear(results);
       results.appendChild(table(data.events));
       results.appendChild(pager(data, (p) => { state.page = p; render(); }, { noun: "scene" }));
     } catch (e) {
+      if (version !== renderVersion) return;
       clear(results);
       results.appendChild(el("p", { class: "empty", text: "Could not load the scenes." }));
       toast(e.message || "Could not load the scenes.", true);
@@ -123,7 +196,7 @@ export async function mountScenes(container, book, { onBooks, onBook }) {
         // Always present: the column carries Expand, which is a reading act.
         el("th", { class: "tools" }),
       ])),
-      el("tbody", {}, rows.map(row)),
+      el("tbody", {}, rows.map(tableRow)),
     ]));
   }
 
@@ -134,7 +207,7 @@ export async function mountScenes(container, book, { onBooks, onBook }) {
       : "This book has no scenes yet.";
   }
 
-  function row(scene) {
+  function tableRow(scene) {
     return el("tr", {}, [
       el("td", { class: "when" }, el("span", { class: "scene-when", text: scene.when })),
       el("td", {}, [
@@ -147,22 +220,45 @@ export async function mountScenes(container, book, { onBooks, onBook }) {
       ]),
       el("td", {}, place(scene)),
       el("td", {}, usedBy(scene.plotlines)),
-      el("td", { class: "tools" }, el("div", { class: "scene-tools" }, [
-        // Reading, not editing, so it is offered to everyone who can open the
-        // book at all — unlike the two beside it.
-        tool("⤢", "Expand — the whole scene, with its cast and places", () => expandScene(scene)),
-        canWrite ? tool("✎", "Edit this scene", () => editScene(scene)) : null,
-        // An editor who is not the owner sees this disabled rather than absent:
-        // a missing control reads as "this cannot be done", where the truth is
-        // "not by you". A reader, who cannot edit either, is shown neither.
-        canWrite ? (canDelete
-          ? tool("✕", "Delete this scene", () => deleteScene(scene))
-          : el("button", {
-              class: "icon-btn sm", type: "button", text: "✕", disabled: "",
-              title: "Only the book's owner may delete a scene",
-            })) : null,
-      ])),
+      el("td", { class: "tools" }, el("div", { class: "scene-tools" }, sceneTools(scene))),
     ]);
+  }
+
+  function sceneSummary(scene, { timeline = false } = {}) {
+    const title = el("button", {
+      class: "timeline-scene-title", type: "button", text: scene.title,
+      title: "Open the whole scene", onclick: () => expandScene(scene),
+    });
+    return el("article", {
+      class: `timeline-scene-card${timeline ? " on-timeline" : ""}`,
+    }, [
+      el("div", { class: "timeline-scene-head" }, [
+        title,
+        scene.id === bookMeta.terminus
+          ? el("span", { class: "badge terminus", text: "terminus" }) : null,
+        el("div", { class: "scene-tools" }, sceneTools(scene)),
+      ]),
+      el("div", { class: "timeline-scene-time", text: scene.when }),
+      el("div", { class: "timeline-scene-meta" }, [
+        place(scene),
+        usedBy(scene.plotlines, 2),
+      ]),
+    ]);
+  }
+
+  function sceneTools(scene) {
+    // Reading is available to everyone. Editors may change a scene; deletion is
+    // visibly disabled unless they own the book, rather than silently absent.
+    return [
+      tool("⤢", "Expand — the whole scene, with its cast and places", () => expandScene(scene)),
+      canWrite ? tool("✎", "Edit this scene", () => editScene(scene)) : null,
+      canWrite ? (canDelete
+        ? tool("✕", "Delete this scene", () => deleteScene(scene))
+        : el("button", {
+            class: "icon-btn sm", type: "button", text: "✕", disabled: "",
+            title: "Only the book's owner may delete a scene",
+          })) : null,
+    ].filter(Boolean);
   }
 
   // Where the scene happens, by the name the writer gave the article rather than
@@ -180,12 +276,16 @@ export async function mountScenes(container, book, { onBooks, onBook }) {
 
   // A scene in no thread is not an error, but it is worth seeing: it is either
   // still to be threaded, or the leftover of an edit that was abandoned.
-  function usedBy(plotlines) {
+  function usedBy(plotlines, limit = null) {
     if (!plotlines || !plotlines.length) {
       return el("span", { class: "muted unused", text: "not in any plotline" });
     }
-    return el("div", { class: "chip-row" },
-      plotlines.map((p) => el("span", { class: "chip", text: threadNames.get(p) || p })));
+    const shown = limit == null ? plotlines : plotlines.slice(0, limit);
+    return el("div", { class: "chip-row" }, [
+      ...shown.map((p) => el("span", { class: "chip", text: threadNames.get(p) || p })),
+      limit != null && plotlines.length > limit
+        ? el("span", { class: "chip", text: `+${plotlines.length - limit}` }) : null,
+    ]);
   }
 
   // -- reading one scene in full ---------------------------------------------

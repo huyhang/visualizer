@@ -169,7 +169,13 @@ answer. Years before 1 are typed as a plain year with the era set to **BCE**.
 ## 4. Write the scenes
 
 Click **Scenes** in the book header. This is the scene library: every scene in
-the book, filtered and paged, and where you write, read and remove them.
+the book, and where you write, read and remove them. It opens on the unified
+timeline: scroll the book's clock beneath the fixed cursor and nearby scenes
+come into view, and — because you attached a calendar in step 3 — the rail is
+banded by the cycles that calendar counts in, so you can see a year turn over.
+**List** switches to the compact, filtered and paged table when you want to work
+down rows instead. Scenes without timing are collected in the shelf below the
+timeline rather than being placed at an invented date.
 
 **+ New scene**, five times. The **Place**, **Characters** and **Items** fields
 search the articles you just wrote — pick from the list rather than typing.

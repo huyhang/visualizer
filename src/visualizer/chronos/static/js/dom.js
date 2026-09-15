@@ -24,6 +24,27 @@ export function el(tag, attrs = {}, children = []) {
 
 export function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
 
+// Most views are pure markup: the router replaces the content node and the old
+// one is simply garbage. A view that also owns listeners on `window`, a timer or
+// an observer is not -- detached, it keeps running and keeps answering for the
+// live view. Such a view registers a teardown here and the router runs them all
+// before it mounts the next one, beside `clearPeek()`.
+const teardowns = new Set();
+
+export function onTeardown(fn) {
+  teardowns.add(fn);
+}
+
+export function runTeardowns() {
+  const pending = [...teardowns];
+  teardowns.clear();
+  // One view's teardown must not strand the others, or leave the router
+  // half-navigated -- the whole point of this is to leave nothing behind.
+  for (const fn of pending) {
+    try { fn(); } catch (e) { /* already detached; nothing left to salvage */ }
+  }
+}
+
 // `slugify` used to live here. It now lives in ./shared/slug.js, because akasha
 // derives article ids the same way and the two copies drifted.
 

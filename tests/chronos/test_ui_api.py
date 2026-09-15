@@ -336,6 +336,35 @@ def test_scene_listing_requires_read_permission(book_with_plotlines, app):
     assert other.get(f"/books/{BOOK}/events").status_code == 403
 
 
+def test_timeline_returns_one_unpaginated_scene_snapshot(book_with_plotlines):
+    _event(book_with_plotlines, "someday", start=None, end=None, title="Someday")
+    body = book_with_plotlines.get(f"/books/{BOOK}/ui/timeline").get_json()
+    assert [event["id"] for event in body["events"]] == [
+        "aldric-departs", "harbor-exchange", "coronation",
+    ]
+    assert [event["id"] for event in body["unscheduled"]] == ["someday"]
+    assert body["bounds"] == {"start_tick": 0, "end_tick": 50}
+    assert body["events"][0]["start_label"] == "0"
+    assert body["unscheduled"][0]["start_label"] is None
+    # The label pre-split coarse-to-fine, which is what lets the rail band
+    # itself by the book's own cycles without a second request. A book with no
+    # calendar attached has one component -- its bare tick.
+    assert body["events"][0]["start_parts"] == ["0"]
+    assert body["unscheduled"][0]["start_parts"] is None
+    assert {plotline["id"]: plotline["title"] for plotline in body["plotlines"]} == {
+        "knights-road": "The Knight's Road",
+        "spys-shadow": "The Spy's Shadow",
+    }
+
+
+def test_timeline_requires_read_permission(book_with_plotlines, app):
+    from tests.chronos.conftest import _login
+
+    other = app.test_client()
+    _login(other, "admin", "admin-pass")
+    assert other.get(f"/books/{BOOK}/ui/timeline").status_code == 403
+
+
 # -- preview -----------------------------------------------------------------
 
 
@@ -557,6 +586,24 @@ def test_ticks_match_what_a_saved_scene_will_show(calendared):
     event = calendared.get(f"/books/{BOOK}/events/trial").get_json()
     preview = calendared.get(f"/books/{BOOK}/ui/ticks?tick=240").get_json()["ticks"][0]
     assert preview["label"] == event["start_label"]
+
+
+def test_the_timeline_dates_scenes_exactly_as_the_tick_endpoint_does(calendared):
+    """The rail draws its period bands from `start_parts`, so the two must agree.
+
+    If the timeline split a tick differently from `ui/ticks`, the rail would say
+    a year turns over somewhere the scene form does not -- one book, two clocks.
+    """
+    _event(calendared, "trial", "highkeep", 240, 264, title="The Trial")
+    body = calendared.get(f"/books/{BOOK}/ui/timeline").get_json()
+    trial = next(e for e in body["events"] if e["id"] == "trial")
+    ticks = calendared.get(f"/books/{BOOK}/ui/ticks?tick=240&tick=264").get_json()["ticks"]
+    assert trial["start_parts"] == ticks[0]["parts"] == [
+        "Year 1", "Month 1", "Day 11", "00:00 AF",
+    ]
+    assert trial["end_parts"] == ticks[1]["parts"]
+    assert trial["start_label"] == ticks[0]["label"]
+    assert ", ".join(trial["start_parts"]) == trial["start_label"]
 
 
 def test_a_book_without_a_calendar_just_echoes_the_number(book_with_plotlines):
