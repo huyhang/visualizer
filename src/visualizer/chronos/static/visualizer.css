@@ -113,6 +113,15 @@ button { font-family: inherit; cursor: pointer; }
   background: var(--accent-soft); color: var(--accent-strong); font-size: .78rem;
 }
 .chip.goal { background: var(--surface-3); color: var(--text); }
+/* A plotline chip, in that thread's own colour (the script sets `--thread`).
+   Both halves are mixed rather than used raw: the lane palette is tuned for
+   strokes on a surface, so a hue straight out of it is too light behind a chip
+   and too light *as* small text on one. Mixing toward `--surface` and `--text`
+   also means one rule reads correctly in both themes, since those two flip. */
+.chip.thread {
+  background: color-mix(in srgb, var(--thread) 14%, var(--surface));
+  color: color-mix(in srgb, var(--thread) 55%, var(--text));
+}
 
 .status-pill, .badge {
   font-size: .68rem; text-transform: uppercase; letter-spacing: .04em;
@@ -249,6 +258,24 @@ button.status-pill.conflicted:hover { filter: brightness(.94); text-decoration: 
 .timeline-zoom-label { min-width: 3.2rem; text-align: center; font-size: .76rem; color: var(--muted); }
 
 .scene-timeline-stage {
+  /* Where the cursor's rule sits, written per frame by `scenetimeline.js` from
+     what the card layout settled on. The middle for all of the body of a book;
+     it travels only through the last screenful at either end, where one side of
+     the lens would otherwise have nothing to draw (see `cursorOffset`). Declared
+     here so the rule is somewhere sane in the frame before the script runs. */
+  --cursor-y: 50%;
+  /* ...and how much of each edge scrim is earned, likewise written per frame.
+     Full until the script has measured, which is the safe way round: a scrim
+     that is briefly too strong only dims, where one too weak shows a card
+     sliced off by the stage's edge. */
+  --fade-top: 1;
+  --fade-bottom: 1;
+  /* How far anything hung on the rail stays clear of the stage's own border.
+     One knob, because the cards and the calendar bands have to agree: a card
+     flush against the edge reads as clipped even when it is whole. Applied
+     symmetrically about the rail, so it cannot pull the two columns out of
+     line with the centre line the stage draws behind them. */
+  --stage-pad: 14px;
   position: relative; height: min(68vh, 680px); min-height: 460px; overflow: hidden;
   border: 1px solid var(--border); border-radius: 16px;
   background:
@@ -294,7 +321,7 @@ button.status-pill.conflicted:hover { filter: brightness(.94); text-decoration: 
   border-top: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
 }
 .timeline-period-label {
-  position: absolute; left: 0;
+  position: absolute; left: var(--stage-pad);
   padding: .08rem .55rem; border-radius: 999px; white-space: nowrap;
   background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
   color: var(--accent-strong); font-size: .72rem; font-weight: 750;
@@ -330,41 +357,78 @@ button.status-pill.conflicted:hover { filter: brightness(.94); text-decoration: 
   --duration-height: 3px;
   --stem-top: 39px;
   --stem-height: 2px;
+  /* The scene's plotline colour, written per card by `scenetimeline.js` and
+     inherited by every piece of rail furniture below and by the card itself.
+     The accent is the honest answer for a scene in no thread, and for a moment
+     where several threads meet. */
+  --thread: var(--accent);
 }
+/* 28px is half the gutter the central rail runs down; `--stage-pad` is the
+   clearance at the outer edge. Taking both off the half-width keeps the two
+   columns the same size and still centred on the rail. */
 .scene-timeline-card {
-  position: absolute; top: 0; width: calc(50% - 28px); pointer-events: auto;
+  position: absolute; top: 0; pointer-events: auto;
+  width: calc(50% - 28px - var(--stage-pad));
 }
-.scene-timeline-item.side-0 .scene-timeline-card { left: 0; }
-.scene-timeline-item.side-1 .scene-timeline-card { right: 0; }
+.scene-timeline-item.side-0 .scene-timeline-card { left: var(--stage-pad); }
+.scene-timeline-item.side-1 .scene-timeline-card { right: var(--stage-pad); }
 .scene-timeline-link {
   position: absolute; top: 38px; height: 1px; width: 28px;
-  background: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: color-mix(in srgb, var(--thread) 55%, var(--border));
 }
 .scene-timeline-item.side-0 .scene-timeline-link { left: calc(50% - 28px); }
 .scene-timeline-item.side-1 .scene-timeline-link { left: 50%; }
 .scene-timeline-stem {
   position: absolute; left: calc(50% - .5px); top: var(--stem-top); width: 1px;
-  height: var(--stem-height); background: color-mix(in srgb, var(--accent) 55%, var(--border));
+  height: var(--stem-height); background: color-mix(in srgb, var(--thread) 55%, var(--border));
 }
 .scene-timeline-duration {
   position: absolute; left: calc(50% + 3px); top: var(--duration-top); width: 3px;
-  height: var(--duration-height); border-radius: 999px; background: var(--accent);
+  height: var(--duration-height); border-radius: 999px; background: var(--thread);
   opacity: .42;
 }
 .scene-timeline-item.side-0 .scene-timeline-duration { left: calc(50% - 6px); }
 .scene-timeline-dot {
   position: absolute; left: calc(50% - 6px); top: calc(var(--anchor-y) - 6px);
-  width: 12px; height: 12px; border-radius: 50%; background: var(--accent);
-  border: 3px solid var(--surface); box-shadow: 0 0 0 1px var(--accent);
+  width: 12px; height: 12px; border-radius: 50%; background: var(--thread);
+  border: 3px solid var(--surface); box-shadow: 0 0 0 1px var(--thread);
 }
 
 .timeline-scene-card {
-  height: 78px; overflow: hidden; padding: .55rem .65rem;
-  border: 1px solid var(--border); border-radius: 11px;
+  /* The scene's plotline colour. Declared here as well as on the rail item
+     because a card also stands alone -- in the unscheduled shelf and inside an
+     open moment -- where there is no item above it to inherit from. */
+  --thread: var(--accent);
+  position: relative;
+  height: 78px; overflow: hidden; padding: .45rem .6rem .45rem .85rem;
+  /* Three rows in a box the rail fixes at 78px. At the page's 1.55 leading they
+     add up to more than fits, and `overflow: hidden` took the difference off the
+     bottom -- which is why the plotline chips sat on the border with their
+     descenders shaved. Tightened here rather than by growing the card, because
+     that height is the rail's spacing unit (`CARD_HEIGHT` in timelinelayout.js)
+     and not merely this box's. */
+  line-height: 1.32;
+  border: 1px solid color-mix(in srgb, var(--thread) 26%, var(--border));
+  border-radius: 11px;
   background: color-mix(in srgb, var(--surface) 94%, transparent);
   box-shadow: var(--shadow); backdrop-filter: blur(7px);
 }
-.timeline-scene-card:hover { border-color: var(--accent); box-shadow: var(--shadow-lg); }
+.timeline-scene-card:hover { border-color: var(--thread); box-shadow: var(--shadow-lg); }
+/* One band per thread the scene belongs to, clipped by the card's own rounded
+   overflow. Hue alone would collide on the thirteenth thread, so each band also
+   carries that thread's stroke -- the same pairing the story map's legend
+   shows. `stroke-0` is solid and needs no rule of its own. */
+.timeline-scene-stripe {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+  display: flex; flex-direction: column;
+}
+.timeline-scene-stripe .thread-mark { flex: 1; background: var(--thread); }
+.timeline-scene-stripe .thread-mark.stroke-1 {
+  background: repeating-linear-gradient(var(--thread) 0 7px, transparent 7px 11px);
+}
+.timeline-scene-stripe .thread-mark.stroke-2 {
+  background: repeating-linear-gradient(var(--thread) 0 2px, transparent 2px 6px);
+}
 .timeline-scene-head { display: flex; align-items: center; gap: .35rem; min-width: 0; }
 .timeline-scene-title {
   min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -373,10 +437,15 @@ button.status-pill.conflicted:hover { filter: brightness(.94); text-decoration: 
 }
 .timeline-scene-title:hover { color: var(--accent); }
 .timeline-scene-card .scene-tools { gap: .15rem; }
-.timeline-scene-card .icon-btn.sm { width: 23px; height: 23px; }
+.timeline-scene-card .icon-btn.sm { width: 22px; height: 22px; }
+/* The widest line on the card, so it is where the thread's colour does the most
+   work -- ninety-seven cards of identical accent-blue dates was the whole of the
+   monotone. Toned toward the page's text for the same reason `.chip.thread` is:
+   these are small bold glyphs, not a stroke. */
 .timeline-scene-time {
   margin-top: .08rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  color: var(--accent-strong); font-size: .7rem; font-weight: 650;
+  color: color-mix(in srgb, var(--thread) 55%, var(--text));
+  font-size: .7rem; font-weight: 650;
 }
 .timeline-scene-meta {
   display: flex; align-items: center; gap: .4rem; min-width: 0; margin-top: .18rem;
@@ -413,9 +482,15 @@ button.status-pill.conflicted:hover { filter: brightness(.94); text-decoration: 
 }
 .timeline-moment-scenes .timeline-scene-card { position: relative; width: auto; flex: none; }
 
+/* The rule is piecewise constant: pinned to the middle for the body of a book,
+   and stepping by a card's worth at a time through the few positions at either
+   end where it travels (the stack it clears can only change a whole card at a
+   time). So it never drifts -- it only ever jumps -- and matching the cards'
+   own 80ms glide exactly is what carries the rule and the cards across those
+   steps as one piece instead of tearing them apart for a frame. */
 .scene-time-cursor {
-  position: absolute; z-index: 4; left: 0; right: 42px; top: 50%; height: 0;
-  pointer-events: none;
+  position: absolute; z-index: 4; left: 0; right: 42px; top: var(--cursor-y); height: 0;
+  pointer-events: none; transition: top 80ms linear;
 }
 .scene-cursor-rule {
   position: absolute; left: 0; right: 0; height: 2px;
@@ -429,12 +504,24 @@ button.status-pill.conflicted:hover { filter: brightness(.94); text-decoration: 
   background: var(--accent); color: #fff; box-shadow: var(--shadow);
   font-size: .75rem; font-weight: 750;
 }
+/* The scrim that dissolves a card the stage's `overflow: hidden` is about to cut
+   in half. It sits *above* the card layer, so it is only wanted when there is
+   something running off that edge -- at the ends of a book the nearest scene is
+   parked, not leaving, and a scrim painted over it anyway washed it almost out.
+   `scrimFor` works out how much of each is earned; 4.5rem must stay in step with
+   `FADE_H` in timelinelayout.js, which is pinned by a test. */
 .timeline-fade {
   position: absolute; z-index: 5; left: 0; right: 42px; height: 4.5rem;
-  pointer-events: none;
+  pointer-events: none; transition: opacity 80ms linear;
 }
-.timeline-fade.top { top: 0; background: linear-gradient(var(--surface), transparent); }
-.timeline-fade.bottom { bottom: 0; background: linear-gradient(transparent, var(--surface-2)); }
+.timeline-fade.top {
+  top: 0; opacity: var(--fade-top);
+  background: linear-gradient(var(--surface), transparent);
+}
+.timeline-fade.bottom {
+  bottom: 0; opacity: var(--fade-bottom);
+  background: linear-gradient(transparent, var(--surface-2));
+}
 
 .timeline-overview {
   position: absolute; z-index: 6; top: 1rem; right: .45rem; bottom: 1rem; width: 22px;
@@ -468,7 +555,11 @@ button.status-pill.conflicted:hover { filter: brightness(.94); text-decoration: 
   .scene-view-toggle { order: 3; margin-left: 0; }
   .scene-timeline-tools { flex-wrap: wrap; }
   .timeline-count { flex-basis: 100%; }
-  .scene-timeline-stage { min-height: 440px; }
+  /* Narrower: the rail is against the left edge and there is one column, so the
+     clearance that keeps a card off the border on a desktop is width a phone
+     cannot spare. Re-declared here rather than overridden per rule, since every
+     use of it wants the same smaller number. */
+  .scene-timeline-stage { min-height: 440px; --stage-pad: .4rem; }
   .scene-timeline-stage::before { left: 1.25rem; }
   .scene-timeline-layer { right: 32px; }
   .timeline-break-layer { right: 32px; }
@@ -480,7 +571,9 @@ button.status-pill.conflicted:hover { filter: brightness(.94); text-decoration: 
   /* Matched to the specificity of the two `.side-N .scene-timeline-card` rules
      it overrides, and later in the file, so the one lane wins the tie on its
      own terms rather than with `!important`. */
-  .scene-timeline-item .scene-timeline-card { left: 2.7rem; right: .35rem; width: auto; }
+  .scene-timeline-item .scene-timeline-card {
+    left: 2.7rem; right: var(--stage-pad); width: auto;
+  }
   .scene-timeline-dot { left: calc(1.25rem - 6px); }
   .scene-timeline-stem { left: calc(1.25rem - .5px); }
   .scene-timeline-duration,
@@ -498,6 +591,10 @@ button.status-pill.conflicted:hover { filter: brightness(.94); text-decoration: 
 @media (prefers-reduced-motion: reduce) {
   .scene-timeline-scroll { scroll-behavior: auto; }
   .scene-timeline-item { transition: none; }
+  /* The rule and the cards move together or not at all -- easing one of them
+     while the other snaps is worse than neither easing. */
+  .scene-time-cursor { transition: none; }
+  .timeline-fade { transition: none; }
 }
 
 /* An overview wherever one is shown: the writer's prose, set quieter than the

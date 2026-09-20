@@ -105,7 +105,7 @@ def test_far_scenes_do_not_enter_the_render_window(run_js):
         viewportHeight: 600, eventCount: INPUT.events.length, zoom: 4,
       });
       const order = timeline.storyOrder(INPUT.events);
-      emit(timeline.visibleScenes(order, scale, 50).map(p => p.scene.id));
+      emit(timeline.visibleScenes(order, scale, 50).cards.map(p => p.scene.id));
     """, payload)
     assert got == ["near"]
 
@@ -122,7 +122,7 @@ def test_simultaneous_scenes_share_an_anchor_and_take_parallel_lanes(run_js):
     got = run_js("""
       const scale = timeline.scaleFor(INPUT.bounds, {viewportHeight: 600, eventCount: 3});
       const order = timeline.storyOrder(INPUT.events);
-      emit(timeline.visibleScenes(order, scale, 10).map(p => ({
+      emit(timeline.visibleScenes(order, scale, 10).cards.map(p => ({
         id: p.scene.id, side: p.side, anchor: p.anchorY,
       })));
     """, payload)
@@ -139,7 +139,7 @@ def test_the_render_limit_never_splits_a_simultaneous_moment(run_js):
     got = run_js("""
       const scale = timeline.scaleFor(INPUT.bounds, {viewportHeight: 600, eventCount: 5});
       const order = timeline.storyOrder(INPUT.events);
-      emit(timeline.visibleScenes(order, scale, 10, {maxScenes: 2}).length);
+      emit(timeline.visibleScenes(order, scale, 10, {maxScenes: 2}).cards.length);
     """, payload)
     assert got == 5
 
@@ -167,7 +167,7 @@ def test_no_card_is_mounted_where_the_stage_cannot_show_it(run_js):
       let worst = 0, mounted = 0;
       for (let step = 0; step <= 40; step++) {
         const tick = timeline.tickAtScroll(scale, step / 40 * scale.runHeight);
-        const cards = timeline.visibleScenes(order, scale, tick, {viewportHeight: 600});
+        const { cards } = timeline.visibleScenes(order, scale, tick, {viewportHeight: 600});
         mounted = Math.max(mounted, cards.length);
         worst = Math.max(worst, cards.filter(c => c.top >= 600 || c.top + 78 <= 0).length);
       }
@@ -178,7 +178,12 @@ def test_no_card_is_mounted_where_the_stage_cannot_show_it(run_js):
 
 
 def test_cards_stack_away_from_the_cursor_on_both_sides(run_js):
-    """Earlier scenes sit above the rule, later ones below -- never across it."""
+    """Earlier scenes sit above the rule, later ones below -- never across it.
+
+    Measured against the rule the layout actually chose rather than against the
+    middle of the stage: since the rule travels at the ends of a book, a literal
+    300 here would have been asserting the old pinned position, not the rule.
+    """
     payload = {
         "events": [scene(f"e{i}", i * 10, i * 10 + 2) for i in range(12)],
         "bounds": {"start_tick": 0, "end_tick": 120},
@@ -188,15 +193,189 @@ def test_cards_stack_away_from_the_cursor_on_both_sides(run_js):
         viewportHeight: 600, events: INPUT.events, eventCount: 12, zoom: 4,
       });
       const order = timeline.storyOrder(INPUT.events);
-      emit(timeline.visibleScenes(order, scale, 60, {viewportHeight: 600})
-        .map(p => ({id: p.scene.id, before: p.scene.start_tick <= 60, top: p.top})));
+      const { cards, cursorY } = timeline.visibleScenes(order, scale, 60, {viewportHeight: 600});
+      emit({
+        rule: cursorY,
+        cards: cards.map(p => ({id: p.scene.id, before: p.scene.start_tick <= 60, top: p.top})),
+      });
     """, payload)
-    above = [p["top"] for p in got if p["before"]]
-    below = [p["top"] for p in got if not p["before"]]
+    rule = got["rule"]
+    above = [p["top"] for p in got["cards"] if p["before"]]
+    below = [p["top"] for p in got["cards"] if not p["before"]]
     assert above and below, f"the sweep needs cards on both sides: {got}"
-    # 300 is the rule; a card is 78 tall, so "above" means it ends before it.
-    assert max(above) + 78 <= 300 + 1
-    assert min(below) >= 300 - 1
+    # A card is 78 tall, so "above" means it ends before the rule.
+    assert max(above) + 78 <= rule + 1
+    assert min(below) >= rule - 1
+
+
+# -- the travelling rule ------------------------------------------------------
+
+# A book shaped like The Salt Road: a long run of ticks with several
+# simultaneous scenes at each, which is what makes the stacks deep enough for
+# the lens to be full in the body of the book.
+def _long_book(ticks=33, abreast=3):
+    events, tick = [], 0
+    for _ in range(ticks):
+        for lane in range(abreast):
+            events.append(scene(f"t{tick}-{lane}", tick, tick + 8))
+        tick += 16
+    return {
+        "events": events,
+        "bounds": {"start_tick": 0, "end_tick": events[-1]["end_tick"]},
+    }
+
+
+_SWEEP = """
+  const scale = timeline.scaleFor(INPUT.bounds, {
+    viewportHeight: 568, events: INPUT.events, eventCount: INPUT.events.length,
+  });
+  const order = timeline.storyOrder(INPUT.events);
+  const at = (tick) => {
+    const { cards, cursorY, scrim } = timeline.visibleScenes(order, scale, tick, {
+      viewportHeight: 568, columns: 2,
+    });
+    const tops = cards.map(c => c.top);
+    const bottoms = cards.map(c => c.top + 78);
+    return {
+      rule: cursorY, drawn: cards.length, scrim,
+      topCard: Math.min(...tops),
+      blankAbove: Math.max(0, Math.min(...tops)),
+      blankBelow: Math.max(0, 568 - Math.max(...bottoms)),
+      ordered: cards.filter(c => c.scene.start_tick <= tick).every(c => c.top + 78 <= cursorY + 1)
+            && cards.filter(c => c.scene.start_tick > tick).every(c => c.top >= cursorY - 1),
+    };
+  };
+"""
+
+
+def test_the_rule_stays_in_the_middle_through_the_body_of_a_book(run_js):
+    """The lens is fixed while there is story on both sides of it. Only the ends
+    are special, and a rule that drifted mid-book would be its own bug."""
+    got = run_js(_SWEEP + """
+      const middle = Math.round((scale.startTick + scale.endTick) / 2);
+      emit([at(middle).rule, at(middle - 80).rule, at(middle + 80).rule]);
+    """, _long_book())
+    assert got == [284, 284, 284], f"the rule wandered inside the book: {got}"
+
+
+def test_the_rule_travels_rather_than_leaving_half_the_lens_blank(run_js):
+    """The reported bug, from both ends.
+
+    A rule pinned to the centre had nothing to draw above it at the first scene
+    and nothing below it at the last, so the stage opened a third empty while
+    scenes on the full side were being dropped for want of room.
+    """
+    got = run_js(_SWEEP + """
+      emit({opening: at(scale.startTick), ending: at(scale.endTick)});
+    """, _long_book())
+    opening, ending = got["opening"], got["ending"]
+    # Down from 86px to the deliberate sliver that keeps the card off the
+    # stage's own border -- see `test_the_card_parked_at_an_end_clears_...`.
+    assert opening["blankAbove"] <= 24, (
+        f"the opening view still has {opening['blankAbove']}px of blank above"
+    )
+    assert opening["rule"] < 284, "the rule did not move up at the book's start"
+    # The last scene has nothing after it, so the rule goes low and what sits
+    # below it is the clearance it keeps for its own label, not wasted stage.
+    assert ending["rule"] > 284, "the rule did not move down at the book's end"
+    assert ending["blankBelow"] <= 80, (
+        f"the closing view still has {ending['blankBelow']}px of blank below"
+    )
+
+
+def test_travelling_fills_the_lens_that_was_standing_empty(run_js):
+    """The point of moving the rule: the freed half shows story."""
+    got = run_js(_SWEEP + """
+      const middle = Math.round((scale.startTick + scale.endTick) / 2);
+      emit({
+        opening: at(scale.startTick).drawn,
+        middle: at(middle).drawn,
+        ending: at(scale.endTick).drawn,
+      });
+    """, _long_book())
+    # Within a card or two of a full lens at both ends, where it used to show
+    # roughly half of one.
+    assert got["opening"] >= got["middle"] - 2, got
+    assert got["ending"] >= got["middle"] - 2, got
+
+
+def test_the_rule_never_leaves_the_stage_and_chronology_always_holds(run_js):
+    """Swept end to end. The rule carries the reading, so it must stay on screen;
+    and however far it travels, earlier must stay above it and later below."""
+    got = run_js(_SWEEP + """
+      let lowest = 1e9, highest = -1e9, breaks = 0;
+      for (let step = 0; step <= 200; step += 1) {
+        const tick = timeline.tickAtScroll(scale, step / 200 * scale.runHeight);
+        const frame = at(tick);
+        lowest = Math.min(lowest, frame.rule);
+        highest = Math.max(highest, frame.rule);
+        if (!frame.ordered) breaks += 1;
+      }
+      emit({lowest, highest, breaks});
+    """, _long_book())
+    assert got["breaks"] == 0, f"chronology broke at {got['breaks']} scroll positions"
+    assert got["lowest"] >= 20, f"the rule reached {got['lowest']}px -- its label would clip"
+    assert got["highest"] <= 548, f"the rule reached {got['highest']}px -- its label would clip"
+
+
+def test_a_parked_card_is_never_under_a_scrim(run_js):
+    """The scrim is above the card layer, so it washes out whatever it covers.
+
+    Letting the rule travel put the book's first scene right up at the top of the
+    stage, where a scrim painted regardless of need turned it almost white --
+    worse than the blank it replaced, because now there was something there to
+    read. It is worth exactly as much as there is card running off that edge.
+    """
+    got = run_js(_SWEEP + """
+      emit({opening: at(scale.startTick), ending: at(scale.endTick)});
+    """, _long_book())
+    assert got["opening"]["scrim"]["top"] == 0, (
+        f"the opening scene sits under a {got['opening']['scrim']['top']} scrim"
+    )
+    assert got["ending"]["scrim"]["bottom"] == 0, (
+        f"the closing scene sits under a {got['ending']['scrim']['bottom']} scrim"
+    )
+    # And it is still earned where cards really are running off the edge.
+    assert got["opening"]["scrim"]["bottom"] > 0.3, got["opening"]["scrim"]
+    assert got["ending"]["scrim"]["top"] > 0.3, got["ending"]["scrim"]
+
+
+def test_no_card_fully_on_the_stage_is_ever_dimmed_by_a_scrim(run_js):
+    """The rule above, swept: at no scroll position may a card that is entirely
+    inside the stage have a scrim drawn over its edge."""
+    got = run_js(_SWEEP + """
+      let worst = 0;
+      for (let step = 0; step <= 400; step += 1) {
+        const tick = timeline.tickAtScroll(scale, step / 400 * scale.runHeight);
+        const frame = at(tick);
+        if (frame.topCard >= 0) worst = Math.max(worst, frame.scrim.top);
+      }
+      emit(worst);
+    """, _long_book())
+    assert got == 0, f"a fully-visible card was scrimmed at {got}"
+
+
+def test_the_card_parked_at_an_end_clears_the_stage_border(run_js):
+    """Flush against the border reads as clipped even when it is not."""
+    got = run_js(_SWEEP + "emit(at(scale.startTick));", _long_book())
+    assert 4 <= got["topCard"] <= 24, (
+        f"the opening card sits at {got['topCard']}px -- too tight to the border "
+        "or too far off it"
+    )
+
+
+def test_a_book_too_short_to_fill_the_lens_is_centred_not_pinned(run_js):
+    """Three scenes should sit in the middle of the stage, not jammed against an
+    edge because neither side of the rule reaches one."""
+    payload = {
+        "events": [scene("a", 0, 5), scene("b", 20, 25), scene("c", 40, 45)],
+        "bounds": {"start_tick": 0, "end_tick": 45},
+    }
+    got = run_js(_SWEEP + "emit(at(20));", payload)
+    assert got["ordered"]
+    assert abs(got["blankAbove"] - got["blankBelow"]) <= 40, (
+        f"a short book was pushed to one end: {got}"
+    )
 
 
 def test_zoom_keeps_a_cursor_tick_addressable(run_js):
@@ -271,7 +450,7 @@ def test_a_scenes_side_is_stable_as_the_visible_window_moves(run_js):
       });
       const order = timeline.storyOrder(INPUT.events);
       const sideAt = tick => timeline.visibleScenes(order, scale, tick)
-        .find(item => item.scene.id === "b").side;
+        .cards.find(item => item.scene.id === "b").side;
       emit([sideAt(20), sideAt(40)]);
     """, payload)
     assert got == [1, 1]

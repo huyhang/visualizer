@@ -1,6 +1,7 @@
 // The interactive shell around timelinelayout.js. Its dependencies are passed
 // in: this module owns scrolling and DOM lifetime, not API calls or scene cards.
 
+import { tickLabels } from "./cursorlabel.js";
 import { el } from "./dom.js";
 import {
   densityBins,
@@ -17,6 +18,7 @@ import {
 } from "./timelinelayout.js";
 
 const ZOOMS = [0.5, 1, 2, 4, 8];
+// How long the cursor must hold still before a screen reader is told where it is.
 const LABEL_DELAY = 120;
 
 const clampTick = (bounds, tick) => Math.min(
@@ -26,7 +28,8 @@ const clampTick = (bounds, tick) => Math.min(
 
 export function sceneTimeline({
   events = [], unscheduled = [], bounds = null, cursorTick = null, zoom = 1,
-  renderScene, formatTick, onCursor = () => {}, onZoom = () => {},
+  renderScene, formatTick, tintOf = () => null,
+  onCursor = () => {}, onZoom = () => {},
 }) {
   const root = el("div", { class: "scene-timeline-root" });
   root.appendChild(unscheduledShelf(unscheduled, renderScene));
@@ -51,13 +54,27 @@ export function sceneTimeline({
   let scale = null;
   let frame = null;
   let labelTimer = null;
-  let labelVersion = 0;
   let observer = null;
   let touchY = null;
   let destroyed = false;
   const cards = new Map();
 
-  const label = el("span", { class: "scene-cursor-label", text: `Tick ${currentTick}` });
+  const label = el("span", { class: "scene-cursor-label" });
+  // The lens's reading. Seeded from the scenes, which already carry the server's
+  // own formatting of their two ticks -- same trick as `periodBands`: the answer
+  // is in the payload, so asking for it again would be a second request for
+  // something we were told. It means the lens opens on a date rather than a raw
+  // number, and every scene's start and end reads instantly as the cursor
+  // crosses it. See cursorlabel.js for why it must never show a bare tick.
+  const reading = tickLabels({
+    formatTick,
+    seeded: seedLabels(events),
+    onLabel: (text) => {
+      label.textContent = text;
+      scheduleAnnounce();
+    },
+  });
+  reading.cursorAt(currentTick);
   // The cursor's reading, for a screen reader. Separate from the label above
   // because that one is rewritten on every animation frame, and a live region
   // rewritten sixty times a second is a queue of announcements nobody can
@@ -169,18 +186,28 @@ export function sceneTimeline({
     currentTick = tickAtScroll(scale, scroller.scrollTop);
     onCursor(currentTick);
     overview.update(currentTick, scale);
-    label.textContent = `Tick ${currentTick}`;
-    scheduleLabel(currentTick);
-    paintBreaks();
-    paintPeriods();
-    paintCards();
+    reading.cursorAt(currentTick);
+    // The cards decide where the rule goes -- it is pinned to the middle only
+    // while there is story on both sides to fill the lens -- so they are laid
+    // out first and the other three layers are told what they settled on. All
+    // four measure from that one origin or they line up against different ones.
+    const { cards: placements, cursorY, scrim } = visibleScenes(order, scale, currentTick, {
+      viewportHeight: scale.viewportHeight, columns: columnCount(),
+    });
+    stage.style.setProperty("--cursor-y", `${cursorY}px`);
+    // Each end's scrim is worth what there is card under it, so a scene parked
+    // at the top or bottom of the book is read rather than dissolved.
+    stage.style.setProperty("--fade-top", String(scrim.top));
+    stage.style.setProperty("--fade-bottom", String(scrim.bottom));
+    paintBreaks(cursorY);
+    paintPeriods(cursorY);
+    paintCards(placements);
   }
 
-  function paintCards() {
-    const columns = stage.clientWidth < 720 ? 1 : 2;
-    const placements = visibleScenes(order, scale, currentTick, {
-      viewportHeight: scale.viewportHeight, columns,
-    });
+  const columnCount = () => (stage.clientWidth < 720 ? 1 : 2);
+
+  function paintCards(placements) {
+    const columns = columnCount();
     const displayed = displayPlacements(placements, columns);
     const wanted = new Set(displayed.map((item) => item.key));
     for (const [id, node] of cards) {
@@ -194,7 +221,7 @@ export function sceneTimeline({
       if (!node) {
         node = item.scenes.length > 1
           ? momentItem(item.scenes, renderScene)
-          : sceneItem(item.scenes[0], renderScene);
+          : sceneItem(item.scenes[0], renderScene, tintOf(item.scenes[0]));
         cards.set(item.key, node);
         layer.appendChild(node);
       }
@@ -202,8 +229,10 @@ export function sceneTimeline({
     }
   }
 
-  function paintBreaks() {
-    breakLayer.replaceChildren(...visibleBreaks(scale, currentTick).map((gap) => el("div", {
+  function paintBreaks(cursorY) {
+    breakLayer.replaceChildren(...visibleBreaks(scale, currentTick, {
+      cursorY,
+    }).map((gap) => el("div", {
       class: "timeline-break", style: `top:${gap.y}px`,
     }, [
       el("span", { class: "timeline-break-line" }),
@@ -213,8 +242,10 @@ export function sceneTimeline({
     ])));
   }
 
-  function paintPeriods() {
-    periodLayer.replaceChildren(...visiblePeriods(bands, scale, currentTick).map((band) =>
+  function paintPeriods(cursorY) {
+    periodLayer.replaceChildren(...visiblePeriods(bands, scale, currentTick, {
+      cursorY,
+    }).map((band) =>
       el("div", {
         class: `timeline-period level-${Math.min(1, band.level)} mark-${band.side}`,
         style: `top:${band.y}px`,
@@ -228,18 +259,11 @@ export function sceneTimeline({
     if (text && announcer.textContent !== text) announcer.textContent = text;
   }
 
-  function scheduleLabel(tick) {
+  // Both the cursor settling and a late answer arriving restart this, so what a
+  // screen reader hears is the final reading rather than the journey to it.
+  function scheduleAnnounce() {
     clearTimeout(labelTimer);
-    const version = ++labelVersion;
-    labelTimer = setTimeout(async () => {
-      announce(label.textContent);
-      try {
-        const formatted = await formatTick(tick);
-        if (version !== labelVersion || !formatted) return;
-        label.textContent = formatted;
-        announce(formatted);
-      } catch (e) { /* the canonical tick remains visible */ }
-    }, LABEL_DELAY);
+    labelTimer = setTimeout(() => announce(label.textContent), LABEL_DELAY);
   }
 
   function onKey(event) {
@@ -284,6 +308,7 @@ export function sceneTimeline({
     destroyed = true;
     if (frame != null) window.cancelAnimationFrame(frame);
     clearTimeout(labelTimer);
+    reading.stop();
     observer?.disconnect();
     scroller.removeEventListener("scroll", schedulePaint);
     scroller.removeEventListener("keydown", onKey);
@@ -307,6 +332,18 @@ export function sceneTimeline({
   return { element: root, destroy };
 }
 
+// Every tick the payload has already dated, as [tick, label] pairs. A scene
+// carries the server's own formatting of its start and its end, so these are the
+// same strings `/ui/ticks` would answer with and not a second opinion.
+function seedLabels(events) {
+  const pairs = [];
+  for (const scene of events) {
+    if (scene.start_label) pairs.push([Number(scene.start_tick), scene.start_label]);
+    if (scene.end_label) pairs.push([Number(scene.end_tick), scene.end_label]);
+  }
+  return pairs;
+}
+
 // The rail furniture every card hangs from, whatever the card is: the span bar,
 // the stem down to the anchor, the connector across to the card, and the dot.
 function railParts() {
@@ -315,17 +352,26 @@ function railParts() {
   }));
 }
 
-function timelineItem(dataset, body) {
-  return el("div", { class: "scene-timeline-item", dataset }, [
+// `tint` is the scene's plotline colour, or null for a scene in no thread. It
+// rides on the item rather than on any one part because all four pieces of rail
+// furniture wear it. The card sets the same property for itself -- it has to,
+// since it also stands alone in the shelf -- so this one is only ever read by
+// the dot, the stem, the connector and the span bar.
+function timelineItem(dataset, body, tint) {
+  return el("div", {
+    class: "scene-timeline-item", dataset, style: tint ? `--thread:${tint}` : null,
+  }, [
     ...railParts(),
     el("div", { class: "scene-timeline-card" }, body),
   ]);
 }
 
-function sceneItem(scene, renderScene) {
-  return timelineItem({ event: scene.id }, renderScene(scene, { timeline: true }));
+function sceneItem(scene, renderScene, tint) {
+  return timelineItem({ event: scene.id }, renderScene(scene, { timeline: true }), tint);
 }
 
+// Several scenes at one tick. Left the accent's own colour on purpose: a moment
+// is where threads *meet*, so there is no one thread for its rail to stand for.
 function momentItem(scenes, renderScene) {
   const first = scenes[0];
   const names = scenes.slice(0, 3).map((scene) => scene.title).join(" · ");

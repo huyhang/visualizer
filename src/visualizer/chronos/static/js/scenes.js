@@ -29,6 +29,7 @@ import { api } from "./api.js";
 import { calendarSwitcher, currentFor } from "./calendarview.js";
 import { clear, el, onTeardown, toast } from "./dom.js";
 import { entityTitle } from "./entities.js";
+import { paletteColor, paletteTurn } from "./layout.js";
 import { pager } from "./paging.js";
 import { clearPeek, showScene } from "./peek.js";
 import { confirmModal, modal } from "./picker.js";
@@ -59,6 +60,18 @@ export async function mountScenes(container, book, { onBooks, onBook }) {
   // name. Read once at mount — the membership itself is re-read on every
   // render, so only the naming is cached, and an unknown id shows as itself.
   const threadNames = await loadThreadNames(book);
+  // ...and which colour each wears. Keyed to a thread's place in the whole book
+  // *by id*, which is the order the story map's graph arrives in, so a thread
+  // has one hue across every view and never shifts when a filter changes what is
+  // on screen. A thread past the first page takes no colour — the same limit the
+  // naming above already has, and it shows as an uncoloured chip rather than
+  // borrowing someone else's.
+  const threadRank = new Map([...threadNames.keys()].sort().map((id, at) => [id, at]));
+  const threadColor = (id) => (threadRank.has(id) ? paletteColor(threadRank.get(id)) : null);
+  // The one colour a scene itself can be drawn in — its rail dot, its border, its
+  // date. A scene in several threads leads with the first and is striped with all
+  // of them; see `threadStripe`.
+  const sceneColor = (scene) => (scene.plotlines || []).map(threadColor).find(Boolean) || null;
   // Which scene the peek slot is currently showing, so an edit or a delete can
   // dismiss a card that has stopped being true (see `dropStalePeek`).
   let peeked = null;
@@ -157,6 +170,7 @@ export async function mountScenes(container, book, { onBooks, onBook }) {
           cursorTick: state.cursorTick,
           zoom: state.zoom,
           renderScene: sceneSummary,
+          tintOf: sceneColor,
           formatTick: async (tick) => {
             const answer = await api.formatTicks(book, [tick], { calendar });
             return answer.ticks[0]?.label;
@@ -229,9 +243,14 @@ export async function mountScenes(container, book, { onBooks, onBook }) {
       class: "timeline-scene-title", type: "button", text: scene.title,
       title: "Open the whole scene", onclick: () => expandScene(scene),
     });
+    const color = sceneColor(scene);
     return el("article", {
       class: `timeline-scene-card${timeline ? " on-timeline" : ""}`,
+      // Set here as well as on the rail item, because a card also stands alone
+      // in the unscheduled shelf and inside a moment, where there is no item.
+      style: color ? `--thread:${color}` : null,
     }, [
+      threadStripe(scene.plotlines),
       el("div", { class: "timeline-scene-head" }, [
         title,
         scene.id === bookMeta.terminus
@@ -282,10 +301,36 @@ export async function mountScenes(container, book, { onBooks, onBook }) {
     }
     const shown = limit == null ? plotlines : plotlines.slice(0, limit);
     return el("div", { class: "chip-row" }, [
-      ...shown.map((p) => el("span", { class: "chip", text: threadNames.get(p) || p })),
+      ...shown.map(threadChip),
+      // The overflow count stands for several threads at once, so it stays the
+      // neutral chip rather than picking one of their colours.
       limit != null && plotlines.length > limit
         ? el("span", { class: "chip", text: `+${plotlines.length - limit}` }) : null,
     ]);
+  }
+
+  function threadChip(id) {
+    const color = threadColor(id);
+    return el("span", {
+      class: color ? "chip thread" : "chip",
+      style: color ? `--thread:${color}` : null,
+      text: threadNames.get(id) || id,
+    });
+  }
+
+  // The thread mark down a card's leading edge: one band per thread it belongs
+  // to, in the hue *and* the stroke the story map draws that thread with. Both
+  // channels, because the map's twelve hues run out before a long book's threads
+  // do — the chips beside it are named and so can live on hue alone, but the
+  // stripe is the one mark on the card that is nothing except its own look.
+  function threadStripe(plotlines) {
+    const marks = (plotlines || []).filter((id) => threadRank.has(id));
+    if (!marks.length) return null;
+    return el("span", { class: "timeline-scene-stripe", "aria-hidden": "true" },
+      marks.map((id) => el("span", {
+        class: `thread-mark stroke-${paletteTurn(threadRank.get(id))}`,
+        style: `--thread:${threadColor(id)}`,
+      })));
   }
 
   // -- reading one scene in full ---------------------------------------------

@@ -72,8 +72,15 @@ export function paletteColor(n) {
 
 // The stroke that goes with that colour -- see LANE_DASHES. "" means solid.
 export function paletteDash(n) {
-  const turn = Math.floor(Math.abs(n) / LANE_PALETTE.length);
-  return LANE_DASHES[turn % LANE_DASHES.length];
+  return LANE_DASHES[paletteTurn(n)];
+}
+
+// Which turn of the palette a thread's index falls in: 0 for the first twelve
+// threads, 1 for the next twelve, and so on. `paletteDash` is this expressed as
+// an SVG dash array; a caller drawing the same mark in CSS rather than SVG --
+// the scene timeline's card stripe -- needs the number itself.
+export function paletteTurn(n) {
+  return Math.floor(Math.abs(n) / LANE_PALETTE.length) % LANE_DASHES.length;
 }
 
 // -- time order --------------------------------------------------------------

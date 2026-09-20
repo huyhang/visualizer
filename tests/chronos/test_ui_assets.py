@@ -361,6 +361,129 @@ def test_the_timeline_layers_share_one_rail_gutter():
     assert len(set(gutters.values())) == 1, f"the rail's layers disagree: {gutters}"
 
 
+def test_every_rail_layer_is_told_where_the_rule_actually_went():
+    """The vertical twin of the gutter check above, and a sharper trap.
+
+    The rule is no longer pinned to the middle of the stage: it travels at the
+    ends of a book, where one side of the lens would otherwise have nothing to
+    draw. `visibleBreaks` and `visiblePeriods` still *default* `cursorY` to the
+    middle, because their own tests measure from there -- so a caller that
+    forgets to pass it gets no error and no visible breakage in the body of a
+    book, and silently hangs the calendar bands off the centre while the cards
+    hang off the travelling rule. The two only drift apart at the ends, by up to
+    a third of the stage, which is exactly where nobody looks twice.
+
+    The cursor's own rule is placed by the stylesheet, so it is checked too: it
+    has to read the same custom property the script writes.
+    """
+    shell = (_JS_DIR / "scenetimeline.js").read_text()
+    for layer in ("visibleBreaks", "visiblePeriods"):
+        call = re.search(rf"{layer}\(.*?\)", shell, re.DOTALL)
+        assert call, f"{layer} is no longer called: the rail has lost a layer"
+        assert "cursorY" in call.group(0), (
+            f"scenetimeline.js calls {layer} without cursorY, so it will measure "
+            f"from the middle of the stage while the cards measure from the rule"
+        )
+    assert re.search(r'setProperty\(\s*["\']--cursor-y["\']', shell), (
+        "scenetimeline.js never publishes --cursor-y, so the stylesheet cannot "
+        "put the rule where the layout put it"
+    )
+
+    css = _CSS.read_text()
+    rule = re.search(r"^\.scene-time-cursor\s*\{([^}]*)\}", css, re.MULTILINE)
+    assert rule, "no .scene-time-cursor rule: the rule has nowhere to be"
+    assert "var(--cursor-y" in rule.group(1), (
+        f"the cursor is placed at a fixed offset, not where the layout put it: "
+        f"{rule.group(1)!r}"
+    )
+
+
+def test_both_card_columns_are_inset_by_the_same_edge_clearance():
+    """The two columns straddle a rail drawn down the middle of the stage.
+
+    Their outer clearance has to come off both the offset *and* the half-width,
+    on both sides, or they stop being the same size and stop being centred on
+    that rail -- a drift of a few pixels that looks like nothing and makes every
+    connector meet its card off-centre. Padding one side, or padding both and
+    forgetting the width, are the two easy ways to do it, so all three are
+    written in terms of one custom property and this checks they stay that way.
+    """
+    css = _CSS.read_text()
+    rules = {
+        "width": r"^\.scene-timeline-card\s*\{([^}]*)\}",
+        "left column": r"^\.scene-timeline-item\.side-0 \.scene-timeline-card\s*\{([^}]*)\}",
+        "right column": r"^\.scene-timeline-item\.side-1 \.scene-timeline-card\s*\{([^}]*)\}",
+    }
+    for name, pattern in rules.items():
+        rule = re.search(pattern, css, re.MULTILINE)
+        assert rule, f"the card's {name} rule is gone"
+        assert "var(--stage-pad" in rule.group(1), (
+            f"the card's {name} ignores --stage-pad, so the two columns will "
+            f"differ in size or drift off the rail: {rule.group(1)!r}"
+        )
+
+
+def test_the_scrim_is_the_same_depth_in_both_languages():
+    """The stylesheet paints the scrim; the layout decides how much of it is
+    earned, and can only do that if it knows how deep it is.
+
+    Deepen it in the stylesheet alone and the layout under-rates it: a card would
+    be judged clear of an edge while a third of it was still being washed out --
+    which is the exact bug this pair was introduced to fix, returning quietly.
+    """
+    layout = (_JS_DIR / "timelinelayout.js").read_text()
+    known = re.search(r"const FADE_H\s*=\s*(\d+)\s*;", layout)
+    assert known, "timelinelayout.js no longer names the scrim's depth"
+
+    css = _CSS.read_text()
+    rule = re.search(r"^\.timeline-fade\s*\{([^}]*)\}", css, re.MULTILINE)
+    assert rule, "no .timeline-fade rule: the stage has lost its scrim"
+    drawn = re.search(r"height\s*:\s*([\d.]+)rem", rule.group(1))
+    assert drawn, f".timeline-fade sets no rem height: {rule.group(1)!r}"
+    assert float(drawn.group(1)) * 16 == float(known.group(1)), (
+        f"the stylesheet paints a {drawn.group(1)}rem scrim but the layout rates "
+        f"it against {known.group(1)}px"
+    )
+
+
+def test_the_scene_card_is_one_height_written_in_three_languages():
+    """The rail's spacing unit, the box the card occupies, and where its stem
+    leaves it are the same number in three files.
+
+    `CARD_HEIGHT` is what `stackAway` packs with and what decides whether a card
+    is still on the stage at all; the stylesheet is what the card actually takes
+    up; `cardCenter` is where the connector meets it, and so has to be its middle.
+    Growing the card in the stylesheet alone is the tempting fix when its own
+    three rows stop fitting -- and it tilts every connector on the rail while the
+    cards overlap by the difference. The honest fix is the leading inside the
+    card, which is why that rule carries a note saying so.
+    """
+    css = _CSS.read_text()
+    layout = (_JS_DIR / "timelinelayout.js").read_text()
+    shell = (_JS_DIR / "scenetimeline.js").read_text()
+
+    packed = re.search(r"const CARD_HEIGHT\s*=\s*(\d+)\s*;", layout)
+    assert packed, "timelinelayout.js no longer names the height it packs with"
+    stem = re.search(r"const cardCenter\s*=\s*(\d+)\s*;", shell)
+    assert stem, "scenetimeline.js no longer names where the connector meets a card"
+
+    boxes = {}
+    for selector in (".timeline-scene-card", ".scene-timeline-item"):
+        rule = re.search(rf"^{re.escape(selector)}\s*\{{([^}}]*)\}}", css, re.MULTILINE)
+        assert rule, f"no {selector} rule: the card has a box with no height"
+        drawn = re.search(r"height\s*:\s*(\d+)px", rule.group(1))
+        assert drawn, f"{selector} sets no pixel height: {rule.group(1)!r}"
+        boxes[selector] = int(drawn.group(1))
+
+    assert set(boxes.values()) == {int(packed.group(1))}, (
+        f"the stylesheet draws {boxes} but the rail packs with {packed.group(1)}px"
+    )
+    assert int(stem.group(1)) * 2 == int(packed.group(1)), (
+        f"the connector meets the card at {stem.group(1)}px, which is not the "
+        f"middle of a {packed.group(1)}px card"
+    )
+
+
 def test_the_narrow_timeline_lane_wins_on_specificity_not_force():
     """One card lane on a phone must override the two-lane rules on their terms.
 
