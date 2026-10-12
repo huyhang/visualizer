@@ -6,7 +6,7 @@ gateway, the auth store -- is injected, so the whole service runs against
 in-memory fakes with no network.
 """
 
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, jsonify, request
 from flask_login import current_user, login_required
 from flask_wtf.csrf import CSRFProtect
 
@@ -28,6 +28,7 @@ from .errors import (
 from .gateways import ArticleGateway, ChronosGateway
 from .publication import ExportJobs, PublicationService, export_filename
 from .reader import ReaderService
+from .reader_routes import register_reader_routes
 from .richtext import validate_document
 from .routing import (
     BOOK,
@@ -38,7 +39,6 @@ from .routing import (
     SECTION,
     VOLUME,
     RouteDeps,
-    allowed,
     authorize,
     expected_rev,
     json_body,
@@ -127,6 +127,7 @@ def create_app(
         writing_advisor=advisor,
         series_review=series_review,
     )
+    register_reader_routes(app, csrf, deps)
     _register_routes(app, csrf, deps)
     if observability is not None:
         observability.install(app, "logos")
@@ -140,75 +141,11 @@ def _register_routes(app, csrf, deps: RouteDeps):
     volumes = deps.volumes
     sections = deps.sections
     drafts = deps.drafts
-    readers = deps.readers
-    search = deps.search
     publications = deps.publications
     export_jobs = deps.export_jobs
     articles = deps.articles
     writing_advisor = deps.writing_advisor
     series_review = deps.series_review
-
-    @app.get("/")
-    @login_required
-    def index():
-        """The reader and writer shell. Manuscript data itself arrives as JSON."""
-        return render_template("reader.html")
-
-    @app.get("/health")
-    @csrf.exempt
-    def health():
-        return jsonify({"status": "ok", "service": "logos"})
-
-    @app.get("/books")
-    @csrf.exempt
-    @login_required
-    def list_books():
-        rows = [
-            with_permissions(row, auth_store, row["book"])
-            for row in manuscripts.list()
-            if allowed(auth_store, "read", row["book"])
-        ]
-        return jsonify({"books": rows})
-
-    @app.get("/me/reader-settings")
-    @csrf.exempt
-    @login_required
-    def get_reader_settings():
-        return jsonify(readers.get_settings(current_user.username))
-
-    @app.put("/me/reader-settings")
-    @csrf.exempt
-    @login_required
-    def update_reader_settings():
-        return jsonify(readers.set_settings(current_user.username, json_body()))
-
-    @app.get(BOOK)
-    @csrf.exempt
-    @login_required
-    def get_manuscript(book):
-        authorize(auth_store, "read", book)
-        return resource(with_permissions(manuscripts.get(book), auth_store, book))
-
-    @app.get(BOOK + "/report")
-    @csrf.exempt
-    @login_required
-    def book_report(book):
-        authorize(auth_store, "read", book)
-        return jsonify(manuscripts.report(book))
-
-    @app.get(BOOK + "/search")
-    @csrf.exempt
-    @login_required
-    def search_manuscript(book):
-        authorize(auth_store, "read", book)
-        return jsonify(
-            search.search(
-                book,
-                request.args.get("q"),
-                offset=request.args.get("offset", 0),
-                limit=request.args.get("limit", 20),
-            )
-        )
 
     @app.get(BOOK + "/ui/entities")
     @csrf.exempt
@@ -262,66 +199,6 @@ def _register_routes(app, csrf, deps: RouteDeps):
                 include_alternates=truthy(request.args.get("include_alternates")),
                 volume=validate_identifier(volume, "volume") if volume else None,
             )
-        )
-
-    @app.get(BOOK + "/me/items")
-    @csrf.exempt
-    @login_required
-    def list_reader_items(book):
-        authorize(auth_store, "read", book)
-        return jsonify(
-            readers.list_items(
-                current_user.username,
-                book,
-                include_alternates=allowed(auth_store, "write", book),
-            )
-        )
-
-    @app.post(BOOK + "/me/items")
-    @csrf.exempt
-    @login_required
-    def create_reader_item(book):
-        authorize(auth_store, "read", book)
-        body = json_body()
-        if isinstance(body, dict) and body.get("draft") is not None:
-            authorize(auth_store, "write", book)
-        return resource(
-            readers.create_item(current_user.username, book, body), 201
-        )
-
-    @app.put(BOOK + "/me/items/<item>")
-    @csrf.exempt
-    @login_required
-    def update_reader_item(book, item):
-        authorize(auth_store, "read", book)
-        return resource(
-            readers.update_item(
-                current_user.username, book, item, json_body(), expected_rev()
-            )
-        )
-
-    @app.delete(BOOK + "/me/items/<item>")
-    @csrf.exempt
-    @login_required
-    def delete_reader_item(book, item):
-        authorize(auth_store, "read", book)
-        readers.delete_item(current_user.username, book, item, expected_rev())
-        return "", 204
-
-    @app.get(BOOK + "/me/position")
-    @csrf.exempt
-    @login_required
-    def get_reading_position(book):
-        authorize(auth_store, "read", book)
-        return jsonify(readers.get_position(current_user.username, book))
-
-    @app.put(BOOK + "/me/position")
-    @csrf.exempt
-    @login_required
-    def update_reading_position(book):
-        authorize(auth_store, "read", book)
-        return jsonify(
-            readers.set_position(current_user.username, book, json_body())
         )
 
     @app.get(BOOK + "/publication")
