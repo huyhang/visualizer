@@ -21,7 +21,6 @@ from visualizer.observability import Observability
 from visualizer.shared_assets import register_shared_assets
 
 from .errors import (
-    InvalidSearch,
     LogosError,
     PublicationCoverNotFound,
 )
@@ -29,7 +28,7 @@ from .gateways import ArticleGateway, ChronosGateway
 from .publication import ExportJobs, PublicationService, export_filename
 from .reader import ReaderService
 from .reader_routes import register_reader_routes
-from .richtext import validate_document
+from .review_routes import register_review_routes
 from .routing import (
     BOOK,
     BOOK_RESOURCE,
@@ -45,12 +44,10 @@ from .routing import (
     resource,
     truthy,
     with_permissions,
-    writing_dialect,
 )
 from .search import SearchService
 from .services import DraftService, ManuscriptService, SectionService, VolumeService
 from .store import LogosStore
-from .validation import validate_identifier
 from .writing import RuleBasedWritingAdvisor, SeriesWritingReview, WritingAdvisor
 
 # BOOK_RESOURCE is defined beside the guards that use it, and re-exported here
@@ -128,6 +125,7 @@ def create_app(
         series_review=series_review,
     )
     register_reader_routes(app, csrf, deps)
+    register_review_routes(app, csrf, deps)
     _register_routes(app, csrf, deps)
     if observability is not None:
         observability.install(app, "logos")
@@ -143,63 +141,6 @@ def _register_routes(app, csrf, deps: RouteDeps):
     drafts = deps.drafts
     publications = deps.publications
     export_jobs = deps.export_jobs
-    articles = deps.articles
-    writing_advisor = deps.writing_advisor
-    series_review = deps.series_review
-
-    @app.get(BOOK + "/ui/entities")
-    @csrf.exempt
-    @login_required
-    def lookup_entities(book):
-        authorize(auth_store, "write", book)
-        query = (request.args.get("q") or "").strip()
-        if not query or len(query) > 200:
-            raise InvalidSearch("An entity lookup must contain 1-200 characters.")
-        chronos_book = manuscripts.require(book)
-        grants = auth_store.grants_for(current_user.username)
-        return jsonify(
-            {
-                "query": query,
-                "entities": articles.lookup_entities(
-                    query, grants, chronos_book.get("world")
-                ),
-            }
-        )
-
-    @app.post(BOOK + "/ui/writing-review")
-    @csrf.exempt
-    @login_required
-    def review_writing(book):
-        authorize(auth_store, "write", book)
-        manuscripts.require(book)
-        body = json_body()
-        if not isinstance(body, dict) or set(body) - {"document", "dialect"}:
-            raise InvalidSearch("A writing review requires a document and dialect.")
-        dialect = writing_dialect(body.get("dialect", "en-US"))
-        document = validate_document(body.get("document"))
-        return jsonify(
-            {
-                "dialect": dialect,
-                "issues": writing_advisor.review(document, dialect),
-                "private": bool(getattr(writing_advisor, "private", False)),
-            }
-        )
-
-    @app.get(BOOK + "/ui/writing-review")
-    @csrf.exempt
-    @login_required
-    def review_series_writing(book):
-        authorize(auth_store, "write", book)
-        dialect = writing_dialect(request.args.get("dialect", "en-US"))
-        volume = request.args.get("volume")
-        return jsonify(
-            series_review.review(
-                book,
-                dialect,
-                include_alternates=truthy(request.args.get("include_alternates")),
-                volume=validate_identifier(volume, "volume") if volume else None,
-            )
-        )
 
     @app.get(BOOK + "/publication")
     @csrf.exempt
