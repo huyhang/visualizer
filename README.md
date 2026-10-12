@@ -187,6 +187,8 @@ src/visualizer/
   prithvi/           SVG maps, pins onto articles, sanitization
   logos/             manuscript volumes, sections, rich text, history
   documents.py       the revision mechanics the story services share
+  stack.py           all four apps wired over one MongoDB (wsgi.py serves it)
+  devserver.py       that stack without Docker or MongoDB, for local testing
   static/js/         the few ES modules the *browser* services load
 tests/               one suite per service (in-memory MongoDB)
 docker/              Dockerfiles, the compose stack, demo seed + backup scripts
@@ -236,6 +238,23 @@ ruff check    # lint
 ```
 
 The editable install puts `visualizer` on the path, so no `PYTHONPATH` is needed.
+
+### Run the stack without Docker
+
+```bash
+python -m visualizer.devserver           # http://127.0.0.1:5050 — log in as mara / ember-pact-demo
+python -m visualizer.devserver --seed    # ...and load the demo story into all four services
+python -m visualizer.devserver --fresh   # discard the saved data and start empty
+```
+
+The same wiring gunicorn serves (`visualizer.stack`), over an in-memory MongoDB
+(`mongomock`), with auto-reload and the interactive debugger. Its data is saved
+to `instance/devserver.json` whenever it stops or reloads, and restored on the
+next start. It uses port 5050 and its own session cookie, so it runs beside the
+Docker stack on 5002. `--mongo-uri` points it at a real MongoDB instead. Two
+limits: it is mongomock, so anything the tests don't cover may behave
+differently, and PDF export needs WeasyPrint's native libraries (Pango) on your
+machine.
 
 ---
 
