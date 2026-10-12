@@ -50,34 +50,28 @@ from visualizer.observability.page import register_observability_page
 from visualizer.shared_assets import register_shared_assets
 
 from .access import (
-    authorize,
     kind_for,
     require_owner,
     scope_for,
 )
 from .browse_routes import register_browse_routes
-from .diff import diff_documents
 from .document_routes import register_document_routes
 from .errors import (
     AkashaError,
-    DocumentNotFound,
-    InvalidRevision,
     MediaInUse,
-    VersionNotFound,
 )
-from .history import find_snapshot, history_meta
 from .labels import derive_title
 from .media_routes import register_media_routes
 from .media_service import MediaService
 from .routing import (
     COLLECTION_ROUTE,
     DOC_ROUTE,
-    document_response,
     reject_reserved,
 )
 from .share_kinds import ACCOUNT_KINDS, account_kinds
 from .store import DocumentStore
 from .terms import TERMS
+from .version_routes import register_version_routes
 
 # Per-IP limit for the self-service account endpoints. Looser than the auth
 # limit (login/register) -- these are for a logged-in user tidying their own
@@ -160,94 +154,6 @@ def create_app(
             register_observability_page(app, observability)
     _register_error_handlers(app)
     return app
-
-
-def register_version_routes(app: Flask, store: DocumentStore, auth_store: AuthStore, csrf) -> None:
-    """Read-only version history + diff, and restore (a new revision)."""
-
-    @app.get(DOC_ROUTE + "/versions")
-    @csrf.exempt
-    @login_required
-    def list_versions(database, collection, doc_id):
-        authorize(auth_store, "GET", database, collection, doc_id)
-        history = store.history(database, collection, doc_id)
-        return jsonify({"id": doc_id, "versions": history_meta(history)})
-
-    @app.get(DOC_ROUTE + "/versions/<int:rev>")
-    @csrf.exempt
-    @login_required
-    def get_version(database, collection, doc_id, rev):
-        authorize(auth_store, "GET", database, collection, doc_id)
-        snapshot = _require_snapshot(store, database, collection, doc_id, rev)
-        return jsonify(snapshot)
-
-    @app.get(DOC_ROUTE + "/diff")
-    @csrf.exempt
-    @login_required
-    def diff_versions(database, collection, doc_id):
-        authorize(auth_store, "GET", database, collection, doc_id)
-        from_rev, to_rev = _parse_diff_revs(request.args)
-        older = _require_snapshot(store, database, collection, doc_id, from_rev)
-        newer = _require_snapshot(store, database, collection, doc_id, to_rev)
-        return jsonify(
-            {
-                "id": doc_id,
-                "from": _snapshot_meta(older),
-                "to": _snapshot_meta(newer),
-                "diff": diff_documents(older["document"] or {}, newer["document"] or {}),
-            }
-        )
-
-    @app.post(DOC_ROUTE + "/restore/<int:rev>")
-    @csrf.exempt
-    @login_required
-    def restore_version(database, collection, doc_id, rev):
-        authorize(auth_store, "PUT", database, collection, doc_id)
-        snapshot = _require_snapshot(store, database, collection, doc_id, rev)
-        if snapshot["document"] is None:
-            raise VersionNotFound(
-                f"Version {rev} of '{doc_id}' is a deletion and cannot be restored."
-            )
-        result = _restore_body(store, database, collection, doc_id, snapshot["document"])
-        return document_response(result)
-
-
-def _require_snapshot(store: DocumentStore, database, collection, doc_id, rev) -> dict:
-    snapshot = find_snapshot(store.history(database, collection, doc_id), rev)
-    if snapshot is None:
-        raise VersionNotFound(
-            f"Version {rev} of '{doc_id}' is not retained."
-        )
-    return snapshot
-
-
-def _snapshot_meta(snapshot: dict) -> dict:
-    return {k: snapshot.get(k) for k in ("rev", "op", "author", "timestamp")}
-
-
-def _parse_diff_revs(args) -> tuple[int, int]:
-    try:
-        return int(args["from"]), int(args["to"])
-    except (KeyError, ValueError, TypeError):
-        raise InvalidRevision("Diff requires integer 'from' and 'to' revisions.")
-
-
-def _restore_body(store: DocumentStore, database, collection, doc_id, body: dict) -> dict:
-    """Re-apply an old body as a new revision (update if live, else revive)."""
-    try:
-        current = store.get(database, collection, doc_id)
-        return store.update(
-            database,
-            collection,
-            doc_id,
-            body,
-            expected_rev=current["rev"],
-            author=current_user.username,
-        )
-    except DocumentNotFound:
-        return store.create(
-            database, collection, doc_id, body, author=current_user.username
-        )
 
 
 def _render_admin(auth_store: AuthStore, selected=None, new_credential=None):
