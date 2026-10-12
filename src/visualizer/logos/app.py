@@ -14,7 +14,6 @@ from visualizer.auth import (
     AuthError,
     build_limiter,
     init_login,
-    is_allowed,
     register_auth_routes,
     register_service_links,
 )
@@ -22,35 +21,41 @@ from visualizer.observability import Observability
 from visualizer.shared_assets import register_shared_assets
 
 from .errors import (
-    Forbidden,
-    InvalidRevision,
     InvalidSearch,
     LogosError,
-    PreconditionRequired,
     PublicationCoverNotFound,
 )
 from .gateways import ArticleGateway, ChronosGateway
 from .publication import ExportJobs, PublicationService, export_filename
 from .reader import ReaderService
 from .richtext import validate_document
+from .routing import (
+    BOOK,
+    BOOK_RESOURCE,
+    DRAFT,
+    DRAFT_VERSIONS,
+    DRAFTS,
+    SECTION,
+    VOLUME,
+    RouteDeps,
+    allowed,
+    authorize,
+    expected_rev,
+    json_body,
+    resource,
+    truthy,
+    with_permissions,
+    writing_dialect,
+)
 from .search import SearchService
 from .services import DraftService, ManuscriptService, SectionService, VolumeService
 from .store import LogosStore
 from .validation import validate_identifier
 from .writing import RuleBasedWritingAdvisor, SeriesWritingReview, WritingAdvisor
 
-# Logos reads the Chronos book grant directly -- one resource kind, one grant,
-# no second sharing model and no migration for books that already exist.
-BOOK_RESOURCE = "book"
-
-_BOOK = "/books/<book>"
-_VOLUME = _BOOK + "/volumes/<volume>"
-_SECTION = _VOLUME + "/sections/<section>"
-_DRAFTS = _SECTION + "/drafts"
-_DRAFT = _DRAFTS + "/<draft>"
-_DRAFT_VERSIONS = _DRAFT + "/versions"
-
-_TRUTHY = frozenset({"1", "true", "yes", "on"})
+# BOOK_RESOURCE is defined beside the guards that use it, and re-exported here
+# because this is where callers (tests, smoke scripts) have always found it.
+__all__ = ["BOOK_RESOURCE", "create_app"]
 
 
 def create_app(
@@ -108,32 +113,41 @@ def create_app(
         store, publications, **({} if export_runner is None else
                                 {"runner": export_runner})
     )
-    _register_routes(
-        app,
-        csrf,
-        auth_store,
-        manuscripts,
-        volumes,
-        sections,
-        drafts,
-        readers,
-        search,
-        publications,
-        jobs,
-        articles,
-        advisor,
-        series_review,
+    deps = RouteDeps(
+        auth_store=auth_store,
+        manuscripts=manuscripts,
+        volumes=volumes,
+        sections=sections,
+        drafts=drafts,
+        readers=readers,
+        search=search,
+        publications=publications,
+        export_jobs=jobs,
+        articles=articles,
+        writing_advisor=advisor,
+        series_review=series_review,
     )
+    _register_routes(app, csrf, deps)
     if observability is not None:
         observability.install(app, "logos")
     _register_error_handlers(app)
     return app
 
 
-def _register_routes(
-    app, csrf, auth_store, manuscripts, volumes, sections, drafts, readers, search,
-    publications, export_jobs, articles, writing_advisor, series_review,
-):
+def _register_routes(app, csrf, deps: RouteDeps):
+    auth_store = deps.auth_store
+    manuscripts = deps.manuscripts
+    volumes = deps.volumes
+    sections = deps.sections
+    drafts = deps.drafts
+    readers = deps.readers
+    search = deps.search
+    publications = deps.publications
+    export_jobs = deps.export_jobs
+    articles = deps.articles
+    writing_advisor = deps.writing_advisor
+    series_review = deps.series_review
+
     @app.get("/")
     @login_required
     def index():
@@ -150,9 +164,9 @@ def _register_routes(
     @login_required
     def list_books():
         rows = [
-            _with_permissions(row, auth_store, row["book"])
+            with_permissions(row, auth_store, row["book"])
             for row in manuscripts.list()
-            if _allowed(auth_store, "read", row["book"])
+            if allowed(auth_store, "read", row["book"])
         ]
         return jsonify({"books": rows})
 
@@ -166,27 +180,27 @@ def _register_routes(
     @csrf.exempt
     @login_required
     def update_reader_settings():
-        return jsonify(readers.set_settings(current_user.username, _json_body()))
+        return jsonify(readers.set_settings(current_user.username, json_body()))
 
-    @app.get(_BOOK)
+    @app.get(BOOK)
     @csrf.exempt
     @login_required
     def get_manuscript(book):
-        _authorize(auth_store, "read", book)
-        return _resource(_with_permissions(manuscripts.get(book), auth_store, book))
+        authorize(auth_store, "read", book)
+        return resource(with_permissions(manuscripts.get(book), auth_store, book))
 
-    @app.get(_BOOK + "/report")
+    @app.get(BOOK + "/report")
     @csrf.exempt
     @login_required
     def book_report(book):
-        _authorize(auth_store, "read", book)
+        authorize(auth_store, "read", book)
         return jsonify(manuscripts.report(book))
 
-    @app.get(_BOOK + "/search")
+    @app.get(BOOK + "/search")
     @csrf.exempt
     @login_required
     def search_manuscript(book):
-        _authorize(auth_store, "read", book)
+        authorize(auth_store, "read", book)
         return jsonify(
             search.search(
                 book,
@@ -196,11 +210,11 @@ def _register_routes(
             )
         )
 
-    @app.get(_BOOK + "/ui/entities")
+    @app.get(BOOK + "/ui/entities")
     @csrf.exempt
     @login_required
     def lookup_entities(book):
-        _authorize(auth_store, "write", book)
+        authorize(auth_store, "write", book)
         query = (request.args.get("q") or "").strip()
         if not query or len(query) > 200:
             raise InvalidSearch("An entity lookup must contain 1-200 characters.")
@@ -215,16 +229,16 @@ def _register_routes(
             }
         )
 
-    @app.post(_BOOK + "/ui/writing-review")
+    @app.post(BOOK + "/ui/writing-review")
     @csrf.exempt
     @login_required
     def review_writing(book):
-        _authorize(auth_store, "write", book)
+        authorize(auth_store, "write", book)
         manuscripts.require(book)
-        body = _json_body()
+        body = json_body()
         if not isinstance(body, dict) or set(body) - {"document", "dialect"}:
             raise InvalidSearch("A writing review requires a document and dialect.")
-        dialect = _writing_dialect(body.get("dialect", "en-US"))
+        dialect = writing_dialect(body.get("dialect", "en-US"))
         document = validate_document(body.get("document"))
         return jsonify(
             {
@@ -234,131 +248,131 @@ def _register_routes(
             }
         )
 
-    @app.get(_BOOK + "/ui/writing-review")
+    @app.get(BOOK + "/ui/writing-review")
     @csrf.exempt
     @login_required
     def review_series_writing(book):
-        _authorize(auth_store, "write", book)
-        dialect = _writing_dialect(request.args.get("dialect", "en-US"))
+        authorize(auth_store, "write", book)
+        dialect = writing_dialect(request.args.get("dialect", "en-US"))
         volume = request.args.get("volume")
         return jsonify(
             series_review.review(
                 book,
                 dialect,
-                include_alternates=_truthy(request.args.get("include_alternates")),
+                include_alternates=truthy(request.args.get("include_alternates")),
                 volume=validate_identifier(volume, "volume") if volume else None,
             )
         )
 
-    @app.get(_BOOK + "/me/items")
+    @app.get(BOOK + "/me/items")
     @csrf.exempt
     @login_required
     def list_reader_items(book):
-        _authorize(auth_store, "read", book)
+        authorize(auth_store, "read", book)
         return jsonify(
             readers.list_items(
                 current_user.username,
                 book,
-                include_alternates=_allowed(auth_store, "write", book),
+                include_alternates=allowed(auth_store, "write", book),
             )
         )
 
-    @app.post(_BOOK + "/me/items")
+    @app.post(BOOK + "/me/items")
     @csrf.exempt
     @login_required
     def create_reader_item(book):
-        _authorize(auth_store, "read", book)
-        body = _json_body()
+        authorize(auth_store, "read", book)
+        body = json_body()
         if isinstance(body, dict) and body.get("draft") is not None:
-            _authorize(auth_store, "write", book)
-        return _resource(
+            authorize(auth_store, "write", book)
+        return resource(
             readers.create_item(current_user.username, book, body), 201
         )
 
-    @app.put(_BOOK + "/me/items/<item>")
+    @app.put(BOOK + "/me/items/<item>")
     @csrf.exempt
     @login_required
     def update_reader_item(book, item):
-        _authorize(auth_store, "read", book)
-        return _resource(
+        authorize(auth_store, "read", book)
+        return resource(
             readers.update_item(
-                current_user.username, book, item, _json_body(), _expected_rev()
+                current_user.username, book, item, json_body(), expected_rev()
             )
         )
 
-    @app.delete(_BOOK + "/me/items/<item>")
+    @app.delete(BOOK + "/me/items/<item>")
     @csrf.exempt
     @login_required
     def delete_reader_item(book, item):
-        _authorize(auth_store, "read", book)
-        readers.delete_item(current_user.username, book, item, _expected_rev())
+        authorize(auth_store, "read", book)
+        readers.delete_item(current_user.username, book, item, expected_rev())
         return "", 204
 
-    @app.get(_BOOK + "/me/position")
+    @app.get(BOOK + "/me/position")
     @csrf.exempt
     @login_required
     def get_reading_position(book):
-        _authorize(auth_store, "read", book)
+        authorize(auth_store, "read", book)
         return jsonify(readers.get_position(current_user.username, book))
 
-    @app.put(_BOOK + "/me/position")
+    @app.put(BOOK + "/me/position")
     @csrf.exempt
     @login_required
     def update_reading_position(book):
-        _authorize(auth_store, "read", book)
+        authorize(auth_store, "read", book)
         return jsonify(
-            readers.set_position(current_user.username, book, _json_body())
+            readers.set_position(current_user.username, book, json_body())
         )
 
-    @app.get(_BOOK + "/publication")
+    @app.get(BOOK + "/publication")
     @csrf.exempt
     @login_required
     def get_publication(book):
-        _authorize(auth_store, "read", book)
-        return _resource(publications.get(book))
+        authorize(auth_store, "read", book)
+        return resource(publications.get(book))
 
-    @app.post(_BOOK + "/publication")
+    @app.post(BOOK + "/publication")
     @csrf.exempt
     @login_required
     def create_publication(book):
-        _authorize(auth_store, "write", book)
-        return _resource(
-            publications.create(book, _json_body(), current_user.username), 201
+        authorize(auth_store, "write", book)
+        return resource(
+            publications.create(book, json_body(), current_user.username), 201
         )
 
-    @app.put(_BOOK + "/publication")
+    @app.put(BOOK + "/publication")
     @csrf.exempt
     @login_required
     def update_publication(book):
-        _authorize(auth_store, "write", book)
-        return _resource(
+        authorize(auth_store, "write", book)
+        return resource(
             publications.update(
-                book, _json_body(), _expected_rev(), current_user.username
+                book, json_body(), expected_rev(), current_user.username
             )
         )
 
-    @app.get(_BOOK + "/publication/cover")
+    @app.get(BOOK + "/publication/cover")
     @csrf.exempt
     @login_required
     def get_publication_cover(book):
-        _authorize(auth_store, "read", book)
+        authorize(auth_store, "read", book)
         cover = publications.cover(book)
         if cover is None:
             raise PublicationCoverNotFound("This series has no publication cover.")
         return Response(bytes(cover["data"]), mimetype=cover["mime"])
 
-    @app.put(_BOOK + "/publication/cover")
+    @app.put(BOOK + "/publication/cover")
     @csrf.exempt
     @login_required
     def set_publication_cover(book):
-        _authorize(auth_store, "write", book)
+        authorize(auth_store, "write", book)
         return jsonify(publications.set_cover(book, request.get_data(cache=False)))
 
-    @app.delete(_BOOK + "/publication/cover")
+    @app.delete(BOOK + "/publication/cover")
     @csrf.exempt
     @login_required
     def delete_publication_cover(book):
-        _authorize(auth_store, "write", book)
+        authorize(auth_store, "write", book)
         publications.delete_cover(book)
         return "", 204
 
@@ -378,102 +392,102 @@ def _register_routes(
     # EPUB is a stdlib zip of XHTML: cheap enough to hand back on the request
     # that asked for it. PDF is laid out page by page and takes minutes on a
     # long series, so it is started, polled and collected instead.
-    @app.get(_BOOK + "/exports/epub")
+    @app.get(BOOK + "/exports/epub")
     @csrf.exempt
     @login_required
     def export_epub(book):
-        _authorize(auth_store, "read", book)
+        authorize(auth_store, "read", book)
         return _download(book, publications.export(book, "epub"))
 
-    @app.post(_BOOK + "/exports/pdf")
+    @app.post(BOOK + "/exports/pdf")
     @csrf.exempt
     @login_required
     def start_pdf_export(book):
-        _authorize(auth_store, "read", book)
+        authorize(auth_store, "read", book)
         return jsonify(export_jobs.start(book, current_user.username)), 202
 
-    @app.get(_BOOK + "/exports/pdf/<job>")
+    @app.get(BOOK + "/exports/pdf/<job>")
     @csrf.exempt
     @login_required
     def collect_pdf_export(book, job):
-        _authorize(auth_store, "read", book)
+        authorize(auth_store, "read", book)
         exported = export_jobs.collect(book, current_user.username, job)
         if exported is None:
             return jsonify(export_jobs.status(book, current_user.username, job)), 202
         return _download(book, exported)
 
-    @app.delete(_BOOK)
+    @app.delete(BOOK)
     @csrf.exempt
     @login_required
     def delete_manuscript(book):
-        _authorize(auth_store, "delete", book)
+        authorize(auth_store, "delete", book)
         manuscripts.delete(
             book,
-            _expected_rev(),
+            expected_rev(),
             current_user.username,
-            cascade=_truthy(request.args.get("cascade")),
+            cascade=truthy(request.args.get("cascade")),
         )
         return "", 204
 
-    @app.put(_BOOK + "/volume-order")
+    @app.put(BOOK + "/volume-order")
     @csrf.exempt
     @login_required
     def reorder_volumes(book):
-        _authorize(auth_store, "write", book)
+        authorize(auth_store, "write", book)
         result = volumes.reorder(
-            book, _json_body(), _expected_rev(), current_user.username
+            book, json_body(), expected_rev(), current_user.username
         )
-        return _resource(_with_permissions(result, auth_store, book))
+        return resource(with_permissions(result, auth_store, book))
 
-    @app.post(_VOLUME)
+    @app.post(VOLUME)
     @csrf.exempt
     @login_required
     def create_volume(book, volume):
-        _authorize(auth_store, "write", book)
-        result = volumes.create(book, volume, _json_body(), current_user.username)
-        return _resource(_with_permissions(result, auth_store, book), 201)
+        authorize(auth_store, "write", book)
+        result = volumes.create(book, volume, json_body(), current_user.username)
+        return resource(with_permissions(result, auth_store, book), 201)
 
-    @app.get(_VOLUME)
+    @app.get(VOLUME)
     @csrf.exempt
     @login_required
     def get_volume(book, volume):
-        _authorize(auth_store, "read", book)
+        authorize(auth_store, "read", book)
         result = volumes.get(book, volume)
-        return _resource(_with_permissions(result, auth_store, book))
+        return resource(with_permissions(result, auth_store, book))
 
-    @app.put(_VOLUME)
+    @app.put(VOLUME)
     @csrf.exempt
     @login_required
     def update_volume(book, volume):
-        _authorize(auth_store, "write", book)
+        authorize(auth_store, "write", book)
         result = volumes.update(
-            book, volume, _json_body(), _expected_rev(), current_user.username
+            book, volume, json_body(), expected_rev(), current_user.username
         )
-        return _resource(_with_permissions(result, auth_store, book))
+        return resource(with_permissions(result, auth_store, book))
 
-    @app.delete(_VOLUME)
+    @app.delete(VOLUME)
     @csrf.exempt
     @login_required
     def delete_volume(book, volume):
-        _authorize(auth_store, "delete", book)
+        authorize(auth_store, "delete", book)
         volumes.delete(
             book,
             volume,
-            _expected_rev(),
+            expected_rev(),
             current_user.username,
-            cascade=_truthy(request.args.get("cascade")),
+            cascade=truthy(request.args.get("cascade")),
         )
         return "", 204
 
-    @app.get(_VOLUME + "/manuscript")
+    @app.get(VOLUME + "/manuscript")
     @csrf.exempt
     @login_required
     def get_volume_manuscript(book, volume):
-        _authorize(auth_store, "read", book)
+        authorize(auth_store, "read", book)
         result = volumes.manuscript(book, volume)
-        return _resource(_with_permissions(result, auth_store, book))
+        return resource(with_permissions(result, auth_store, book))
 
-    @app.get(_VOLUME + "/ui/scenes")
+    @app.get(VOLUME + "/ui/scenes")
     @csrf.exempt
     @login_required
     def ui_volume_scenes(book, volume):
@@ -482,314 +496,233 @@ def _register_routes(
         Separate from the volume manuscript rather than folded into it, so
         clients can read prose without implicitly reading Chronos.
         """
-        _authorize(auth_store, "read", book)
+        authorize(auth_store, "read", book)
         return jsonify(volumes.scenes(book, volume))
 
-    @app.put(_VOLUME + "/section-order")
+    @app.put(VOLUME + "/section-order")
     @csrf.exempt
     @login_required
     def reorder_sections(book, volume):
-        _authorize(auth_store, "write", book)
+        authorize(auth_store, "write", book)
         result = sections.reorder(
-            book, volume, _json_body(), _expected_rev(), current_user.username
+            book, volume, json_body(), expected_rev(), current_user.username
         )
-        return _resource(_with_permissions(result, auth_store, book))
+        return resource(with_permissions(result, auth_store, book))
 
-    @app.put(_SECTION + "/placement")
+    @app.put(SECTION + "/placement")
     @csrf.exempt
     @login_required
     def move_section(book, volume, section):
-        _authorize(auth_store, "write", book)
+        authorize(auth_store, "write", book)
         result = sections.move(
             book,
             volume,
             section,
-            _json_body(),
-            _expected_rev(),
+            json_body(),
+            expected_rev(),
             current_user.username,
         )
-        return _resource(_with_permissions(result, auth_store, book))
+        return resource(with_permissions(result, auth_store, book))
 
-    @app.post(_SECTION)
+    @app.post(SECTION)
     @csrf.exempt
     @login_required
     def create_section(book, volume, section):
-        _authorize(auth_store, "write", book)
+        authorize(auth_store, "write", book)
         result = sections.create(
-            book, volume, section, _json_body(), current_user.username
+            book, volume, section, json_body(), current_user.username
         )
-        return _resource(_with_permissions(result, auth_store, book), 201)
+        return resource(with_permissions(result, auth_store, book), 201)
 
-    @app.get(_SECTION)
+    @app.get(SECTION)
     @csrf.exempt
     @login_required
     def get_section(book, volume, section):
-        _authorize(auth_store, "read", book)
+        authorize(auth_store, "read", book)
         result = sections.get(book, volume, section)
-        return _resource(_with_permissions(result, auth_store, book))
+        return resource(with_permissions(result, auth_store, book))
 
-    @app.get(_SECTION + "/ui/scenes")
+    @app.get(SECTION + "/ui/scenes")
     @csrf.exempt
     @login_required
     def ui_section_scenes(book, volume, section):
         """The reader's Full View projection for the one open section."""
-        _authorize(auth_store, "read", book)
+        authorize(auth_store, "read", book)
         return jsonify(sections.scenes(book, volume, section))
 
-    @app.put(_SECTION)
+    @app.put(SECTION)
     @csrf.exempt
     @login_required
     def update_section(book, volume, section):
-        _authorize(auth_store, "write", book)
+        authorize(auth_store, "write", book)
         result = sections.update(
-            book, volume, section, _json_body(), _expected_rev(), current_user.username
+            book, volume, section, json_body(), expected_rev(), current_user.username
         )
-        return _resource(_with_permissions(result, auth_store, book))
+        return resource(with_permissions(result, auth_store, book))
 
-    @app.put(_SECTION + "/metadata")
+    @app.put(SECTION + "/metadata")
     @csrf.exempt
     @login_required
     def update_section_metadata(book, volume, section):
-        _authorize(auth_store, "write", book)
+        authorize(auth_store, "write", book)
         result = sections.update_metadata(
             book,
             volume,
             section,
-            _json_body(),
-            _expected_rev(),
+            json_body(),
+            expected_rev(),
             current_user.username,
         )
-        return _resource(_with_permissions(result, auth_store, book))
+        return resource(with_permissions(result, auth_store, book))
 
-    @app.delete(_SECTION)
+    @app.delete(SECTION)
     @csrf.exempt
     @login_required
     def delete_section(book, volume, section):
-        _authorize(auth_store, "delete", book)
+        authorize(auth_store, "delete", book)
         sections.delete(
-            book, volume, section, _expected_rev(), current_user.username
+            book, volume, section, expected_rev(), current_user.username
         )
         return "", 204
 
-    @app.get(_SECTION + "/versions")
+    @app.get(SECTION + "/versions")
     @csrf.exempt
     @login_required
     def section_versions(book, volume, section):
-        _authorize(auth_store, "read", book)
+        authorize(auth_store, "read", book)
         return jsonify(sections.history(book, volume, section))
 
-    @app.get(_SECTION + "/versions/<int:rev>")
+    @app.get(SECTION + "/versions/<int:rev>")
     @csrf.exempt
     @login_required
     def section_version(book, volume, section, rev):
-        _authorize(auth_store, "read", book)
+        authorize(auth_store, "read", book)
         return jsonify(sections.revision(book, volume, section, rev))
 
-    @app.post(_SECTION + "/restore/<int:rev>")
+    @app.post(SECTION + "/restore/<int:rev>")
     @csrf.exempt
     @login_required
     def restore_section(book, volume, section, rev):
-        _authorize(auth_store, "write", book)
+        authorize(auth_store, "write", book)
         result = sections.restore(
-            book, volume, section, rev, _expected_rev(), current_user.username
+            book, volume, section, rev, expected_rev(), current_user.username
         )
-        return _resource(_with_permissions(result, auth_store, book))
+        return resource(with_permissions(result, auth_store, book))
 
-    @app.get(_DRAFTS)
+    @app.get(DRAFTS)
     @csrf.exempt
     @login_required
     def list_drafts(book, volume, section):
-        _authorize(auth_store, "write", book)
+        authorize(auth_store, "write", book)
         return jsonify(
             drafts.list(book, volume, section, current_user.username)
         )
 
-    @app.post(_DRAFTS)
+    @app.post(DRAFTS)
     @csrf.exempt
     @login_required
     def create_draft(book, volume, section):
-        _authorize(auth_store, "write", book)
-        return _resource(
+        authorize(auth_store, "write", book)
+        return resource(
             drafts.create(
-                book, volume, section, _json_body(), current_user.username
+                book, volume, section, json_body(), current_user.username
             ),
             201,
         )
 
-    @app.get(_DRAFT)
+    @app.get(DRAFT)
     @csrf.exempt
     @login_required
     def get_draft(book, volume, section, draft):
-        _authorize(auth_store, "write", book)
-        return _resource(
+        authorize(auth_store, "write", book)
+        return resource(
             drafts.get(book, volume, section, draft, current_user.username)
         )
 
-    @app.put(_DRAFT)
+    @app.put(DRAFT)
     @csrf.exempt
     @login_required
     def update_draft(book, volume, section, draft):
-        _authorize(auth_store, "write", book)
-        return _resource(
+        authorize(auth_store, "write", book)
+        return resource(
             drafts.update(
                 book,
                 volume,
                 section,
                 draft,
-                _json_body(),
-                _expected_rev(),
+                json_body(),
+                expected_rev(),
                 current_user.username,
             )
         )
 
-    @app.delete(_DRAFT)
+    @app.delete(DRAFT)
     @csrf.exempt
     @login_required
     def delete_draft(book, volume, section, draft):
-        _authorize(auth_store, "delete", book)
+        authorize(auth_store, "delete", book)
         drafts.delete(
             book,
             volume,
             section,
             draft,
-            _expected_rev(),
+            expected_rev(),
             current_user.username,
         )
         return "", 204
 
-    @app.put(_SECTION + "/primary-draft")
+    @app.put(SECTION + "/primary-draft")
     @csrf.exempt
     @login_required
     def make_primary_draft(book, volume, section):
-        _authorize(auth_store, "write", book)
+        authorize(auth_store, "write", book)
         return jsonify(
             drafts.make_primary(
                 book,
                 volume,
                 section,
-                _json_body(),
-                _expected_rev(),
+                json_body(),
+                expected_rev(),
                 current_user.username,
             )
         )
 
-    @app.get(_DRAFT_VERSIONS)
+    @app.get(DRAFT_VERSIONS)
     @csrf.exempt
     @login_required
     def draft_versions(book, volume, section, draft):
-        _authorize(auth_store, "write", book)
+        authorize(auth_store, "write", book)
         return jsonify(
             drafts.history(book, volume, section, draft, current_user.username)
         )
 
-    @app.get(_DRAFT_VERSIONS + "/<int:rev>")
+    @app.get(DRAFT_VERSIONS + "/<int:rev>")
     @csrf.exempt
     @login_required
     def draft_version(book, volume, section, draft, rev):
-        _authorize(auth_store, "write", book)
+        authorize(auth_store, "write", book)
         return jsonify(
             drafts.revision(
                 book, volume, section, draft, rev, current_user.username
             )
         )
 
-    @app.post(_DRAFT_VERSIONS + "/<int:rev>/restore")
+    @app.post(DRAFT_VERSIONS + "/<int:rev>/restore")
     @csrf.exempt
     @login_required
     def restore_draft(book, volume, section, draft, rev):
-        _authorize(auth_store, "write", book)
-        return _resource(
+        authorize(auth_store, "write", book)
+        return resource(
             drafts.restore(
                 book,
                 volume,
                 section,
                 draft,
                 rev,
-                _expected_rev(),
+                expected_rev(),
                 current_user.username,
             )
         )
-
-
-# -- helpers -----------------------------------------------------------------
-
-
-def _allowed(auth_store, permission: str, book: str) -> bool:
-    return is_allowed(
-        auth_store.grants_for(current_user.username),
-        permission,
-        book,
-        resource_type=BOOK_RESOURCE,
-    )
-
-
-def _authorize(auth_store, permission: str, book: str) -> None:
-    if not _allowed(auth_store, permission, book):
-        raise Forbidden(
-            f"You lack '{permission}' permission on Chronos book '{book}'."
-        )
-
-
-def _with_permissions(result: dict, auth_store, book: str) -> dict:
-    return {
-        **result,
-        "permissions": {
-            "write": _allowed(auth_store, "write", book),
-            "delete": _allowed(auth_store, "delete", book),
-        },
-    }
-
-
-def _json_body():
-    return request.get_json(silent=True)
-
-
-def _expected_rev() -> int:
-    """The revision the caller says they read. Required for every mutation.
-
-    Prose is the one thing in this stack a lost update destroys irrecoverably,
-    so Logos refuses an unconditional write rather than accepting it the way
-    Chronos and Prithvi do. See ``docs/logos/README.md``.
-    """
-    raw = request.headers.get("If-Match")
-    if raw is None:
-        raise PreconditionRequired(
-            "This request must carry an If-Match header naming the revision read."
-        )
-    candidate = raw.strip().strip('"')
-    if not candidate or candidate == "*":
-        raise InvalidRevision("If-Match must name a concrete revision number.")
-    try:
-        revision = int(candidate)
-    except ValueError as exc:
-        raise InvalidRevision(f"If-Match is not a revision number: {raw!r}.") from exc
-    if revision < 1:
-        raise InvalidRevision("A revision number starts at 1.")
-    return revision
-
-
-def _truthy(value) -> bool:
-    return value is not None and str(value).strip().lower() in _TRUTHY
-
-
-def _writing_dialect(value) -> str:
-    if value not in {"en-US", "en-GB"}:
-        raise InvalidSearch("The writing dialect must be 'en-US' or 'en-GB'.")
-    return value
-
-
-def _resource(result: dict, status: int = 200):
-    """A JSON body, with an ETag whenever the resource actually has a revision.
-
-    A manuscript that has no outline yet reads as revision 0 and gets no ETag:
-    there is no revision to quote back, and offering ``"0"`` would only hand the
-    caller a precondition the API must then reject.
-    """
-    response = jsonify(result)
-    response.status_code = status
-    if result.get("rev"):
-        response.headers["ETag"] = f'"{result["rev"]}"'
-    return response
 
 
 def _register_error_handlers(app):
