@@ -1,0 +1,294 @@
+# GPU-box AI worker — API (v1)
+
+The contract between the visualizer stack and the AI worker on the RTX 3090 box.
+**Akasha** submits `research` jobs and **Logos** submits LLM `review` jobs; neither
+talks to Ollama or SearXNG, which stay bound to the box's localhost behind the
+worker.
+
+**Status: contract only.** The worker itself is not built yet. This document and
+[`openapi.json`](openapi.json) (OpenAPI 3.1) are what both sides are written and
+tested against; if the two disagree, fix one of them.
+
+```
+NAS (visualizer stack)                     GPU box
+┌────────────────────────┐                ┌──────────────────────────────────┐
+│ Logos  ─ review jobs ──┼──┐             │ tailscale serve :8443 (HTTPS)    │
+│ Akasha ─ research jobs ┼──┼─ Tailscale ─┼──▶ worker 127.0.0.1:8700         │
+└────────────────────────┘  │ + token     │      ├──▶ Ollama   (localhost)   │
+                            │             │      ├──▶ SearXNG  (localhost)   │
+                            │             │      └──▶ verifier (optional Mac)│
+                            └─────────────┴──────────────────────────────────┘
+```
+
+**Decisions that shape the API:**
+
+- **One worker, two job kinds.** Reviews and research share authentication, health
+  checks, the job store and GPU scheduling.
+- **Everything is an async job.** A chapter review can take 30–90 s — longer than
+  typical reverse-proxy timeouts (Synology's default is ~60 s).
+- **The NAS stack never depends on it.** With no worker configured, or the box
+  asleep, every service keeps working; the AI features report themselves
+  unavailable.
+- **The second checker is optional.** When a second machine (the M1 Max) is up, the
+  worker asks it narrow yes/no questions and results say so; when it isn't, the
+  stage is skipped and results say that instead.
+
+## Conventions
+
+| Aspect | Rule |
+|---|---|
+| Base URL | `https://gpubox.<your-tailnet>.ts.net:8443/v1` |
+| Auth | `Authorization: Bearer <WORKER_TOKEN>` on every request; missing/invalid → `401` |
+| Format | JSON, UTF-8. Timestamps are ISO 8601 UTC |
+| Idempotency | `POST /jobs` accepts `Idempotency-Key`; repeating a key returns the original job (`200`) instead of creating a new one. Akasha/Logos use their own job id as the key |
+| Callbacks | **None** — callers poll. The worker never initiates connections to the NAS |
+| URLs from callers | **None accepted.** Research requests carry a question, not URLs to fetch |
+
+## Errors
+
+All errors share one shape:
+
+```json
+{"error": {"code": "unavailable", "message": "Ollama is not responding", "retryable": true}}
+```
+
+| HTTP | `code` | Meaning | Caller mapping |
+|---|---|---|---|
+| 400 | `invalid_request` | Schema violation | Bug — raise |
+| 401 | `unauthorized` | Missing/invalid token | Config error — raise |
+| 404 | `not_found` | Unknown or expired job | Job lost — mark failed |
+| 409 | `idempotency_conflict` | `Idempotency-Key` reused with a different body | Bug — raise |
+| 413 | `payload_too_large` | Request over size limit | Bug / split input |
+| 429 | `queue_full` | Queue at `QUEUE_MAX`; `Retry-After` header set | `ResearchBusy` / retry later |
+| 503 | `unavailable` | A dependency is down (`message` says which) | `ResearchUnavailable` / `ReviewUnavailable` |
+
+Network errors and timeouts are treated like `503`.
+
+**Job failure codes** (in a failed job's `error`, same shape): `timeout` (job exceeded
+its time limit), `unavailable` (a dependency died mid-job), `no_sources` (research
+found nothing usable), `internal`.
+
+## `GET /v1/health`
+
+Returns `200` whenever the worker process is up; `ok` reflects its dependencies.
+
+```json
+{
+  "ok": true,
+  "api_version": "1",
+  "ollama":  {"status": "up", "models": {"review": "qwen3:30b", "research": "qwen3:30b"}, "loaded": []},
+  "searxng": {"status": "up"},
+  "gpu":     {"busy": false, "vram_used_mb": 812, "vram_total_mb": 24576},
+  "queue":   {"queued": 0, "running": 0, "max": 20},
+  "verifier": {"status": "up", "models": {"research": "bespoke-minicheck", "review": "gemma3:27b"}}
+}
+```
+
+- `ok` is `false` if Ollama or SearXNG is down (research needs both; review needs Ollama).
+- `verifier` is the optional Mac: `up` \| `down` \| `not_configured`. It **does not
+  affect `ok`** — jobs run without it unless they set `verify: "required"`.
+- `ollama.loaded` lists models currently in VRAM — empty means the first job pays a
+  ~10–30 s load.
+- `gpu.busy` is `true` when another process (e.g. ComfyUI) holds most of the VRAM.
+
+## `POST /v1/jobs`
+
+Request:
+
+```json
+{
+  "kind": "research",
+  "request": { ... },
+  "client": {"service": "akasha", "ref": "akasha-job-6f1c2e"}
+}
+```
+
+`client.ref` is the caller's own job id (also sent as `Idempotency-Key`). No usernames
+or other personal data.
+
+Response `202` (or `200` for a repeated idempotency key):
+
+```json
+{"job": {"id": "j_01J9Z3K8", "kind": "research", "state": "queued",
+         "created_at": "2026-10-11T09:12:03Z", "position": 1}}
+```
+
+## `GET /v1/jobs/{id}`
+
+```json
+{
+  "job": {
+    "id": "j_01J9Z3K8",
+    "kind": "research",
+    "state": "running",
+    "progress": {"stage": "fetching", "message": "Reading 5 of 8 sources"},
+    "created_at": "2026-10-11T09:12:03Z",
+    "started_at": "2026-10-11T09:12:05Z",
+    "finished_at": null,
+    "expires_at": null,
+    "result": null,
+    "error": null
+  }
+}
+```
+
+| Field | Values |
+|---|---|
+| `state` | `queued` → `running` → `done` \| `failed` \| `cancelled` |
+| `progress.stage` (research) | `loading_model`, `planning`, `searching`, `fetching`, `extracting`, `verifying`, `writing`, `second_check` |
+| `progress.stage` (review) | `loading_model`, `reviewing`, `second_check` |
+| `result` | Set only when `state` is `done` (shapes below) |
+| `error` | Set only when `state` is `failed` (same shape as API errors) |
+| `expires_at` | When the result will be deleted (`finished_at` + `RESULT_TTL_HOURS`) |
+
+**Polling:** every 3–5 s while a user is watching; back off to 30 s otherwise. Import
+promptly — results expire.
+
+## `DELETE /v1/jobs/{id}`
+
+Cancels a `queued` or `running` job; returns the job with `state: "cancelled"`.
+Idempotent: cancelling a finished job returns it unchanged.
+
+---
+
+## Research job (`kind: "research"`) — used by Akasha
+
+**Request:**
+
+```json
+{
+  "question": "Song-dynasty tea culture",
+  "languages": ["en", "zh"],
+  "max_sources": 8,
+  "include_images": true,
+  "known_articles": [
+    {"ref": "song-dynasty/research/song-tea-bowls", "title": "Song tea bowls"}
+  ],
+  "verify": "auto"
+}
+```
+
+| Field | Rules |
+|---|---|
+| `question` | Required, 3–500 chars. The **only** text used to build search queries |
+| `languages` | Optional, default `["en"]` |
+| `max_sources` | Optional, 1–15, default 8 |
+| `include_images` | Optional, default `false` |
+| `known_articles` | Optional, ≤ 200 entries, **refs and titles only — never bodies**. Lets the worker avoid duplicates and suggest links |
+| `verify` | Optional second check on the Mac: `auto` (default — run if the verifier is up, else skip), `required` (fail with `unavailable` if it's down), `off` |
+
+**Result:**
+
+```json
+{
+  "article": {
+    "title": "Song-Dynasty Tea Culture",
+    "body": "Tea in the Northern Song was ground to powder and whisked into a froth [[cite:s1]]. ...",
+    "topic": "food",
+    "era": "Northern Song",
+    "facts": [
+      {"text": "Tea was ground to powder and whisked into a froth.",
+       "citations": [{"source": "s1", "quote": "the powdered tea was whisked in the bowl until a white froth formed"}],
+       "check": {"status": "supported"}}
+    ],
+    "links": ["song-dynasty/research/song-tea-bowls"],
+    "image_candidates": [
+      {"url": "https://…/tea-bowl.jpg", "source": "s3", "caption": "Jian ware tea bowl, Song dynasty",
+       "license": "CC0 (Met Open Access)"}
+    ]
+  },
+  "sources": [
+    {"key": "s1", "url": "https://…", "title": "…", "site": "…", "language": "en",
+     "retrieved_at": "2026-10-11T09:13:40Z",
+     "excerpts": ["the powdered tea was whisked in the bowl until a white froth formed"]}
+  ],
+  "dropped_facts": [
+    {"text": "…", "reason": "quote_not_found"},
+    {"text": "Tea bowls were always glazed white.", "reason": "unsupported"}
+  ],
+  "verification": {"status": "checked", "model": "bespoke-minicheck", "reason": null,
+                   "checked": 2, "removed": 1},
+  "model": "qwen3:30b",
+  "generated_at": "2026-10-11T09:16:22Z"
+}
+```
+
+| Rule | Detail |
+|---|---|
+| Citations | Every fact cites ≥ 1 source with a quote; the worker **verified each quote appears verbatim** in the fetched page text |
+| Second check | When the verifier runs, each fact's quotes are checked for **actual support** of the fact: `check.status` is `supported` or `partial`; unsupported facts move to `dropped_facts` with reason `unsupported`. When skipped or off, every fact is `unchecked` |
+| `verification` | `status`: `checked` \| `skipped` (verifier unavailable) \| `off`; plus the verifier model, the reason, and how many facts were checked and removed. **Akasha should show this in the inbox** so the writer knows whether a draft was second-checked |
+| `dropped_facts` | Facts that failed either check — shown to the writer for transparency, never imported as facts. Reasons: `quote_not_found`, `no_citation`, `source_unreachable` (first pass), `unsupported` (second check) |
+| Source keys | `s1`, `s2`… are local to the result. **Akasha assigns slugs** during import (deduplicating by normalized URL) and rewrites `[[cite:s1]]` tokens to `[[sources/<slug>]]` |
+| `links` | Only refs from `known_articles` |
+| Nested data | The API is nested; **flattening into Akasha's flat documents is the import module's job** |
+| Images | Candidates only — URL, source, caption, license. Importing is the writer's action |
+
+**Limits:** request ≤ 64 KB; job time limit 15 min (→ `failed`, code `timeout`).
+
+---
+
+## Review job (`kind: "review"`) — used by Logos
+
+**Request:**
+
+```json
+{
+  "chapter": {
+    "title": "Chapter 7 — The Tea House",
+    "blocks": [
+      {"id": "b1", "text": "Lin Qingyu lifted the teapot and poured…"},
+      {"id": "b2", "text": "…"}
+    ]
+  },
+  "references": [
+    {"ref": "ember-pact/characters/lin-qingyu", "kind": "canon",     "title": "Lin Qingyu", "text": "…"},
+    {"ref": "song-dynasty/research/song-tea",   "kind": "research",  "title": "Song tea",   "text": "…"},
+    {"ref": "ember-pact/deviations/qi-lanterns","kind": "deviation", "title": "Qi lanterns","text": "…"},
+    {"ref": "song-dynasty/research/watchlist",  "kind": "watchlist", "title": "Anachronism watchlist", "text": "…"}
+  ],
+  "dialect": "en-GB",
+  "checks": ["continuity", "anachronism", "prose"],
+  "verify": "auto"
+}
+```
+
+| Field | Rules |
+|---|---|
+| `chapter.blocks` | Plain text per block, with stable ids so findings anchor to the manuscript |
+| `references` | Assembled by Logos from the chapter's Akasha references (`ArticleGateway.lookup_entities`), plus deviations, the watchlist, and **only `verified` research**. `kind`: `canon` \| `research` \| `deviation` \| `watchlist` |
+| `checks` | Any of `continuity` (vs. canon), `anachronism` (vs. research + watchlist), `prose` |
+| `dialect` | Passed through, as for the rule-based advisor |
+| `verify` | Same as for research: `auto` (default), `required`, `off` |
+
+**Result:**
+
+```json
+{
+  "issues": [
+    {"check": "anachronism", "severity": "warning", "confidence": "likely",
+     "block": "b1", "quote": "lifted the teapot and poured",
+     "message": "Song-dynasty tea was powdered and whisked in bowls; steeping in teapots is a Ming-era habit.",
+     "suggestion": "Show her whisking powdered tea in a bowl.",
+     "reference": "song-dynasty/research/song-tea",
+     "verified": true}
+  ],
+  "verification": {"status": "checked", "model": "gemma3:27b", "reason": null,
+                   "checked": 3, "removed": 2},
+  "model": "qwen3:30b",
+  "generated_at": "2026-10-11T09:20:51Z"
+}
+```
+
+| Rule | Detail |
+|---|---|
+| `quote` | Must appear verbatim in the cited block — the worker drops issues whose quote it can't find |
+| Second check | When the verifier runs, each issue is re-judged against its block and reference: confirmed issues get `verified: true`; issues judged not real are **removed** (counted in `verification.removed`). When skipped or off, `verified` is `null` |
+| `verification` | Same shape as for research. Logos can show "second-checked" vs. "first pass only" in its review panel |
+| `reference` | The `ref` the issue is based on; `null` for `prose` issues |
+| Deviations | Issues contradicting a `deviation` reference are suppressed by the worker |
+| `severity` / `confidence` | `info` \| `warning`; `possible` \| `likely` |
+| Mapping | Logos maps issues onto the finding shape its `RuleBasedWritingAdvisor` already produces |
+
+**Limits:** request ≤ 1 MB; job time limit 5 min.
+

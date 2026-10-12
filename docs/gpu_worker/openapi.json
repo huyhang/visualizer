@@ -1,0 +1,1769 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GPU Box AI Worker",
+    "version": "1.0.0-draft",
+    "summary": "Async research and writing-review jobs for the visualizer stack.",
+    "description": "Runs on the RTX 3090 box and serves Akasha (research jobs) and Logos (LLM review jobs). Callers never talk to Ollama or SearXNG directly. Every job is asynchronous: submit with POST /jobs, poll GET /jobs/{job_id}. The worker never initiates connections to callers and never accepts URLs to fetch from callers. Status: proposal, not implemented. Human-readable spec: README.md beside this file."
+  },
+  "servers": [
+    {
+      "url": "https://gpubox.{tailnet}.ts.net:8443/v1",
+      "description": "Exposed over Tailscale Serve (HTTPS); reachable only from tailnet nodes allowed by ACL.",
+      "variables": {
+        "tailnet": {
+          "default": "your-tailnet",
+          "description": "Tailnet DNS name."
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "health",
+      "description": "Worker and dependency status."
+    },
+    {
+      "name": "jobs",
+      "description": "Submit, poll, and cancel research and review jobs."
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "operationId": "getHealth",
+        "summary": "Worker and dependency health",
+        "description": "Returns 200 whenever the worker process is up; `ok` reflects its dependencies. Callers should use a short timeout (~2 s) and cache the result (~30 s).",
+        "responses": {
+          "200": {
+            "description": "Health report.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                },
+                "examples": {
+                  "healthy": {
+                    "value": {
+                      "ok": true,
+                      "api_version": "1",
+                      "ollama": {
+                        "status": "up",
+                        "models": {
+                          "review": "qwen3:30b",
+                          "research": "qwen3:30b"
+                        },
+                        "loaded": []
+                      },
+                      "searxng": {
+                        "status": "up"
+                      },
+                      "gpu": {
+                        "busy": false,
+                        "vram_used_mb": 812,
+                        "vram_total_mb": 24576
+                      },
+                      "queue": {
+                        "queued": 0,
+                        "running": 0,
+                        "max": 20
+                      },
+                      "verifier": {
+                        "status": "up",
+                        "models": {
+                          "research": "bespoke-minicheck",
+                          "review": "gemma3:27b"
+                        }
+                      }
+                    }
+                  },
+                  "ollamaDown": {
+                    "value": {
+                      "ok": false,
+                      "api_version": "1",
+                      "ollama": {
+                        "status": "down",
+                        "models": {
+                          "review": "qwen3:30b",
+                          "research": "qwen3:30b"
+                        },
+                        "loaded": []
+                      },
+                      "searxng": {
+                        "status": "up"
+                      },
+                      "gpu": {
+                        "busy": false,
+                        "vram_used_mb": 412,
+                        "vram_total_mb": 24576
+                      },
+                      "queue": {
+                        "queued": 0,
+                        "running": 0,
+                        "max": 20
+                      },
+                      "verifier": {
+                        "status": "up",
+                        "models": {
+                          "research": "bespoke-minicheck",
+                          "review": "gemma3:27b"
+                        }
+                      }
+                    }
+                  },
+                  "macAsleep": {
+                    "summary": "Box healthy, verifier (the Mac) asleep — jobs run, second check is skipped",
+                    "value": {
+                      "ok": true,
+                      "api_version": "1",
+                      "ollama": {
+                        "status": "up",
+                        "models": {
+                          "review": "qwen3:30b",
+                          "research": "qwen3:30b"
+                        },
+                        "loaded": []
+                      },
+                      "searxng": {
+                        "status": "up"
+                      },
+                      "gpu": {
+                        "busy": false,
+                        "vram_used_mb": 812,
+                        "vram_total_mb": 24576
+                      },
+                      "queue": {
+                        "queued": 0,
+                        "running": 0,
+                        "max": 20
+                      },
+                      "verifier": {
+                        "status": "down",
+                        "models": {
+                          "research": "bespoke-minicheck",
+                          "review": "gemma3:27b"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/jobs": {
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "operationId": "createJob",
+        "summary": "Submit a research or review job",
+        "description": "Queues a job. Repeating a request with the same `Idempotency-Key` returns the original job with 200 instead of creating a new one; reusing a key with a different body returns 409.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobCreate"
+              },
+              "examples": {
+                "research": {
+                  "summary": "Research job from Akasha",
+                  "value": {
+                    "kind": "research",
+                    "request": {
+                      "question": "Song-dynasty tea culture",
+                      "languages": [
+                        "en",
+                        "zh"
+                      ],
+                      "max_sources": 8,
+                      "include_images": true,
+                      "known_articles": [
+                        {
+                          "ref": "song-dynasty/research/song-tea-bowls",
+                          "title": "Song tea bowls"
+                        }
+                      ],
+                      "verify": "auto"
+                    },
+                    "client": {
+                      "service": "akasha",
+                      "ref": "akasha-job-6f1c2e"
+                    }
+                  }
+                },
+                "review": {
+                  "summary": "Review job from Logos",
+                  "value": {
+                    "kind": "review",
+                    "request": {
+                      "chapter": {
+                        "title": "Chapter 7 — The Tea House",
+                        "blocks": [
+                          {
+                            "id": "b1",
+                            "text": "Lin Qingyu lifted the teapot and poured."
+                          }
+                        ]
+                      },
+                      "references": [
+                        {
+                          "ref": "song-dynasty/research/song-tea",
+                          "kind": "research",
+                          "title": "Song tea",
+                          "text": "Tea was ground to powder and whisked in bowls; teapots for steeping are a Ming-era habit."
+                        }
+                      ],
+                      "dialect": "en-GB",
+                      "checks": [
+                        "continuity",
+                        "anachronism",
+                        "prose"
+                      ],
+                      "verify": "auto"
+                    },
+                    "client": {
+                      "service": "logos",
+                      "ref": "logos-review-91ab"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Job created and queued.",
+            "headers": {
+              "Location": {
+                "description": "URL of the new job.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobEnvelope"
+                },
+                "example": {
+                  "job": {
+                    "id": "j_01J9Z3K8",
+                    "kind": "research",
+                    "state": "queued",
+                    "position": 1,
+                    "progress": null,
+                    "created_at": "2026-10-11T09:12:03Z",
+                    "started_at": null,
+                    "finished_at": null,
+                    "expires_at": null,
+                    "result": null,
+                    "error": null
+                  }
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Idempotent replay: the job originally created with this `Idempotency-Key`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/IdempotencyConflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "429": {
+            "$ref": "#/components/responses/QueueFull"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/jobs/{job_id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/JobId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "operationId": "getJob",
+        "summary": "Get job state, progress, and result",
+        "description": "Poll every 3–5 s while a user is watching; back off to 30 s otherwise. `result` is set only when `state` is `done`; `error` only when `failed`. Results are deleted at `expires_at`.",
+        "responses": {
+          "200": {
+            "description": "The job.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobEnvelope"
+                },
+                "examples": {
+                  "running": {
+                    "value": {
+                      "job": {
+                        "id": "j_01J9Z3K8",
+                        "kind": "research",
+                        "state": "running",
+                        "position": null,
+                        "progress": {
+                          "stage": "fetching",
+                          "message": "Reading 5 of 8 sources"
+                        },
+                        "created_at": "2026-10-11T09:12:03Z",
+                        "started_at": "2026-10-11T09:12:05Z",
+                        "finished_at": null,
+                        "expires_at": null,
+                        "result": null,
+                        "error": null
+                      }
+                    }
+                  },
+                  "researchDone": {
+                    "value": {
+                      "job": {
+                        "id": "j_01J9Z3K8",
+                        "kind": "research",
+                        "state": "done",
+                        "position": null,
+                        "progress": null,
+                        "created_at": "2026-10-11T09:12:03Z",
+                        "started_at": "2026-10-11T09:12:05Z",
+                        "finished_at": "2026-10-11T09:16:22Z",
+                        "expires_at": "2026-10-12T09:16:22Z",
+                        "result": {
+                          "article": {
+                            "title": "Song-Dynasty Tea Culture",
+                            "body": "Tea in the Northern Song was ground to powder and whisked into a froth [[cite:s1]].",
+                            "topic": "food",
+                            "era": "Northern Song",
+                            "facts": [
+                              {
+                                "text": "Tea was ground to powder and whisked into a froth.",
+                                "citations": [
+                                  {
+                                    "source": "s1",
+                                    "quote": "the powdered tea was whisked in the bowl until a white froth formed"
+                                  }
+                                ],
+                                "check": {
+                                  "status": "supported"
+                                }
+                              }
+                            ],
+                            "links": [
+                              "song-dynasty/research/song-tea-bowls"
+                            ],
+                            "image_candidates": [
+                              {
+                                "url": "https://example.org/tea-bowl.jpg",
+                                "source": "s1",
+                                "caption": "Jian ware tea bowl, Song dynasty",
+                                "license": "CC0 (Met Open Access)"
+                              }
+                            ]
+                          },
+                          "sources": [
+                            {
+                              "key": "s1",
+                              "url": "https://example.org/song-tea",
+                              "title": "Tea in the Song Dynasty",
+                              "site": "example.org",
+                              "language": "en",
+                              "retrieved_at": "2026-10-11T09:13:40Z",
+                              "excerpts": [
+                                "the powdered tea was whisked in the bowl until a white froth formed"
+                              ]
+                            }
+                          ],
+                          "dropped_facts": [
+                            {
+                              "text": "Tea bowls were always glazed white.",
+                              "reason": "unsupported"
+                            }
+                          ],
+                          "model": "qwen3:30b",
+                          "generated_at": "2026-10-11T09:16:22Z",
+                          "verification": {
+                            "status": "checked",
+                            "model": "bespoke-minicheck",
+                            "reason": null,
+                            "checked": 2,
+                            "removed": 1
+                          }
+                        },
+                        "error": null
+                      }
+                    }
+                  },
+                  "reviewDone": {
+                    "value": {
+                      "job": {
+                        "id": "j_01J9Z9QX",
+                        "kind": "review",
+                        "state": "done",
+                        "position": null,
+                        "progress": null,
+                        "created_at": "2026-10-11T09:20:01Z",
+                        "started_at": "2026-10-11T09:20:02Z",
+                        "finished_at": "2026-10-11T09:20:51Z",
+                        "expires_at": "2026-10-12T09:20:51Z",
+                        "result": {
+                          "issues": [
+                            {
+                              "check": "anachronism",
+                              "severity": "warning",
+                              "confidence": "likely",
+                              "block": "b1",
+                              "quote": "lifted the teapot and poured",
+                              "message": "Song-dynasty tea was powdered and whisked in bowls; steeping in teapots is a Ming-era habit.",
+                              "suggestion": "Show her whisking powdered tea in a bowl.",
+                              "reference": "song-dynasty/research/song-tea",
+                              "verified": true
+                            }
+                          ],
+                          "model": "qwen3:30b",
+                          "generated_at": "2026-10-11T09:20:51Z",
+                          "verification": {
+                            "status": "checked",
+                            "model": "gemma3:27b",
+                            "reason": null,
+                            "checked": 3,
+                            "removed": 2
+                          }
+                        },
+                        "error": null
+                      }
+                    }
+                  },
+                  "failed": {
+                    "value": {
+                      "job": {
+                        "id": "j_01J9ZA2M",
+                        "kind": "research",
+                        "state": "failed",
+                        "position": null,
+                        "progress": null,
+                        "created_at": "2026-10-11T10:00:00Z",
+                        "started_at": "2026-10-11T10:00:01Z",
+                        "finished_at": "2026-10-11T10:15:01Z",
+                        "expires_at": "2026-10-12T10:15:01Z",
+                        "result": null,
+                        "error": {
+                          "code": "timeout",
+                          "message": "Job exceeded the 15-minute limit",
+                          "retryable": true
+                        }
+                      }
+                    }
+                  },
+                  "reviewSkippedCheck": {
+                    "summary": "Review finished while the Mac was asleep — first-pass issues only",
+                    "value": {
+                      "job": {
+                        "id": "j_01J9ZB7T",
+                        "kind": "review",
+                        "state": "done",
+                        "position": null,
+                        "progress": null,
+                        "created_at": "2026-10-11T09:20:01Z",
+                        "started_at": "2026-10-11T09:20:02Z",
+                        "finished_at": "2026-10-11T09:20:51Z",
+                        "expires_at": "2026-10-12T09:20:51Z",
+                        "result": {
+                          "issues": [
+                            {
+                              "check": "anachronism",
+                              "severity": "warning",
+                              "confidence": "likely",
+                              "block": "b1",
+                              "quote": "lifted the teapot and poured",
+                              "message": "Song-dynasty tea was powdered and whisked in bowls; steeping in teapots is a Ming-era habit.",
+                              "suggestion": "Show her whisking powdered tea in a bowl.",
+                              "reference": "song-dynasty/research/song-tea",
+                              "verified": null
+                            }
+                          ],
+                          "model": "qwen3:30b",
+                          "generated_at": "2026-10-11T09:20:51Z",
+                          "verification": {
+                            "status": "skipped",
+                            "model": null,
+                            "reason": "verifier_unavailable",
+                            "checked": 0,
+                            "removed": 0
+                          }
+                        },
+                        "error": null
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "jobs"
+        ],
+        "operationId": "cancelJob",
+        "summary": "Cancel a job",
+        "description": "Cancels a `queued` or `running` job. Idempotent: cancelling a finished job returns it unchanged.",
+        "responses": {
+          "200": {
+            "description": "The job after cancellation (or unchanged if already finished).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Shared secret (`WORKER_TOKEN`), configured on the worker and in the visualizer's `docker/.env` as `GPU_WORKER_TOKEN`."
+      }
+    },
+    "parameters": {
+      "JobId": {
+        "name": "job_id",
+        "in": "path",
+        "required": true,
+        "description": "Worker job id.",
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      },
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "description": "Caller-chosen key (Akasha/Logos use their own job id). Strongly recommended so retries after network errors don't create duplicate jobs.",
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "responses": {
+      "InvalidRequest": {
+        "description": "Schema violation.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "invalid_request",
+                "message": "request.question must be at least 3 characters",
+                "retryable": false
+              }
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing or invalid bearer token.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "unauthorized",
+                "message": "Invalid token",
+                "retryable": false
+              }
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Unknown or expired job.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "not_found",
+                "message": "No job j_01J9Z3K8",
+                "retryable": false
+              }
+            }
+          }
+        }
+      },
+      "IdempotencyConflict": {
+        "description": "`Idempotency-Key` reused with a different request body.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "idempotency_conflict",
+                "message": "Key already used for a different request",
+                "retryable": false
+              }
+            }
+          }
+        }
+      },
+      "PayloadTooLarge": {
+        "description": "Request exceeds the size limit (research 64 KB, review 1 MB).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "payload_too_large",
+                "message": "Review requests are limited to 1 MB",
+                "retryable": false
+              }
+            }
+          }
+        }
+      },
+      "QueueFull": {
+        "description": "The queue is at its maximum size.",
+        "headers": {
+          "Retry-After": {
+            "description": "Seconds to wait before retrying.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "queue_full",
+                "message": "20 jobs already queued",
+                "retryable": true
+              }
+            }
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "A dependency needed for this job kind is down (the message says which).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "unavailable",
+                "message": "Ollama is not responding",
+                "retryable": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/Error"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "retryable"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "API errors: invalid_request, unauthorized, not_found, idempotency_conflict, payload_too_large, queue_full, unavailable. Job failures (in Job.error): timeout, unavailable, no_sources, internal.",
+            "enum": [
+              "invalid_request",
+              "unauthorized",
+              "not_found",
+              "idempotency_conflict",
+              "payload_too_large",
+              "queue_full",
+              "unavailable",
+              "timeout",
+              "no_sources",
+              "internal"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable; never contains prose or research content."
+          },
+          "retryable": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Health": {
+        "type": "object",
+        "required": [
+          "ok",
+          "api_version",
+          "ollama",
+          "searxng",
+          "gpu",
+          "queue",
+          "verifier"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "description": "True only when Ollama and SearXNG are both up (research needs both; review needs Ollama)."
+          },
+          "api_version": {
+            "type": "string",
+            "const": "1"
+          },
+          "ollama": {
+            "type": "object",
+            "required": [
+              "status",
+              "models",
+              "loaded"
+            ],
+            "properties": {
+              "status": {
+                "$ref": "#/components/schemas/ServiceStatus"
+              },
+              "models": {
+                "type": "object",
+                "required": [
+                  "review",
+                  "research"
+                ],
+                "properties": {
+                  "review": {
+                    "type": "string"
+                  },
+                  "research": {
+                    "type": "string"
+                  }
+                }
+              },
+              "loaded": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Models currently in VRAM. Empty means the first job pays a ~10–30 s load."
+              }
+            }
+          },
+          "searxng": {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "$ref": "#/components/schemas/ServiceStatus"
+              }
+            }
+          },
+          "gpu": {
+            "type": "object",
+            "required": [
+              "busy",
+              "vram_used_mb",
+              "vram_total_mb"
+            ],
+            "properties": {
+              "busy": {
+                "type": "boolean",
+                "description": "True when another process (e.g. ComfyUI) holds most of the VRAM."
+              },
+              "vram_used_mb": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              },
+              "vram_total_mb": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              }
+            }
+          },
+          "queue": {
+            "type": "object",
+            "required": [
+              "queued",
+              "running",
+              "max"
+            ],
+            "properties": {
+              "queued": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "running": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "max": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "verifier": {
+            "type": "object",
+            "required": [
+              "status",
+              "models"
+            ],
+            "description": "The optional second-check machine. Does not affect `ok` — research and review still run without it (unless a job sets verify=required).",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "up",
+                  "down",
+                  "not_configured"
+                ]
+              },
+              "models": {
+                "type": "object",
+                "properties": {
+                  "research": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "review": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "ServiceStatus": {
+        "type": "string",
+        "enum": [
+          "up",
+          "down"
+        ]
+      },
+      "JobKind": {
+        "type": "string",
+        "enum": [
+          "research",
+          "review"
+        ]
+      },
+      "JobState": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "done",
+          "failed",
+          "cancelled"
+        ],
+        "description": "queued → running → done | failed | cancelled."
+      },
+      "Client": {
+        "type": "object",
+        "required": [
+          "service",
+          "ref"
+        ],
+        "additionalProperties": false,
+        "description": "Who submitted the job. No usernames or other personal data.",
+        "properties": {
+          "service": {
+            "type": "string",
+            "enum": [
+              "akasha",
+              "logos"
+            ]
+          },
+          "ref": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's own job id (also sent as Idempotency-Key)."
+          }
+        }
+      },
+      "JobCreate": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/ResearchJobCreate"
+          },
+          {
+            "$ref": "#/components/schemas/ReviewJobCreate"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "kind",
+          "mapping": {
+            "research": "#/components/schemas/ResearchJobCreate",
+            "review": "#/components/schemas/ReviewJobCreate"
+          }
+        }
+      },
+      "ResearchJobCreate": {
+        "type": "object",
+        "required": [
+          "kind",
+          "request",
+          "client"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "research"
+          },
+          "request": {
+            "$ref": "#/components/schemas/ResearchRequest"
+          },
+          "client": {
+            "$ref": "#/components/schemas/Client"
+          }
+        }
+      },
+      "ReviewJobCreate": {
+        "type": "object",
+        "required": [
+          "kind",
+          "request",
+          "client"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "review"
+          },
+          "request": {
+            "$ref": "#/components/schemas/ReviewRequest"
+          },
+          "client": {
+            "$ref": "#/components/schemas/Client"
+          }
+        }
+      },
+      "ArticleRef": {
+        "type": "string",
+        "description": "Fully-qualified Akasha reference: database/collection/document.",
+        "pattern": "^[^/\\s]+/[^/\\s]+/[^/\\s]+$",
+        "examples": [
+          "song-dynasty/research/song-tea-bowls"
+        ]
+      },
+      "ResearchRequest": {
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "question": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 500,
+            "description": "The only text used to build search queries — never canon or manuscript text."
+          },
+          "languages": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z]{2}(-[A-Z]{2})?$"
+            },
+            "minItems": 1,
+            "maxItems": 5,
+            "uniqueItems": true,
+            "default": [
+              "en"
+            ]
+          },
+          "max_sources": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 15,
+            "default": 8
+          },
+          "include_images": {
+            "type": "boolean",
+            "default": false
+          },
+          "known_articles": {
+            "type": "array",
+            "maxItems": 200,
+            "description": "Existing articles (refs and titles only — never bodies) so the worker can avoid duplicates and suggest links.",
+            "items": {
+              "type": "object",
+              "required": [
+                "ref",
+                "title"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "ref": {
+                  "$ref": "#/components/schemas/ArticleRef"
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 300
+                }
+              }
+            }
+          },
+          "verify": {
+            "$ref": "#/components/schemas/VerifyMode"
+          }
+        }
+      },
+      "ReviewRequest": {
+        "type": "object",
+        "required": [
+          "chapter",
+          "references"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "chapter": {
+            "type": "object",
+            "required": [
+              "title",
+              "blocks"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "title": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "blocks": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 5000,
+                "description": "Plain text per block, with stable ids so findings anchor to the manuscript.",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "text"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "references": {
+            "type": "array",
+            "maxItems": 200,
+            "description": "Assembled by Logos: the chapter's Akasha references, deviations, the anachronism watchlist, and only verified research.",
+            "items": {
+              "$ref": "#/components/schemas/ReviewReference"
+            }
+          },
+          "dialect": {
+            "type": "string",
+            "enum": [
+              "en-US",
+              "en-GB"
+            ],
+            "default": "en-US"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "continuity",
+                "anachronism",
+                "prose"
+              ]
+            },
+            "minItems": 1,
+            "uniqueItems": true,
+            "default": [
+              "continuity",
+              "anachronism",
+              "prose"
+            ]
+          },
+          "verify": {
+            "$ref": "#/components/schemas/VerifyMode"
+          }
+        }
+      },
+      "ReviewReference": {
+        "type": "object",
+        "required": [
+          "ref",
+          "kind",
+          "title",
+          "text"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "ref": {
+            "$ref": "#/components/schemas/ArticleRef"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "canon",
+              "research",
+              "deviation",
+              "watchlist"
+            ],
+            "description": "Issues contradicting a `deviation` reference are suppressed."
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "JobEnvelope": {
+        "type": "object",
+        "required": [
+          "job"
+        ],
+        "properties": {
+          "job": {
+            "$ref": "#/components/schemas/Job"
+          }
+        }
+      },
+      "Job": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "state",
+          "position",
+          "progress",
+          "created_at",
+          "started_at",
+          "finished_at",
+          "expires_at",
+          "result",
+          "error"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/JobKind"
+          },
+          "state": {
+            "$ref": "#/components/schemas/JobState"
+          },
+          "position": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "Queue position while `queued`; otherwise null."
+          },
+          "progress": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Progress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the result is deleted (finished_at + RESULT_TTL_HOURS)."
+          },
+          "result": {
+            "description": "Set only when `state` is `done`. Shape depends on `kind`.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ResearchResult"
+              },
+              {
+                "$ref": "#/components/schemas/ReviewResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "description": "Set only when `state` is `failed`.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Error"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "Progress": {
+        "type": "object",
+        "required": [
+          "stage"
+        ],
+        "properties": {
+          "stage": {
+            "type": "string",
+            "description": "Research: loading_model, planning, searching, fetching, extracting, verifying, writing, second_check. Review: loading_model, reviewing, second_check. second_check appears only when the optional verifier runs.",
+            "enum": [
+              "loading_model",
+              "planning",
+              "searching",
+              "fetching",
+              "extracting",
+              "verifying",
+              "writing",
+              "reviewing",
+              "second_check"
+            ]
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ResearchResult": {
+        "type": "object",
+        "required": [
+          "article",
+          "sources",
+          "dropped_facts",
+          "verification",
+          "model",
+          "generated_at"
+        ],
+        "description": "Nested by design; flattening into Akasha's flat documents is the import module's job.",
+        "properties": {
+          "article": {
+            "$ref": "#/components/schemas/ResearchArticle"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Source"
+            }
+          },
+          "dropped_facts": {
+            "type": "array",
+            "description": "Facts that failed verification — shown to the writer, never imported as facts.",
+            "items": {
+              "type": "object",
+              "required": [
+                "text",
+                "reason"
+              ],
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "quote_not_found",
+                    "no_citation",
+                    "source_unreachable",
+                    "unsupported"
+                  ],
+                  "description": "quote_not_found / no_citation / source_unreachable: first-pass checks on the box. unsupported: the second check judged the quotes don't support the fact."
+                }
+              }
+            }
+          },
+          "model": {
+            "type": "string"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "verification": {
+            "$ref": "#/components/schemas/Verification"
+          }
+        }
+      },
+      "ResearchArticle": {
+        "type": "object",
+        "required": [
+          "title",
+          "body",
+          "facts",
+          "links",
+          "image_candidates"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string",
+            "description": "Wikitext. Citations appear as `[[cite:<source key>]]` tokens, which Akasha rewrites to `[[sources/<slug>]]` on import."
+          },
+          "topic": {
+            "type": "string"
+          },
+          "era": {
+            "type": "string"
+          },
+          "facts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Fact"
+            }
+          },
+          "links": {
+            "type": "array",
+            "description": "Only refs from the request's `known_articles`.",
+            "items": {
+              "$ref": "#/components/schemas/ArticleRef"
+            }
+          },
+          "image_candidates": {
+            "type": "array",
+            "description": "Candidates only; importing is the writer's action. Empty unless `include_images` was true.",
+            "items": {
+              "$ref": "#/components/schemas/ImageCandidate"
+            }
+          }
+        }
+      },
+      "Fact": {
+        "type": "object",
+        "required": [
+          "text",
+          "citations",
+          "check"
+        ],
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "citations": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/Citation"
+            }
+          },
+          "check": {
+            "$ref": "#/components/schemas/FactCheck"
+          }
+        }
+      },
+      "Citation": {
+        "type": "object",
+        "required": [
+          "source",
+          "quote"
+        ],
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "A `key` from `sources`."
+          },
+          "quote": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Verified by the worker to appear verbatim in the fetched page text."
+          }
+        }
+      },
+      "ImageCandidate": {
+        "type": "object",
+        "required": [
+          "url",
+          "source",
+          "caption",
+          "license"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "source": {
+            "type": "string",
+            "description": "A `key` from `sources`."
+          },
+          "caption": {
+            "type": "string"
+          },
+          "license": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "License as stated by the source; null if unknown."
+          }
+        }
+      },
+      "Source": {
+        "type": "object",
+        "required": [
+          "key",
+          "url",
+          "title",
+          "site",
+          "language",
+          "retrieved_at",
+          "excerpts"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^s[0-9]+$",
+            "description": "Local to this result (s1, s2, …). Akasha assigns slugs on import, deduplicating by normalized URL."
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "title": {
+            "type": "string"
+          },
+          "site": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "retrieved_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "excerpts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Short verbatim passages supporting the article's facts — not full page copies."
+          }
+        }
+      },
+      "ReviewResult": {
+        "type": "object",
+        "required": [
+          "issues",
+          "verification",
+          "model",
+          "generated_at"
+        ],
+        "properties": {
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewIssue"
+            }
+          },
+          "model": {
+            "type": "string"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "verification": {
+            "$ref": "#/components/schemas/Verification"
+          }
+        }
+      },
+      "ReviewIssue": {
+        "type": "object",
+        "required": [
+          "check",
+          "severity",
+          "confidence",
+          "block",
+          "quote",
+          "message",
+          "suggestion",
+          "reference",
+          "verified"
+        ],
+        "description": "Logos maps these onto the finding shape its RuleBasedWritingAdvisor already produces.",
+        "properties": {
+          "check": {
+            "type": "string",
+            "enum": [
+              "continuity",
+              "anachronism",
+              "prose"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "info",
+              "warning"
+            ]
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "possible",
+              "likely"
+            ]
+          },
+          "block": {
+            "type": "string",
+            "description": "Id of the block the issue anchors to."
+          },
+          "quote": {
+            "type": "string",
+            "description": "Appears verbatim in the block; the worker drops issues whose quote it can't find."
+          },
+          "message": {
+            "type": "string"
+          },
+          "suggestion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reference": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ArticleRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The reference the issue is based on; null for prose issues."
+          },
+          "verified": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "true: the second check confirmed the issue. null: not second-checked (verification skipped or off). Issues judged not real are removed, not returned as false."
+          }
+        }
+      },
+      "VerifyMode": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "required",
+          "off"
+        ],
+        "default": "auto",
+        "description": "Optional second check on another machine (e.g. the M1 Max). auto: run it when the verifier is healthy, otherwise skip. required: fail the job with `unavailable` if the verifier is down. off: never run it."
+      },
+      "Verification": {
+        "type": "object",
+        "required": [
+          "status",
+          "model",
+          "reason",
+          "checked",
+          "removed"
+        ],
+        "description": "Outcome of the optional second check.",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "checked",
+              "skipped",
+              "off"
+            ],
+            "description": "checked: every item was second-checked. skipped: the verifier was unavailable (verify=auto) — results are first-pass only. off: the caller set verify=off or no verifier is configured."
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Verifier model, e.g. bespoke-minicheck; null unless checked."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "verifier_unavailable",
+              "not_configured",
+              "caller_off",
+              null
+            ],
+            "description": "Why the check was skipped or off; null when checked."
+          },
+          "checked": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Items (facts or issues) second-checked."
+          },
+          "removed": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Items removed by the check (research: moved to dropped_facts as unsupported; review: issues judged not real)."
+          }
+        }
+      },
+      "FactCheck": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "supported",
+              "partial",
+              "unchecked"
+            ],
+            "description": "Second-check verdict on whether the cited quotes support the fact. Unsupported facts are moved to dropped_facts. unchecked when verification was skipped or off."
+          }
+        }
+      }
+    }
+  }
+}

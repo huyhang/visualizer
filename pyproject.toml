@@ -44,7 +44,11 @@ build-backend = "setuptools.build_meta"
 line-length = 88
 
 [tool.pytest.ini_options]
-testpaths = ["tests/akasha", "tests/chronos", "tests/prithvi", "tests/logos"]
+testpaths = [
+    "tests/akasha", "tests/chronos", "tests/prithvi", "tests/logos",
+    # The GPU-box worker's contract and the stack's client for it.
+    "tests/gpubox",
+]
 # `src` is on the path for package imports. `tests/akasha` stays a
 # non-package dir so its historical bare `from conftest import ...` keeps working.
 # Every other service suite is a package (they have `__init__.py`), so their
