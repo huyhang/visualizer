@@ -20,7 +20,6 @@ Browser GUI (server-rendered): ``/login``, ``/register``, ``/`` (home) and
 """
 
 from collections.abc import Callable
-from dataclasses import replace
 
 from flask import Flask, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
@@ -30,7 +29,6 @@ from werkzeug.security import generate_password_hash
 from visualizer import sharing
 from visualizer.auth import (
     ALL_PERMS,
-    DELETE,
     READ,
     REGISTRATION_MODES,
     ROLE_PERMS,
@@ -45,7 +43,6 @@ from visualizer.auth import (
     generate_temp_password,
     init_login,
     is_allowed,
-    perm_for_method,
     register_auth_routes,
     register_service_links,
     validate_email,
@@ -55,6 +52,15 @@ from visualizer.observability import Observability
 from visualizer.observability.page import register_observability_page
 from visualizer.shared_assets import register_shared_assets
 
+from .access import (
+    authorize,
+    claim_unowned_world,
+    filter_readable,
+    kind_for,
+    require_owner,
+    revoke_scope,
+    scope_for,
+)
 from .browsing import (
     DEFAULT_PER_PAGE,
     browse_articles,
@@ -77,14 +83,20 @@ from .history import find_snapshot, history_meta
 from .labels import derive_title
 from .media_routes import register_media_routes
 from .media_service import MediaService
-from .routing import flag_arg, reject_reserved
+from .routing import (
+    COLLECTION_ROUTE,
+    DOC_ROUTE,
+    SEARCH_ROUTE,
+    document_response,
+    expected_rev,
+    flag_arg,
+    int_arg,
+    reject_reserved,
+)
+from .share_kinds import ACCOUNT_KINDS, account_kinds
 from .store import DocumentStore
 from .terms import TERMS
 from .validation import validate_document, validate_search_terms
-
-_COLLECTION_ROUTE = "/databases/<database>/collections/<collection>"
-_DOC_ROUTE = "/databases/<database>/collections/<collection>/documents/<doc_id>"
-_SEARCH_ROUTE = "/databases/<database>/collections/<collection>/search"
 
 # Per-IP limit for the self-service account endpoints. Looser than the auth
 # limit (login/register) -- these are for a logged-in user tidying their own
@@ -154,7 +166,7 @@ def create_app(
     # The account page lists things from both services, so it reaches them all
     # through one uniform family on this origin. See ``visualizer.sharing``.
     sharing.register_account_sharing_routes(
-        app, auth_store, csrf, _account_kinds(book_world)
+        app, auth_store, csrf, account_kinds(book_world)
     )
     _register_account_routes(app, auth_store, csrf, limiter)
     _register_admin_routes(
@@ -169,142 +181,6 @@ def create_app(
     return app
 
 
-# Akasha's three shareable kinds, tightened from the neutral descriptors: the
-# writer-facing words from ``terms.py``, and the guard that keeps the reserved
-# `_auth` / `_chronos` namespaces unshareable. The chronos two are taken as they
-# come -- akasha needs them to *list* a book on the account page, and a grant is
-# all that takes, so nothing here imports chronos.
-AKASHA_WORLD = replace(
-    sharing.WORLD,
-    label=TERMS["database"]["One"], plural=TERMS["database"]["Many"],
-    guard=lambda scope: reject_reserved(scope["database"]),
-)
-AKASHA_COLLECTION = replace(
-    sharing.COLLECTION,
-    label=TERMS["collection"]["One"], plural=TERMS["collection"]["Many"],
-    guard=lambda scope: reject_reserved(scope["database"]),
-)
-AKASHA_ARTICLE = replace(
-    sharing.ARTICLE,
-    label=TERMS["document"]["One"], plural=TERMS["document"]["Many"],
-    guard=lambda scope: reject_reserved(scope["database"]),
-)
-# The order the account page shows them in: this writer's own world first, then
-# what they have built on top of it.
-ACCOUNT_KINDS = (
-    AKASHA_WORLD, AKASHA_COLLECTION, AKASHA_ARTICLE, sharing.BOOK, sharing.CALENDAR
-)
-
-
-def _account_kinds(book_world) -> tuple:
-    """The shareable kinds, with the book taught to bring its world along.
-
-    The same cascade Chronos hangs on its own collaborator route, so the two
-    spellings of "share this book" cannot drift apart -- which they did, once,
-    and the account page is the spelling people actually use.
-    """
-    if book_world is None:
-        return ACCOUNT_KINDS
-    cascade = sharing.world_reader_cascade(book_world)
-    return tuple(
-        replace(kind, after_share=cascade) if kind is sharing.BOOK else kind
-        for kind in ACCOUNT_KINDS
-    )
-
-
-def _claim_unowned_world(auth_store: AuthStore, username: str, database: str) -> None:
-    """Whoever brings a world into being owns it, the same as a collection.
-
-    A world exists once something is created in it, so its first collection is
-    the moment there is anything to own. Only the *first*: a writer adding a
-    category to somebody else's world takes only that category, which is why
-    this looks for an existing owner before claiming anything.
-
-    Without this nobody would hold world scope, and the ``world`` kind would be
-    a resource with no owner entitled to share it -- which is exactly why the
-    kind did not exist before. Prithvi reads maps against this grant, so it is
-    also what lets a writer put a map in a world they made.
-    """
-    already_owned = any(
-        DELETE in (grant.get("perms") or ())
-        for grant in auth_store.grants_on(database, None, None)
-    )
-    if not already_owned:
-        auth_store.grant_owner(username, database, None, None, list(ALL_PERMS))
-
-
-def _require_owner(auth_store: AuthStore, database, collection, doc_id=None) -> None:
-    """Only a resource's owner may manage who else can access it.
-
-    Ownership is holding ``delete`` at the resource's scope -- which the creator
-    gets automatically, and which a collection owner also holds over the
-    documents beneath it. The admin role does *not* confer this: content access
-    (and who may share it) follows ownership, not the admin console.
-    """
-    sharing.require_owner(
-        auth_store, _kind_for(collection, doc_id),
-        _scope(database, collection, doc_id), current_user.username,
-    )
-
-
-def _authorize(auth_store: AuthStore, method: str, database, collection, doc_id=None) -> None:
-    """Raise ``Forbidden`` unless the current user may perform ``method`` here.
-
-    Everyone -- including admins -- must hold the matching permission
-    (read/write/delete) at some scope covering the resource. The admin role
-    governs *account and access management* (the ``/admin`` console), not content
-    access: an admin sees another user's content only where explicitly granted.
-    """
-    reject_reserved(database)
-    perm = perm_for_method(method)
-    grants = auth_store.grants_for(current_user.username)
-    if not is_allowed(grants, perm, database, collection, doc_id):
-        raise Forbidden(
-            f"You do not have '{perm}' permission on this resource."
-        )
-
-
-def _revoke_scope(auth_store: AuthStore, database, collection) -> None:
-    """Drop every grant naming exactly this collection.
-
-    Called when the collection itself goes, so a namespace that no longer exists
-    stops being offered for sharing on its owners' account pages.
-    """
-    for grant in auth_store.grants_on(database, collection, None):
-        auth_store.delete_grant(grant["id"])
-
-
-def _expected_rev() -> int | None:
-    """Parse the optimistic-concurrency precondition the client sent, if any.
-
-    Accepts an ``If-Match`` header (an ETag such as ``"5"``, or ``*`` for an
-    unconditional write) or a ``_rev`` query param. Returns the expected
-    revision as an int, or ``None`` for an unconditional write. The browser
-    editor always sends one; raw API callers may omit it.
-    """
-    raw = request.headers.get("If-Match")
-    if raw is None:
-        raw = request.args.get("_rev")
-    if raw is None:
-        return None
-    raw = raw.strip().strip('"')
-    if raw in ("", "*"):
-        return None
-    try:
-        return int(raw)
-    except ValueError:
-        raise InvalidRevision(f"Invalid If-Match/_rev precondition: {raw!r}.")
-
-
-def _document_response(result: dict, status: int = 200):
-    """JSON-encode a document result and expose its rev as an ``ETag`` header."""
-    response = jsonify(result)
-    response.status_code = status
-    if "rev" in result:
-        response.headers["ETag"] = f'"{result["rev"]}"'
-    return response
-
-
 def _register_routes(app: Flask, store: DocumentStore, auth_store: AuthStore, csrf) -> None:
     @app.get("/health")
     @csrf.exempt
@@ -317,7 +193,7 @@ def _register_routes(app: Flask, store: DocumentStore, auth_store: AuthStore, cs
         # The single-page article editor replaces the old server-rendered home.
         return render_template("editor.html")
 
-    @app.post(_COLLECTION_ROUTE)
+    @app.post(COLLECTION_ROUTE)
     @csrf.exempt
     @login_required
     def create_collection(database, collection):
@@ -327,10 +203,10 @@ def _register_routes(app: Flask, store: DocumentStore, auth_store: AuthStore, cs
         auth_store.grant_owner(
             current_user.username, database, collection, None, list(ALL_PERMS)
         )
-        _claim_unowned_world(auth_store, current_user.username, database)
+        claim_unowned_world(auth_store, current_user.username, database)
         return jsonify(result), 201
 
-    @app.delete(_COLLECTION_ROUTE)
+    @app.delete(COLLECTION_ROUTE)
     @csrf.exempt
     @login_required
     def delete_collection(database, collection):
@@ -345,11 +221,11 @@ def _register_routes(app: Flask, store: DocumentStore, auth_store: AuthStore, cs
         longer exists stops haunting its owners' account pages.
         """
         reject_reserved(database)
-        _require_owner(auth_store, database, collection, None)
+        require_owner(auth_store, database, collection, None)
         result = store.delete_collection(
             database, collection, purge_history=flag_arg("purge")
         )
-        _revoke_scope(auth_store, database, collection)
+        revoke_scope(auth_store, database, collection)
         return jsonify({"database": database, "collection": collection, **result})
 
     @app.delete("/databases/<database>")
@@ -367,11 +243,11 @@ def _register_routes(app: Flask, store: DocumentStore, auth_store: AuthStore, cs
         store.delete_database(database)
         return "", 204
 
-    @app.post(_DOC_ROUTE)
+    @app.post(DOC_ROUTE)
     @csrf.exempt
     @login_required
     def create(database, collection, doc_id):
-        _authorize(auth_store, "POST", database, collection, doc_id)
+        authorize(auth_store, "POST", database, collection, doc_id)
         document = validate_document(request.get_json(silent=True))
         result = store.create(
             database, collection, doc_id, document, author=current_user.username
@@ -380,46 +256,46 @@ def _register_routes(app: Flask, store: DocumentStore, auth_store: AuthStore, cs
         auth_store.grant_owner(
             current_user.username, database, collection, doc_id, list(ALL_PERMS)
         )
-        return _document_response(result, 201)
+        return document_response(result, 201)
 
-    @app.get(_DOC_ROUTE)
+    @app.get(DOC_ROUTE)
     @csrf.exempt
     @login_required
     def get(database, collection, doc_id):
-        _authorize(auth_store, "GET", database, collection, doc_id)
-        return _document_response(store.get(database, collection, doc_id))
+        authorize(auth_store, "GET", database, collection, doc_id)
+        return document_response(store.get(database, collection, doc_id))
 
-    @app.put(_DOC_ROUTE)
+    @app.put(DOC_ROUTE)
     @csrf.exempt
     @login_required
     def update(database, collection, doc_id):
-        _authorize(auth_store, "PUT", database, collection, doc_id)
+        authorize(auth_store, "PUT", database, collection, doc_id)
         document = validate_document(request.get_json(silent=True))
         result = store.update(
             database,
             collection,
             doc_id,
             document,
-            expected_rev=_expected_rev(),
+            expected_rev=expected_rev(),
             author=current_user.username,
         )
-        return _document_response(result)
+        return document_response(result)
 
-    @app.delete(_DOC_ROUTE)
+    @app.delete(DOC_ROUTE)
     @csrf.exempt
     @login_required
     def delete(database, collection, doc_id):
-        _authorize(auth_store, "DELETE", database, collection, doc_id)
+        authorize(auth_store, "DELETE", database, collection, doc_id)
         store.delete(
             database,
             collection,
             doc_id,
-            expected_rev=_expected_rev(),
+            expected_rev=expected_rev(),
             author=current_user.username,
         )
         return "", 204
 
-    @app.get(_SEARCH_ROUTE)
+    @app.get(SEARCH_ROUTE)
     @csrf.exempt
     @login_required
     def search(database, collection):
@@ -428,18 +304,8 @@ def _register_routes(app: Flask, store: DocumentStore, auth_store: AuthStore, cs
             request.args.get("key"), request.args.get("text")
         )
         results = store.search(database, collection, key=key, text=text)
-        results = _filter_readable(auth_store, database, collection, results)
+        results = filter_readable(auth_store, database, collection, results)
         return jsonify({"results": results, "count": len(results)})
-
-
-def _filter_readable(auth_store: AuthStore, database, collection, results):
-    """Drop search results the current user is not allowed to read."""
-    grants = auth_store.grants_for(current_user.username)
-    return [
-        r
-        for r in results
-        if is_allowed(grants, "read", database, collection, r["id"])
-    ]
 
 
 _SUGGEST_LIMIT = 12
@@ -507,8 +373,8 @@ def _register_browse_routes(app: Flask, store: DocumentStore, auth_store: AuthSt
         page = browse_articles(
             rows,
             request.args.get("filter", ""),
-            _int_arg("page", 1),
-            _int_arg("per_page", DEFAULT_PER_PAGE),
+            int_arg("page", 1),
+            int_arg("per_page", DEFAULT_PER_PAGE),
             # `match=name` narrows the filter to what an article is *called*.
             # The sidebar asks for it: it has no room to show why a body match
             # matched, and "king" hitting half the world is not a shortlist.
@@ -535,7 +401,7 @@ def _register_browse_routes(app: Flask, store: DocumentStore, auth_store: AuthSt
             }
         )
 
-    @app.get(_COLLECTION_ROUTE + "/deleted")
+    @app.get(COLLECTION_ROUTE + "/deleted")
     @csrf.exempt
     @login_required
     def list_deleted_documents(database, collection):
@@ -576,7 +442,7 @@ def _register_browse_routes(app: Flask, store: DocumentStore, auth_store: AuthSt
         once per visit to the home view rather than once per keystroke, which is
         what makes it affordable at the scale this runs.
         """
-        limit = max(1, min(_int_arg("limit", _RECENT_DEFAULT), _RECENT_MAX))
+        limit = max(1, min(int_arg("limit", _RECENT_DEFAULT), _RECENT_MAX))
         grants = auth_store.grants_for(current_user.username)
         rows = [
             row
@@ -598,18 +464,6 @@ def _register_browse_routes(app: Flask, store: DocumentStore, auth_store: AuthSt
         matches = _gather_suggestions(store, grants, query)
         ranked = rank_suggestions(matches, current_db, current_col)
         return jsonify({"suggestions": ranked[:_SUGGEST_LIMIT]})
-
-
-def _int_arg(name: str, default: int) -> int:
-    """A positive integer query param, falling back rather than 400-ing.
-
-    A malformed ``?page=`` comes from a hand-edited URL, not from a bug worth
-    interrupting someone's browsing over.
-    """
-    try:
-        return int(request.args.get(name, ""))
-    except ValueError:
-        return default
 
 
 def _field_values(body: dict) -> list[str]:
@@ -725,27 +579,27 @@ def _gather_suggestions(store: DocumentStore, grants, query: str) -> list[dict]:
 def _register_version_routes(app: Flask, store: DocumentStore, auth_store: AuthStore, csrf) -> None:
     """Read-only version history + diff, and restore (a new revision)."""
 
-    @app.get(_DOC_ROUTE + "/versions")
+    @app.get(DOC_ROUTE + "/versions")
     @csrf.exempt
     @login_required
     def list_versions(database, collection, doc_id):
-        _authorize(auth_store, "GET", database, collection, doc_id)
+        authorize(auth_store, "GET", database, collection, doc_id)
         history = store.history(database, collection, doc_id)
         return jsonify({"id": doc_id, "versions": history_meta(history)})
 
-    @app.get(_DOC_ROUTE + "/versions/<int:rev>")
+    @app.get(DOC_ROUTE + "/versions/<int:rev>")
     @csrf.exempt
     @login_required
     def get_version(database, collection, doc_id, rev):
-        _authorize(auth_store, "GET", database, collection, doc_id)
+        authorize(auth_store, "GET", database, collection, doc_id)
         snapshot = _require_snapshot(store, database, collection, doc_id, rev)
         return jsonify(snapshot)
 
-    @app.get(_DOC_ROUTE + "/diff")
+    @app.get(DOC_ROUTE + "/diff")
     @csrf.exempt
     @login_required
     def diff_versions(database, collection, doc_id):
-        _authorize(auth_store, "GET", database, collection, doc_id)
+        authorize(auth_store, "GET", database, collection, doc_id)
         from_rev, to_rev = _parse_diff_revs(request.args)
         older = _require_snapshot(store, database, collection, doc_id, from_rev)
         newer = _require_snapshot(store, database, collection, doc_id, to_rev)
@@ -758,18 +612,18 @@ def _register_version_routes(app: Flask, store: DocumentStore, auth_store: AuthS
             }
         )
 
-    @app.post(_DOC_ROUTE + "/restore/<int:rev>")
+    @app.post(DOC_ROUTE + "/restore/<int:rev>")
     @csrf.exempt
     @login_required
     def restore_version(database, collection, doc_id, rev):
-        _authorize(auth_store, "PUT", database, collection, doc_id)
+        authorize(auth_store, "PUT", database, collection, doc_id)
         snapshot = _require_snapshot(store, database, collection, doc_id, rev)
         if snapshot["document"] is None:
             raise VersionNotFound(
                 f"Version {rev} of '{doc_id}' is a deletion and cannot be restored."
             )
         result = _restore_body(store, database, collection, doc_id, snapshot["document"])
-        return _document_response(result)
+        return document_response(result)
 
 
 def _require_snapshot(store: DocumentStore, database, collection, doc_id, rev) -> dict:
@@ -831,24 +685,9 @@ def _render_admin(auth_store: AuthStore, selected=None, new_credential=None):
 # -- owner-driven sharing ----------------------------------------------------
 
 
-def _is_owner(auth_store: AuthStore, database, collection, doc_id=None) -> bool:
-    """Whether the current user owns (holds ``delete`` on) this resource."""
-    grants = auth_store.grants_for(current_user.username)
-    return is_allowed(grants, DELETE, database, collection, doc_id)
-
-
-def _kind_for(collection, doc_id):
-    """Which shareable kind a collection/document scope names."""
-    return AKASHA_ARTICLE if doc_id is not None else AKASHA_COLLECTION
-
-
-def _scope(database, collection, doc_id):
-    return {"database": database, "collection": collection, "doc_id": doc_id}
-
-
 def _collaborators(auth_store: AuthStore, database, collection, doc_id) -> list[dict]:
     return sharing.collaborators(
-        auth_store, _kind_for(collection, doc_id), _scope(database, collection, doc_id)
+        auth_store, kind_for(collection, doc_id), scope_for(database, collection, doc_id)
     )
 
 
@@ -858,10 +697,10 @@ def _share(auth_store: AuthStore, database, collection, doc_id, username):
     The resource-shaped spelling of the same operation the account page reaches
     through ``/account/sharing/...``; both run ``visualizer.sharing.share``.
     """
-    kind = _kind_for(collection, doc_id)
+    kind = kind_for(collection, doc_id)
     role = (request.get_json(silent=True) or {}).get("role", kind.default_role)
     return jsonify(sharing.share(
-        auth_store, kind, _scope(database, collection, doc_id), username, role,
+        auth_store, kind, scope_for(database, collection, doc_id), username, role,
         me=current_user.username,
     ))
 
@@ -869,7 +708,7 @@ def _share(auth_store: AuthStore, database, collection, doc_id, username):
 def _unshare(auth_store: AuthStore, database, collection, doc_id, username):
     """Revoke ``username``'s access to a resource the current user owns."""
     sharing.unshare(
-        auth_store, _kind_for(collection, doc_id), _scope(database, collection, doc_id),
+        auth_store, kind_for(collection, doc_id), scope_for(database, collection, doc_id),
         username, me=current_user.username,
     )
     return "", 204
@@ -882,45 +721,45 @@ def _register_sharing_routes(app: Flask, auth_store: AuthStore, csrf) -> None:
 
     _COLLAB = "/collaborators"
 
-    @app.get(_COLLECTION_ROUTE + _COLLAB)
+    @app.get(COLLECTION_ROUTE + _COLLAB)
     @csrf.exempt
     @login_required
     def list_collection_collaborators(database, collection):
         reject_reserved(database)
-        _require_owner(auth_store, database, collection, None)
+        require_owner(auth_store, database, collection, None)
         return jsonify(
             {"collaborators": _collaborators(auth_store, database, collection, None)}
         )
 
-    @app.put(_COLLECTION_ROUTE + _COLLAB + "/<username>")
+    @app.put(COLLECTION_ROUTE + _COLLAB + "/<username>")
     @csrf.exempt
     @login_required
     def add_collection_collaborator(database, collection, username):
         return _share(auth_store, database, collection, None, username)
 
-    @app.delete(_COLLECTION_ROUTE + _COLLAB + "/<username>")
+    @app.delete(COLLECTION_ROUTE + _COLLAB + "/<username>")
     @csrf.exempt
     @login_required
     def remove_collection_collaborator(database, collection, username):
         return _unshare(auth_store, database, collection, None, username)
 
-    @app.get(_DOC_ROUTE + _COLLAB)
+    @app.get(DOC_ROUTE + _COLLAB)
     @csrf.exempt
     @login_required
     def list_document_collaborators(database, collection, doc_id):
         reject_reserved(database)
-        _require_owner(auth_store, database, collection, doc_id)
+        require_owner(auth_store, database, collection, doc_id)
         return jsonify(
             {"collaborators": _collaborators(auth_store, database, collection, doc_id)}
         )
 
-    @app.put(_DOC_ROUTE + _COLLAB + "/<username>")
+    @app.put(DOC_ROUTE + _COLLAB + "/<username>")
     @csrf.exempt
     @login_required
     def add_document_collaborator(database, collection, doc_id, username):
         return _share(auth_store, database, collection, doc_id, username)
 
-    @app.delete(_DOC_ROUTE + _COLLAB + "/<username>")
+    @app.delete(DOC_ROUTE + _COLLAB + "/<username>")
     @csrf.exempt
     @login_required
     def remove_document_collaborator(database, collection, doc_id, username):
