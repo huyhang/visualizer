@@ -54,11 +54,8 @@ from visualizer.shared_assets import register_shared_assets
 
 from .access import (
     authorize,
-    claim_unowned_world,
-    filter_readable,
     kind_for,
     require_owner,
-    revoke_scope,
     scope_for,
 )
 from .browsing import (
@@ -72,6 +69,7 @@ from .browsing import (
     visible_databases,
 )
 from .diff import diff_documents
+from .document_routes import register_document_routes
 from .errors import (
     AkashaError,
     DocumentNotFound,
@@ -86,17 +84,13 @@ from .media_service import MediaService
 from .routing import (
     COLLECTION_ROUTE,
     DOC_ROUTE,
-    SEARCH_ROUTE,
     document_response,
-    expected_rev,
-    flag_arg,
     int_arg,
     reject_reserved,
 )
 from .share_kinds import ACCOUNT_KINDS, account_kinds
 from .store import DocumentStore
 from .terms import TERMS
-from .validation import validate_document, validate_search_terms
 
 # Per-IP limit for the self-service account endpoints. Looser than the auth
 # limit (login/register) -- these are for a logged-in user tidying their own
@@ -157,19 +151,19 @@ def create_app(
     app.context_processor(lambda: {"terms": TERMS})
     app.add_template_filter(derive_title, "title_of")
 
-    _register_routes(app, store, auth_store, csrf)
-    _register_browse_routes(app, store, auth_store, csrf)
-    _register_version_routes(app, store, auth_store, csrf)
+    register_document_routes(app, store, auth_store, csrf)
+    register_browse_routes(app, store, auth_store, csrf)
+    register_version_routes(app, store, auth_store, csrf)
     if media_service is not None:
         register_media_routes(app, media_service, auth_store, csrf)
-    _register_sharing_routes(app, auth_store, csrf)
+    register_collaborator_routes(app, auth_store, csrf)
     # The account page lists things from both services, so it reaches them all
     # through one uniform family on this origin. See ``visualizer.sharing``.
     sharing.register_account_sharing_routes(
         app, auth_store, csrf, account_kinds(book_world)
     )
-    _register_account_routes(app, auth_store, csrf, limiter)
-    _register_admin_routes(
+    register_account_routes(app, auth_store, csrf, limiter)
+    register_admin_routes(
         app, auth_store, user_cleanup or (lambda _user: None)
     )
     if observability is not None:
@@ -181,139 +175,12 @@ def create_app(
     return app
 
 
-def _register_routes(app: Flask, store: DocumentStore, auth_store: AuthStore, csrf) -> None:
-    @app.get("/health")
-    @csrf.exempt
-    def health():
-        return jsonify({"status": "ok"})
-
-    @app.get("/")
-    @login_required
-    def index():
-        # The single-page article editor replaces the old server-rendered home.
-        return render_template("editor.html")
-
-    @app.post(COLLECTION_ROUTE)
-    @csrf.exempt
-    @login_required
-    def create_collection(database, collection):
-        # Any authenticated user may create a namespace and owns what they make.
-        reject_reserved(database)
-        result = store.create_collection(database, collection)
-        auth_store.grant_owner(
-            current_user.username, database, collection, None, list(ALL_PERMS)
-        )
-        claim_unowned_world(auth_store, current_user.username, database)
-        return jsonify(result), 201
-
-    @app.delete(COLLECTION_ROUTE)
-    @csrf.exempt
-    @login_required
-    def delete_collection(database, collection):
-        """Drop an empty collection you own -- and its database, if it was the
-        last one in it.
-
-        Owner-only, and only while no live article is inside: this exists so a
-        namespace made by mistake can be tidied away, not as a bulk delete.
-        ``?purge=1`` additionally discards the version history of articles that
-        were deleted from it, which is the only way a collection that has ever
-        held something can go. Its grants go with it, so a namespace that no
-        longer exists stops haunting its owners' account pages.
-        """
-        reject_reserved(database)
-        require_owner(auth_store, database, collection, None)
-        result = store.delete_collection(
-            database, collection, purge_history=flag_arg("purge")
-        )
-        revoke_scope(auth_store, database, collection)
-        return jsonify({"database": database, "collection": collection, **result})
-
-    @app.delete("/databases/<database>")
-    @csrf.exempt
-    @login_required
-    def delete_database(database):
-        """Drop a database that has no collections left.
-
-        Gated on nothing but being logged in, exactly like *creating* a
-        namespace: an empty database holds nothing to protect, and emptying it
-        was already an owner-only act. This clears shells left behind by older
-        versions, which created the namespace before the article was written.
-        """
-        reject_reserved(database)
-        store.delete_database(database)
-        return "", 204
-
-    @app.post(DOC_ROUTE)
-    @csrf.exempt
-    @login_required
-    def create(database, collection, doc_id):
-        authorize(auth_store, "POST", database, collection, doc_id)
-        document = validate_document(request.get_json(silent=True))
-        result = store.create(
-            database, collection, doc_id, document, author=current_user.username
-        )
-        # The creator owns the new document outright.
-        auth_store.grant_owner(
-            current_user.username, database, collection, doc_id, list(ALL_PERMS)
-        )
-        return document_response(result, 201)
-
-    @app.get(DOC_ROUTE)
-    @csrf.exempt
-    @login_required
-    def get(database, collection, doc_id):
-        authorize(auth_store, "GET", database, collection, doc_id)
-        return document_response(store.get(database, collection, doc_id))
-
-    @app.put(DOC_ROUTE)
-    @csrf.exempt
-    @login_required
-    def update(database, collection, doc_id):
-        authorize(auth_store, "PUT", database, collection, doc_id)
-        document = validate_document(request.get_json(silent=True))
-        result = store.update(
-            database,
-            collection,
-            doc_id,
-            document,
-            expected_rev=expected_rev(),
-            author=current_user.username,
-        )
-        return document_response(result)
-
-    @app.delete(DOC_ROUTE)
-    @csrf.exempt
-    @login_required
-    def delete(database, collection, doc_id):
-        authorize(auth_store, "DELETE", database, collection, doc_id)
-        store.delete(
-            database,
-            collection,
-            doc_id,
-            expected_rev=expected_rev(),
-            author=current_user.username,
-        )
-        return "", 204
-
-    @app.get(SEARCH_ROUTE)
-    @csrf.exempt
-    @login_required
-    def search(database, collection):
-        reject_reserved(database)
-        key, text = validate_search_terms(
-            request.args.get("key"), request.args.get("text")
-        )
-        results = store.search(database, collection, key=key, text=text)
-        results = filter_readable(auth_store, database, collection, results)
-        return jsonify({"results": results, "count": len(results)})
-
-
 _SUGGEST_LIMIT = 12
 _RECENT_DEFAULT = 8
 _RECENT_MAX = 50
 
 
-def _register_browse_routes(app: Flask, store: DocumentStore, auth_store: AuthStore, csrf) -> None:
+def register_browse_routes(app: Flask, store: DocumentStore, auth_store: AuthStore, csrf) -> None:
     """Grant-filtered listing of databases, collections and documents, the
     "recently edited" strip the home view opens with, and the link-suggestion
     type-ahead used by the editor.
@@ -576,7 +443,7 @@ def _gather_suggestions(store: DocumentStore, grants, query: str) -> list[dict]:
     return matches
 
 
-def _register_version_routes(app: Flask, store: DocumentStore, auth_store: AuthStore, csrf) -> None:
+def register_version_routes(app: Flask, store: DocumentStore, auth_store: AuthStore, csrf) -> None:
     """Read-only version history + diff, and restore (a new revision)."""
 
     @app.get(DOC_ROUTE + "/versions")
@@ -714,7 +581,7 @@ def _unshare(auth_store: AuthStore, database, collection, doc_id, username):
     return "", 204
 
 
-def _register_sharing_routes(app: Flask, auth_store: AuthStore, csrf) -> None:
+def register_collaborator_routes(app: Flask, auth_store: AuthStore, csrf) -> None:
     """Owner-driven sharing: a resource's owner grants others reader/editor/owner
     access to a collection or a single document -- without needing an admin.
     Mirrors the collaborator model chronos already uses for books."""
@@ -827,7 +694,7 @@ def _render_account(auth_store: AuthStore):
     )
 
 
-def _register_account_routes(app: Flask, auth_store: AuthStore, csrf, limiter) -> None:
+def register_account_routes(app: Flask, auth_store: AuthStore, csrf, limiter) -> None:
     """Let any logged-in user view their account and change their own email.
     (Password changes live in the shared auth routes.)"""
 
@@ -896,7 +763,7 @@ def _register_account_routes(app: Flask, auth_store: AuthStore, csrf, limiter) -
         return redirect(url_for("account_page"))
 
 
-def _register_admin_routes(
+def register_admin_routes(
     app: Flask, auth_store: AuthStore, user_cleanup: Callable[[str], None]
 ) -> None:
     @app.get("/admin")
