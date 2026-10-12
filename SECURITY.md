@@ -24,7 +24,8 @@ this doc and the code disagree, trust the code and fix the doc.
 
 - **Session-based auth (Flask-Login).** Every document, browse, version and
   admin endpoint is `@login_required`. Unauthenticated requests get `401` (API)
-  or a redirect to `/login` (browser). See `auth.py`, `app.py`.
+  or a redirect to `/login` (browser). See `auth.py` and akasha's
+  `*_routes.py` modules.
 - **Password hashing.** Passwords are stored only as `werkzeug.security`
   hashes (PBKDF2); plaintext is never persisted. Verified with
   `check_password_hash` on login.

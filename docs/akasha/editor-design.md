@@ -26,10 +26,11 @@ is the source of truth for anything this doc drifts from.
   image, nothing to break in Container Manager, and no runtime CDN dependency
   (works on a LAN-only NAS).
 - **Reuse the existing auth + grant model unchanged.** Every new endpoint goes
-  through the same `_authorize(...)` / `is_allowed(...)` path. No new permission
-  concepts.
-- **Small, modular routes.** New endpoints live in focused registration
-  functions so `app.py` stays a thin orchestrator.
+  through the same `authorize(...)` (`access.py`) / `is_allowed(...)` path. No
+  new permission concepts.
+- **Small, modular routes.** New endpoints live in focused `*_routes.py`
+  modules, each a `register_*_routes(app, ...)` function, so `app.py` stays a
+  thin orchestrator.
 - **Optimise what is perceptible, and only after measuring.** The bar is
   milliseconds at a realistic size, not a complexity class — measure before
   changing anything, and weight the cost by how often the call actually fires.
