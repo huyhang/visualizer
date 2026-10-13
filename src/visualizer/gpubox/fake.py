@@ -1,0 +1,383 @@
+"""A stand-in GPU box: ``WorkerClient``'s calls, answered in memory.
+
+For tests and the dev server (``--fake-gpubox``), so the research and review
+UIs can be built and exercised before the box exists. Two promises:
+
+- **It obeys the contract.** Every reply validates against
+  ``docs/gpu_worker/openapi.json``, and every quote it returns appears verbatim
+  in the source or block it cites -- the rule the real worker enforces.
+- **Every state is reachable.** Its ``mode`` names an availability state, and
+  ``availability()`` reports exactly that state for it; ``fail_next()`` makes a
+  job fail with any documented code.
+
+Its output is labelled fake on purpose ("[Fake] …", example.org sources), so
+demo data can never be mistaken for research.
+"""
+
+import itertools
+import threading
+import time
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+
+from .errors import (
+    JOB_FAILURE_CODES,
+    WorkerBusy,
+    WorkerJobNotFound,
+    WorkerRejected,
+    WorkerUnavailable,
+)
+
+MODEL = "fake-model"
+VERIFIER_MODEL = "fake-minicheck"
+QUEUE_MAX = 20
+RESULT_TTL = timedelta(hours=24)
+
+# The availability state each mode produces (``off`` is the absence of a worker).
+MODES = ("ready", "cold", "busy", "degraded", "queue_full", "unreachable",
+         "misconfigured", "incompatible")
+VERIFIERS = ("up", "down", "not_configured")
+
+_RESEARCH_STAGES = ("planning", "searching", "fetching", "extracting",
+                    "verifying", "writing")
+_STAGE_MESSAGES = {
+    "loading_model": "Loading the model",
+    "planning": "Planning search queries",
+    "searching": "Searching",
+    "fetching": "Reading 2 of 2 sources",
+    "extracting": "Extracting facts and quotes",
+    "verifying": "Checking every quote against its page",
+    "writing": "Writing the draft",
+    "reviewing": "Reviewing the chapter",
+    "second_check": "Second-checking on the verifier",
+}
+
+
+class FakeWorker:
+    def __init__(self, mode: str = "ready", *, verifier: str = "up",
+                 stage_seconds: float = 0.0,
+                 clock: Callable[[], float] = time.monotonic,
+                 now: Callable[[], datetime] = lambda: datetime.now(UTC)):
+        if verifier not in VERIFIERS:
+            raise ValueError(f"verifier must be one of {VERIFIERS}, got {verifier!r}")
+        self.verifier = verifier
+        self.stage_seconds = stage_seconds
+        self._clock = clock
+        self._now = now
+        self._lock = threading.Lock()
+        self._jobs: dict[str, dict] = {}
+        self._by_ref: dict[str, str] = {}
+        self._ids = itertools.count(1)
+        self._fail_next: str | None = None
+        self.set_mode(mode)
+
+    def set_mode(self, mode: str) -> None:
+        """Put the box in ``mode``. ``cold`` unloads the model; the first job
+        that runs loads it again, after which the box reports ``ready``."""
+        if mode not in MODES:
+            raise ValueError(f"mode must be one of {MODES}, got {mode!r}")
+        self.mode = mode
+        self._model_loaded = mode != "cold"
+
+    def fail_next(self, code: str) -> None:
+        """Make the next submitted job fail with ``code``."""
+        if code not in JOB_FAILURE_CODES:
+            raise ValueError(f"not a job failure code: {code!r}")
+        self._fail_next = code
+
+    # -- WorkerClient's calls ------------------------------------------------
+
+    def health(self) -> dict:
+        self._reachable()
+        with self._lock:
+            states = [self._state(j)[0] for j in self._jobs.values()]
+        loaded = [MODEL] if self._model_loaded else []
+        named = self.verifier != "not_configured"
+        return {
+            "ok": self.mode != "degraded",
+            "api_version": "2" if self.mode == "incompatible" else "1",
+            "ollama": {"status": "up",
+                       "models": {"review": MODEL, "research": MODEL},
+                       "loaded": loaded},
+            "searxng": {"status": "down" if self.mode == "degraded" else "up"},
+            "gpu": {"busy": self.mode == "busy",
+                    "vram_used_mb": 20480 if self.mode == "busy" else 812,
+                    "vram_total_mb": 24576},
+            # Unlike the real box, fake jobs don't wait for each other; the
+            # counts still say how many are in each state.
+            "queue": {"queued": QUEUE_MAX if self.mode == "queue_full"
+                      else states.count("queued"),
+                      "running": states.count("running"), "max": QUEUE_MAX},
+            "verifier": {"status": self.verifier,
+                         "models": {"research": VERIFIER_MODEL if named else None,
+                                    "review": VERIFIER_MODEL if named else None}},
+        }
+
+    def submit(self, kind: str, request: dict, *, service: str, ref: str) -> dict:
+        self._reachable()
+        if self.mode == "queue_full":
+            raise WorkerBusy(f"{QUEUE_MAX} jobs already queued", code="queue_full",
+                             retry_after=30)
+        _check(kind, request)
+        body = {"kind": kind, "request": request, "service": service}
+        with self._lock:
+            if ref in self._by_ref:
+                job = self._jobs[self._by_ref[ref]]
+                if job["body"] != body:
+                    raise WorkerRejected("Idempotency-Key reused with a different body",
+                                         code="idempotency_conflict")
+                return self._view(job)
+            job_id = f"fake_{next(self._ids):06d}"
+            job = {"id": job_id, "kind": kind, "request": request, "body": body,
+                   "started": self._clock(), "created_at": self._now(),
+                   "cancelled_after": None,
+                   "fail": self._fail_next, "needs_load": not self._model_loaded}
+            self._fail_next = None
+            self._jobs[job_id] = job
+            self._by_ref[ref] = job_id
+            return self._view(job)
+
+    def status(self, job_id: str) -> dict:
+        self._reachable()
+        with self._lock:
+            return self._view(self._require(job_id))
+
+    def cancel(self, job_id: str) -> dict:
+        self._reachable()
+        with self._lock:
+            job = self._require(job_id)
+            if self._state(job)[0] in ("queued", "running"):
+                job["cancelled_after"] = self._clock() - job["started"]
+            return self._view(job)
+
+    # -- the simulation ------------------------------------------------------
+
+    def _reachable(self) -> None:
+        if self.mode == "unreachable":
+            raise WorkerUnavailable("The GPU box is asleep or unreachable.")
+        if self.mode == "misconfigured":
+            raise WorkerRejected("Missing or invalid bearer token", code="unauthorized")
+
+    def _require(self, job_id: str) -> dict:
+        job = self._jobs.get(job_id)
+        if job is None:
+            raise WorkerJobNotFound(f"No job {job_id!r}", code="not_found")
+        return job
+
+    def _stages(self, job: dict) -> list[str]:
+        stages = ["loading_model"] if job["needs_load"] else []
+        stages += list(_RESEARCH_STAGES) if job["kind"] == "research" else ["reviewing"]
+        if self._second_check(job) == "checked":
+            stages.append("second_check")
+        return stages
+
+    def _second_check(self, job: dict) -> str:
+        """checked | skipped | off | fail, for this job and this verifier."""
+        verify = job["request"].get("verify", "auto")
+        if verify == "off" or self.verifier == "not_configured":
+            return "off"
+        if self.verifier == "down":
+            return "fail" if verify == "required" else "skipped"
+        return "checked"
+
+    def _state(self, job: dict) -> tuple[str, str | None, float]:
+        """(state, stage, seconds of work) for a job, from elapsed time alone.
+
+        One interval queued, one per stage, then finished. Deriving it rather
+        than storing it means no background thread and no timers to clean up.
+        """
+        elapsed = self._clock() - job["started"]
+        stages = self._stages(job)
+        total = (1 + len(stages)) * self.stage_seconds
+        if job["cancelled_after"] is not None and job["cancelled_after"] < total:
+            return "cancelled", None, job["cancelled_after"]
+        if elapsed >= total:
+            return "finished", None, total
+        if self.stage_seconds and elapsed < self.stage_seconds:
+            return "queued", None, elapsed
+        index = int(elapsed // self.stage_seconds) - 1 if self.stage_seconds else 0
+        return "running", stages[max(0, index)], elapsed
+
+    def _view(self, job: dict) -> dict:
+        state, stage, seconds = self._state(job)
+        created = job["created_at"]
+        started = created + timedelta(seconds=self.stage_seconds)
+        view = {"id": job["id"], "kind": job["kind"], "state": state,
+                "position": None, "progress": None,
+                "created_at": _iso(created), "started_at": None,
+                "finished_at": None, "expires_at": None,
+                "result": None, "error": None}
+        if state == "queued":
+            view["position"] = 1
+            return view
+        if state == "running":
+            if stage != "loading_model":
+                self._model_loaded = True   # past loading, the model is in VRAM
+            view.update(started_at=_iso(started),
+                        progress={"stage": stage, "message": _STAGE_MESSAGES[stage]})
+            return view
+        finished = created + timedelta(seconds=seconds)
+        # A job cancelled while still queued never started.
+        if seconds >= self.stage_seconds:
+            view["started_at"] = _iso(min(started, finished))
+        view["finished_at"] = _iso(finished)
+        if state == "finished":
+            self._model_loaded = True
+            self._finish(job, view, finished)
+        return view
+
+    def _finish(self, job: dict, view: dict, finished: datetime) -> None:
+        failure = job["fail"] or ("unavailable" if self._second_check(job) == "fail"
+                                  else None)
+        view["expires_at"] = _iso(finished + RESULT_TTL)
+        if failure:
+            view["state"] = "failed"
+            view["error"] = {"code": failure, "retryable": failure != "no_sources",
+                             "message": _FAILURE_MESSAGES[failure]}
+            return
+        view["state"] = "done"
+        build = _research_result if job["kind"] == "research" else _review_result
+        view["result"] = build(job["request"], self._verification(job), finished)
+
+    def _verification(self, job: dict) -> dict:
+        outcome = self._second_check(job)
+        if outcome == "checked":
+            return {"status": "checked", "model": VERIFIER_MODEL, "reason": None}
+        if outcome == "skipped":
+            return {"status": "skipped", "model": None,
+                    "reason": "verifier_unavailable"}
+        reason = ("caller_off" if job["request"].get("verify") == "off"
+                  else "not_configured")
+        return {"status": "off", "model": None, "reason": reason}
+
+
+_FAILURE_MESSAGES = {
+    "timeout": "The job exceeded its time limit",
+    "unavailable": "A dependency stopped responding during the job",
+    "no_sources": "No usable sources were found",
+    "internal": "The worker hit an unexpected error",
+}
+
+
+def _check(kind: str, request: dict) -> None:
+    """The few rules a caller is most likely to break, refused as the worker would."""
+    def invalid(message):
+        return WorkerRejected(message, code="invalid_request")
+
+    if kind not in ("research", "review"):
+        raise invalid(f"Unknown job kind {kind!r}")
+    if not isinstance(request, dict):
+        raise invalid("A job request must be an object")
+    if kind == "research":
+        question = request.get("question")
+        if not isinstance(question, str) or not 3 <= len(question) <= 500:
+            raise invalid("question must be 3-500 characters")
+    else:
+        blocks = (request.get("chapter") or {}).get("blocks")
+        if not blocks or not all(isinstance(b, dict) and b.get("id") for b in blocks):
+            raise invalid("chapter.blocks must be a non-empty list of {id, text}")
+        if not isinstance(request.get("references"), list):
+            raise invalid("references must be a list")
+
+
+# -- canned results ----------------------------------------------------------
+
+
+def _research_result(request: dict, verification: dict, at: datetime) -> dict:
+    question = request["question"].strip()
+    slug = "-".join(question.lower().split())[:60]
+    language = (request.get("languages") or ["en"])[0]
+    quotes = [f"the first passage the fake worker invented about {question}",
+              f"a second invented passage, also about {question}"]
+    sources = [
+        {"key": f"s{n}", "url": f"https://example.org/fake-research/{slug}/{n}",
+         "title": f"[Fake] Source {n} on {question}", "site": "example.org",
+         "language": language, "retrieved_at": _iso(at), "excerpts": [quote]}
+        for n, quote in enumerate(quotes, 1)
+    ]
+    checked = verification["status"] == "checked"
+    facts = [
+        {"text": f"[Fake] A first finding about {question}.",
+         "citations": [{"source": "s1", "quote": quotes[0]}],
+         "check": {"status": "supported" if checked else "unchecked"}},
+        {"text": f"[Fake] A second finding about {question}, only partly supported.",
+         "citations": [{"source": "s2", "quote": quotes[1]}],
+         "check": {"status": "partial" if checked else "unchecked"}},
+    ]
+    dropped = [{"text": "[Fake] A finding whose quote was not on its page.",
+                "reason": "quote_not_found"}]
+    removed = 0
+    if checked:
+        dropped.append({"text": "[Fake] A finding the second check did not support.",
+                        "reason": "unsupported"})
+        removed = 1
+    images = []
+    if request.get("include_images"):
+        images.append({"url": f"https://example.org/fake-research/{slug}/image.jpg",
+                       "source": "s1", "caption": f"[Fake] An image about {question}",
+                       "license": "CC0 (fake)"})
+    return {
+        "article": {
+            "title": question[:1].upper() + question[1:],
+            "body": ("This draft came from the fake GPU worker, not from research. "
+                     f"{facts[0]['text']} [[cite:s1]] {facts[1]['text']} [[cite:s2]]"),
+            "topic": "fake",
+            "facts": facts,
+            "links": [a["ref"] for a in request.get("known_articles", [])][:2],
+            "image_candidates": images,
+        },
+        "sources": sources,
+        "dropped_facts": dropped,
+        "verification": {**verification, "checked": len(facts) + removed if checked
+                         else 0, "removed": removed},
+        "model": MODEL,
+        "generated_at": _iso(at),
+    }
+
+
+def _review_result(request: dict, verification: dict, at: datetime) -> dict:
+    checked = verification["status"] == "checked"
+    blocks = [b for b in request["chapter"]["blocks"] if _excerpt(b.get("text", ""))]
+    by_kind = {}
+    for reference in request["references"]:
+        by_kind.setdefault(reference.get("kind"), reference)
+    based_on = {"continuity": by_kind.get("canon"),
+                "anachronism": by_kind.get("research") or by_kind.get("watchlist"),
+                "prose": None}
+    issues = []
+    for check in request.get("checks") or ["continuity", "anachronism", "prose"]:
+        if not blocks or (check != "prose" and based_on[check] is None):
+            continue
+        block = blocks[len(issues) % len(blocks)]
+        reference = based_on[check]
+        issues.append({
+            "check": check,
+            "severity": "info" if check == "prose" else "warning",
+            "confidence": "possible",
+            "block": block["id"],
+            "quote": _excerpt(block["text"]),
+            "message": f"[Fake] A {check} issue the fake worker made up.",
+            "suggestion": "[Fake] A suggestion, also made up.",
+            "reference": reference["ref"] if reference else None,
+            "verified": True if checked else None,
+        })
+    return {
+        "issues": issues,
+        "verification": {**verification, "checked": len(issues) if checked else 0,
+                         "removed": 0},
+        "model": MODEL,
+        "generated_at": _iso(at),
+    }
+
+
+def _excerpt(text: str, limit: int = 40) -> str:
+    """A verbatim stretch of ``text``, cut at a word boundary."""
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    cut = text.rfind(" ", 0, limit)
+    return text[: cut if cut > 0 else limit]
+
+
+def _iso(moment: datetime) -> str:
+    return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
