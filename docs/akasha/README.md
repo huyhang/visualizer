@@ -19,7 +19,8 @@ There are two ways to use it:
 
 Both share one login, one permission model, and one document store. See
 [`editor-design.md`](editor-design.md) for the editor design,
-[`media-design.md`](media-design.md) for images and dioramas, and the
+[`media-design.md`](media-design.md) for images and dioramas,
+[`research.md`](research.md) for AI research drafts (API only, needs a GPU box), and the
 [repo README](../../README.md) for the stack as a whole.
 
 > **Companion service — `chronos`.** A plotline & timeline API for fiction
