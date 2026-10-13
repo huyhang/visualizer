@@ -5,9 +5,10 @@ The contract between the visualizer stack and the AI worker on the RTX 3090 box.
 talks to Ollama or SearXNG, which stay bound to the box's localhost behind the
 worker.
 
-**Status: a skeleton.** The worker's API, job store, runner and health checks are
-real; its research and review pipelines are not built yet, so every job fails
-saying so. This document and [`openapi.json`](openapi.json) (OpenAPI 3.1) are what
+**Status: built; not yet run on the real box.** The research and review
+pipelines run on local models (smoke-tested end to end on a laptop with
+`granite4.2:8b`, a local SearXNG and the open web; see *Smoke testing* below).
+This document and [`openapi.json`](openapi.json) (OpenAPI 3.1) are what
 both sides are written and tested against -- the worker validates against the
 JSON file at runtime -- so if the two disagree, fix one of them.
 
@@ -126,6 +127,17 @@ running at the time is failed as interrupted.
 **Logs** (`docker compose -f docker/gpubox/compose.yml logs -f worker`) carry job
 metadata only -- ids, kinds, outcomes, timings -- never prose, questions or
 results.
+
+**Smoke testing.** Unit tests pin down what the pipelines do with model
+output; only a real model shows whether the prompts work. To try them on a
+laptop: run Ollama with any instruction model, start SearXNG with
+`docker/gpubox/searxng/settings.yml`, and run the worker **in a container** --
+a sandbox or corporate proxy that forces traffic through `HTTPS_PROXY` will
+block the fetcher, which deliberately connects straight to the address it
+checked and never through a proxy. On a laptop with `granite4.2:8b`, a
+three-source research job took under three minutes; quotes the model
+invented were dropped as `quote_not_found`, as designed. Expect `qwen3:30b` on
+the 3090 to drop fewer.
 
 **On a laptop**, without Docker or a GPU, to exercise the real HTTP path from the
 dev server:

@@ -20,7 +20,13 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 from .contract import Contract
-from .pipelines import NoSources, NotBuilt, Pipelines, PipelineUnavailable
+from .pipelines import (
+    ModelOutputError,
+    NoSources,
+    NotBuilt,
+    Pipelines,
+    PipelineUnavailable,
+)
 from .store import JobStore
 
 LOG = logging.getLogger("visualizer.gpu_worker")
@@ -142,7 +148,7 @@ class Runner:
         except NoSources as err:
             return "failed", None, _failure(
                 "no_sources", str(err) or "No usable sources were found", False)
-        except NotBuilt as err:
+        except (NotBuilt, ModelOutputError) as err:
             return "failed", None, _failure("internal", str(err), False)
         except Exception as err:  # noqa: BLE001 -- any pipeline bug ends the job
             # The type only: an exception's message could quote the request.

@@ -10,6 +10,7 @@ Self-contained on purpose. It never imports the rest of ``visualizer`` --
 copies nothing else into the image -- so it deploys to the box alone, and could
 leave this repository without a rewrite.
 
-Status: a skeleton. The API, job store, runner and health checks are real; the
-research and review pipelines are not built yet, and jobs fail saying so.
+Pipelines: ``research.py`` (plan, search, read, quote-check, write) and
+``review.py`` (anchored issues against canon, research and deviations), on the
+box's own models through ``models.py``, fetching only through ``fetch.py``.
 """
