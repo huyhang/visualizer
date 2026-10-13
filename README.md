@@ -190,6 +190,7 @@ src/visualizer/
   stack.py           all four apps wired over one MongoDB (wsgi.py serves it)
   devserver.py       that stack without Docker or MongoDB, for local testing
   gpubox/            the client for the AI worker on the GPU box (and a fake one)
+  gpu_worker/        that worker itself -- deployed to the box, never the NAS
   static/js/         the few ES modules the *browser* services load
 tests/               one suite per service (in-memory MongoDB)
 docker/              Dockerfiles, the compose stack, demo seed + backup scripts

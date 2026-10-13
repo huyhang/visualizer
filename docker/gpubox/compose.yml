@@ -1,0 +1,62 @@
+# The GPU box's side of the visualizer: the AI worker and the search engine its
+# research pipeline uses. Runs on the box only -- never on the NAS.
+#
+#   cp docker/gpubox/.env.example docker/gpubox/.env    # then fill it in
+#   docker compose -f docker/gpubox/compose.yml up -d --build
+#
+# Ollama runs natively on the box, not here. Nothing below is reachable from the
+# network: SearXNG is published on 127.0.0.1 only, and the worker (host
+# networking, so it reaches Ollama and SearXNG on localhost) binds 127.0.0.1:8700.
+# `tailscale serve` is what exposes the worker, to the tailnet only -- see
+# docs/gpu_worker/README.md. Host networking also sidesteps Docker writing
+# firewall rules that bypass UFW.
+#
+# docker/gpubox/.env is auto-loaded and git-ignored; it holds the two secrets.
+name: visualizer-gpubox
+
+services:
+  searxng:
+    image: searxng/searxng:latest
+    ports:
+      - "127.0.0.1:8888:8080"
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?SEARXNG_SECRET is required — set it in docker/gpubox/.env}
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile.worker
+    network_mode: host
+    environment:
+      WORKER_TOKEN: ${WORKER_TOKEN:?WORKER_TOKEN is required — set it in docker/gpubox/.env}
+      WORKER_BIND: ${WORKER_BIND:-127.0.0.1:8700}
+      OLLAMA_URL: ${OLLAMA_URL:-http://127.0.0.1:11434}
+      SEARXNG_URL: http://127.0.0.1:8888
+      RESEARCH_MODEL: ${RESEARCH_MODEL:-qwen3:30b}
+      REVIEW_MODEL: ${REVIEW_MODEL:-qwen3:30b}
+      QUEUE_MAX: ${QUEUE_MAX:-20}
+      RESULT_TTL_HOURS: ${RESULT_TTL_HOURS:-24}
+      VERIFIER_URL: ${VERIFIER_URL:-}
+      VERIFIER_RESEARCH_MODEL: ${VERIFIER_RESEARCH_MODEL:-bespoke-minicheck}
+      VERIFIER_REVIEW_MODEL: ${VERIFIER_REVIEW_MODEL:-gemma3:27b}
+    volumes:
+      # The job store: survives rebuilds, like the NAS's Mongo volume.
+      - worker-data:/data
+    depends_on:
+      - searxng
+    # Not for compute -- the worker never touches CUDA. "utility" gives it
+    # nvidia-smi, so health can report whether ComfyUI holds the GPU.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [utility]
+    restart: unless-stopped
+
+volumes:
+  worker-data: {}

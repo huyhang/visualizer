@@ -1,0 +1,32 @@
+# The AI worker, for the GPU box only (docs/gpu_worker/). Never part of the NAS
+# stack. Build context is the repo root (see docker/gpubox/compose.yml).
+#
+# The image holds the worker package and the contract it enforces -- nothing
+# else from the stack -- so it stays small and cannot quietly come to depend on
+# the services it serves.
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements-worker.txt .
+RUN pip install --no-cache-dir -r requirements-worker.txt
+
+COPY src/visualizer/__init__.py /app/src/visualizer/__init__.py
+COPY src/visualizer/gpu_worker /app/src/visualizer/gpu_worker
+COPY docs/gpu_worker/openapi.json /app/contract/openapi.json
+
+# Unprivileged: this process will one day parse pages fetched from the web.
+RUN useradd --uid 10001 --home-dir /data --shell /usr/sbin/nologin worker \
+    && mkdir -p /data && chown worker /data
+USER worker
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/src \
+    WORKER_CONTRACT=/app/contract/openapi.json \
+    WORKER_DB=/data/jobs.sqlite3 \
+    WORKER_BIND=127.0.0.1:8700
+
+# Exactly one worker process: each runs its own job runner, and two would put
+# two jobs on the GPU at once (see visualizer/gpu_worker/wsgi.py). Threads
+# serve HTTP while a job runs.
+CMD ["sh", "-c", "exec gunicorn --workers 1 --worker-class gthread --threads 4 --timeout 60 --bind \"$WORKER_BIND\" visualizer.gpu_worker.wsgi:application"]

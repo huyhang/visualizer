@@ -1,14 +1,17 @@
 # Keeps the Docker build context small and fast (the context is the repo root).
-# Only requirements.txt and src/ are needed to build the images; everything
-# below is excluded.
+# Only the requirements files, src/ and the GPU worker's contract are needed to
+# build the images; everything below is excluded.
 
 # Version control
 .git
 .gitignore
 
-# Local secrets — must never enter the build context or image layers
+# Local secrets — must never enter the build context or image layers. Patterns
+# here are anchored at the context root, so `.env` alone would miss nested ones
+# (docker/gpubox/.env holds the GPU box's token).
 docker/.env
 .env
+**/.env
 
 # Python caches / build artifacts
 **/__pycache__/
@@ -21,6 +24,8 @@ docker/.env
 # Not needed to build or run the app image
 tests/
 docs/
+# ...except the contract the GPU worker enforces at runtime (Dockerfile.worker).
+!docs/gpu_worker/openapi.json
 
 # Virtualenvs
 .venv/

@@ -1,0 +1,15 @@
+# SearXNG for the GPU-box worker. Only the worker calls it, from localhost.
+#
+# - JSON output on: the worker reads results as JSON, which SearXNG ships off.
+# - No rate limiter: there is exactly one, trusted, local client.
+# - The secret is SEARXNG_SECRET from docker/gpubox/.env, never this file.
+use_default_settings: true
+
+server:
+  limiter: false
+  image_proxy: false
+
+search:
+  formats:
+    - html
+    - json

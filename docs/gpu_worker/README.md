@@ -5,9 +5,11 @@ The contract between the visualizer stack and the AI worker on the RTX 3090 box.
 talks to Ollama or SearXNG, which stay bound to the box's localhost behind the
 worker.
 
-**Status: contract only.** The worker itself is not built yet. This document and
-[`openapi.json`](openapi.json) (OpenAPI 3.1) are what both sides are written and
-tested against; if the two disagree, fix one of them.
+**Status: a skeleton.** The worker's API, job store, runner and health checks are
+real; its research and review pipelines are not built yet, so every job fails
+saying so. This document and [`openapi.json`](openapi.json) (OpenAPI 3.1) are what
+both sides are written and tested against -- the worker validates against the
+JSON file at runtime -- so if the two disagree, fix one of them.
 
 ```
 NAS (visualizer stack)                     GPU box
@@ -42,6 +44,9 @@ NAS (visualizer stack)                     GPU box
 | Akasha's research seam, and `GET /research/availability` | `src/visualizer/akasha/research.py`, `research_routes.py` |
 | Wiring: a worker is used only when `GPU_WORKER_URL` is set | `src/visualizer/stack.py` |
 | Tests holding the client, the fake and this spec together | `tests/gpubox/` |
+| **The worker itself** -- runs on the box, imports nothing from the stack | `src/visualizer/gpu_worker/` |
+| Its image, and the box's compose file (worker + SearXNG) | `docker/Dockerfile.worker`, `docker/gpubox/` |
+| The worker's tests, and the end-to-end test against the stack's client | `tests/gpu_worker/` |
 
 **Switching it on** — in `docker/.env`, then redeploy:
 
@@ -54,6 +59,83 @@ Optional: `GPU_WORKER_TIMEOUT` (seconds, default 10). A URL without a token stop
 the app at startup. Until the box exists, `python -m visualizer.devserver
 --fake-gpubox [MODE]` puts a fake one behind the features, in any state a writer
 can meet.
+
+## Running the worker on the box
+
+> Not yet run on the real machine. These steps follow the design notes; expect
+> small adjustments for your driver, Docker and Tailscale versions.
+
+**Prerequisites:** Ubuntu Server with the NVIDIA driver, Tailscale and UFW; Docker
+with the NVIDIA Container Toolkit; Ollama installed natively (not in Docker).
+
+1. **Ollama**: one big model at a time, unloaded when idle so ComfyUI can have the
+   GPU back. `sudo systemctl edit ollama`, then `sudo systemctl restart ollama`:
+
+   ```
+   [Service]
+   Environment="OLLAMA_MAX_LOADED_MODELS=1"
+   Environment="OLLAMA_NUM_PARALLEL=1"
+   Environment="OLLAMA_KEEP_ALIVE=10m"
+   Environment="OLLAMA_FLASH_ATTENTION=1"
+   Environment="OLLAMA_KV_CACHE_TYPE=q8_0"
+   ```
+
+   Then `ollama pull qwen3:30b`. The worker reaches Ollama on localhost, so it
+   needs no `OLLAMA_HOST` change. Keep any you already made for Mac apps, behind
+   the UFW rule that allows only `tailscale0`.
+
+2. **Configure**, from a clone of this repository on the box:
+
+   ```bash
+   cp docker/gpubox/.env.example docker/gpubox/.env
+   # set WORKER_TOKEN and SEARXNG_SECRET: openssl rand -hex 32 for each
+   docker compose -f docker/gpubox/compose.yml up -d --build
+   ```
+
+3. **Expose it to the tailnet only, with HTTPS.** In the Tailscale admin console,
+   enable MagicDNS and HTTPS certificates, then:
+
+   ```bash
+   sudo tailscale serve --bg --https=8443 http://127.0.0.1:8700
+   ```
+
+   Access controls: tag the NAS `tag:nas` and the box `tag:gpubox`, then allow
+   `tag:nas` → `tag:gpubox:8443`. Adding rules removes Tailscale's default
+   allow-all, so keep one for your own devices.
+
+4. **Point the NAS at it.** Install Tailscale on the NAS (Package Center), set
+   `GPU_WORKER_URL` and `GPU_WORKER_TOKEN` in the visualizer's `docker/.env` (the
+   token is the box's `WORKER_TOKEN`), and redeploy. If research then reports the
+   box unreachable while it is up, the container can't resolve MagicDNS: see the
+   `extra_hosts` note in `docker/docker-compose.nas.yml`.
+
+5. **Check**, from the NAS:
+
+   ```bash
+   curl -s -H "Authorization: Bearer $GPU_WORKER_TOKEN" \
+     https://gpubox.<your-tailnet>.ts.net:8443/v1/health
+   ```
+
+   `ok: true` means Ollama and SearXNG are up. Akasha's
+   `GET /research/availability` should then say `cold` or `ready`.
+
+**Updating:** `git pull && docker compose -f docker/gpubox/compose.yml up -d --build worker`.
+The job store lives in the `worker-data` volume and survives rebuilds; a job
+running at the time is failed as interrupted.
+
+**Logs** (`docker compose -f docker/gpubox/compose.yml logs -f worker`) carry job
+metadata only -- ids, kinds, outcomes, timings -- never prose, questions or
+results.
+
+**On a laptop**, without Docker or a GPU, to exercise the real HTTP path from the
+dev server:
+
+```bash
+export WORKER_TOKEN=$(openssl rand -hex 32)
+python -m visualizer.gpu_worker &                        # 127.0.0.1:8700
+GPU_WORKER_URL=http://127.0.0.1:8700 GPU_WORKER_TOKEN=$WORKER_TOKEN \
+  python -m visualizer.devserver
+```
 
 ## Conventions
 
