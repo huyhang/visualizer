@@ -7,7 +7,12 @@ from .diorama import validate_manifest
 from .diorama_processing import DioramaProcessor
 from .errors import InvalidDiorama, MediaInUse
 from .image_processing import ImageProcessor
-from .media import document_image_ids, validate_alt_text
+from .media import (
+    document_image_ids,
+    validate_alt_text,
+    validate_license,
+    validate_source_url,
+)
 from .media_store import MediaStore
 
 
@@ -91,10 +96,15 @@ class MediaService:
         # before offering it, so an install can run images-only.
         self.dioramas = dioramas
 
-    def upload(self, world, uploader, filename, data, alt) -> dict:
+    def upload(self, world, uploader, filename, data, alt, *,
+               source_url: str | None = None, license: str | None = None) -> dict:
+        """Store an image. ``source_url`` and ``license`` record where an image
+        from elsewhere came from; the upload form leaves them out."""
         image = self.processor.process(data, filename)
         return self.store.create(
-            world, uploader, validate_alt_text(alt), image.as_asset()
+            world, uploader, validate_alt_text(alt), image.as_asset(),
+            source_url=validate_source_url(source_url),
+            license=validate_license(license),
         )
 
     def upload_diorama(

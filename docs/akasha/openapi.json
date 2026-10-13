@@ -2368,7 +2368,7 @@
       },
       "MediaCommon": {
         "type": "object",
-        "required": ["id", "world", "uploader", "kind", "filename", "alt", "created_at", "can_manage", "variants"],
+        "required": ["id", "world", "uploader", "kind", "filename", "alt", "source_url", "license", "created_at", "can_manage", "variants"],
         "properties": {
           "id": {"type": "string"},
           "world": {"type": "string"},
@@ -2376,6 +2376,8 @@
           "kind": {"type": "string", "enum": ["image", "diorama"]},
           "filename": {"type": "string"},
           "alt": {"type": "string"},
+          "source_url": {"type": "string", "nullable": true, "description": "Where an image brought in from elsewhere (a research import) came from; null for uploads."},
+          "license": {"type": "string", "nullable": true, "description": "The license its source stated, verbatim; null when unknown or for uploads."},
           "created_at": {"type": "string", "format": "date-time"},
           "can_manage": {"type": "boolean"},
           "variants": {"type": "object"}

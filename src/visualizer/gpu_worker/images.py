@@ -26,8 +26,8 @@ from PIL import Image, UnidentifiedImageError
 from .fetch import Fetcher, FetchError
 
 PREVIEW_PX = 360
-FORMATS = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp",
-           "GIF": "image/gif"}
+# Exactly what Akasha stores: anything else would be fetched only to be refused.
+FORMATS = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp"}
 # A decoded-size cap, so a tiny file cannot unpack into gigabytes of pixels.
 MAX_PIXELS = 40_000_000
 

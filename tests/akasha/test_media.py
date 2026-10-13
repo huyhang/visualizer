@@ -580,3 +580,33 @@ def test_a_record_written_before_dioramas_still_reads(mongo_client):
     assert public["variants"]["display"]["width"] == 900
     assert public["variants"]["display"]["bytes"] == 9709
     assert "file_id" not in public["variants"]["display"]
+    # A record from before provenance existed reads as "none recorded".
+    assert (public["source_url"], public["license"]) == (None, None)
+
+
+# -- provenance: images brought in from elsewhere ------------------------------
+
+
+def test_an_imported_image_remembers_where_it_came_from(media_service):
+    record = media_service.upload(
+        DB, "admin", "bowl.png", _image(), "A Jian ware tea bowl",
+        source_url="https://museum.example/collection/bowl.png",
+        license="  CC0 1.0\n(Met Open Access)  ")
+    assert record["source_url"] == "https://museum.example/collection/bowl.png"
+    assert record["license"] == "CC0 1.0 (Met Open Access)"
+    again = media_service.store.get(DB, record["id"])
+    assert (again["source_url"], again["license"]) == (record["source_url"],
+                                                       record["license"])
+
+
+def test_an_upload_has_no_provenance(client):
+    created = _upload(client).get_json()
+    assert (created["source_url"], created["license"]) == (None, None)
+
+
+@pytest.mark.parametrize("source_url", ["javascript:alert(1)", "file:///etc/passwd",
+                                        "https://x/" + "a" * 2050])
+def test_a_source_must_be_a_web_address(media_service, source_url):
+    with pytest.raises(InvalidImage, match="source"):
+        media_service.upload(DB, "admin", "bowl.png", _image(), "A bowl",
+                             source_url=source_url)

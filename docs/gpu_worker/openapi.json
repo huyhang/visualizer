@@ -610,12 +610,11 @@
         },
         "responses": {
           "200": {
-            "description": "The image bytes; Content-Type says which format.",
+            "description": "The image bytes; Content-Type says which format (JPEG, PNG or WebP -- what Akasha stores).",
             "content": {
               "image/jpeg": {},
               "image/png": {},
-              "image/webp": {},
-              "image/gif": {}
+              "image/webp": {}
             }
           },
           "400": {
@@ -793,7 +792,7 @@
         }
       },
       "ImageUnavailable": {
-        "description": "The image could not be fetched: gone from its source, unreachable, too large, not an image, or at an address the worker refuses.",
+        "description": "The image could not be fetched: gone from its source, unreachable, too large, not a JPEG, PNG or WebP image, or at an address the worker refuses.",
         "content": {
           "application/json": {
             "schema": {

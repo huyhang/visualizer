@@ -432,7 +432,7 @@ POST /v1/images
 ```
 
 The answer is the image's bytes, with `Content-Type` saying which format (JPEG,
-PNG, WebP or GIF), not JSON.
+PNG or WebP -- exactly what Akasha stores), not JSON.
 
 | Rule | Detail |
 |---|---|

@@ -39,7 +39,8 @@ class MediaStore:
         self._clock = clock or _default_clock
         self._id_factory = id_factory or (lambda: uuid4().hex)
 
-    def create(self, world: str, uploader: str, alt: str, asset: Asset) -> dict:
+    def create(self, world: str, uploader: str, alt: str, asset: Asset, *,
+               source_url: str | None = None, license: str | None = None) -> dict:
         media_id = self._id_factory()
         blobs: dict[str, object] = {}
         by_digest: dict[str, object] = {}
@@ -63,6 +64,10 @@ class MediaStore:
                 "kind": asset.kind,
                 "filename": asset.filename,
                 "alt": alt,
+                # Provenance, for images brought in from elsewhere (research
+                # imports): where it came from and the license it was offered under.
+                "source_url": source_url,
+                "license": license,
                 "facts": dict(asset.facts),
                 "created_at": self._clock().isoformat(),
                 "variants": {
@@ -187,6 +192,9 @@ class MediaStore:
             "kind": record.get("kind", IMAGE),
             "filename": record["filename"],
             "alt": record["alt"],
+            # Absent on records from before provenance existed: null, not missing.
+            "source_url": record.get("source_url"),
+            "license": record.get("license"),
             "created_at": record["created_at"],
             **_facts(record, ("format", "width", "height")),
             "variants": {

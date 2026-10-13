@@ -83,11 +83,15 @@ def test_an_image_that_cannot_be_had(client, web, signer, page, message):
     assert error["message"] == message
 
 
-def test_unsupported_formats_and_bombs_are_refused():
-    tiff = io.BytesIO()
-    Image.new("RGB", (10, 10)).save(tiff, "TIFF")
+@pytest.mark.parametrize("fmt", ["TIFF", "GIF", "BMP"])
+def test_only_what_akasha_stores_is_returned(fmt):
+    other = io.BytesIO()
+    Image.new("RGB", (10, 10)).save(other, fmt)
     with pytest.raises(FetchError, match="Not a supported image format"):
-        to_image(tiff.getvalue(), "full")
+        to_image(other.getvalue(), "full")
+
+
+def test_bombs_are_refused():
     with pytest.raises(FetchError, match="Not an image"):
         to_image(picture(8000, 6000), "full")   # 48 Mpx, over the 40 Mpx cap
 

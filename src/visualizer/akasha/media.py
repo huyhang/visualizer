@@ -99,3 +99,22 @@ def validate_alt_text(value) -> str:
     if len(alt) > 300:
         raise InvalidImage("Alternative text must be at most 300 characters.")
     return alt
+
+
+def validate_source_url(value) -> str | None:
+    """Where an imported image came from: an http(s) URL, or nothing."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or len(value) > 2048 \
+            or not value.startswith(("https://", "http://")):
+        raise InvalidImage("An image's source must be an http(s) URL.")
+    return value
+
+
+def validate_license(value) -> str | None:
+    """The license an image was offered under, as its source stated it."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    if not isinstance(value, str):
+        raise InvalidImage("An image's license must be text.")
+    return " ".join(value.split())[:300]
