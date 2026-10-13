@@ -42,6 +42,14 @@ services:
       VERIFIER_URL: ${VERIFIER_URL:-}
       VERIFIER_RESEARCH_MODEL: ${VERIFIER_RESEARCH_MODEL:-bespoke-minicheck}
       VERIFIER_REVIEW_MODEL: ${VERIFIER_REVIEW_MODEL:-gemma3:27b}
+      VERIFIER_TIMEOUT: ${VERIFIER_TIMEOUT:-180}
+      NUM_CTX: ${NUM_CTX:-32768}
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-300}
+      FETCH_TIMEOUT: ${FETCH_TIMEOUT:-15}
+      FETCH_MAX_BYTES: ${FETCH_MAX_BYTES:-5242880}
+      IMAGE_MAX_BYTES: ${IMAGE_MAX_BYTES:-20971520}
+      # Unset: the worker keeps a generated key in the worker-data volume.
+      WORKER_SIGNING_KEY: ${WORKER_SIGNING_KEY:-}
     volumes:
       # The job store: survives rebuilds, like the NAS's Mongo volume.
       - worker-data:/data

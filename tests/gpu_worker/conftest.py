@@ -6,15 +6,19 @@ from the contract's own examples.
 """
 
 import copy
+import io
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from visualizer.gpu_worker.app import create_app
 from visualizer.gpu_worker.config import WorkerConfig
 from visualizer.gpu_worker.contract import Contract
+from visualizer.gpu_worker.fetch import Fetched, FetchError
+from visualizer.gpu_worker.images import Images, TokenSigner
 from visualizer.gpu_worker.runner import Runner
 from visualizer.gpu_worker.store import JobStore
 
@@ -128,14 +132,56 @@ def config(tmp_path):
                         queue_max=3)
 
 
-@pytest.fixture
-def runner(store, pipelines, contract, clock):
-    return Runner(store, pipelines, contract, clock=clock)
+def picture(width=800, height=600, fmt="PNG", mode="RGB") -> bytes:
+    buffer = io.BytesIO()
+    Image.new(mode, (width, height), (90, 120, 160)).save(buffer, fmt)
+    return buffer.getvalue()
+
+
+class StubFetcher:
+    """Stands in for the web: url -> bytes, or a FetchError to raise."""
+
+    def __init__(self, pages=None):
+        self.pages = pages or {}
+        self.asked = []
+
+    def fetch(self, url, *, accept=None, max_bytes=None):
+        self.asked.append(url)
+        page = self.pages.get(url)
+        if page is None:
+            raise FetchError("status", "The source answered 404")
+        if isinstance(page, FetchError):
+            raise page
+        body, content_type = page if isinstance(page, tuple) else (page, "image/png")
+        if max_bytes and len(body) > max_bytes:
+            raise FetchError("too_large", "Larger than the limit")
+        return Fetched(url=url, content_type=content_type, charset=None, body=body)
 
 
 @pytest.fixture
-def app(config, store, runner, probes, contract, clock):
-    application = create_app(config, store, runner, probes, contract, clock=clock)
+def signer():
+    return TokenSigner(b"k" * 32)
+
+
+@pytest.fixture
+def web():
+    return StubFetcher()
+
+
+@pytest.fixture
+def images(signer, web):
+    return Images(signer, web, max_bytes=20 * 1024 * 1024)
+
+
+@pytest.fixture
+def runner(store, pipelines, contract, clock, signer):
+    return Runner(store, pipelines, contract, sign=signer.sign, clock=clock)
+
+
+@pytest.fixture
+def app(config, store, runner, probes, contract, images, clock):
+    application = create_app(config, store, runner, probes, contract, images,
+                             clock=clock)
     application.config.update(TESTING=True)
     return application
 

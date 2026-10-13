@@ -129,8 +129,10 @@ def test_review_issues_must_quote_their_own_block(store, runner, pipelines, cloc
     assert issues == REVIEW_RESULT["issues"]
 
 
-def test_the_shipped_pipelines_say_they_are_not_built(store, contract, clock):
-    runner = Runner(store, NotBuiltPipelines(), contract, clock=clock)
+def test_the_shipped_pipelines_say_they_are_not_built(store, contract, clock,
+                                                      signer):
+    runner = Runner(store, NotBuiltPipelines(), contract, sign=signer.sign,
+                    clock=clock)
     research = queue(store, clock)
     review = queue(store, clock, REVIEW_JOB)
     runner.run_next()
@@ -141,7 +143,7 @@ def test_the_shipped_pipelines_say_they_are_not_built(store, contract, clock):
         assert error["message"] == f"The {kind} pipeline is not built yet"
 
 
-def test_on_its_thread_it_never_runs_two_jobs_at_once(store, contract):
+def test_on_its_thread_it_never_runs_two_jobs_at_once(store, contract, signer):
     running = []
     peak = []
     lock = threading.Lock()
@@ -156,7 +158,7 @@ def test_on_its_thread_it_never_runs_two_jobs_at_once(store, contract):
                 running.pop()
             return copy.deepcopy(RESEARCH_RESULT)
 
-    runner = Runner(store, Slow(), contract, poll_seconds=0.01)
+    runner = Runner(store, Slow(), contract, sign=signer.sign, poll_seconds=0.01)
     ids = [store.create("research", RESEARCH_JOB["request"], "h", None,
                         datetime.now(UTC))[0]["id"] for _ in range(4)]
     runner.start()

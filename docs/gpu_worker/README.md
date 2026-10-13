@@ -164,6 +164,7 @@ All errors share one shape:
 | 409 | `idempotency_conflict` | `Idempotency-Key` reused with a different body | Bug — raise |
 | 413 | `payload_too_large` | Request over size limit | Bug / split input |
 | 429 | `queue_full` | Queue at `QUEUE_MAX`; `Retry-After` header set | `ResearchBusy` / retry later |
+| 502 | `image_unavailable` | `POST /images` only: the image is gone, unreachable, too large or not an image | `ResearchImageUnavailable` |
 | 503 | `unavailable` | A dependency is down (`message` says which) | `ResearchUnavailable` / `ReviewUnavailable` |
 
 Network errors and timeouts are treated like `503`.
@@ -395,4 +396,38 @@ Idempotent: cancelling a finished job returns it unchanged.
 | Mapping | Logos maps issues onto the finding shape its `RuleBasedWritingAdvisor` already produces |
 
 **Limits:** request ≤ 1 MB; job time limit 5 min.
+
+---
+
+## Images (`POST /v1/images`) — used by Akasha's research inbox
+
+A research result names images only as candidates. Each carries a
+**`fetch_token`**: an HMAC of its URL under a key that never leaves the box.
+
+```json
+{"url": "https://example.org/tea-bowl.jpg", "source": "s3",
+ "caption": "Jian ware tea bowl, Song dynasty", "license": "CC0 (Met Open Access)",
+ "fetch_token": "3q2-7wEXAMPLEtokenSignedByTheWorker_abcdefg"}
+```
+
+To show or import one, the caller posts it back:
+
+```json
+POST /v1/images
+{"url": "https://example.org/tea-bowl.jpg",
+ "token": "3q2-7wEXAMPLEtokenSignedByTheWorker_abcdefg",
+ "size": "preview"}
+```
+
+The answer is the image's bytes, with `Content-Type` saying which format (JPEG,
+PNG, WebP or GIF), not JSON.
+
+| Rule | Detail |
+|---|---|
+| Only its own URLs | A URL is fetched only with the token the worker issued for it. A caller -- even a compromised NAS -- can never make the box fetch an address of its choosing |
+| Tokens last | They don't expire with the job, so a draft can import its images days later. Rotating the key (`WORKER_SIGNING_KEY`, or deleting the key file in the data volume) revokes all of them |
+| `size` | `preview`: at most 360 px, re-encoded (JPEG, or PNG when transparent), for showing candidates. `full` (default): the original bytes, for importing |
+| Guarded fetching | Same fetcher as research: public addresses only (re-checked after every redirect), ports 80/443, the image cap (`IMAGE_MAX_BYTES`, 20 MB), and it must open as an image |
+| Nothing kept | The worker stores neither the image nor the URL; its log records only the size requested and the bytes returned |
+| Errors | `400 invalid_request` (malformed, or the token doesn't match), `502 image_unavailable` (gone, unreachable, too large, not an image, refused address) |
 

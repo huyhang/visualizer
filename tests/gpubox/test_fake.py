@@ -10,6 +10,7 @@ from visualizer.gpubox import (
     JOB_FAILURE_CODES,
     WorkerBusy,
     WorkerClient,
+    WorkerImageUnavailable,
     WorkerJobNotFound,
     WorkerRejected,
     WorkerUnavailable,
@@ -65,7 +66,7 @@ def finished(worker, kind="research", request=None, ref="r1"):
 
 
 def test_it_answers_the_same_calls_as_the_real_client():
-    for name in ("health", "submit", "status", "cancel"):
+    for name in ("health", "submit", "status", "cancel", "fetch_image"):
         real = inspect.signature(getattr(WorkerClient, name))
         stand_in = inspect.signature(getattr(FakeWorker, name))
         assert list(stand_in.parameters) == list(real.parameters), name
@@ -133,9 +134,11 @@ def test_a_research_job_walks_the_documented_stages(clock):
         if job["progress"]:
             seen.append(job["progress"]["stage"])
         clock.now += STEP
+    # The second check comes before writing, so the article only uses facts
+    # that survived it -- the order the real pipeline uses.
     assert list(dict.fromkeys(seen)) == [
         "loading_model", "planning", "searching", "fetching", "extracting",
-        "verifying", "writing", "second_check"]
+        "verifying", "second_check", "writing"]
     assert job["state"] == "done"
     assert job["finished_at"] and job["expires_at"] > job["finished_at"]
 
@@ -257,3 +260,44 @@ def test_second_check_outcomes(verifier, verify, status, reason, check):
 def test_a_required_second_check_fails_the_job_when_the_verifier_is_down():
     job = finished(fake(verifier="down"), request=research(verify="required"))
     assert job["state"] == "failed" and job["error"]["code"] == "unavailable"
+
+
+# -- images ------------------------------------------------------------------
+
+
+def candidates(worker):
+    return finished(worker, request=research(include_images=True))["result"][
+        "article"]["image_candidates"]
+
+
+def test_an_image_candidate_can_be_fetched_with_its_token():
+    worker = fake()
+    first = candidates(worker)[0]
+    full, content_type = worker.fetch_image(first["url"], first["fetch_token"])
+    preview, _ = worker.fetch_image(first["url"], first["fetch_token"], "preview")
+    assert content_type == "image/png" and full.startswith(b"\x89PNG")
+    assert len(preview) < len(full)
+
+
+def test_a_token_only_opens_its_own_url():
+    worker = fake()
+    first = candidates(worker)[0]
+    for url, token in ((first["url"] + "?other", first["fetch_token"]),
+                       ("https://169.254.169.254/latest/meta-data", first["fetch_token"]),
+                       (first["url"], "x" * 43)):
+        with pytest.raises(WorkerRejected) as raised:
+            worker.fetch_image(url, token)
+        assert raised.value.code == "invalid_request"
+
+
+def test_a_token_from_another_box_is_refused():
+    first = candidates(fake())[0]
+    with pytest.raises(WorkerRejected):
+        fake().fetch_image(first["url"], first["fetch_token"])
+
+
+def test_an_image_that_has_vanished():
+    worker = fake()
+    gone = next(c for c in candidates(worker) if "/gone" in c["url"])
+    with pytest.raises(WorkerImageUnavailable):
+        worker.fetch_image(gone["url"], gone["fetch_token"])

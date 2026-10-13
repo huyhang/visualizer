@@ -11,18 +11,27 @@ UIs can be built and exercised before the box exists. Two promises:
   job fail with any documented code.
 
 Its output is labelled fake on purpose ("[Fake] …", example.org sources), so
-demo data can never be mistaken for research.
+demo data can never be mistaken for research. Its image candidates carry real
+signed tokens and ``fetch_image`` checks them, returning a generated picture;
+a candidate URL containing ``/gone`` behaves like an image that vanished.
 """
 
+import base64
+import hashlib
+import hmac
+import io
 import itertools
+import secrets
 import threading
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from urllib.parse import quote
 
 from .errors import (
     JOB_FAILURE_CODES,
     WorkerBusy,
+    WorkerImageUnavailable,
     WorkerJobNotFound,
     WorkerRejected,
     WorkerUnavailable,
@@ -69,6 +78,7 @@ class FakeWorker:
         self._by_ref: dict[str, str] = {}
         self._ids = itertools.count(1)
         self._fail_next: str | None = None
+        self._key = secrets.token_bytes(32)
         self.set_mode(mode)
 
     def set_mode(self, mode: str) -> None:
@@ -150,6 +160,20 @@ class FakeWorker:
                 job["cancelled_after"] = self._clock() - job["started"]
             return self._view(job)
 
+    def fetch_image(self, url: str, token: str, size: str = "full") -> tuple[bytes, str]:
+        self._reachable()
+        if not hmac.compare_digest(self._sign(url), token or ""):
+            raise WorkerRejected("The token does not match the URL",
+                                 code="invalid_request")
+        if "/gone" in url:
+            raise WorkerImageUnavailable("The source answered 404",
+                                         code="image_unavailable")
+        return _picture(*((48, 36) if size == "preview" else (640, 480))), "image/png"
+
+    def _sign(self, url: str) -> str:
+        digest = hmac.new(self._key, b"image-v1:" + url.encode(), hashlib.sha256)
+        return base64.urlsafe_b64encode(digest.digest()).decode().rstrip("=")
+
     # -- the simulation ------------------------------------------------------
 
     def _reachable(self) -> None:
@@ -165,10 +189,17 @@ class FakeWorker:
         return job
 
     def _stages(self, job: dict) -> list[str]:
+        """The order the real pipelines use: the second check runs before
+        research writes its article, so the article only uses facts that
+        survived it, and after a review, on the issues it found."""
         stages = ["loading_model"] if job["needs_load"] else []
-        stages += list(_RESEARCH_STAGES) if job["kind"] == "research" else ["reviewing"]
-        if self._second_check(job) == "checked":
-            stages.append("second_check")
+        checked = self._second_check(job) == "checked"
+        if job["kind"] == "research":
+            stages += list(_RESEARCH_STAGES[:-1])
+            stages += ["second_check"] if checked else []
+            stages.append(_RESEARCH_STAGES[-1])
+        else:
+            stages += ["reviewing"] + (["second_check"] if checked else [])
         return stages
 
     def _second_check(self, job: dict) -> str:
@@ -236,8 +267,12 @@ class FakeWorker:
                              "message": _FAILURE_MESSAGES[failure]}
             return
         view["state"] = "done"
-        build = _research_result if job["kind"] == "research" else _review_result
-        view["result"] = build(job["request"], self._verification(job), finished)
+        if job["kind"] == "research":
+            view["result"] = _research_result(job["request"], self._verification(job),
+                                              finished, self._sign)
+        else:
+            view["result"] = _review_result(job["request"], self._verification(job),
+                                            finished)
 
     def _verification(self, job: dict) -> dict:
         outcome = self._second_check(job)
@@ -283,9 +318,10 @@ def _check(kind: str, request: dict) -> None:
 # -- canned results ----------------------------------------------------------
 
 
-def _research_result(request: dict, verification: dict, at: datetime) -> dict:
+def _research_result(request: dict, verification: dict, at: datetime,
+                     sign: Callable[[str], str]) -> dict:
     question = request["question"].strip()
-    slug = "-".join(question.lower().split())[:60]
+    slug = quote("-".join(question.lower().split())[:60], safe="-")
     language = (request.get("languages") or ["en"])[0]
     quotes = [f"the first passage the fake worker invented about {question}",
               f"a second invented passage, also about {question}"]
@@ -313,9 +349,14 @@ def _research_result(request: dict, verification: dict, at: datetime) -> dict:
         removed = 1
     images = []
     if request.get("include_images"):
-        images.append({"url": f"https://example.org/fake-research/{slug}/image.jpg",
-                       "source": "s1", "caption": f"[Fake] An image about {question}",
-                       "license": "CC0 (fake)"})
+        found = [(f"https://example.org/fake-research/{slug}/image.jpg",
+                  f"[Fake] An image about {question}", "CC0 (fake)"),
+                 # One that will have vanished by the time anyone imports it.
+                 (f"https://example.org/fake-research/{slug}/gone.jpg",
+                  "[Fake] An image that has since vanished", None)]
+        images = [{"url": url, "source": "s1", "caption": caption,
+                   "license": license_, "fetch_token": sign(url)}
+                  for url, caption, license_ in found]
     return {
         "article": {
             "title": question[:1].upper() + question[1:],
@@ -377,6 +418,15 @@ def _excerpt(text: str, limit: int = 40) -> str:
         return text
     cut = text.rfind(" ", 0, limit)
     return text[: cut if cut > 0 else limit]
+
+
+def _picture(width: int, height: int) -> bytes:
+    """A small, real PNG, so what imports it exercises real image handling."""
+    from PIL import Image  # the stack's own dependency; only the fake needs it here
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (width, height), (178, 84, 48)).save(buffer, "PNG")
+    return buffer.getvalue()
 
 
 def _iso(moment: datetime) -> str:

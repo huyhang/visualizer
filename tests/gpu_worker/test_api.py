@@ -64,10 +64,11 @@ def test_health_conforms_and_counts_the_queue(client, store, clock):
 
 @pytest.mark.parametrize("section", ["ollama", "searxng"])
 def test_health_is_not_ok_when_a_dependency_is_down(config, store, runner,
-                                                    contract, clock, section):
+                                                    contract, images, clock,
+                                                    section):
     probes = StaticProbes()
     probes.sections[section]["status"] = "down"
-    client = create_app(config, store, runner, probes, contract,
+    client = create_app(config, store, runner, probes, contract, images,
                         clock=clock).test_client()
     body = client.get("/v1/health", headers=AUTH).get_json()
     validator("Health").validate(body)
@@ -75,10 +76,10 @@ def test_health_is_not_ok_when_a_dependency_is_down(config, store, runner,
 
 
 def test_the_optional_verifier_never_affects_ok(config, store, runner, contract,
-                                                clock):
+                                                images, clock):
     probes = StaticProbes(verifier={"status": "down", "models": {
         "research": "bespoke-minicheck", "review": "gemma3:27b"}})
-    client = create_app(config, store, runner, probes, contract,
+    client = create_app(config, store, runner, probes, contract, images,
                         clock=clock).test_client()
     assert client.get("/v1/health", headers=AUTH).get_json()["ok"] is True
 

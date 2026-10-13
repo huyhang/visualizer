@@ -38,6 +38,11 @@ class WorkerJobNotFound(WorkerError):
     """The job is unknown to the worker -- never created, or its result expired."""
 
 
+class WorkerImageUnavailable(WorkerError):
+    """The box is fine, but the image is not: gone, unreachable, too large, or
+    not an image. Only ``fetch_image`` raises it."""
+
+
 class WorkerRejected(WorkerError):
     """The worker refused the request: a bad token, or a bug on our side.
 
@@ -57,5 +62,6 @@ ERRORS_BY_CODE: dict[str, type[WorkerError]] = {
     "payload_too_large": WorkerRejected,
     "queue_full": WorkerBusy,
     "unavailable": WorkerUnavailable,
+    "image_unavailable": WorkerImageUnavailable,
 }
 JOB_FAILURE_CODES = frozenset({"timeout", "unavailable", "no_sources", "internal"})

@@ -25,8 +25,19 @@ class WorkerConfig:
     verifier_url: str | None = None
     verifier_research_model: str = "bespoke-minicheck"
     verifier_review_model: str = "gemma3:27b"
+    verifier_timeout: int = 180
     # Health must answer within the stack's 2 s budget, so each probe gets less.
     probe_timeout: float = 1.5
+    # The model's context window per request. A chapter plus its references
+    # fits in 32k; raising it costs VRAM next to a ~20 GB model.
+    num_ctx: int = 32768
+    llm_timeout: int = 300
+    fetch_timeout: int = 15
+    fetch_max_bytes: int = 5 * 1024 * 1024
+    # Akasha's own upload cap: an image bigger than this could not be stored.
+    image_max_bytes: int = 20 * 1024 * 1024
+    # Unset: a key is generated beside the job store on first start.
+    signing_key: str | None = None
 
 
 def config_from_env(environ=os.environ) -> WorkerConfig:
@@ -69,4 +80,11 @@ def config_from_env(environ=os.environ) -> WorkerConfig:
                                      defaults.verifier_research_model),
         verifier_review_model=text("VERIFIER_REVIEW_MODEL",
                                    defaults.verifier_review_model),
+        verifier_timeout=positive("VERIFIER_TIMEOUT", defaults.verifier_timeout),
+        num_ctx=positive("NUM_CTX", defaults.num_ctx),
+        llm_timeout=positive("LLM_TIMEOUT", defaults.llm_timeout),
+        fetch_timeout=positive("FETCH_TIMEOUT", defaults.fetch_timeout),
+        fetch_max_bytes=positive("FETCH_MAX_BYTES", defaults.fetch_max_bytes),
+        image_max_bytes=positive("IMAGE_MAX_BYTES", defaults.image_max_bytes),
+        signing_key=text("WORKER_SIGNING_KEY"),
     )

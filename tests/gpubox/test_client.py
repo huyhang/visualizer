@@ -15,6 +15,7 @@ from visualizer.gpubox import (
     WorkerBusy,
     WorkerClient,
     WorkerConfig,
+    WorkerImageUnavailable,
     WorkerJobNotFound,
     WorkerRejected,
     WorkerUnavailable,
@@ -38,7 +39,7 @@ DOCUMENTED_ERRORS = [
 ]
 STATUS_OF = {"InvalidRequest": 400, "Unauthorized": 401, "NotFound": 404,
              "IdempotencyConflict": 409, "PayloadTooLarge": 413,
-             "QueueFull": 429, "Unavailable": 503}
+             "QueueFull": 429, "Unavailable": 503, "ImageUnavailable": 502}
 
 
 class Replay:
@@ -48,10 +49,10 @@ class Replay:
         self.replies = list(replies)
         self.requests = []
 
-    def __call__(self, method, url, headers, body, timeout):
+    def __call__(self, method, url, headers, body, timeout, max_bytes=None):
         self.requests.append({"method": method, "url": url, "headers": headers,
                               "body": json.loads(body) if body else None,
-                              "timeout": timeout})
+                              "timeout": timeout, "max_bytes": max_bytes})
         reply = self.replies.pop(0)
         if isinstance(reply, Exception):
             raise reply
@@ -176,6 +177,37 @@ def test_undocumented_errors_fall_back_on_the_status(status, body, expected):
 def test_a_malformed_success_is_treated_as_unavailable(body):
     with pytest.raises(WorkerUnavailable):
         make_client(Replay((200, body))).status("j_1")
+
+
+# -- images ------------------------------------------------------------------
+
+IMAGE_REQUEST = SPEC["paths"]["/images"]["post"]["requestBody"]["content"][
+    "application/json"]["examples"]["preview"]["value"]
+
+
+def test_fetching_an_image_sends_its_token_and_returns_its_bytes():
+    send = Replay((200, b"\x89PNG...", {"Content-Type": "image/png"}))
+    data, content_type = make_client(send).fetch_image(
+        IMAGE_REQUEST["url"], IMAGE_REQUEST["token"], "preview")
+    assert (data, content_type) == (b"\x89PNG...", "image/png")
+    (sent,) = send.requests
+    assert (sent["method"], sent["url"]) == ("POST", URL + "/v1/images")
+    assert sent["headers"]["Accept"] == "image/*"
+    assert sent["max_bytes"] == client_module.IMAGE_MAX_BYTES
+    validator("ImageFetch").validate(sent["body"])
+
+
+def test_an_image_the_box_could_not_get():
+    example = dict(DOCUMENTED_ERRORS)["ImageUnavailable"]
+    with pytest.raises(WorkerImageUnavailable) as raised:
+        make_client(Replay((502, example))).fetch_image("https://x/y.jpg", "t")
+    assert raised.value.message == example["error"]["message"]
+
+
+def test_a_success_that_is_not_an_image_is_refused():
+    send = Replay((200, {"job": {}}, {"Content-Type": "application/json"}))
+    with pytest.raises(WorkerUnavailable, match="other than an image"):
+        make_client(send).fetch_image("https://x/y.jpg", "t")
 
 
 # -- the health cache --------------------------------------------------------

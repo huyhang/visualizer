@@ -40,7 +40,7 @@ class Contract:
                 {"$ref": f"{_URI}#/components/schemas/{name}"}, registry=registry
             )
             for name in ("ResearchJobCreate", "ReviewJobCreate",
-                         "ResearchResult", "ReviewResult")
+                         "ResearchResult", "ReviewResult", "ImageFetch")
         }
 
     def job_problem(self, body) -> str | None:
@@ -51,6 +51,10 @@ class Contract:
         if kind not in ("research", "review"):
             return "kind: must be 'research' or 'review'"
         return self._problem(f"{kind.capitalize()}JobCreate", body)
+
+    def image_problem(self, body) -> str | None:
+        """Why a ``POST /images`` body breaks the contract, or None."""
+        return self._problem("ImageFetch", body)
 
     def result_problem(self, kind: str, result) -> str | None:
         """Why a pipeline's result would break the contract, or None."""

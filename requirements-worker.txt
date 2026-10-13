@@ -3,3 +3,5 @@ gunicorn>=21.2
 # Validates requests and results against docs/gpu_worker/openapi.json at
 # runtime (the referencing API arrived in 4.18).
 jsonschema>=4.18
+# Opens fetched images to check what they are, and makes previews.
+Pillow>=10.0

@@ -7,7 +7,9 @@ here rather than trusted to each pipeline:
 - **the result fits the contract** -- one that doesn't fails the job instead of
   reaching a caller;
 - **review quotes are real** -- an issue whose ``quote`` is not verbatim in the
-  block it names is dropped, as the API documentation says.
+  block it names is dropped, as the API documentation says;
+- **image candidates are signed** -- every one gets its ``fetch_token`` here,
+  overwriting anything a pipeline set, so none can go out unsigned or forged.
 
 Only job metadata is ever logged: id, kind, outcome and timing.
 """
@@ -62,11 +64,13 @@ def _failure(code: str, message: str, retryable: bool) -> dict:
 
 class Runner:
     def __init__(self, store: JobStore, pipelines: Pipelines, contract: Contract, *,
+                 sign: Callable[[str], str],
                  clock: Callable[[], datetime] = lambda: datetime.now(UTC),
                  poll_seconds: float = 2.0):
         self.store = store
         self.pipelines = pipelines
         self.contract = contract
+        self._sign = sign
         self._clock = clock
         self._poll = poll_seconds
         self._wake = threading.Event()
@@ -147,12 +151,27 @@ class Runner:
                 "internal", "The worker hit an unexpected error", False)
         if kind == "review":
             result = _drop_unanchored_issues(result, request)
+        else:
+            result = _signed_candidates(result, self._sign)
         if self.contract.result_problem(kind, result) is not None:
             LOG.error("job pipeline returned a result outside the contract")
             return "failed", None, _failure(
                 "internal", "The pipeline produced a result outside the contract",
                 False)
         return "done", result, None
+
+
+def _signed_candidates(result, sign: Callable[[str], str]):
+    """Give every image candidate a token for its own URL, and only that."""
+    try:
+        candidates = result["article"]["image_candidates"]
+    except (KeyError, TypeError):
+        return result   # malformed: the contract check will say so
+    if isinstance(candidates, list):
+        for candidate in candidates:
+            if isinstance(candidate, dict) and isinstance(candidate.get("url"), str):
+                candidate["fetch_token"] = sign(candidate["url"])
+    return result
 
 
 def _drop_unanchored_issues(result, request: dict):

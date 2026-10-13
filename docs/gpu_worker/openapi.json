@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "GPU Box AI Worker",
-    "version": "1.0.0-draft",
+    "version": "1.1.0-draft",
     "summary": "Async research and writing-review jobs for the visualizer stack.",
     "description": "Runs on the RTX 3090 box and serves Akasha (research jobs) and Logos (LLM review jobs). Callers never talk to Ollama or SearXNG directly. Every job is asynchronous: submit with POST /jobs, poll GET /jobs/{job_id}. The worker never initiates connections to callers and never accepts URLs to fetch from callers. Status: proposal, not implemented. Human-readable spec: README.md beside this file."
   },
@@ -31,6 +31,10 @@
     {
       "name": "jobs",
       "description": "Submit, poll, and cancel research and review jobs."
+    },
+    {
+      "name": "images",
+      "description": "Fetch an image a research result found, by its signed token."
     }
   ],
   "paths": {
@@ -398,7 +402,8 @@
                                 "url": "https://example.org/tea-bowl.jpg",
                                 "source": "s1",
                                 "caption": "Jian ware tea bowl, Song dynasty",
-                                "license": "CC0 (Met Open Access)"
+                                "license": "CC0 (Met Open Access)",
+                                "fetch_token": "3q2-7wEXAMPLEtokenSignedByTheWorker_abcdefg"
                               }
                             ]
                           },
@@ -575,6 +580,55 @@
           }
         }
       }
+    },
+    "/images": {
+      "post": {
+        "tags": [
+          "images"
+        ],
+        "operationId": "fetchImage",
+        "summary": "Fetch an image a research result found",
+        "description": "Synchronous: the worker downloads the image now, with the same guarded fetcher research uses (public addresses only, re-checked after every redirect, size and type limits), and returns its bytes. Only URLs carrying their fetch_token are accepted. Callers pass the bytes to their own media handling; the worker keeps nothing.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageFetch"
+              },
+              "examples": {
+                "preview": {
+                  "value": {
+                    "url": "https://example.org/tea-bowl.jpg",
+                    "token": "3q2-7wEXAMPLEtokenSignedByTheWorker_abcdefg",
+                    "size": "preview"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The image bytes; Content-Type says which format.",
+            "content": {
+              "image/jpeg": {},
+              "image/png": {},
+              "image/webp": {},
+              "image/gif": {}
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "502": {
+            "$ref": "#/components/responses/ImageUnavailable"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -737,6 +791,23 @@
             }
           }
         }
+      },
+      "ImageUnavailable": {
+        "description": "The image could not be fetched: gone from its source, unreachable, too large, not an image, or at an address the worker refuses.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "image_unavailable",
+                "message": "The source answered 404",
+                "retryable": false
+              }
+            }
+          }
+        }
       }
     },
     "schemas": {
@@ -761,7 +832,7 @@
         "properties": {
           "code": {
             "type": "string",
-            "description": "API errors: invalid_request, unauthorized, not_found, idempotency_conflict, payload_too_large, queue_full, unavailable. Job failures (in Job.error): timeout, unavailable, no_sources, internal.",
+            "description": "API errors: invalid_request, unauthorized, not_found, idempotency_conflict, payload_too_large, queue_full, unavailable, image_unavailable (POST /images only). Job failures (in Job.error): timeout, unavailable, no_sources, internal.",
             "enum": [
               "invalid_request",
               "unauthorized",
@@ -770,6 +841,7 @@
               "payload_too_large",
               "queue_full",
               "unavailable",
+              "image_unavailable",
               "timeout",
               "no_sources",
               "internal"
@@ -1518,7 +1590,8 @@
           "url",
           "source",
           "caption",
-          "license"
+          "license",
+          "fetch_token"
         ],
         "properties": {
           "url": {
@@ -1538,6 +1611,11 @@
               "null"
             ],
             "description": "License as stated by the source; null if unknown."
+          },
+          "fetch_token": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$",
+            "description": "Signed by the worker with a key only it holds: proof that this URL came from one of its own results. POST /images fetches a URL only when presented with its token, so callers can never make the box fetch an address of their choosing. Valid for as long as the key is (it does not expire with the job)."
           }
         }
       },
@@ -1763,6 +1841,43 @@
             "description": "Second-check verdict on whether the cited quotes support the fact. Unsupported facts are moved to dropped_facts. unchecked when verification was skipped or off."
           }
         }
+      },
+      "ImageFetch": {
+        "type": "object",
+        "required": [
+          "url",
+          "token"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048,
+            "description": "An image_candidates[].url from a research result."
+          },
+          "token": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$",
+            "description": "That candidate's fetch_token."
+          },
+          "size": {
+            "type": "string",
+            "enum": [
+              "preview",
+              "full"
+            ],
+            "default": "full",
+            "description": "preview: at most 360 px on the longest side, re-encoded as JPEG (PNG when the image has transparency) -- for showing candidates. full: the original bytes, up to the worker's IMAGE_MAX_BYTES -- for importing."
+          }
+        },
+        "examples": [
+          {
+            "url": "https://example.org/tea-bowl.jpg",
+            "token": "3q2-7wEXAMPLEtokenSignedByTheWorker_abcdefg",
+            "size": "preview"
+          }
+        ]
       }
     }
   }

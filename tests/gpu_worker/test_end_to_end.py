@@ -8,11 +8,13 @@ client, Akasha's ``RemoteResearcher``, and finally the whole stack.
 """
 
 import copy
+import io
 import threading
 import time
 from datetime import timedelta
 
 import pytest
+from PIL import Image
 from werkzeug.serving import make_server
 from werkzeug.test import Client
 
@@ -26,13 +28,22 @@ from visualizer.akasha.research import RemoteResearcher
 from visualizer.gpu_worker.app import create_app
 from visualizer.gpu_worker.config import WorkerConfig
 from visualizer.gpu_worker.contract import Contract
+from visualizer.gpu_worker.images import Images, TokenSigner
 from visualizer.gpu_worker.pipelines import NotBuiltPipelines
 from visualizer.gpu_worker.runner import Runner
 from visualizer.gpu_worker.store import JobStore
 from visualizer.gpubox import WorkerClient, availability
 from visualizer.gpubox import WorkerConfig as ClientConfig
 
-from .conftest import RESEARCH_JOB, REVIEW_JOB, TOKEN, CannedPipelines, StaticProbes
+from .conftest import (
+    RESEARCH_JOB,
+    REVIEW_JOB,
+    TOKEN,
+    CannedPipelines,
+    StaticProbes,
+    StubFetcher,
+    picture,
+)
 
 QUESTION = RESEARCH_JOB["request"]
 
@@ -42,14 +53,17 @@ def box(tmp_path):
     """Start a worker on a local socket; returns a function that does so."""
     started = []
 
-    def start(pipelines=None, *, run_jobs=True, queue_max=20, probes=None):
+    def start(pipelines=None, *, run_jobs=True, queue_max=20, probes=None,
+              web=None):
         config = WorkerConfig(token=TOKEN, queue_max=queue_max)
         contract = Contract()
         store = JobStore(tmp_path / f"jobs-{len(started)}.sqlite3",
                          ttl=timedelta(hours=24))
+        signer = TokenSigner(b"e2e-key" * 5)
         runner = Runner(store, pipelines or CannedPipelines(), contract,
-                        poll_seconds=0.02)
-        app = create_app(config, store, runner, probes or StaticProbes(), contract)
+                        sign=signer.sign, poll_seconds=0.02)
+        app = create_app(config, store, runner, probes or StaticProbes(), contract,
+                         Images(signer, web or StubFetcher(), 20 * 1024 * 1024))
         server = make_server("127.0.0.1", 0, app, threaded=True)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         if run_jobs:
@@ -134,6 +148,22 @@ def test_the_shipped_worker_fails_jobs_honestly(box):
                           researcher.submit(QUESTION, "akasha-job-1")["id"])
     assert done["state"] == "failed"
     assert done["error"]["message"] == "The research pipeline is not built yet"
+
+
+def test_an_image_candidate_from_a_result_can_be_fetched(box):
+    image_url = "https://example.org/tea-bowl.jpg"   # the spec example's candidate
+    original = picture(640, 480)
+    worker = client_for(box(web=StubFetcher({image_url: original})))
+    job = worker.submit("research", QUESTION, service="akasha", ref="a-1")
+    done = until_finished(worker.status, job["id"])
+    (candidate,) = done["result"]["article"]["image_candidates"]
+    data, content_type = worker.fetch_image(candidate["url"], candidate["fetch_token"])
+    assert (data, content_type) == (original, "image/png")
+    preview, preview_type = worker.fetch_image(candidate["url"],
+                                               candidate["fetch_token"], "preview")
+    assert preview_type == "image/jpeg"
+    with Image.open(io.BytesIO(preview)) as shown:
+        assert shown.size == (360, 270)
 
 
 # -- the edges ---------------------------------------------------------------

@@ -12,8 +12,9 @@ from pathlib import Path
 SRC = Path(__file__).resolve().parents[2] / "src" / "visualizer"
 WORKER = SRC / "gpu_worker"
 # Third-party packages the worker may use; each is installed by
-# requirements-worker.txt (werkzeug with flask, referencing with jsonschema).
-WORKER_DEPENDENCIES = {"flask", "werkzeug", "jsonschema", "referencing"}
+# requirements-worker.txt (werkzeug with flask, referencing with jsonschema,
+# PIL as Pillow).
+WORKER_DEPENDENCIES = {"flask", "werkzeug", "jsonschema", "referencing", "PIL"}
 
 
 def imports(path: Path):

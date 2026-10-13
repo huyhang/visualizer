@@ -1,8 +1,10 @@
-"""The worker's HTTP API: ``/v1/health`` and ``/v1/jobs``, exactly as documented.
+"""The worker's HTTP API: ``/v1/health``, ``/v1/jobs`` and ``/v1/images``.
 
 Every request needs the bearer token. Every error, including Flask's own 404s
 and 405s, comes back in the contract's one error shape. Nothing here runs a
 job: ``POST`` queues it and wakes the ``Runner``, and the ``GET``s read the store.
+``/v1/images`` is the one synchronous call: it fetches a signed image candidate
+there and then.
 """
 
 import hashlib
@@ -17,6 +19,8 @@ from werkzeug.exceptions import HTTPException
 
 from .config import WorkerConfig
 from .contract import Contract
+from .fetch import FetchError
+from .images import Images
 from .runner import Runner
 from .store import JobStore
 
@@ -29,7 +33,8 @@ QUEUE_RETRY_AFTER = 30
 
 _STATUS_CODES = {400: "invalid_request", 401: "unauthorized", 404: "not_found",
                  405: "invalid_request", 409: "idempotency_conflict",
-                 413: "payload_too_large", 429: "queue_full", 503: "unavailable"}
+                 413: "payload_too_large", 429: "queue_full",
+                 502: "image_unavailable", 503: "unavailable"}
 
 
 def _error(status: int, message: str, *, retryable: bool = False,
@@ -52,7 +57,7 @@ def body_hash(body: dict) -> str:
 
 
 def create_app(config: WorkerConfig, store: JobStore, runner: Runner, probes,
-               contract: Contract, *,
+               contract: Contract, images: Images, *,
                clock: Callable[[], datetime] = lambda: datetime.now(UTC)) -> Flask:
     app = Flask(__name__)
     # The largest request any job kind may send, plus room for the envelope.
@@ -138,5 +143,26 @@ def create_app(config: WorkerConfig, store: JobStore, runner: Runner, probes,
         if job is None:
             return _error(404, "Unknown or expired job")
         return _json({"job": job})
+
+    @app.post("/v1/images")
+    def fetch_image():
+        try:
+            body = json.loads(request.get_data(cache=False))
+        except (ValueError, UnicodeDecodeError):
+            return _error(400, "The body is not valid JSON")
+        problem = contract.image_problem(body)
+        if problem:
+            return _error(400, f"Schema violation: {problem}")
+        if not images.signer.verify(body["url"], body["token"]):
+            return _error(400, "The token does not match the URL")
+        size = body.get("size", "full")
+        try:
+            data, content_type = images.fetch(body["url"], size)
+        except FetchError as err:
+            LOG.info("image fetch failed (%s)", err.reason)
+            return _error(502, err.message)
+        # The size, not the URL: what was looked up says what was researched.
+        LOG.info("image fetched (size=%s, bytes=%d)", size, len(data))
+        return Response(data, 200, content_type=content_type)
 
     return app

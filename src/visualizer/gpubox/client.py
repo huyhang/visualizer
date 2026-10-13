@@ -40,9 +40,13 @@ HEALTH_TTL = 30.0
 # A research result with its sources is tens of kilobytes; anything near this
 # is a misbehaving worker, and the NAS should not buffer it.
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+# Images are the exception: the worker sends up to its IMAGE_MAX_BYTES (20 MB
+# by default, Akasha's own upload cap), and downloads them first, which is slow.
+IMAGE_MAX_BYTES = 24 * 1024 * 1024
+IMAGE_TIMEOUT = 45.0
 
-# (method, url, headers, body, timeout) -> (status, headers, body)
-Send = Callable[[str, str, dict, bytes | None, float], tuple[int, dict, bytes]]
+# (method, url, headers, body, timeout, max_bytes=None) -> (status, headers, body)
+Send = Callable[..., tuple[int, dict, bytes]]
 
 
 @dataclass(frozen=True)
@@ -82,21 +86,22 @@ def worker_from_env(environ=os.environ) -> "WorkerClient | None":
     return WorkerClient(config) if config else None
 
 
-def urllib_send(method, url, headers, body, timeout):
+def urllib_send(method, url, headers, body, timeout, max_bytes=None):
     """The real transport. HTTP errors come back as statuses; nothing else does."""
+    limit = max_bytes or MAX_RESPONSE_BYTES
     request = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return response.status, dict(response.headers), _bounded(response)
+            return response.status, dict(response.headers), _bounded(response, limit)
     except urllib.error.HTTPError as err:
-        return err.code, dict(err.headers or {}), _bounded(err)
+        return err.code, dict(err.headers or {}), _bounded(err, limit)
     except (urllib.error.URLError, TimeoutError, ConnectionError, HTTPException) as err:
         raise WorkerUnavailable("The GPU box is asleep or unreachable.") from err
 
 
-def _bounded(stream) -> bytes:
-    data = stream.read(MAX_RESPONSE_BYTES + 1)
-    if len(data) > MAX_RESPONSE_BYTES:
+def _bounded(stream, limit: int) -> bytes:
+    data = stream.read(limit + 1)
+    if len(data) > limit:
         raise WorkerUnavailable("The GPU box sent an oversized reply.")
     return data
 
@@ -156,25 +161,46 @@ class WorkerClient:
     def cancel(self, job_id: str) -> dict:
         return self._call("DELETE", f"/jobs/{quote(job_id, safe='')}")["job"]
 
+    def fetch_image(self, url: str, token: str, size: str = "full") -> tuple[bytes, str]:
+        """(bytes, content type) of an image a research result found.
+
+        ``token`` is that candidate's ``fetch_token``: the worker fetches only
+        URLs it signed itself, so this can never be pointed somewhere else.
+        """
+        status, headers, raw = self._exchange(
+            "POST", "/images", body={"url": url, "token": token, "size": size},
+            accept="image/*", timeout=IMAGE_TIMEOUT, max_bytes=IMAGE_MAX_BYTES)
+        content_type = {k.lower(): v for k, v in headers.items()}.get("content-type", "")
+        if 200 <= status < 300:
+            if not content_type.startswith("image/"):
+                raise WorkerUnavailable("The GPU box sent something other than an image.")
+            return raw, content_type.split(";")[0].strip()
+        raise _error(status, headers, _json(raw))
+
     # -- plumbing ------------------------------------------------------------
 
     def _call(self, method: str, path: str, *, body: dict | None = None,
               headers: dict | None = None, timeout: float | None = None) -> dict:
-        all_headers = {"Authorization": f"Bearer {self._token}",
-                       "Accept": "application/json", **(headers or {})}
-        data = None
-        if body is not None:
-            data = json.dumps(body).encode()
-            all_headers["Content-Type"] = "application/json"
-        status, reply_headers, raw = self._send(
-            method, self.base_url + path, all_headers, data, timeout or self._timeout
-        )
+        status, reply_headers, raw = self._exchange(method, path, body=body,
+                                                    headers=headers, timeout=timeout)
         payload = _json(raw)
         if 200 <= status < 300:
             if not isinstance(payload, dict):
                 raise WorkerUnavailable("The GPU box sent a malformed reply.")
             return payload
         raise _error(status, reply_headers, payload)
+
+    def _exchange(self, method: str, path: str, *, body: dict | None = None,
+                  headers: dict | None = None, accept: str = "application/json",
+                  timeout: float | None = None, max_bytes: int | None = None):
+        all_headers = {"Authorization": f"Bearer {self._token}",
+                       "Accept": accept, **(headers or {})}
+        data = None
+        if body is not None:
+            data = json.dumps(body).encode()
+            all_headers["Content-Type"] = "application/json"
+        return self._send(method, self.base_url + path, all_headers, data,
+                          timeout or self._timeout, max_bytes=max_bytes)
 
 
 def _json(raw: bytes):
