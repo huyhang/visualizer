@@ -38,8 +38,8 @@ _STATUS_CODES = {400: "invalid_request", 401: "unauthorized", 404: "not_found",
 
 
 def _error(status: int, message: str, *, retryable: bool = False,
-           headers: dict | None = None) -> Response:
-    body = {"error": {"code": _STATUS_CODES[status], "message": message,
+           headers: dict | None = None, code: str | None = None) -> Response:
+    body = {"error": {"code": code or _STATUS_CODES[status], "message": message,
                       "retryable": retryable}}
     return Response(json.dumps(body), status, headers=headers,
                     content_type="application/json")
@@ -142,6 +142,26 @@ def create_app(config: WorkerConfig, store: JobStore, runner: Runner, probes,
         job = store.cancel(job_id, clock())
         if job is None:
             return _error(404, "Unknown or expired job")
+        return _json({"job": job})
+
+    @app.post("/v1/jobs/<job_id>/plan")
+    def approve_plan(job_id):
+        try:
+            body = json.loads(request.get_data(cache=False))
+        except (ValueError, UnicodeDecodeError):
+            return _error(400, "The body is not valid JSON")
+        problem = contract.plan_problem(body)
+        if problem:
+            return _error(400, f"Schema violation: {problem}")
+        outcome = store.approve(job_id, body["queries"])
+        if outcome is None:
+            return _error(404, "Unknown or expired job")
+        job, approved = outcome
+        if not approved:
+            return _error(409, f"The job is {job['state']}, not awaiting approval",
+                          code="not_awaiting_approval")
+        LOG.info("job %s plan approved (%d queries)", job_id, len(body["queries"]))
+        runner.wake()
         return _json({"job": job})
 
     @app.post("/v1/images")

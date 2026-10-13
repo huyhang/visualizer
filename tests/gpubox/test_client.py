@@ -39,7 +39,8 @@ DOCUMENTED_ERRORS = [
 ]
 STATUS_OF = {"InvalidRequest": 400, "Unauthorized": 401, "NotFound": 404,
              "IdempotencyConflict": 409, "PayloadTooLarge": 413,
-             "QueueFull": 429, "Unavailable": 503, "ImageUnavailable": 502}
+             "QueueFull": 429, "Unavailable": 503, "ImageUnavailable": 502,
+             "NotAwaitingApproval": 409}
 
 
 class Replay:

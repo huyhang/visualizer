@@ -14,6 +14,11 @@ Its output is labelled fake on purpose ("[Fake] …", example.org sources), so
 demo data can never be mistaken for research. Its image candidates carry real
 signed tokens and ``fetch_image`` checks them, returning a generated picture;
 a candidate URL containing ``/gone`` behaves like an image that vanished.
+
+A research job asked with ``approve_plan`` stops after planning, exactly like
+the real one, until ``approve_plan()``; its plan expires after ``PLAN_TTL``. A
+``refine`` request gets a result that keeps the previous sources it was not
+told to exclude and adds one new one, so a caller's re-import can be tested.
 """
 
 import base64
@@ -33,6 +38,7 @@ from .errors import (
     WorkerBusy,
     WorkerImageUnavailable,
     WorkerJobNotFound,
+    WorkerNotAwaitingApproval,
     WorkerRejected,
     WorkerUnavailable,
 )
@@ -41,6 +47,7 @@ MODEL = "fake-model"
 VERIFIER_MODEL = "fake-minicheck"
 QUEUE_MAX = 20
 RESULT_TTL = timedelta(hours=24)
+PLAN_TTL = timedelta(hours=24)
 
 # The availability state each mode produces (``off`` is the absence of a worker).
 MODES = ("ready", "cold", "busy", "degraded", "queue_full", "unreachable",
@@ -141,7 +148,10 @@ class FakeWorker:
             job = {"id": job_id, "kind": kind, "request": request, "body": body,
                    "started": self._clock(), "created_at": self._now(),
                    "cancelled_after": None,
-                   "fail": self._fail_next, "needs_load": not self._model_loaded}
+                   "fail": self._fail_next, "needs_load": not self._model_loaded,
+                   "plan": (_proposed_plan(request) if kind == "research"
+                            and request.get("approve_plan") else None),
+                   "approved_at": None}
             self._fail_next = None
             self._jobs[job_id] = job
             self._by_ref[ref] = job_id
@@ -156,8 +166,27 @@ class FakeWorker:
         self._reachable()
         with self._lock:
             job = self._require(job_id)
-            if self._state(job)[0] in ("queued", "running"):
-                job["cancelled_after"] = self._clock() - job["started"]
+            if self._state(job)[0] in ("queued", "running", "awaiting_approval"):
+                job["cancelled_after"] = self._work(job)
+            return self._view(job)
+
+    def approve_plan(self, job_id: str, queries: list[dict]) -> dict:
+        self._reachable()
+        if (not isinstance(queries, list) or len(queries) > 6
+                or not all(isinstance(q, dict) and isinstance(q.get("q"), str)
+                           and 1 <= len(q["q"]) <= 200
+                           and isinstance(q.get("language"), str) for q in queries)):
+            raise WorkerRejected("queries must be at most 6 {q, language}",
+                                 code="invalid_request")
+        with self._lock:
+            job = self._require(job_id)
+            state = self._state(job)[0]
+            if state != "awaiting_approval":
+                raise WorkerNotAwaitingApproval(
+                    f"The job is {state}, not awaiting approval",
+                    code="not_awaiting_approval")
+            job["plan"] = [dict(q) for q in queries]
+            job["approved_at"] = self._clock()
             return self._view(job)
 
     def fetch_image(self, url: str, token: str, size: str = "full") -> tuple[bytes, str]:
@@ -211,17 +240,43 @@ class FakeWorker:
             return "fail" if verify == "required" else "skipped"
         return "checked"
 
+    def _pause(self, job: dict) -> float | None:
+        """Seconds of work after which the job waits for its plan, or None."""
+        if job["plan"] is None:
+            return None
+        stages = self._stages(job)
+        return (2 + stages.index("planning")) * self.stage_seconds
+
+    def _work(self, job: dict) -> float:
+        """Seconds of work done: elapsed time, less any wait for approval."""
+        elapsed = self._clock() - job["started"]
+        pause = self._pause(job)
+        if pause is None:
+            return elapsed
+        if job["approved_at"] is None:
+            return min(elapsed, pause)
+        return pause + (self._clock() - job["approved_at"])
+
     def _state(self, job: dict) -> tuple[str, str | None, float]:
         """(state, stage, seconds of work) for a job, from elapsed time alone.
 
-        One interval queued, one per stage, then finished. Deriving it rather
+        One interval queued, one per stage, then finished -- with a wait for
+        approval after planning when the job asked for one. Deriving it rather
         than storing it means no background thread and no timers to clean up.
         """
-        elapsed = self._clock() - job["started"]
+        work = self._work(job)
         stages = self._stages(job)
         total = (1 + len(stages)) * self.stage_seconds
         if job["cancelled_after"] is not None and job["cancelled_after"] < total:
             return "cancelled", None, job["cancelled_after"]
+        pause = self._pause(job)
+        if pause is not None and job["approved_at"] is None \
+                and self._clock() - job["started"] >= pause:
+            waited = self._clock() - job["started"] - pause
+            if waited >= PLAN_TTL.total_seconds():
+                return "plan_expired", None, pause
+            return "awaiting_approval", None, pause
+        elapsed = work
         if elapsed >= total:
             return "finished", None, total
         if self.stage_seconds and elapsed < self.stage_seconds:
@@ -237,9 +292,22 @@ class FakeWorker:
                 "position": None, "progress": None,
                 "created_at": _iso(created), "started_at": None,
                 "finished_at": None, "expires_at": None,
-                "result": None, "error": None}
+                "result": None, "error": None, "plan": self._plan_view(job, seconds)}
         if state == "queued":
             view["position"] = 1
+            return view
+        if state == "awaiting_approval":
+            view["started_at"] = _iso(started)
+            return view
+        if state == "plan_expired":
+            pause = created + timedelta(seconds=seconds)
+            finished = pause + PLAN_TTL
+            view.update(state="failed", started_at=_iso(started),
+                        finished_at=_iso(finished),
+                        expires_at=_iso(finished + RESULT_TTL),
+                        error={"code": "plan_expired", "retryable": False,
+                               "message": _FAILURE_MESSAGES["plan_expired"]})
+            view["plan"]["expires_at"] = None
             return view
         if state == "running":
             if stage != "loading_model":
@@ -247,7 +315,10 @@ class FakeWorker:
             view.update(started_at=_iso(started),
                         progress={"stage": stage, "message": _STAGE_MESSAGES[stage]})
             return view
-        finished = created + timedelta(seconds=seconds)
+        waited = 0.0   # the time spent waiting for approval was not work
+        if job["approved_at"] is not None and seconds > self._pause(job):
+            waited = job["approved_at"] - job["started"] - self._pause(job)
+        finished = created + timedelta(seconds=seconds + waited)
         # A job cancelled while still queued never started.
         if seconds >= self.stage_seconds:
             view["started_at"] = _iso(min(started, finished))
@@ -256,6 +327,15 @@ class FakeWorker:
             self._model_loaded = True
             self._finish(job, view, finished)
         return view
+
+    def _plan_view(self, job: dict, work: float) -> dict | None:
+        pause = self._pause(job)
+        if pause is None or work < pause:
+            return None
+        approved = job["approved_at"] is not None
+        expires = job["created_at"] + timedelta(seconds=pause) + PLAN_TTL
+        return {"queries": [dict(q) for q in job["plan"]], "approved": approved,
+                "expires_at": None if approved else _iso(expires)}
 
     def _finish(self, job: dict, view: dict, finished: datetime) -> None:
         failure = job["fail"] or ("unavailable" if self._second_check(job) == "fail"
@@ -267,6 +347,8 @@ class FakeWorker:
                              "message": _FAILURE_MESSAGES[failure]}
             return
         view["state"] = "done"
+        if view["plan"] is not None:
+            view["plan"]["expires_at"] = None
         if job["kind"] == "research":
             view["result"] = _research_result(job["request"], self._verification(job),
                                               finished, self._sign)
@@ -291,6 +373,7 @@ _FAILURE_MESSAGES = {
     "unavailable": "A dependency stopped responding during the job",
     "no_sources": "No usable sources were found",
     "internal": "The worker hit an unexpected error",
+    "plan_expired": "Nobody approved the search plan in time",
 }
 
 
@@ -307,6 +390,12 @@ def _check(kind: str, request: dict) -> None:
         question = request.get("question")
         if not isinstance(question, str) or not 3 <= len(question) <= 500:
             raise invalid("question must be 3-500 characters")
+        refine = request.get("refine")
+        if refine is not None and not (
+                isinstance(refine, dict) and isinstance(refine.get("feedback"), str)
+                and refine["feedback"].strip()
+                and isinstance(refine.get("previous"), dict)):
+            raise invalid("refine needs feedback and the previous draft")
     else:
         blocks = (request.get("chapter") or {}).get("blocks")
         if not blocks or not all(isinstance(b, dict) and b.get("id") for b in blocks):
@@ -318,18 +407,45 @@ def _check(kind: str, request: dict) -> None:
 # -- canned results ----------------------------------------------------------
 
 
+def _proposed_plan(request: dict) -> list[dict]:
+    question = request["question"].strip()
+    language = (request.get("languages") or ["en"])[0]
+    return [{"q": f"[fake] {question}"[:200], "language": language},
+            {"q": f"[fake] {question} history"[:200], "language": language}]
+
+
+def _research_sources(request: dict, slug: str) -> list[tuple[str, str]]:
+    """(url, title) of the pages a fake result cites.
+
+    Two invented ones; when refining, the previous sources not excluded, then
+    one new one -- what a real refinement re-reads and adds.
+    """
+    question = request["question"].strip()
+    refine = request.get("refine")
+    if not refine:
+        return [(f"https://example.org/fake-research/{slug}/{n}",
+                 f"[Fake] Source {n} on {question}") for n in (1, 2)]
+    excluded = set(refine.get("exclude_urls") or [])
+    kept = [(s["url"], s["title"] or "[Fake] A previous source")
+            for s in refine["previous"].get("sources") or [] if s["url"] not in excluded]
+    return kept + [(f"https://example.org/fake-research/{slug}/refined",
+                    f"[Fake] A new source on {question}, after feedback")]
+
+
 def _research_result(request: dict, verification: dict, at: datetime,
                      sign: Callable[[str], str]) -> dict:
     question = request["question"].strip()
     slug = quote("-".join(question.lower().split())[:60], safe="-")
     language = (request.get("languages") or ["en"])[0]
+    pages = _research_sources(request, slug)
     quotes = [f"the first passage the fake worker invented about {question}",
               f"a second invented passage, also about {question}"]
+    quotes += [f"invented passage {n} about {question}"
+               for n in range(3, len(pages) + 1)]
     sources = [
-        {"key": f"s{n}", "url": f"https://example.org/fake-research/{slug}/{n}",
-         "title": f"[Fake] Source {n} on {question}", "site": "example.org",
-         "language": language, "retrieved_at": _iso(at), "excerpts": [quote]}
-        for n, quote in enumerate(quotes, 1)
+        {"key": f"s{n}", "url": url, "title": title, "site": "example.org",
+         "language": language, "retrieved_at": _iso(at), "excerpts": [quotes[n - 1]]}
+        for n, (url, title) in enumerate(pages, 1)
     ]
     checked = verification["status"] == "checked"
     facts = [
@@ -339,7 +455,11 @@ def _research_result(request: dict, verification: dict, at: datetime,
         {"text": f"[Fake] A second finding about {question}, only partly supported.",
          "citations": [{"source": "s2", "quote": quotes[1]}],
          "check": {"status": "partial" if checked else "unchecked"}},
-    ]
+    ][:len(sources)]
+    facts += [{"text": f"[Fake] Finding {n} about {question}.",
+               "citations": [{"source": f"s{n}", "quote": quotes[n - 1]}],
+               "check": {"status": "supported" if checked else "unchecked"}}
+              for n in range(3, len(sources) + 1)]
     dropped = [{"text": "[Fake] A finding whose quote was not on its page.",
                 "reason": "quote_not_found"}]
     removed = 0
@@ -357,11 +477,14 @@ def _research_result(request: dict, verification: dict, at: datetime,
         images = [{"url": url, "source": "s1", "caption": caption,
                    "license": license_, "fetch_token": sign(url)}
                   for url, caption, license_ in found]
+    refined = "Refined after the writer's feedback. " if request.get("refine") else ""
     return {
         "article": {
             "title": question[:1].upper() + question[1:],
             "body": ("This draft came from the fake GPU worker, not from research. "
-                     f"{facts[0]['text']} [[cite:s1]] {facts[1]['text']} [[cite:s2]]"),
+                     + refined + " ".join(
+                         f"{fact['text']} [[cite:{fact['citations'][0]['source']}]]"
+                         for fact in facts)),
             "topic": "fake",
             "facts": facts,
             "links": [a["ref"] for a in request.get("known_articles", [])][:2],

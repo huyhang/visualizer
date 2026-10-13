@@ -66,7 +66,7 @@ def finished(worker, kind="research", request=None, ref="r1"):
 
 
 def test_it_answers_the_same_calls_as_the_real_client():
-    for name in ("health", "submit", "status", "cancel", "fetch_image"):
+    for name in ("health", "submit", "status", "cancel", "approve_plan", "fetch_image"):
         real = inspect.signature(getattr(WorkerClient, name))
         stand_in = inspect.signature(getattr(FakeWorker, name))
         assert list(stand_in.parameters) == list(real.parameters), name

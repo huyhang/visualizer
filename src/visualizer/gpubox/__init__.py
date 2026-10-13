@@ -16,6 +16,7 @@ from .errors import (
     WorkerError,
     WorkerImageUnavailable,
     WorkerJobNotFound,
+    WorkerNotAwaitingApproval,
     WorkerRejected,
     WorkerUnavailable,
 )
@@ -31,6 +32,7 @@ __all__ = [
     "WorkerError",
     "WorkerImageUnavailable",
     "WorkerJobNotFound",
+    "WorkerNotAwaitingApproval",
     "WorkerRejected",
     "WorkerUnavailable",
     "availability",

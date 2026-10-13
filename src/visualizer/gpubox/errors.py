@@ -43,6 +43,11 @@ class WorkerImageUnavailable(WorkerError):
     not an image. Only ``fetch_image`` raises it."""
 
 
+class WorkerNotAwaitingApproval(WorkerError):
+    """A plan was approved for a job no longer waiting for one: it was
+    cancelled, its plan expired, or another approval got there first."""
+
+
 class WorkerRejected(WorkerError):
     """The worker refused the request: a bad token, or a bug on our side.
 
@@ -59,9 +64,11 @@ ERRORS_BY_CODE: dict[str, type[WorkerError]] = {
     "unauthorized": WorkerRejected,
     "not_found": WorkerJobNotFound,
     "idempotency_conflict": WorkerRejected,
+    "not_awaiting_approval": WorkerNotAwaitingApproval,
     "payload_too_large": WorkerRejected,
     "queue_full": WorkerBusy,
     "unavailable": WorkerUnavailable,
     "image_unavailable": WorkerImageUnavailable,
 }
-JOB_FAILURE_CODES = frozenset({"timeout", "unavailable", "no_sources", "internal"})
+JOB_FAILURE_CODES = frozenset({"timeout", "unavailable", "no_sources", "internal",
+                               "plan_expired"})

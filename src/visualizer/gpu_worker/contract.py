@@ -40,7 +40,8 @@ class Contract:
                 {"$ref": f"{_URI}#/components/schemas/{name}"}, registry=registry
             )
             for name in ("ResearchJobCreate", "ReviewJobCreate",
-                         "ResearchResult", "ReviewResult", "ImageFetch")
+                         "ResearchResult", "ReviewResult", "ImageFetch",
+                         "PlanApproval")
         }
 
     def job_problem(self, body) -> str | None:
@@ -55,6 +56,11 @@ class Contract:
     def image_problem(self, body) -> str | None:
         """Why a ``POST /images`` body breaks the contract, or None."""
         return self._problem("ImageFetch", body)
+
+    def plan_problem(self, body) -> str | None:
+        """Why a plan -- approved by a caller, or proposed by a pipeline --
+        breaks the contract, or None."""
+        return self._problem("PlanApproval", body)
 
     def result_problem(self, kind: str, result) -> str | None:
         """Why a pipeline's result would break the contract, or None."""

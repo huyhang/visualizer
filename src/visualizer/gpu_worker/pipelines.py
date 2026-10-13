@@ -30,6 +30,19 @@ class ModelOutputError(Exception):
     """The model answered, but not in the shape it was asked for, even on retry."""
 
 
+class AwaitingApproval(Exception):
+    """Research planned and was asked to stop there: ``plan`` awaits the caller.
+
+    Not a failure. The runner parks the job in ``awaiting_approval``; approving
+    queues it again with the queries in its request, and the pipeline starts
+    over from searching.
+    """
+
+    def __init__(self, plan: dict):
+        super().__init__("The plan awaits approval")
+        self.plan = plan
+
+
 class JobContext(Protocol):
     def progress(self, stage: str, message: str | None = None) -> None:
         """Report a stage; raises if the job was cancelled or ran out of time."""

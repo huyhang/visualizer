@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "GPU Box AI Worker",
-    "version": "1.1.0-draft",
+    "version": "1.2.0-draft",
     "summary": "Async research and writing-review jobs for the visualizer stack.",
     "description": "Runs on the RTX 3090 box and serves Akasha (research jobs) and Logos (LLM review jobs). Callers never talk to Ollama or SearXNG directly. Every job is asynchronous: submit with POST /jobs, poll GET /jobs/{job_id}. The worker never initiates connections to callers and never accepts URLs to fetch from callers. Status: proposal, not implemented. Human-readable spec: README.md beside this file."
   },
@@ -283,7 +283,8 @@
                     "finished_at": null,
                     "expires_at": null,
                     "result": null,
-                    "error": null
+                    "error": null,
+                    "plan": null
                   }
                 }
               }
@@ -358,7 +359,8 @@
                         "finished_at": null,
                         "expires_at": null,
                         "result": null,
-                        "error": null
+                        "error": null,
+                        "plan": null
                       }
                     }
                   },
@@ -436,7 +438,8 @@
                             "removed": 1
                           }
                         },
-                        "error": null
+                        "error": null,
+                        "plan": null
                       }
                     }
                   },
@@ -476,7 +479,8 @@
                             "removed": 2
                           }
                         },
-                        "error": null
+                        "error": null,
+                        "plan": null
                       }
                     }
                   },
@@ -497,7 +501,8 @@
                           "code": "timeout",
                           "message": "Job exceeded the 15-minute limit",
                           "retryable": true
-                        }
+                        },
+                        "plan": null
                       }
                     }
                   },
@@ -538,7 +543,39 @@
                             "removed": 0
                           }
                         },
-                        "error": null
+                        "error": null,
+                        "plan": null
+                      }
+                    }
+                  },
+                  "awaitingApproval": {
+                    "value": {
+                      "job": {
+                        "id": "j_01J9Z3K8",
+                        "kind": "research",
+                        "state": "awaiting_approval",
+                        "position": null,
+                        "progress": null,
+                        "created_at": "2026-10-11T09:12:03Z",
+                        "started_at": "2026-10-11T09:12:05Z",
+                        "finished_at": null,
+                        "expires_at": null,
+                        "result": null,
+                        "error": null,
+                        "plan": {
+                          "queries": [
+                            {
+                              "q": "song dynasty tea whisking",
+                              "language": "en"
+                            },
+                            {
+                              "q": "宋代 点茶",
+                              "language": "zh"
+                            }
+                          ],
+                          "approved": false,
+                          "expires_at": "2026-10-12T09:12:20Z"
+                        }
                       }
                     }
                   }
@@ -625,6 +662,63 @@
           },
           "502": {
             "$ref": "#/components/responses/ImageUnavailable"
+          }
+        }
+      }
+    },
+    "/jobs/{job_id}/plan": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/JobId"
+        }
+      ],
+      "post": {
+        "tags": [
+          "jobs"
+        ],
+        "operationId": "approvePlan",
+        "summary": "Approve (possibly edited) search queries",
+        "description": "Queues an `awaiting_approval` job again with the queries given; it keeps its place ahead of jobs submitted after it. To reject the plan, cancel the job.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanApproval"
+              },
+              "example": {
+                "queries": [
+                  {
+                    "q": "song dynasty tea whisking",
+                    "language": "en"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The job, queued again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/NotAwaitingApproval"
           }
         }
       }
@@ -807,6 +901,23 @@
             }
           }
         }
+      },
+      "NotAwaitingApproval": {
+        "description": "The job is not waiting for its plan to be approved.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "not_awaiting_approval",
+                "message": "The job is running, not awaiting approval",
+                "retryable": false
+              }
+            }
+          }
+        }
       }
     },
     "schemas": {
@@ -831,7 +942,7 @@
         "properties": {
           "code": {
             "type": "string",
-            "description": "API errors: invalid_request, unauthorized, not_found, idempotency_conflict, payload_too_large, queue_full, unavailable, image_unavailable (POST /images only). Job failures (in Job.error): timeout, unavailable, no_sources, internal.",
+            "description": "API errors: invalid_request, unauthorized, not_found, idempotency_conflict, not_awaiting_approval (POST /jobs/{job_id}/plan only), payload_too_large, queue_full, unavailable, image_unavailable (POST /images only). Job failures (in Job.error): timeout, unavailable, no_sources, internal, plan_expired.",
             "enum": [
               "invalid_request",
               "unauthorized",
@@ -843,7 +954,9 @@
               "image_unavailable",
               "timeout",
               "no_sources",
-              "internal"
+              "internal",
+              "not_awaiting_approval",
+              "plan_expired"
             ]
           },
           "message": {
@@ -1027,11 +1140,12 @@
         "enum": [
           "queued",
           "running",
+          "awaiting_approval",
           "done",
           "failed",
           "cancelled"
         ],
-        "description": "queued → running → done | failed | cancelled."
+        "description": "queued → running → done | failed | cancelled. A research job asked with `approve_plan` stops at `awaiting_approval` after planning, until `POST /jobs/{job_id}/plan` queues it again (or it is cancelled, or its plan expires)."
       },
       "Client": {
         "type": "object",
@@ -1135,7 +1249,7 @@
             "type": "string",
             "minLength": 3,
             "maxLength": 500,
-            "description": "The only text used to build search queries — never canon or manuscript text."
+            "description": "With `refine.feedback`, the only writer text used to build search queries — never canon or manuscript text."
           },
           "languages": {
             "type": "array",
@@ -1185,6 +1299,14 @@
           },
           "verify": {
             "$ref": "#/components/schemas/VerifyMode"
+          },
+          "approve_plan": {
+            "type": "boolean",
+            "default": false,
+            "description": "Stop after planning, in `awaiting_approval`, so the caller can edit or approve the search queries before any page is fetched."
+          },
+          "refine": {
+            "$ref": "#/components/schemas/Refinement"
           }
         }
       },
@@ -1329,7 +1451,8 @@
           "finished_at",
           "expires_at",
           "result",
-          "error"
+          "error",
+          "plan"
         ],
         "properties": {
           "id": {
@@ -1404,6 +1527,17 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/Error"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "plan": {
+            "description": "Set once a job asked with `approve_plan` has planned; otherwise null.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Plan"
               },
               {
                 "type": "null"
@@ -1877,6 +2011,146 @@
             "size": "preview"
           }
         ]
+      },
+      "SearchQuery": {
+        "type": "object",
+        "required": [
+          "q",
+          "language"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "q": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "language": {
+            "type": "string",
+            "pattern": "^[a-z]{2}(-[A-Z]{2})?$"
+          }
+        }
+      },
+      "Plan": {
+        "type": "object",
+        "required": [
+          "queries",
+          "approved",
+          "expires_at"
+        ],
+        "description": "The search queries a research job will run. Built from the question (and, when refining, the writer's feedback and the previous facts) — never from canon.",
+        "properties": {
+          "queries": {
+            "type": "array",
+            "maxItems": 6,
+            "items": {
+              "$ref": "#/components/schemas/SearchQuery"
+            }
+          },
+          "approved": {
+            "type": "boolean",
+            "description": "false while the job awaits approval."
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "While awaiting approval: when the job fails with `plan_expired`. Null once approved."
+          }
+        }
+      },
+      "PlanApproval": {
+        "type": "object",
+        "required": [
+          "queries"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "queries": {
+            "type": "array",
+            "maxItems": 6,
+            "items": {
+              "$ref": "#/components/schemas/SearchQuery"
+            },
+            "description": "The plan as approved: the proposed queries, edited or not. Empty is allowed when refining — the job then re-reads only the previous sources."
+          }
+        }
+      },
+      "Refinement": {
+        "type": "object",
+        "required": [
+          "feedback",
+          "previous"
+        ],
+        "additionalProperties": false,
+        "description": "Revise an earlier draft. Its kept sources are fetched again and every quote re-verified against them, never trusted from here; new searches fill the remaining `max_sources`.",
+        "properties": {
+          "feedback": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "The writer's instructions. Shown to the planner, so it reaches search queries like the question."
+          },
+          "previous": {
+            "type": "object",
+            "required": [
+              "title",
+              "facts",
+              "sources"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "title": {
+                "type": "string",
+                "maxLength": 300
+              },
+              "facts": {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                  "type": "string",
+                  "maxLength": 1000
+                }
+              },
+              "sources": {
+                "type": "array",
+                "maxItems": 30,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "url",
+                    "title"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "format": "uri",
+                      "maxLength": 2048
+                    },
+                    "title": {
+                      "type": "string",
+                      "maxLength": 300
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "exclude_urls": {
+            "type": "array",
+            "maxItems": 50,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "format": "uri",
+              "maxLength": 2048
+            },
+            "description": "Pages never to read again, from search or from `previous`."
+          }
+        }
       }
     }
   }

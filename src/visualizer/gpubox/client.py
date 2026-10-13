@@ -161,6 +161,11 @@ class WorkerClient:
     def cancel(self, job_id: str) -> dict:
         return self._call("DELETE", f"/jobs/{quote(job_id, safe='')}")["job"]
 
+    def approve_plan(self, job_id: str, queries: list[dict]) -> dict:
+        """Queue a job parked in ``awaiting_approval`` again, with ``queries``."""
+        return self._call("POST", f"/jobs/{quote(job_id, safe='')}/plan",
+                          body={"queries": queries})["job"]
+
     def fetch_image(self, url: str, token: str, size: str = "full") -> tuple[bytes, str]:
         """(bytes, content type) of an image a research result found.
 

@@ -174,6 +174,7 @@ All errors share one shape:
 | 401 | `unauthorized` | Missing/invalid token | Config error — raise |
 | 404 | `not_found` | Unknown or expired job | Job lost — mark failed |
 | 409 | `idempotency_conflict` | `Idempotency-Key` reused with a different body | Bug — raise |
+| 409 | `not_awaiting_approval` | `POST /jobs/{id}/plan` only: the job is not waiting for its plan (cancelled, expired, already approved) | `ResearchConflict` — show the job as it is |
 | 413 | `payload_too_large` | Request over size limit | Bug / split input |
 | 429 | `queue_full` | Queue at `QUEUE_MAX`; `Retry-After` header set | `ResearchBusy` / retry later |
 | 502 | `image_unavailable` | `POST /images` only: the image is gone, unreachable, too large or not an image | `ResearchImageUnavailable` |
@@ -183,7 +184,8 @@ Network errors and timeouts are treated like `503`.
 
 **Job failure codes** (in a failed job's `error`, same shape): `timeout` (job exceeded
 its time limit), `unavailable` (a dependency died mid-job), `no_sources` (research
-found nothing usable), `internal`.
+found nothing usable), `internal`, `plan_expired` (a research plan waited longer
+than `PLAN_TTL_HOURS` for approval).
 
 ## `GET /v1/health`
 
@@ -251,20 +253,39 @@ Response `202` (or `200` for a repeated idempotency key):
 
 | Field | Values |
 |---|---|
-| `state` | `queued` → `running` → `done` \| `failed` \| `cancelled` |
+| `state` | `queued` → `running` → `done` \| `failed` \| `cancelled`; research asked with `approve_plan` pauses in `awaiting_approval` after planning |
 | `progress.stage` (research) | `loading_model`, `planning`, `searching`, `fetching`, `extracting`, `verifying`, `writing`, `second_check` |
 | `progress.stage` (review) | `loading_model`, `reviewing`, `second_check` |
 | `result` | Set only when `state` is `done` (shapes below) |
 | `error` | Set only when `state` is `failed` (same shape as API errors) |
 | `expires_at` | When the result will be deleted (`finished_at` + `RESULT_TTL_HOURS`) |
+| `plan` | Research with `approve_plan` only: `{queries: [{q, language}], approved, expires_at}`; otherwise `null` |
 
 **Polling:** every 3–5 s while a user is watching; back off to 30 s otherwise. Import
 promptly — results expire.
 
 ## `DELETE /v1/jobs/{id}`
 
-Cancels a `queued` or `running` job; returns the job with `state: "cancelled"`.
-Idempotent: cancelling a finished job returns it unchanged.
+Cancels a `queued`, `running` or `awaiting_approval` job; returns the job with
+`state: "cancelled"`. Idempotent: cancelling a finished job returns it unchanged.
+
+## `POST /v1/jobs/{id}/plan`
+
+Approves the search plan of a job in `awaiting_approval`, as proposed or edited:
+
+```json
+{"queries": [{"q": "song dynasty tea whisking", "language": "en"}]}
+```
+
+At most 6 queries; `language` is a code like `en` or `zh-TW`. The job is queued
+again, keeping its place ahead of jobs submitted after it, and runs from
+searching. A job not awaiting approval answers `409 not_awaiting_approval`. To
+reject a plan, cancel the job. An empty list is allowed: a refinement then
+re-reads only its previous sources.
+
+While a job waits, it holds no GPU and no place in the queue (it is not counted
+against `QUEUE_MAX`). Its input stays stored until it finishes, like any queued
+job. Unapproved after `PLAN_TTL_HOURS` (default 24), it fails as `plan_expired`.
 
 ---
 
@@ -281,18 +302,46 @@ Idempotent: cancelling a finished job returns it unchanged.
   "known_articles": [
     {"ref": "song-dynasty/research/song-tea-bowls", "title": "Song tea bowls"}
   ],
-  "verify": "auto"
+  "verify": "auto",
+  "approve_plan": false
 }
 ```
 
 | Field | Rules |
 |---|---|
-| `question` | Required, 3–500 chars. The **only** text used to build search queries |
+| `question` | Required, 3–500 chars. With `refine.feedback`, the **only** writer text used to build search queries |
 | `languages` | Optional, default `["en"]` |
 | `max_sources` | Optional, 1–15, default 8 |
 | `include_images` | Optional, default `false` |
 | `known_articles` | Optional, ≤ 200 entries, **refs and titles only — never bodies**. Lets the worker avoid duplicates and suggest links |
 | `verify` | Optional second check on the Mac: `auto` (default — run if the verifier is up, else skip), `required` (fail with `unavailable` if it's down), `off` |
+| `approve_plan` | Optional, default `false`. Stop after planning in `awaiting_approval` until `POST /jobs/{id}/plan` |
+| `refine` | Optional: revise an earlier draft (below) |
+
+**Refining.** `refine` turns a job into a revision of an earlier draft:
+
+```json
+"refine": {
+  "feedback": "Focus on how ordinary people drank tea, not the court.",
+  "previous": {"title": "Song-Dynasty Tea Culture",
+               "facts": ["Tea was ground to powder and whisked into a froth."],
+               "sources": [{"url": "https://…/song-tea", "title": "Tea in the Song Dynasty"}]},
+  "exclude_urls": ["https://…/unreliable-blog"]
+}
+```
+
+- `feedback` (1–2000 chars) goes to the planner, the fact extractor and the
+  writer. Because it reaches the planner, it can end up in search queries, the
+  same as the question.
+- `previous.sources` that are not excluded are **fetched again first**, and every
+  fact is re-extracted and its quote re-verified against the page. Nothing in
+  `previous` is trusted as a fact; `previous.facts` only tell the planner what
+  the last draft already found. New searches fill the rest of `max_sources`.
+  When the kept sources already fill it, nothing is searched.
+- `exclude_urls` are never read, whether they come from `previous` or from search.
+
+The result has the same shape as any research result. Replacing the earlier
+draft is the caller's decision.
 
 **Result:**
 

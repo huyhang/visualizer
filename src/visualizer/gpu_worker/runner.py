@@ -21,6 +21,7 @@ from datetime import UTC, datetime, timedelta
 
 from .contract import Contract
 from .pipelines import (
+    AwaitingApproval,
     ModelOutputError,
     NoSources,
     NotBuilt,
@@ -126,7 +127,9 @@ class Runner:
         LOG.info("job %s started (kind=%s)", job_id, kind)
         ctx = Context(self.store, job_id, started + TIME_LIMITS[kind], self._clock)
         state, result, error = self._execute(kind, request, ctx)
-        if state is not None:
+        if state == "awaiting_approval":
+            self.store.await_approval(job_id, result, self._clock())
+        elif state is not None:
             self.store.finish(job_id, state, self._clock(), result=result, error=error)
         seconds = (self._clock() - started).total_seconds()
         LOG.info("job %s %s after %.1fs%s", job_id, state or "cancelled", seconds,
@@ -134,12 +137,23 @@ class Runner:
         return True
 
     def _execute(self, kind: str, request: dict, ctx: Context):
-        """(state, result, error) -- state None when the job was cancelled."""
+        """(state, result, error) -- state None when the job was cancelled.
+
+        A job parked for approval comes back as ``awaiting_approval`` with its
+        plan in place of a result.
+        """
         try:
             result = getattr(self.pipelines, kind)(request, ctx)
             ctx.check()
         except Cancelled:
             return None, None, None
+        except AwaitingApproval as parked:
+            if self.contract.plan_problem(parked.plan) is not None:
+                LOG.error("job pipeline proposed a plan outside the contract")
+                return "failed", None, _failure(
+                    "internal", "The pipeline proposed a plan outside the contract",
+                    False)
+            return "awaiting_approval", parked.plan, None
         except TimedOut:
             return "failed", None, _failure(
                 "timeout", "The job exceeded its time limit", True)

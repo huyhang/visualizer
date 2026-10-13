@@ -11,6 +11,10 @@ Privacy is part of the schema, not an afterthought:
 - **results** are deleted at ``expires_at``;
 - ``secure_delete`` overwrites deleted rows instead of leaving them in free
   pages of the file.
+
+A research job asked to have its plan approved parks in ``awaiting_approval``
+between two runs: its input is kept (the job is not finished), and if nobody
+approves the plan by ``plan_expires_at`` the sweep fails it as ``plan_expired``.
 """
 
 import json
@@ -36,12 +40,16 @@ CREATE TABLE IF NOT EXISTS jobs (
     finished_at  TEXT,
     expires_at   TEXT,
     result       TEXT,
-    error        TEXT
+    error        TEXT,
+    plan         TEXT,
+    plan_expires_at TEXT
 );
 CREATE INDEX IF NOT EXISTS jobs_by_state ON jobs (state, seq);
 """
 
 FINISHED = ("done", "failed", "cancelled")
+# Columns added after the first schema, for job files that predate them.
+_ADDED_COLUMNS = {"plan": "TEXT", "plan_expires_at": "TEXT"}
 
 
 def _iso(moment: datetime) -> str:
@@ -50,16 +58,22 @@ def _iso(moment: datetime) -> str:
 
 
 class JobStore:
-    def __init__(self, path: str | Path, *, ttl: timedelta = timedelta(hours=24)):
+    def __init__(self, path: str | Path, *, ttl: timedelta = timedelta(hours=24),
+                 plan_ttl: timedelta = timedelta(hours=24)):
         if str(path) != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.ttl = ttl
+        self.plan_ttl = plan_ttl
         self._lock = threading.Lock()
         self._db = sqlite3.connect(str(path), check_same_thread=False,
                                    isolation_level=None)
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA secure_delete = ON")
         self._db.executescript(_SCHEMA)
+        present = {row["name"] for row in self._db.execute("PRAGMA table_info(jobs)")}
+        for column, kind in _ADDED_COLUMNS.items():
+            if column not in present:
+                self._db.execute(f"ALTER TABLE jobs ADD COLUMN {column} {kind}")
 
     # -- creating ------------------------------------------------------------
 
@@ -127,6 +141,38 @@ class JobStore:
                 "UPDATE jobs SET stage = ?, message = ? "
                 "WHERE id = ? AND state = 'running'", (stage, message, job_id))
 
+    def await_approval(self, job_id: str, plan: dict, now: datetime) -> None:
+        """Park a running job with the plan it made, until it is approved."""
+        with self._lock:
+            self._db.execute(
+                "UPDATE jobs SET state = 'awaiting_approval', plan = ?, "
+                "plan_expires_at = ?, stage = NULL, message = NULL "
+                "WHERE id = ? AND state = 'running'",
+                (json.dumps({**plan, "approved": False}), _iso(now + self.plan_ttl),
+                 job_id))
+
+    def approve(self, job_id: str, queries: list[dict]) -> tuple[dict, bool] | None:
+        """Queue a parked job again with ``queries``; (job, approved), or None.
+
+        ``approved`` is False when the job was not awaiting approval -- it ran
+        on, was cancelled, or its plan expired -- and the job is unchanged. The
+        job keeps its ``seq``, so it goes ahead of everything queued after it.
+        """
+        with self._lock:
+            row = self._row(job_id)
+            if row is None:
+                return None
+            if row["state"] != "awaiting_approval":
+                return self._view(row), False
+            request = json.loads(row["request"])
+            request["_approved_plan"] = queries
+            self._db.execute(
+                "UPDATE jobs SET state = 'queued', request = ?, plan = ?, "
+                "plan_expires_at = NULL WHERE id = ?",
+                (json.dumps(request),
+                 json.dumps({"queries": queries, "approved": True}), job_id))
+            return self._view(self._row(job_id)), True
+
     def finish(self, job_id: str, state: str, now: datetime, *,
                result: dict | None = None, error: dict | None = None) -> None:
         """Record how a running job ended, and erase its input.
@@ -144,12 +190,12 @@ class JobStore:
                  json.dumps(error) if error is not None else None, job_id))
 
     def cancel(self, job_id: str, now: datetime) -> dict | None:
-        """Cancel a queued or running job. Finished jobs come back unchanged."""
+        """Cancel a job not yet finished. Finished jobs come back unchanged."""
         with self._lock:
             self._db.execute(
                 "UPDATE jobs SET state = 'cancelled', finished_at = ?, expires_at = ?, "
-                "request = NULL, stage = NULL, message = NULL "
-                "WHERE id = ? AND state IN ('queued', 'running')",
+                "request = NULL, stage = NULL, message = NULL, plan_expires_at = NULL "
+                "WHERE id = ? AND state IN ('queued', 'running', 'awaiting_approval')",
                 (_iso(now), _iso(now + self.ttl), job_id))
             row = self._row(job_id)
             return self._view(row) if row else None
@@ -157,8 +203,18 @@ class JobStore:
     # -- housekeeping --------------------------------------------------------
 
     def sweep(self, now: datetime) -> int:
-        """Delete finished jobs whose results have expired."""
+        """Fail plans nobody approved in time; delete expired results.
+
+        Returns how many jobs were deleted.
+        """
+        error = {"code": "plan_expired", "retryable": False,
+                 "message": "Nobody approved the search plan in time"}
         with self._lock:
+            self._db.execute(
+                "UPDATE jobs SET state = 'failed', finished_at = ?, expires_at = ?, "
+                "error = ?, request = NULL, plan_expires_at = NULL "
+                "WHERE state = 'awaiting_approval' AND plan_expires_at <= ?",
+                (_iso(now), _iso(now + self.ttl), json.dumps(error), _iso(now)))
             return self._db.execute(
                 "DELETE FROM jobs WHERE expires_at IS NOT NULL AND expires_at <= ?",
                 (_iso(now),)).rowcount
@@ -213,4 +269,6 @@ class JobStore:
             "expires_at": row["expires_at"],
             "result": json.loads(row["result"]) if row["result"] else None,
             "error": json.loads(row["error"]) if row["error"] else None,
+            "plan": ({**json.loads(row["plan"]), "expires_at": row["plan_expires_at"]}
+                     if row["plan"] else None),
         }

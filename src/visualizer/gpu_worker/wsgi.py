@@ -27,7 +27,8 @@ def build():
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     config = config_from_env()
     contract = Contract(config.contract_path)
-    store = JobStore(config.db_path, ttl=timedelta(hours=config.result_ttl_hours))
+    store = JobStore(config.db_path, ttl=timedelta(hours=config.result_ttl_hours),
+                     plan_ttl=timedelta(hours=config.plan_ttl_hours))
     store.recover(datetime.now(UTC))
     signer = TokenSigner(load_signing_key(
         config.signing_key, Path(config.db_path).parent / "signing.key"))

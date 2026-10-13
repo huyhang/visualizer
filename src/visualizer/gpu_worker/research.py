@@ -6,9 +6,13 @@
 Rules the design makes non-negotiable, enforced here rather than requested of
 the model:
 
-- **Queries come from the question alone.** Known article titles help the
-  writing step pick links; they are never shown to the planner, so nothing
-  about the writer's world reaches a search engine.
+- **Queries come from the question alone** -- and, when refining, from the
+  writer's feedback and the facts the last draft found. Known article titles
+  help the writing step pick links; they are never shown to the planner, so
+  nothing about the writer's world reaches a search engine.
+- **A refined draft re-reads its sources.** The previous draft's sources are
+  fetched again and every quote checked against them like any other page;
+  nothing the caller sends back is trusted as a fact.
 - **Every fact carries a quote found on its page** (``pages.find_quote``).
   Facts whose quote isn't there are dropped as ``quote_not_found``, never
   repaired.
@@ -17,6 +21,10 @@ the model:
 - **The draft cannot cite what it was not given.** Citation tokens for unknown
   sources are removed, links not in ``known_articles`` are dropped, and every
   surviving fact is listed, cited, under "Key facts" whatever the prose says.
+
+With ``approve_plan`` the job stops after planning (``AwaitingApproval``);
+the caller's approved queries come back as ``_approved_plan`` in the request,
+and the next run starts from searching.
 
 Fetched pages are untrusted text. They reach the model as clearly delimited
 data, and the model's answers are only ever parsed as data in return.
@@ -28,9 +36,9 @@ from datetime import UTC, datetime
 
 from .common import ensure_loaded, resolve_ref, second_check_mode
 from .fetch import Fetcher, FetchError
-from .models import OllamaClient, SearxClient, Verifier
+from .models import OllamaClient, SearchHit, SearxClient, Verifier
 from .pages import Page, extract, find_quote
-from .pipelines import JobContext, NoSources, PipelineUnavailable
+from .pipelines import AwaitingApproval, JobContext, NoSources, PipelineUnavailable
 
 MAX_PAGE_CHARS = 12_000       # one page per extraction call, inside num_ctx
 MAX_FACTS_PER_PAGE = 6
@@ -70,6 +78,8 @@ _PLAN_PROMPT = """You plan web searches for a novelist's historical research.
 Write 2 to 5 short search-engine queries that would find reliable sources --
 museums, encyclopedias, scholarly pages -- answering the research question.
 Write queries in each requested language (for Chinese, use Chinese terms).
+When the writer gave feedback on an earlier draft, plan searches that follow
+it and fill what the facts already found are missing.
 Answer in JSON."""
 
 _EXTRACT_PROMPT = """You extract facts from ONE web page for a research question.
@@ -91,6 +101,8 @@ ONLY the verified facts given. Never add facts, dates or names they don't state.
 - "era": the period the facts concern, or "" if unclear.
 - "links": refs, copied exactly from the list of existing articles, of articles
   this note relates to. Only from that list; [] if none.
+When the writer gave feedback on an earlier version, follow it as far as the
+facts allow.
 Answer in JSON."""
 
 
@@ -110,17 +122,34 @@ class ResearchPipeline:
         languages = request.get("languages") or ["en"]
         max_sources = request.get("max_sources", 8)
         check = second_check_mode(request.get("verify", "auto"), self.verifier)
+        refine = request.get("refine") or {}
+        feedback = (refine.get("feedback") or "").strip()
+        excluded = {_url_key(url) for url in refine.get("exclude_urls") or []}
+        previous = [SearchHit(url=s["url"], title=s.get("title", ""), snippet="")
+                    for s in (refine.get("previous") or {}).get("sources") or []
+                    if _url_key(s["url"]) not in excluded]
 
         ensure_loaded(self.ollama, self.model, ctx)
-        ctx.progress("planning", "Planning search queries")
-        queries = self._plan(question, languages)
+        approved = request.get("_approved_plan")
+        if approved is not None:
+            queries = [(q["q"], q["language"]) for q in approved]
+        else:
+            ctx.progress("planning", "Planning search queries")
+            queries = self._plan(question, languages, feedback,
+                                 (refine.get("previous") or {}).get("facts") or [])
+            if request.get("approve_plan"):
+                raise AwaitingApproval({"queries": [{"q": q, "language": lang}
+                                                    for q, lang in queries]})
 
-        ctx.progress("searching", f"Searching ({len(queries)} queries)")
-        hits = self._search(queries, limit=max_sources * 3)
-        if not hits:
+        hits = []
+        if queries and len(previous) < max_sources:
+            ctx.progress("searching", f"Searching ({len(queries)} queries)")
+            hits = self._search(queries, limit=max_sources * 3,
+                                skip=excluded | {_url_key(h.url) for h in previous})
+        if not hits and not previous:
             raise NoSources("Web search found nothing for this question")
 
-        pages = self._read(hits, max_sources, ctx)
+        pages = self._read(previous + hits, max_sources, ctx)
         if not pages:
             raise NoSources("None of the sources found could be read")
         keyed = {f"s{n}": page for n, page in enumerate(pages, 1)}
@@ -128,7 +157,8 @@ class ResearchPipeline:
         proposed = []
         for n, (key, page) in enumerate(keyed.items(), 1):
             ctx.progress("extracting", f"Extracting facts from source {n} of {len(keyed)}")
-            proposed += [(key, fact) for fact in self._extract(question, page)]
+            proposed += [(key, fact)
+                         for fact in self._extract(question, page, feedback)]
 
         ctx.progress("verifying", "Checking every quote against its page")
         facts, dropped = verify_quotes(proposed, keyed)
@@ -164,7 +194,7 @@ class ResearchPipeline:
 
         ctx.progress("writing", "Writing the draft")
         known = request.get("known_articles") or []
-        written = self._write(question, facts, known)
+        written = self._write(question, facts, known, feedback)
         cited = {citation["source"] for fact in facts for citation in fact["citations"]}
         return {
             "article": {
@@ -187,13 +217,19 @@ class ResearchPipeline:
 
     # -- steps ---------------------------------------------------------------
 
-    def _plan(self, question: str, languages: list[str]) -> list[tuple[str, str]]:
-        """(query, language) pairs, from the question alone; never empty."""
+    def _plan(self, question: str, languages: list[str], feedback: str = "",
+              known_facts: list[str] = ()) -> list[tuple[str, str]]:
+        """(query, language) pairs, from the question (and, when refining, the
+        feedback and the facts already found) alone; never empty."""
+        prompt = f"Research question: {question}\nLanguages: {', '.join(languages)}"
+        if feedback:
+            found = "\n".join(f"- {fact}" for fact in known_facts[:40]) or "(none)"
+            prompt += (f"\n\nThe writer's feedback on the last draft: {feedback}"
+                       f"\n\nFacts the last draft already has:\n{found}")
         try:
             reply = self.ollama.chat_json(self.model, [
                 {"role": "system", "content": _PLAN_PROMPT},
-                {"role": "user", "content": (f"Research question: {question}\n"
-                                             f"Languages: {', '.join(languages)}")}],
+                {"role": "user", "content": prompt}],
                 _PLAN_SCHEMA)
         except PipelineUnavailable:
             raise
@@ -202,16 +238,19 @@ class ResearchPipeline:
         queries = []
         for item in reply.get("queries") or []:
             query = str(item.get("q", "")).strip()[:200]
-            language = str(item.get("language", "")).strip()[:5] or languages[0]
+            # Only a requested language: it goes to SearXNG, and back to the
+            # caller in a plan the contract constrains.
+            language = str(item.get("language", "")).strip()
+            language = language if language in languages else languages[0]
             if query and (query, language) not in queries:
                 queries.append((query, language))
         return queries[:6] or [(question, languages[0])]
 
-    def _search(self, queries, limit: int):
-        seen, hits = set(), []
+    def _search(self, queries, limit: int, skip: set[str] = frozenset()):
+        seen, hits = set(skip), []
         for query, language in queries:
             for hit in self.search.search(query, language=language):
-                key = hit.url.split("#")[0].rstrip("/")
+                key = _url_key(hit.url)
                 if key not in seen:
                     seen.add(key)
                     hits.append(hit)
@@ -233,12 +272,14 @@ class ResearchPipeline:
                 pages.append(page)
         return pages
 
-    def _extract(self, question: str, page: Page) -> list[dict]:
+    def _extract(self, question: str, page: Page, feedback: str = "") -> list[dict]:
+        focus = f"The writer's feedback: {feedback}\n" if feedback else ""
         try:
             reply = self.ollama.chat_json(self.model, [
                 {"role": "system", "content": _EXTRACT_PROMPT},
                 {"role": "user", "content": (
-                    f"Research question: {question}\n\nPage title: {page.title}\n"
+                    f"Research question: {question}\n{focus}\n"
+                    f"Page title: {page.title}\n"
                     f"<page>\n{page.text[:MAX_PAGE_CHARS]}\n</page>")}],
                 _EXTRACT_SCHEMA, temperature=0)
         except PipelineUnavailable:
@@ -259,7 +300,8 @@ class ResearchPipeline:
                 unsupported.append({"text": fact["text"], "reason": "unsupported"})
         return kept, unsupported
 
-    def _write(self, question: str, facts: list[dict], known: list[dict]) -> dict:
+    def _write(self, question: str, facts: list[dict], known: list[dict],
+               feedback: str = "") -> dict:
         listed = "\n".join(f"- ({fact['citations'][0]['source']}) {fact['text']}"
                            for fact in facts)
         articles = "\n".join(f"- {a['ref']} — {a['title']}" for a in known[:200]) \
@@ -268,7 +310,10 @@ class ResearchPipeline:
             return self.ollama.chat_json(self.model, [
                 {"role": "system", "content": _WRITE_PROMPT},
                 {"role": "user", "content": (
-                    f"Research question: {question}\n\nVerified facts:\n{listed}\n\n"
+                    f"Research question: {question}\n"
+                    + (f"The writer's feedback on the last version: {feedback}\n"
+                       if feedback else "")
+                    + f"\nVerified facts:\n{listed}\n\n"
                     f"Existing articles:\n{articles}")}],
                 _WRITE_SCHEMA)
         except PipelineUnavailable:
@@ -278,6 +323,11 @@ class ResearchPipeline:
 
 
 # -- the pure parts ------------------------------------------------------------
+
+
+def _url_key(url: str) -> str:
+    """One spelling per page, for skipping pages already read or excluded."""
+    return url.split("#")[0].rstrip("/")
 
 
 def verify_quotes(proposed, keyed: dict[str, Page]):

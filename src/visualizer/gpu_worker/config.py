@@ -22,6 +22,8 @@ class WorkerConfig:
     review_model: str = "qwen3:30b"
     queue_max: int = 20
     result_ttl_hours: int = 24
+    # How long a research plan waits for approval before the job fails.
+    plan_ttl_hours: int = 24
     verifier_url: str | None = None
     verifier_research_model: str = "bespoke-minicheck"
     verifier_review_model: str = "gemma3:27b"
@@ -75,6 +77,7 @@ def config_from_env(environ=os.environ) -> WorkerConfig:
         review_model=text("REVIEW_MODEL", defaults.review_model),
         queue_max=positive("QUEUE_MAX", defaults.queue_max),
         result_ttl_hours=positive("RESULT_TTL_HOURS", defaults.result_ttl_hours),
+        plan_ttl_hours=positive("PLAN_TTL_HOURS", defaults.plan_ttl_hours),
         verifier_url=(text("VERIFIER_URL") or "").rstrip("/") or None,
         verifier_research_model=text("VERIFIER_RESEARCH_MODEL",
                                      defaults.verifier_research_model),
