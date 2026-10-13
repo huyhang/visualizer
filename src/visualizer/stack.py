@@ -5,11 +5,13 @@ akasha at ``/``, chronos at ``/timeline``, prithvi at ``/prithvi``, logos at
 deployment already shares Mongo), so a single login covers all of them and
 there is no cross-service HTTP.
 
-``build_application`` takes the one thing its two callers disagree about -- the
-Mongo client. ``visualizer.wsgi`` hands it a real ``MongoClient`` for gunicorn;
-``visualizer.devserver`` hands it an in-memory one. Every other setting is read
-from the environment by the same ``config`` helpers either way, so the dev
-server runs the production wiring rather than a copy of it.
+``build_application`` takes what its two callers disagree about: the Mongo
+client, and optionally the GPU-box worker. ``visualizer.wsgi`` hands it a real
+``MongoClient`` for gunicorn and lets the worker come from ``GPU_WORKER_URL``;
+``visualizer.devserver`` hands it an in-memory client and, if asked, a fake box.
+Every other setting is read from the environment by the same ``config``
+helpers either way, so the dev server runs the production wiring rather than a
+copy of it.
 """
 
 import os
@@ -24,12 +26,14 @@ from visualizer.akasha.config import (
     get_versions_keep,
 )
 from visualizer.akasha.media_service import build_media_service
+from visualizer.akasha.research import RemoteResearcher
 from visualizer.akasha.store import DocumentStore
 from visualizer.auth import AuthStore
 from visualizer.chronos.app import create_app as create_chronos_app
 from visualizer.chronos.entity_gate import InProcessEntityGate
 from visualizer.chronos.errors import ChronosError
 from visualizer.chronos.store import CalendarStore, StoryStore
+from visualizer.gpubox import worker_from_env
 from visualizer.logos.app import create_app as create_logos_app
 from visualizer.logos.config import get_section_revisions_keep
 from visualizer.logos.gateways import (
@@ -55,8 +59,14 @@ from .gateway import (
 )
 
 
-def build_application(client):
-    """The combined WSGI callable, every service wired over ``client``."""
+def build_application(client, gpu_worker=None):
+    """The combined WSGI callable, every service wired over ``client``.
+
+    ``gpu_worker`` defaults to whatever ``GPU_WORKER_URL`` configures, which is
+    usually nothing: research then reports itself off and the stack runs as it
+    always has.
+    """
+    worker = gpu_worker if gpu_worker is not None else worker_from_env()
     auth_store = AuthStore(client)
     doc_store = DocumentStore(client, versions_keep=get_versions_keep())
     secret = get_secret_key()
@@ -106,6 +116,7 @@ def build_application(client):
         media_service=build_media_service(
             client, get_image_processor(), get_glb_limits()
         ),
+        researcher=RemoteResearcher(worker) if worker is not None else None,
     )
     chronos_app = create_chronos_app(
         story_store,

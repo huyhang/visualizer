@@ -189,6 +189,7 @@ src/visualizer/
   documents.py       the revision mechanics the story services share
   stack.py           all four apps wired over one MongoDB (wsgi.py serves it)
   devserver.py       that stack without Docker or MongoDB, for local testing
+  gpubox/            the client for the AI worker on the GPU box (and a fake one)
   static/js/         the few ES modules the *browser* services load
 tests/               one suite per service (in-memory MongoDB)
 docker/              Dockerfiles, the compose stack, demo seed + backup scripts
@@ -245,6 +246,7 @@ The editable install puts `visualizer` on the path, so no `PYTHONPATH` is needed
 python -m visualizer.devserver           # http://127.0.0.1:5050 — log in as mara / ember-pact-demo
 python -m visualizer.devserver --seed    # ...and load the demo story into all four services
 python -m visualizer.devserver --fresh   # discard the saved data and start empty
+python -m visualizer.devserver --fake-gpubox busy   # research against a fake GPU box
 ```
 
 The same wiring gunicorn serves (`visualizer.stack`), over an in-memory MongoDB

@@ -3,6 +3,7 @@
     python -m visualizer.devserver              # http://127.0.0.1:5050
     python -m visualizer.devserver --seed       # ...with the demo story loaded
     python -m visualizer.devserver --fresh      # start from an empty database
+    python -m visualizer.devserver --fake-gpubox busy   # research against a fake box
 
 The same four apps, wired by the same ``visualizer.stack.build_application``
 that gunicorn serves in production, over an in-memory ``mongomock`` client
@@ -19,6 +20,13 @@ is written to the file at all.
 An empty database gets the same ``mara`` account the Docker deployment uses, so
 the seed and smoke scripts under ``docker/`` work here unchanged; ``--seed``
 runs the demo seeds against this server once it is listening.
+
+``--fake-gpubox [MODE]`` stands a fake GPU box behind the research features
+(``visualizer.gpubox.fake``): jobs walk the real stages a second or so apiece,
+and MODE puts the box in any state a writer can meet -- ``ready`` by default,
+or ``cold``, ``busy``, ``degraded``, ``queue_full``, ``unreachable`` and the
+rest. Without it the box comes from ``GPU_WORKER_URL`` as in production, which
+on a laptop usually means research is off.
 
 The dev server's session cookie has its own name, so it can run beside the
 Docker stack on :5002 without the two logging each other out. It is mongomock
@@ -42,6 +50,8 @@ from pymongo import MongoClient
 from werkzeug.serving import is_running_from_reloader, run_simple
 
 from visualizer.auth import AuthStore
+from visualizer.gpubox.fake import MODES as FAKE_GPUBOX_MODES
+from visualizer.gpubox.fake import FakeWorker
 from visualizer.stack import build_application
 
 REPO = Path(__file__).resolve().parents[2]
@@ -56,6 +66,9 @@ SESSION_COOKIE = "visualizer_dev_session"
 DEV_USER = "mara"
 DEV_PASSWORD = "ember-pact-demo"
 DEV_EMAIL = "mara@example.com"
+
+# Long enough to watch a fake job's progress in the UI, short enough to wait for.
+FAKE_STAGE_SECONDS = 1.5
 
 # seed_demo.py first: it registers mara and writes the book, world and canon
 # the other three build on.
@@ -173,7 +186,10 @@ def build(args):
 
     in_memory = not args.mongo_uri
     client = _in_memory_client() if in_memory else MongoClient(args.mongo_uri)
-    application = build_application(client)
+    gpu_worker = None
+    if args.fake_gpubox:
+        gpu_worker = FakeWorker(args.fake_gpubox, stage_seconds=FAKE_STAGE_SECONDS)
+    application = build_application(client, gpu_worker=gpu_worker)
     if in_memory:
         if args.data.exists():
             load_snapshot(client, args.data)
@@ -257,6 +273,10 @@ def parse_args(argv=None):
                         help="load the demo story once the server is up")
     parser.add_argument("--mongo-uri",
                         help="use this MongoDB instead of the in-memory one")
+    parser.add_argument("--fake-gpubox", nargs="?", const="ready", default=None,
+                        choices=FAKE_GPUBOX_MODES, metavar="MODE",
+                        help="put a fake GPU box behind research, in MODE "
+                             f"({', '.join(FAKE_GPUBOX_MODES)}; default ready)")
     parser.add_argument("--no-reload", dest="reload", action="store_false",
                         help="do not restart when a Python file changes")
     return parser.parse_args(argv)
@@ -281,6 +301,10 @@ def main(argv=None) -> None:
         _say(f"akasha {base}/  chronos {base}/timeline  "
              f"prithvi {base}/prithvi  logos {base}/logos")
         _say(f"log in as {DEV_USER} / {DEV_PASSWORD}")
+        if args.fake_gpubox:
+            _say(f"GPU box: fake, {args.fake_gpubox}")
+        elif os.environ.get("GPU_WORKER_URL", "").strip():
+            _say(f"GPU box: {os.environ['GPU_WORKER_URL'].strip()}")
         if args.seed:
             threading.Thread(
                 target=_seed, args=(base, browse_host, args.port), daemon=True

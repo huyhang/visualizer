@@ -16,7 +16,8 @@ from visualizer.stack import build_application
 def clean_env(monkeypatch):
     # build() fills these in with setdefault; start each test without them so
     # the values it picks are the ones under test, and none leak out.
-    for name in ("SECRET_KEY", "MONITORING_DATA_PATH", "MONITORING_ENABLED"):
+    for name in ("SECRET_KEY", "MONITORING_DATA_PATH", "MONITORING_ENABLED",
+                 "GPU_WORKER_URL", "GPU_WORKER_TOKEN"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -35,10 +36,10 @@ def exit_hooks(monkeypatch):
     stop(hooks)
 
 
-def run(data):
+def run(data, *flags):
     """One dev-server lifetime: build over ``data``, hand back a client."""
-    application = devserver.build(devserver.parse_args(["--data", str(data)]))
-    return Client(application)
+    args = devserver.parse_args(["--data", str(data), *flags])
+    return Client(devserver.build(args))
 
 
 def stop(exit_hooks):
@@ -66,6 +67,54 @@ def test_stack_serves_every_service_from_one_origin(monkeypatch):
     client = Client(build_application(mongomock.MongoClient()))
     for path in ("/health", "/timeline/health", "/prithvi/health", "/logos/health"):
         assert client.get(path).status_code == 200, path
+
+
+def research_state(client):
+    return client.get("/research/availability").get_json()["state"]
+
+
+def test_research_is_off_unless_the_environment_names_a_box(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    app = build_application(mongomock.MongoClient())
+    assert app.app.test_client().get(
+        "/research/availability", headers={"Accept": "application/json"}
+    ).status_code == 401, "and, as everywhere, it needs a session"
+    client = Client(app)
+    client.post("/register", json={"username": "w", "password": "Correct-horse-9",
+                                   "email": "w@example.com"})
+    client.post("/login", json={"username": "w", "password": "Correct-horse-9"})
+    assert research_state(client) == "off"
+
+
+def test_a_box_named_in_the_environment_is_asked(monkeypatch):
+    import socket
+
+    with socket.socket() as probe:          # a port nothing listens on
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("GPU_WORKER_URL", f"http://127.0.0.1:{port}")
+    monkeypatch.setenv("GPU_WORKER_TOKEN", "t")
+    client = Client(build_application(mongomock.MongoClient()))
+    client.post("/register", json={"username": "w", "password": "Correct-horse-9",
+                                   "email": "w@example.com"})
+    client.post("/login", json={"username": "w", "password": "Correct-horse-9"})
+    assert research_state(client) == "unreachable"
+
+
+def test_a_half_configured_box_stops_the_stack_at_startup(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "test-secret")
+    monkeypatch.setenv("GPU_WORKER_URL", "https://gpubox.example.ts.net:8443")
+    with pytest.raises(RuntimeError, match="GPU_WORKER_TOKEN"):
+        build_application(mongomock.MongoClient())
+
+
+def test_the_fake_box_flag(tmp_path, exit_hooks):
+    assert devserver.parse_args(["--fake-gpubox"]).fake_gpubox == "ready"
+    assert devserver.parse_args([]).fake_gpubox is None
+    client = run(tmp_path / "db.json", "--fake-gpubox", "busy")
+    login(client)
+    assert research_state(client) == "busy"
 
 
 def test_empty_database_gets_the_docker_admin(tmp_path, exit_hooks):

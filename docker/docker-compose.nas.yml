@@ -72,6 +72,17 @@ services:
       # to, which is why mongo-data is mounted read-only below -- measuring the
       # container's own filesystem would report the wrong disk entirely.
       MONITORING_DATA_PATH: /data/mongo
+      # The AI worker on the GPU box (docs/gpu_worker). Empty means research is
+      # off and the stack runs exactly as before. To switch it on, set both in
+      # docker/.env:
+      #   GPU_WORKER_URL=https://gpubox.<your-tailnet>.ts.net:8443
+      #   GPU_WORKER_TOKEN=<the worker's WORKER_TOKEN>
+      # A URL without a token stops the app at startup rather than failing on
+      # first use. Containers may not resolve MagicDNS names; if research reports
+      # the box unreachable while it is up, add to this service
+      #   extra_hosts: ["gpubox.<your-tailnet>.ts.net:<the box's Tailscale IP>"]
+      GPU_WORKER_URL: ${GPU_WORKER_URL:-}
+      GPU_WORKER_TOKEN: ${GPU_WORKER_TOKEN:-}
     volumes:
       # Read-only, and only so the capacity sampler can call statvfs on it.
       - mongo-data:/data/mongo:ro

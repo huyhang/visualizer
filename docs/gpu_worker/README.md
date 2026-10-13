@@ -33,6 +33,28 @@ NAS (visualizer stack)                     GPU box
   worker asks it narrow yes/no questions and results say so; when it isn't, the
   stage is skipped and results say that instead.
 
+## In this repo
+
+| What | Where |
+|---|---|
+| The client every service shares: config, HTTP, errors, availability | `src/visualizer/gpubox/` |
+| A fake box that keeps this contract, for tests and the dev server | `src/visualizer/gpubox/fake.py` |
+| Akasha's research seam, and `GET /research/availability` | `src/visualizer/akasha/research.py`, `research_routes.py` |
+| Wiring: a worker is used only when `GPU_WORKER_URL` is set | `src/visualizer/stack.py` |
+| Tests holding the client, the fake and this spec together | `tests/gpubox/` |
+
+**Switching it on** — in `docker/.env`, then redeploy:
+
+```
+GPU_WORKER_URL=https://gpubox.<your-tailnet>.ts.net:8443
+GPU_WORKER_TOKEN=<the worker's WORKER_TOKEN>
+```
+
+Optional: `GPU_WORKER_TIMEOUT` (seconds, default 10). A URL without a token stops
+the app at startup. Until the box exists, `python -m visualizer.devserver
+--fake-gpubox [MODE]` puts a fake one behind the features, in any state a writer
+can meet.
+
 ## Conventions
 
 | Aspect | Rule |

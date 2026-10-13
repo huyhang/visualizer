@@ -10,6 +10,7 @@ becomes the administrator, and every account after it is a plain user.
 from visualizer.auth import AuthStore
 from visualizer.chronos.errors import ChronosError
 from visualizer.chronos.store import StoryStore
+from visualizer.gpubox import worker_from_env
 from visualizer.observability import runtime as observability_runtime
 
 from .app import create_app
@@ -27,12 +28,14 @@ from .config import (
     get_versions_keep,
 )
 from .media_service import build_media_service
+from .research import RemoteResearcher
 from .store import DocumentStore
 
 _client = get_mongo_client()
 _auth_store = AuthStore(_client)
 _observability = observability_runtime.start(_client, _auth_store)
 _story_store = StoryStore(_client)
+_worker = worker_from_env()
 
 
 def _book_world(book: str) -> str | None:
@@ -64,6 +67,7 @@ app = create_app(
     media_service=build_media_service(
         _client, get_image_processor(), get_glb_limits()
     ),
+    researcher=RemoteResearcher(_worker) if _worker is not None else None,
 )
 
 
