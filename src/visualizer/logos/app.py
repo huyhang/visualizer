@@ -8,7 +8,8 @@ in-memory fakes with no network.
 This module only wires the app together. The routes live one module per area,
 each a plain ``register_*_routes(app, csrf, deps)`` called from ``create_app``:
 ``reader_routes``, ``review_routes``, ``publication_routes``,
-``structure_routes`` and ``draft_routes``. What they share -- URL templates,
+``structure_routes``, ``draft_routes`` and ``llm_review_routes`` (LLM review
+on the GPU box, off unless a ``reviewer`` is given). What they share -- URL templates,
 the book-grant guards, request parsing and the ``RouteDeps`` bundle of services
 -- is in ``routing``.
 """
@@ -29,6 +30,10 @@ from visualizer.shared_assets import register_shared_assets
 from .draft_routes import register_draft_routes
 from .errors import LogosError
 from .gateways import ArticleGateway, ChronosGateway
+from .llm_review import Reviewer, UnavailableReviewer
+from .llm_review_jobs import LlmReviewStore
+from .llm_review_routes import register_llm_review_routes
+from .llm_review_service import LlmReviewService
 from .publication import ExportJobs, PublicationService
 from .publication_routes import register_publication_routes
 from .reader import ReaderService
@@ -63,6 +68,8 @@ def create_app(
     pdf_renderer=None,
     export_runner=None,
     writing_advisor: WritingAdvisor | None = None,
+    reviewer: Reviewer | None = None,
+    llm_reviews: LlmReviewStore | None = None,
 ) -> Flask:
     if not secret_key:
         raise ValueError("create_app requires a non-empty secret_key.")
@@ -120,6 +127,12 @@ def create_app(
     register_publication_routes(app, csrf, deps)
     register_structure_routes(app, csrf, deps)
     register_draft_routes(app, csrf, deps)
+    reviewer = reviewer or UnavailableReviewer()
+    register_llm_review_routes(
+        app, csrf, auth_store, reviewer,
+        LlmReviewService(manuscripts, sections, drafts, articles, auth_store,
+                         reviewer, llm_reviews),
+    )
     if observability is not None:
         observability.install(app, "logos")
     _register_error_handlers(app)
@@ -129,7 +142,11 @@ def create_app(
 def _register_error_handlers(app):
     @app.errorhandler(LogosError)
     def handle_logos(err: LogosError):
-        return jsonify(err.to_dict()), err.status_code
+        response = jsonify(err.to_dict())
+        retry_after = getattr(err, "retry_after", None)
+        if retry_after:
+            response.headers["Retry-After"] = str(retry_after)
+        return response, err.status_code
 
     @app.errorhandler(AuthError)
     def handle_auth(err: AuthError):

@@ -19,16 +19,20 @@ from visualizer.akasha.config import (
 from visualizer.akasha.store import DocumentStore
 from visualizer.auth import AuthStore
 from visualizer.chronos.store import StoryStore
+from visualizer.gpubox import worker_from_env
 from visualizer.observability import runtime as observability_runtime
 
 from .app import create_app
 from .config import get_section_revisions_keep
 from .gateways import InProcessArticleGateway, InProcessChronosGateway
+from .llm_review import RemoteReviewer
+from .llm_review_jobs import LlmReviewStore
 from .store import LogosStore
 
 _client = get_mongo_client()
 _auth_store = AuthStore(_client)
 _observability = observability_runtime.start(_client, _auth_store)
+_worker = worker_from_env()
 
 app = create_app(
     LogosStore(_client, section_revisions_keep=get_section_revisions_keep()),
@@ -43,4 +47,6 @@ app = create_app(
     prithvi_url=get_prithvi_url(),
     logos_url=get_logos_url(),
     observability=_observability,
+    reviewer=RemoteReviewer(_worker) if _worker is not None else None,
+    llm_reviews=LlmReviewStore(_client) if _worker is not None else None,
 )

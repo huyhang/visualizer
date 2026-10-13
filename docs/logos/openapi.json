@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Logos API",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "description": "Versioned manuscripts for Chronos books, named writing drafts, volume and section organisation, private reader annotations and writing feedback, Akasha lookup, cross-volume search, and whole-series PDF/EPUB publication.\n\nPaths are relative to the service mount. In the combined deployment that is `/logos`; running Logos standalone it is `/`.\n\nUpdates to revisioned resources and reader items require an `If-Match` header carrying the `rev` from the last read."
   },
   "servers": [
@@ -20,6 +20,396 @@
     { "name": "publication", "description": "Whole-series publication metadata and exports." }
   ],
   "paths": {
+    "/llm-review/availability": {
+      "get": {
+        "tags": [
+          "writer"
+        ],
+        "summary": "Whether an LLM review can be requested now",
+        "description": "Answered from the GPU-box worker's cached health report, so it costs nothing to ask on every page view. `off` when no GPU box is configured.",
+        "responses": {
+          "200": {
+            "description": "The state, and what to tell the writer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "state",
+                    "private"
+                  ],
+                  "properties": {
+                    "state": {
+                      "type": "string"
+                    },
+                    "private": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/books/{book}/volumes/{volume}/sections/{section}/reviews/references": {
+      "get": {
+        "tags": [
+          "writer"
+        ],
+        "summary": "Preview what a review would send",
+        "description": "The Akasha articles a review of this draft would send with the chapter, in order -- the book world's deviations and watchlist first, then what the chapter mentions, then `include` -- and those left out, with why. Needs write on the book: a review is private feedback on unpublished prose.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Book"
+          },
+          {
+            "$ref": "#/components/parameters/Volume"
+          },
+          {
+            "$ref": "#/components/parameters/Section"
+          },
+          {
+            "name": "draft",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "style": "form",
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What would be sent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmReviewReferences"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/books/{book}/volumes/{volume}/sections/{section}/reviews": {
+      "post": {
+        "tags": [
+          "writer"
+        ],
+        "summary": "Ask the GPU box to review a draft",
+        "description": "Sends the draft's text as blocks, with the references the preview shows, to the GPU box. Poll the review for its issues. Three running reviews per writer, ten in all. Needs write on the book: a review is private feedback on unpublished prose.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Book"
+          },
+          {
+            "$ref": "#/components/parameters/Volume"
+          },
+          {
+            "$ref": "#/components/parameters/Section"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "The review, queued.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmReview"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyReviews"
+          },
+          "503": {
+            "$ref": "#/components/responses/LlmReviewUnavailable"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "writer"
+        ],
+        "summary": "Recent reviews of a section",
+        "description": "Newest first; the ten newest finished ones are kept. Needs write on the book: a review is private feedback on unpublished prose.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Book"
+          },
+          {
+            "$ref": "#/components/parameters/Volume"
+          },
+          {
+            "$ref": "#/components/parameters/Section"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The reviews, without their issues.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmReviewList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/LlmReviewUnavailable"
+          }
+        }
+      }
+    },
+    "/books/{book}/volumes/{volume}/sections/{section}/reviews/{review_id}": {
+      "get": {
+        "tags": [
+          "writer"
+        ],
+        "summary": "Follow a review",
+        "description": "Asks the GPU box how it is going, and stores the issues the first time it finds the review done. Issues are shown against the draft as it is now: `stale` when their quote is no longer in their block. Needs write on the book: a review is private feedback on unpublished prose.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Book"
+          },
+          {
+            "$ref": "#/components/parameters/Volume"
+          },
+          {
+            "$ref": "#/components/parameters/Section"
+          },
+          {
+            "name": "review_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The review.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmReview"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/LlmReviewUnavailable"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "writer"
+        ],
+        "summary": "Cancel a review",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Book"
+          },
+          {
+            "$ref": "#/components/parameters/Volume"
+          },
+          {
+            "$ref": "#/components/parameters/Section"
+          },
+          {
+            "name": "review_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The review, cancelled (or unchanged if it had finished).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmReview"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/LlmReviewUnavailable"
+          }
+        }
+      }
+    },
+    "/books/{book}/volumes/{volume}/sections/{section}/reviews/{review_id}/issues/{issue_id}": {
+      "put": {
+        "tags": [
+          "writer"
+        ],
+        "summary": "Mark an issue open, dismissed or resolved",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Book"
+          },
+          {
+            "$ref": "#/components/parameters/Volume"
+          },
+          {
+            "$ref": "#/components/parameters/Section"
+          },
+          {
+            "name": "review_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "issue_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "open",
+                      "dismissed",
+                      "resolved"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The issue.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmReviewIssue"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/LlmReviewUnavailable"
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": ["manuscripts"],
@@ -996,6 +1386,26 @@
       }
     },
     "responses": {
+      "TooManyReviews": {
+        "description": "Too many LLM reviews at once; `Retry-After` says when to come back.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "LlmReviewUnavailable": {
+        "description": "LLM review is off, or the GPU box is asleep or broken.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
       "BadRequest": {
         "description": "A malformed identifier, body, document, ordering or precondition.",
         "content": {
@@ -1052,6 +1462,572 @@
       }
     },
     "schemas": {
+      "LlmReviewRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "draft": {
+            "type": "string",
+            "description": "Which draft; the primary by default."
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "continuity",
+                "anachronism",
+                "prose"
+              ]
+            },
+            "minItems": 1,
+            "uniqueItems": true,
+            "default": [
+              "continuity",
+              "anachronism",
+              "prose"
+            ]
+          },
+          "dialect": {
+            "type": "string",
+            "enum": [
+              "en-US",
+              "en-GB"
+            ],
+            "default": "en-US"
+          },
+          "verify": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "required",
+              "off"
+            ],
+            "default": "auto",
+            "description": "Whether a second machine re-judges each issue."
+          },
+          "include": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "string",
+              "pattern": "^[^/\\s]+/[^/\\s]+/[^/\\s]+$"
+            },
+            "description": "More Akasha articles to send, as database/collection/id, beyond those the chapter mentions."
+          }
+        },
+        "example": {
+          "checks": [
+            "continuity",
+            "anachronism"
+          ],
+          "dialect": "en-GB",
+          "include": [
+            "ember/places/highkeep"
+          ]
+        }
+      },
+      "LlmReviewReference": {
+        "type": "object",
+        "required": [
+          "ref",
+          "kind",
+          "title"
+        ],
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "canon",
+              "research",
+              "deviation",
+              "watchlist"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "chars": {
+            "type": "integer",
+            "description": "Preview only: how much of it is sent."
+          }
+        }
+      },
+      "LlmReviewSkipped": {
+        "type": "object",
+        "required": [
+          "ref",
+          "reason"
+        ],
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "unavailable",
+              "unverified",
+              "unreviewed_research",
+              "source",
+              "over_limit"
+            ],
+            "description": "unavailable: missing, or not yours to read. unverified: research not yet verified. unreviewed_research: still in the research inbox. source: raw sources are not sent. over_limit: beyond the 40 the box reads."
+          }
+        }
+      },
+      "LlmReviewReferences": {
+        "type": "object",
+        "required": [
+          "draft",
+          "draft_rev",
+          "references",
+          "skipped"
+        ],
+        "properties": {
+          "draft": {
+            "type": "string"
+          },
+          "draft_rev": {
+            "type": "integer"
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LlmReviewReference"
+            }
+          },
+          "skipped": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LlmReviewSkipped"
+            }
+          }
+        },
+        "example": {
+          "draft": "draft-1",
+          "draft_rev": 3,
+          "references": [
+            {
+              "ref": "ember/deviations/qi-lanterns",
+              "kind": "deviation",
+              "title": "Qi lanterns",
+              "chars": 412
+            },
+            {
+              "ref": "ember/characters/lyra",
+              "kind": "canon",
+              "title": "Lyra",
+              "chars": 980
+            }
+          ],
+          "skipped": [
+            {
+              "ref": "ember/research/tea",
+              "reason": "unverified"
+            }
+          ]
+        }
+      },
+      "LlmReviewIssue": {
+        "type": "object",
+        "required": [
+          "id",
+          "check",
+          "severity",
+          "confidence",
+          "block",
+          "quote",
+          "message",
+          "suggestion",
+          "reference",
+          "verified",
+          "status",
+          "stale",
+          "category",
+          "title",
+          "excerpt",
+          "replacement"
+        ],
+        "description": "One issue, anchored to a block and a verbatim quote. category, title, excerpt and replacement repeat it in the rule-based advisor's finding shape.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "check": {
+            "type": "string",
+            "enum": [
+              "continuity",
+              "anachronism",
+              "prose"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "info",
+              "warning"
+            ]
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "possible",
+              "likely"
+            ]
+          },
+          "block": {
+            "type": "string"
+          },
+          "quote": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "suggestion": {
+            "type": "string",
+            "nullable": true
+          },
+          "reference": {
+            "type": "string",
+            "nullable": true,
+            "description": "The article it is based on; null for prose."
+          },
+          "verified": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "true: a second machine confirmed it."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "dismissed",
+              "resolved"
+            ]
+          },
+          "stale": {
+            "type": "boolean",
+            "description": "Its quote is no longer in its block: the passage has changed since."
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "continuity",
+              "anachronism",
+              "prose"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "excerpt": {
+            "type": "string"
+          },
+          "replacement": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "LlmReviewSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "book",
+          "volume",
+          "section",
+          "draft",
+          "draft_rev",
+          "requester",
+          "state",
+          "progress",
+          "error",
+          "created_at",
+          "updated_at",
+          "checks",
+          "dialect",
+          "verify",
+          "verification",
+          "model",
+          "generated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "book": {
+            "type": "string"
+          },
+          "volume": {
+            "type": "string"
+          },
+          "section": {
+            "type": "string"
+          },
+          "draft": {
+            "type": "string"
+          },
+          "draft_rev": {
+            "type": "integer"
+          },
+          "requester": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "submitting",
+              "queued",
+              "running",
+              "importing",
+              "done",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "progress": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "stage": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          },
+          "error": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "continuity",
+                "anachronism",
+                "prose"
+              ]
+            }
+          },
+          "dialect": {
+            "type": "string"
+          },
+          "verify": {
+            "type": "string"
+          },
+          "verification": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "checked",
+                  "skipped",
+                  "off"
+                ]
+              },
+              "model": {
+                "type": "string",
+                "nullable": true
+              },
+              "checked": {
+                "type": "integer"
+              },
+              "removed": {
+                "type": "integer"
+              }
+            }
+          },
+          "model": {
+            "type": "string",
+            "nullable": true
+          },
+          "generated_at": {
+            "type": "string",
+            "nullable": true
+          },
+          "issue_count": {
+            "type": "integer",
+            "description": "List view only."
+          },
+          "open": {
+            "type": "integer",
+            "description": "List view only."
+          }
+        }
+      },
+      "LlmReview": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/LlmReviewSummary"
+          },
+          {
+            "type": "object",
+            "required": [
+              "references",
+              "skipped",
+              "outdated",
+              "issues"
+            ],
+            "properties": {
+              "references": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/LlmReviewReference"
+                }
+              },
+              "skipped": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/LlmReviewSkipped"
+                }
+              },
+              "outdated": {
+                "type": "boolean",
+                "description": "The draft has been edited (or deleted) since the revision reviewed."
+              },
+              "issues": {
+                "type": "array",
+                "nullable": true,
+                "items": {
+                  "$ref": "#/components/schemas/LlmReviewIssue"
+                },
+                "description": "Null until the review is done."
+              }
+            }
+          }
+        ],
+        "example": {
+          "id": "lr_5f2c9a1e7b3d4c60",
+          "book": "ember-pact",
+          "volume": "the-ember-pact",
+          "section": "the-broken-gate",
+          "draft": "draft-1",
+          "draft_rev": 3,
+          "requester": "mara",
+          "state": "done",
+          "progress": null,
+          "error": null,
+          "created_at": "2026-10-13T20:01:00+00:00",
+          "updated_at": "2026-10-13T20:02:10+00:00",
+          "checks": [
+            "continuity",
+            "anachronism",
+            "prose"
+          ],
+          "dialect": "en-GB",
+          "verify": "auto",
+          "verification": {
+            "status": "checked",
+            "model": "gemma3:27b",
+            "checked": 2,
+            "removed": 1
+          },
+          "model": "qwen3:30b",
+          "generated_at": "2026-10-13T20:02:09Z",
+          "references": [
+            {
+              "ref": "ember/characters/lyra",
+              "kind": "canon",
+              "title": "Lyra"
+            }
+          ],
+          "skipped": [],
+          "outdated": false,
+          "issues": [
+            {
+              "id": "i1",
+              "check": "continuity",
+              "severity": "warning",
+              "confidence": "likely",
+              "block": "p1",
+              "quote": "her brown eyes",
+              "message": "Lyra's eyes are grey in canon.",
+              "suggestion": "her grey eyes",
+              "reference": "ember/characters/lyra",
+              "verified": true,
+              "status": "open",
+              "stale": false,
+              "category": "continuity",
+              "title": "Continuity",
+              "excerpt": "her brown eyes",
+              "replacement": null
+            }
+          ]
+        }
+      },
+      "LlmReviewList": {
+        "type": "object",
+        "required": [
+          "reviews"
+        ],
+        "properties": {
+          "reviews": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LlmReviewSummary"
+            }
+          }
+        },
+        "example": {
+          "reviews": [
+            {
+              "id": "lr_5f2c9a1e7b3d4c60",
+              "book": "ember-pact",
+              "volume": "the-ember-pact",
+              "section": "the-broken-gate",
+              "draft": "draft-1",
+              "draft_rev": 3,
+              "requester": "mara",
+              "state": "done",
+              "progress": null,
+              "error": null,
+              "created_at": "2026-10-13T20:01:00+00:00",
+              "updated_at": "2026-10-13T20:02:10+00:00",
+              "checks": [
+                "continuity",
+                "anachronism",
+                "prose"
+              ],
+              "dialect": "en-GB",
+              "verify": "auto",
+              "verification": {
+                "status": "checked",
+                "model": "gemma3:27b",
+                "checked": 2,
+                "removed": 1
+              },
+              "model": "qwen3:30b",
+              "generated_at": "2026-10-13T20:02:09Z",
+              "issue_count": 1,
+              "open": 1
+            }
+          ]
+        }
+      },
       "Health": {
         "type": "object",
         "required": ["status", "service"],
@@ -1085,10 +2061,14 @@
               "INVALID_PUBLICATION",
               "INVALID_READER_ITEM",
               "INVALID_READING_POSITION",
+              "INVALID_REVIEW_REQUEST",
               "INVALID_REVISION",
               "INVALID_SEARCH",
               "INVALID_SECTION",
               "INVALID_VOLUME",
+              "LLM_REVIEW_BUSY",
+              "LLM_REVIEW_NOT_FOUND",
+              "LLM_REVIEW_UNAVAILABLE",
               "LOGOS_ERROR",
               "MANUSCRIPT_NOT_FOUND",
               "PRECONDITION_REQUIRED",

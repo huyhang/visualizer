@@ -422,7 +422,7 @@ draft is the caller's decision.
 | Field | Rules |
 |---|---|
 | `chapter.blocks` | Plain text per block, with stable ids so findings anchor to the manuscript |
-| `references` | Assembled by Logos from the chapter's Akasha references (`ArticleGateway.lookup_entities`), plus deviations, the watchlist, and **only `verified` research**. `kind`: `canon` \| `research` \| `deviation` \| `watchlist` |
+| `references` | Assembled by Logos ([`docs/logos/llm-review.md`](../logos/llm-review.md)): the book world's deviations and watchlist first, then the articles the chapter mentions, with **only `verified` research**; at most 40, each cut to 1,500 characters. `kind`: `canon` \| `research` \| `deviation` \| `watchlist` |
 | `checks` | Any of `continuity` (vs. canon), `anachronism` (vs. research + watchlist), `prose` |
 | `dialect` | Passed through, as for the rule-based advisor |
 | `verify` | Same as for research: `auto` (default), `required`, `off` |

@@ -41,6 +41,8 @@ from visualizer.logos.gateways import (
     InProcessArticleGateway as InProcessLogosArticleGateway,
 )
 from visualizer.logos.gateways import InProcessChronosGateway, LogosReferenceGate
+from visualizer.logos.llm_review import RemoteReviewer
+from visualizer.logos.llm_review_jobs import LlmReviewStore
 from visualizer.logos.store import LogosStore
 from visualizer.observability import runtime as observability_runtime
 from visualizer.prithvi.app import create_app as create_prithvi_app
@@ -64,8 +66,8 @@ def build_application(client, gpu_worker=None):
     """The combined WSGI callable, every service wired over ``client``.
 
     ``gpu_worker`` defaults to whatever ``GPU_WORKER_URL`` configures, which is
-    usually nothing: research then reports itself off and the stack runs as it
-    always has.
+    usually nothing: research and LLM review then report themselves off and the
+    stack runs as it always has.
     """
     worker = gpu_worker if gpu_worker is not None else worker_from_env()
     auth_store = AuthStore(client)
@@ -148,6 +150,8 @@ def build_application(client, gpu_worker=None):
         prithvi_url=prithvi_url,
         logos_url=logos_url,
         observability=observability,
+        reviewer=RemoteReviewer(worker) if worker is not None else None,
+        llm_reviews=LlmReviewStore(client) if worker is not None else None,
     )
     prithvi_app = create_prithvi_app(
         PrithviStore(

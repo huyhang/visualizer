@@ -1,0 +1,380 @@
+"""LLM review of a chapter, end to end: references, the box, the issues.
+
+Through the real app and routes, against the fake GPU box and in-memory Mongo.
+Live responses are checked against docs/logos/openapi.json.
+"""
+
+import json
+
+import pytest
+from jsonschema import Draft7Validator
+from jsonschema.validators import RefResolver
+
+from visualizer.gpubox.fake import FakeWorker
+from visualizer.logos.app import create_app
+from visualizer.logos.errors import LlmReviewNotFound
+from visualizer.logos.gateways import FakeArticleGateway
+from visualizer.logos.llm_review import (
+    MAX_REFERENCES,
+    REFERENCE_CHARS,
+    RemoteReviewer,
+    assemble_references,
+    reference_text,
+)
+from visualizer.logos.llm_review_jobs import KEEP_PER_SECTION, LlmReviewStore
+
+from .conftest import BOOK, SECTION, VOLUME, WORLD, login, section_payload
+from .test_contract import OPENAPI_PATH, _as_json_schema
+
+SPEC = _as_json_schema(json.loads(OPENAPI_PATH.read_text()))
+SECTION_URL = f"/books/{BOOK}/volumes/{VOLUME}/sections/{SECTION}"
+REVIEWS = SECTION_URL + "/reviews"
+
+
+def conforms(body, schema):
+    Draft7Validator({"$ref": f"#/components/schemas/{schema}"},
+                    resolver=RefResolver.from_schema(SPEC)).validate(body)
+    return body
+
+
+def ref_node(collection, article, text):
+    return {"type": "mention", "text": text,
+            "ref": {"database": WORLD, "collection": collection, "id": article}}
+
+
+CHAPTER = {"version": 1, "type": "doc", "content": [
+    {"type": "paragraph", "id": "p1", "content": [
+        ref_node("characters", "lyra", "Lyra"),
+        {"type": "text", "text": " looked up with her brown eyes at the gate."}]},
+    {"type": "paragraph", "id": "p2", "content": [
+        {"type": "text", "text": "She poured tea from a teapot, as "},
+        ref_node("research", "song-tea", "the custom"), {"type": "text", "text": " was."},
+        ref_node("research", "rumours", " Rumour had it"),
+        ref_node("research-inbox", "a-draft", " so the drafts said"),
+        ref_node("characters", "ghost", " and a ghost agreed.")]},
+    {"type": "paragraph", "id": "p3", "content": []},
+]}
+
+
+class Clock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+
+@pytest.fixture
+def articles():
+    gateway = FakeArticleGateway()
+    gateway.add(WORLD, "characters", "lyra", {
+        "title": "Lyra", "eyes": "grey", "body": "Lyra keeps the broken gate."})
+    gateway.add(WORLD, "deviations", "qi-lanterns", {
+        "title": "Qi lanterns", "body": "Lanterns float by qi. This is deliberate."})
+    gateway.add(WORLD, "watchlist", "crops", {
+        "title": "Anachronism watchlist", "body": "No chili peppers before the Ming."})
+    gateway.add(WORLD, "research", "song-tea", {
+        "title": "Song tea", "status": "verified",
+        "body": "Tea was powdered and whisked in bowls.",
+        "dropped_facts": ["unsupported: Tea bowls were always white."]})
+    gateway.add(WORLD, "research", "rumours", {"title": "Rumours",
+                                               "status": "unverified"})
+    gateway.add(WORLD, "research-inbox", "a-draft", {"title": "A draft"})
+    gateway.add(WORLD, "places", "highkeep", {"title": "Highkeep", "body": "A fort."})
+    return gateway
+
+
+@pytest.fixture
+def reviews(mongo_client):
+    return LlmReviewStore(mongo_client)
+
+
+@pytest.fixture
+def make(logos_store, chronos_gateway, articles, auth_store, reviews):
+    chronos_gateway.add_book(BOOK, "The Ember Pact", events=("opening", "climax"),
+                             world=WORLD)
+
+    def build(worker, user="mara", with_reviews=True):
+        app = create_app(
+            logos_store, chronos_gateway, articles, auth_store,
+            secret_key="test-secret",
+            reviewer=RemoteReviewer(worker) if worker is not None else None,
+            llm_reviews=reviews if with_reviews else None)
+        app.config.update(TESTING=True, WTF_CSRF_ENABLED=False,
+                          RATELIMIT_ENABLED=False)
+        client = app.test_client()
+        assert login(client, user).status_code == 200
+        return client
+
+    return build
+
+
+@pytest.fixture
+def fake():
+    return FakeWorker()
+
+
+@pytest.fixture
+def client(make, fake):
+    client = make(fake)
+    assert client.post(f"/books/{BOOK}/volumes/{VOLUME}",
+                       json={"title": "The Ember Pact"}).status_code == 201
+    assert client.post(SECTION_URL, json=section_payload(doc=CHAPTER)
+                       ).status_code == 201
+    return client
+
+
+def reviewed(client, **body):
+    review = conforms(client.post(REVIEWS, json=body).get_json(), "LlmReview")
+    return conforms(client.get(f"{REVIEWS}/{review['id']}").get_json(), "LlmReview")
+
+
+# -- references ----------------------------------------------------------------------
+
+
+def test_the_preview_shows_what_would_be_sent_and_what_would_not(client):
+    body = conforms(client.get(REVIEWS + "/references").get_json(),
+                    "LlmReviewReferences")
+    assert [(r["ref"], r["kind"]) for r in body["references"]] == [
+        ("ember/deviations/qi-lanterns", "deviation"),
+        ("ember/watchlist/crops", "watchlist"),
+        ("ember/characters/lyra", "canon"),
+        ("ember/research/song-tea", "research")]
+    assert {(s["ref"], s["reason"]) for s in body["skipped"]} == {
+        ("ember/research/rumours", "unverified"),
+        ("ember/research-inbox/a-draft", "unreviewed_research"),
+        ("ember/characters/ghost", "unavailable")}
+
+
+def test_more_articles_can_be_included(client):
+    body = client.get(REVIEWS + "/references?include=ember/places/highkeep").get_json()
+    assert body["references"][-1] == {"ref": "ember/places/highkeep", "kind": "canon",
+                                      "title": "Highkeep", "chars": 7}
+    assert client.get(REVIEWS + "/references?include=not-a-ref").status_code == 400
+
+
+def test_a_reference_is_its_facts_then_its_body_without_bookkeeping():
+    text = reference_text({"title": "Song tea", "status": "verified", "era": "Song",
+                           "aliases": ["diancha", "whisked tea"],
+                           "dropped_facts": ["Tea bowls were always white."],
+                           "body": "Tea was whisked." + "x" * 5000})
+    assert text.startswith("Era: Song\nAliases: diancha, whisked tea\nTea was whisked.")
+    assert "white" not in text and "verified" not in text
+    assert len(text) == REFERENCE_CHARS
+
+
+def test_deviations_are_never_the_references_cut():
+    gateway = FakeArticleGateway()
+    for n in range(MAX_REFERENCES + 5):
+        gateway.add(WORLD, "characters", f"c{n:02d}", {"title": f"C{n}"})
+    gateway.add(WORLD, "deviations", "magic", {"title": "Magic", "body": "On purpose."})
+    mentioned = [{"database": WORLD, "collection": "characters", "id": f"c{n:02d}"}
+                 for n in range(MAX_REFERENCES + 5)]
+    sent, skipped = assemble_references(gateway, [], WORLD, mentioned, [])
+    assert len(sent) == MAX_REFERENCES and sent[0]["kind"] == "deviation"
+    assert [s["reason"] for s in skipped] == ["over_limit"] * 6
+
+
+# -- asking and following ---------------------------------------------------------------
+
+
+def test_a_review_comes_back_with_anchored_issues(client, fake):
+    response = client.post(REVIEWS, json={"dialect": "en-GB"})
+    assert response.status_code == 202
+    queued = conforms(response.get_json(), "LlmReview")
+    assert queued["issues"] is None and queued["state"] == "running"
+
+    done = conforms(client.get(f"{REVIEWS}/{queued['id']}").get_json(), "LlmReview")
+    assert done["state"] == "done" and done["verification"]["status"] == "checked"
+    assert done["outdated"] is False and done["dialect"] == "en-GB"
+    checks = {issue["check"] for issue in done["issues"]}
+    assert checks == {"continuity", "anachronism", "prose"}
+    texts = {"p1": "Lyra looked up with her brown eyes at the gate."}
+    for issue in done["issues"]:
+        assert issue["status"] == "open" and issue["stale"] is False
+        assert issue["excerpt"] == issue["quote"] and issue["category"] == issue["check"]
+        if issue["block"] in texts:
+            assert issue["quote"] in texts[issue["block"]]
+
+
+def test_the_box_gets_text_blocks_and_reference_texts(client, fake):
+    client.post(REVIEWS, json={"checks": ["continuity"]})
+    (job,) = fake._jobs.values()
+    sent = job["request"]
+    assert sent["chapter"] == {"title": "The Broken Gate", "blocks": [
+        {"id": "p1", "text": "Lyra looked up with her brown eyes at the gate."},
+        {"id": "p2", "text": "She poured tea from a teapot, as the custom was. "
+                             "Rumour had it so the drafts said and a ghost agreed."}]}
+    assert sent["checks"] == ["continuity"] and sent["verify"] == "auto"
+    lyra = next(r for r in sent["references"] if r["ref"] == "ember/characters/lyra")
+    assert lyra["text"] == "Eyes: grey\nLyra keeps the broken gate."
+
+
+def test_logos_keeps_no_chapter_text_and_no_reference_text(client, mongo_client):
+    reviewed(client)
+    (record,) = mongo_client["_logos"]["llm_reviews"].find()
+    stored = json.dumps(record, default=str)
+    # Issues quote a few words of a block; the rest of the chapter is not kept.
+    assert "Rumour had it" not in stored and "blocks" not in record
+    assert "Lyra keeps the broken gate" not in stored
+    assert all(set(r) == {"ref", "kind", "title"} for r in record["references"])
+
+
+def test_reviews_are_listed_newest_first(client):
+    for _ in range(2):
+        reviewed(client)
+    body = conforms(client.get(REVIEWS).get_json(), "LlmReviewList")
+    assert len(body["reviews"]) == 2
+    assert body["reviews"][0]["issue_count"] == body["reviews"][0]["open"] > 0
+
+
+def test_only_the_newest_finished_reviews_are_kept(client, reviews):
+    for _ in range(KEEP_PER_SECTION + 2):
+        reviewed(client)
+    assert len(reviews.recent(BOOK, VOLUME, SECTION)) == KEEP_PER_SECTION
+
+
+def test_a_named_draft_can_be_reviewed(client, fake):
+    alternate = client.post(SECTION_URL + "/drafts", json={"name": "Alternate"})
+    draft = alternate.get_json()["id"]
+    review = reviewed(client, draft=draft)
+    assert review["draft"] == draft
+
+
+def test_an_empty_draft_is_not_sent(client):
+    current = client.get(SECTION_URL).get_json()
+    client.put(SECTION_URL, json=section_payload(doc={"version": 1, "type": "doc",
+                                                      "content": []}),
+               headers={"If-Match": f'"{current["rev"]}"'})
+    response = client.post(REVIEWS)
+    assert response.status_code == 400
+    assert response.get_json()["code"] == "INVALID_REVIEW_REQUEST"
+
+
+@pytest.mark.parametrize("body", [{"checks": []}, {"checks": ["spelling"]},
+                                  {"dialect": "en-AU"}, {"verify": "maybe"},
+                                  {"include": ["a/b"]}, {"colour": "red"}])
+def test_a_bad_request_never_reaches_the_box(client, fake, body):
+    assert client.post(REVIEWS, json=body).status_code == 400
+    assert fake._jobs == {}
+
+
+def test_too_many_reviews_at_once(make, client):
+    slow = make(FakeWorker(stage_seconds=10, clock=Clock()))
+    for _ in range(3):
+        assert slow.post(REVIEWS).status_code == 202
+    response = slow.post(REVIEWS)
+    assert response.status_code == 429 and response.headers["Retry-After"] == "60"
+    assert response.get_json()["code"] == "LLM_REVIEW_BUSY"
+
+
+def test_cancelling_a_review(make, client):
+    slow = make(FakeWorker(stage_seconds=10, clock=Clock()))
+    review = slow.post(REVIEWS).get_json()
+    cancelled = slow.delete(f"{REVIEWS}/{review['id']}")
+    assert conforms(cancelled.get_json(), "LlmReview")["state"] == "cancelled"
+
+
+def test_a_review_the_box_failed(client, fake):
+    fake.fail_next("timeout")
+    review = reviewed(client)
+    assert review["state"] == "failed" and review["error"]["code"] == "timeout"
+    assert review["issues"] is None
+
+
+def test_a_review_the_box_forgot(make, client):
+    class Forgetful(FakeWorker):
+        def status(self, job_id):
+            raise LlmReviewNotFound("gone")
+
+    forgetful = make(Forgetful())
+    review = forgetful.post(REVIEWS).get_json()
+    assert forgetful.get(f"{REVIEWS}/{review['id']}").get_json()["error"][
+        "code"] == "expired"
+
+
+def test_an_asleep_box_leaves_the_review_as_it_was(make, client):
+    clock = Clock()
+    worker = FakeWorker(stage_seconds=10, clock=clock)
+    slow = make(worker)
+    review = slow.post(REVIEWS).get_json()
+    worker.set_mode("unreachable")
+    clock.now = 1000
+    assert slow.get(f"{REVIEWS}/{review['id']}").get_json()["state"] == "queued"
+
+
+# -- working through the issues ----------------------------------------------------------
+
+
+def test_marking_issues(client):
+    review = reviewed(client)
+    issue = review["issues"][0]["id"]
+    url = f"{REVIEWS}/{review['id']}/issues/{issue}"
+    marked = conforms(client.put(url, json={"status": "dismissed"}).get_json(),
+                      "LlmReviewIssue")
+    assert marked["status"] == "dismissed"
+    again = client.get(f"{REVIEWS}/{review['id']}").get_json()
+    assert again["issues"][0]["status"] == "dismissed"
+    assert client.put(url, json={"status": "ignored"}).status_code == 400
+    assert client.put(f"{REVIEWS}/{review['id']}/issues/i999",
+                      json={"status": "resolved"}).status_code == 404
+
+
+def test_issues_go_stale_as_the_draft_changes(client):
+    review = reviewed(client)
+    current = client.get(SECTION_URL).get_json()
+    edited = json.loads(json.dumps(CHAPTER))
+    edited["content"][0]["content"][1]["text"] = " looked up at the gate."
+    assert client.put(SECTION_URL, json=section_payload(doc=edited),
+                      headers={"If-Match": f'"{current["rev"]}"'}).status_code == 200
+    after = client.get(f"{REVIEWS}/{review['id']}").get_json()
+    assert after["outdated"] is True
+    by_block = {issue["block"]: issue["stale"] for issue in after["issues"]}
+    assert by_block.get("p1") is True
+    assert by_block.get("p2", False) is False
+
+
+# -- who may, and when it is off ---------------------------------------------------------
+
+
+def test_a_reader_of_the_book_may_not(make, client):
+    reader = make(FakeWorker(), user="devi")
+    assert reader.get(REVIEWS + "/references").status_code == 403
+    assert reader.post(REVIEWS).status_code == 403
+    assert reader.get(REVIEWS).status_code == 403
+
+
+def test_with_no_box_review_is_off(make, client):
+    off = make(None, with_reviews=False)
+    assert off.get("/llm-review/availability").get_json()["state"] == "off"
+    response = off.post(REVIEWS)
+    assert response.status_code == 503
+    assert response.get_json()["code"] == "LLM_REVIEW_UNAVAILABLE"
+
+
+def test_availability_reports_the_box(client):
+    body = client.get("/llm-review/availability").get_json()
+    assert body["state"] == "ready" and body["private"] is True
+
+
+def test_reviews_go_with_their_book_and_their_requester(client, logos_store, reviews):
+    reviewed(client)
+    logos_store.purge_user("mara")
+    assert reviews.recent(BOOK, VOLUME, SECTION) == []
+    reviewed(client)
+    logos_store.purge_book(BOOK)
+    assert reviews.recent(BOOK, VOLUME, SECTION) == []
+
+
+def test_a_malformed_result_is_refused(make, client):
+    class Garbled(FakeWorker):
+        def status(self, job_id):
+            job = super().status(job_id)
+            job["result"]["issues"][0]["check"] = "spelling"
+            return job
+
+    garbled = make(Garbled())
+    review = garbled.post(REVIEWS).get_json()
+    failed = garbled.get(f"{REVIEWS}/{review['id']}").get_json()
+    assert failed["state"] == "failed" and failed["error"]["code"] == "invalid_result"
+    assert failed["issues"] is None

@@ -51,6 +51,18 @@ class ArticleGateway(Protocol):
     def missing_articles(self, refs: list[dict]) -> list[dict]:
         """Which of ``refs`` no longer name a live Akasha article."""
 
+    def review_articles(self, refs: list[dict], grants: list[dict]) -> dict:
+        """(database, collection, id) -> {"title", "document"} for each of
+        ``refs`` that is live and readable under ``grants``; the rest absent.
+
+        What an LLM review sends the GPU box as references, so only what the
+        writer asking could open themselves.
+        """
+
+    def collection_refs(self, database: str, collection: str,
+                        grants: list[dict]) -> list[dict]:
+        """Refs of the live, readable articles in one collection, by id."""
+
     def lookup_entities(
         self, query: str, grants: list[dict], preferred_database: str | None = None
     ) -> list[dict]:
@@ -126,6 +138,30 @@ class InProcessArticleGateway:
         except AkashaError:
             return False
         return True
+
+    def review_articles(self, refs: list[dict], grants: list[dict]) -> dict:
+        found = {}
+        for ref in refs:
+            key = (ref["database"], ref["collection"], ref["id"])
+            if key in found or not is_allowed(grants, READ, *key):
+                continue
+            try:
+                body = self._documents.get(*key).get("document", {})
+            except AkashaError:
+                continue
+            found[key] = {"title": str(body.get("title") or derive_title(key[2])),
+                          "document": body}
+        return found
+
+    def collection_refs(self, database: str, collection: str,
+                        grants: list[dict]) -> list[dict]:
+        try:
+            ids = self._documents.document_ids(database, collection)
+        except AkashaError:
+            return []
+        return [{"database": database, "collection": collection, "id": doc_id}
+                for doc_id in sorted(ids)
+                if is_allowed(grants, READ, database, collection, doc_id)]
 
     def lookup_entities(
         self, query: str, grants: list[dict], preferred_database: str | None = None
@@ -236,19 +272,43 @@ class FakeChronosGateway:
 
 
 class FakeArticleGateway:
-    """An Akasha stand-in holding the refs that currently resolve."""
+    """An Akasha stand-in holding the refs that currently resolve.
+
+    Every article is readable to everyone, and has a body only if one was
+    given to ``add``.
+    """
 
     def __init__(self, articles=()):
         self._articles = {self._key(ref) for ref in articles}
+        self._bodies: dict[tuple[str, str, str], dict] = {}
 
-    def add(self, database: str, collection: str, article: str) -> None:
+    def add(self, database: str, collection: str, article: str,
+            document: dict | None = None) -> None:
         self._articles.add((database, collection, article))
+        if document is not None:
+            self._bodies[(database, collection, article)] = document
 
     def remove(self, database: str, collection: str, article: str) -> None:
         self._articles.discard((database, collection, article))
 
     def missing_articles(self, refs: list[dict]) -> list[dict]:
         return [ref for ref in refs if self._key(ref) not in self._articles]
+
+    def review_articles(self, refs: list[dict], grants: list[dict]) -> dict:
+        found = {}
+        for ref in refs:
+            key = self._key(ref)
+            if key in self._articles:
+                body = self._bodies.get(key, {})
+                found[key] = {"title": str(body.get("title") or derive_title(key[2])),
+                              "document": body}
+        return found
+
+    def collection_refs(self, database: str, collection: str,
+                        grants: list[dict]) -> list[dict]:
+        return [{"database": d, "collection": c, "id": a}
+                for d, c, a in sorted(self._articles)
+                if (d, c) == (database, collection)]
 
     def lookup_entities(
         self, query: str, grants: list[dict], preferred_database: str | None = None

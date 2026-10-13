@@ -59,6 +59,8 @@ READING_POSITIONS = "reading_positions"
 SEARCH_BLOCKS = "search_blocks"
 EXPORT_JOBS = "export_jobs"
 SECTION_MOVES = "section_moves"
+# Written by ``llm_review_jobs.LlmReviewStore``; purged here with the book or user.
+LLM_REVIEWS = "llm_reviews"
 
 OUTLINE_IDENTITY = ("book",)
 VOLUME_IDENTITY = ("book", "volume")
@@ -113,6 +115,7 @@ class LogosStore:
         self._search_blocks = database[SEARCH_BLOCKS]
         self._export_jobs = database[EXPORT_JOBS]
         self._section_moves = database[SECTION_MOVES]
+        self._llm_reviews = database[LLM_REVIEWS]
         self._clock = clock or (lambda: datetime.now(UTC))
         self._id_factory = id_factory or (lambda: str(uuid4()))
         self._reader_items.create_index([("username", 1), ("book", 1)])
@@ -959,12 +962,14 @@ class LogosStore:
         self._search_blocks.delete_many({"book": book})
         self._export_jobs.delete_many({"book": book})
         self._section_moves.delete_many({"book": book})
+        self._llm_reviews.delete_many({"book": book})
 
     def purge_user(self, username: str) -> None:
         self._reader_items.delete_many({"username": username})
         self._reading_positions.delete_many({"username": username})
         self._reader_settings.delete_one({"_id": username})
         self._export_jobs.delete_many({"owner": username})
+        self._llm_reviews.delete_many({"requester": username})
 
     @staticmethod
     def _volume_key(book: str, volume: str) -> dict:

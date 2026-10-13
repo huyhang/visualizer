@@ -177,6 +177,38 @@ class ReviewUnavailable(LogosError):
     code = "REVIEW_UNAVAILABLE"
 
 
+class InvalidReviewRequest(LogosError):
+    """An LLM review request is malformed, or there is nothing to review."""
+
+    status_code = 400
+    code = "INVALID_REVIEW_REQUEST"
+
+
+class LlmReviewNotFound(LogosError):
+    """No such LLM review of this section -- or the GPU box forgot the job."""
+
+    status_code = 404
+    code = "LLM_REVIEW_NOT_FOUND"
+
+
+class LlmReviewBusy(LogosError):
+    """Too many LLM reviews at once, here or in the GPU box's queue."""
+
+    status_code = 429
+    code = "LLM_REVIEW_BUSY"
+
+    def __init__(self, message: str, retry_after: int | None = None):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+class LlmReviewUnavailable(LogosError):
+    """LLM review cannot run: no GPU box, or it is asleep or broken."""
+
+    status_code = 503
+    code = "LLM_REVIEW_UNAVAILABLE"
+
+
 class PreconditionRequired(LogosError):
     status_code = 428
     code = "PRECONDITION_REQUIRED"

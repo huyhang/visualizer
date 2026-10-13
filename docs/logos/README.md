@@ -55,8 +55,14 @@ place and can include named alternatives on demand. Alongside mechanics and
 flow it checks dialect consistency:
 choose US or UK and it reports spellings from the other side, offering the
 local form. Which dialect a manuscript uses is the writer's choice, so it
-reports the mismatch rather than deciding. Its injected advisor interface
-leaves room for a separately configured opt-in AI implementation later.
+reports the mismatch rather than deciding.
+
+**LLM review** is the opt-in AI counterpart. When a GPU box is configured, a
+model there checks one draft for continuity against canon, anachronism against
+verified research, and prose. It reports issues anchored to a block and a quote,
+and the writer marks each one open, dismissed or resolved. It's an API only so
+far; see [`llm-review.md`](llm-review.md) for what is sent, what is kept, and the
+routes.
 
 Each section has one or more named drafts and exactly one primary draft. Authors
 can preview any named draft in the reader without changing that primary. New
