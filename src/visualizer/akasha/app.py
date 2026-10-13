@@ -21,9 +21,10 @@ Browser GUI (server-rendered): ``/login``, ``/register``, ``/`` (home) and
 This module only wires the app together. The routes live one module per area,
 each a plain ``register_*_routes(app, ...)`` called from ``create_app``:
 ``document_routes`` (the API above), ``browse_routes``, ``version_routes``,
-``media_routes``, ``collaborator_routes``, ``account_routes`` and
-``admin_routes``. What they share is in ``access`` (grant checks), ``routing``
-(URL templates and request parsing) and ``share_kinds``.
+``media_routes``, ``research_routes``, ``collaborator_routes``,
+``account_routes`` and ``admin_routes``. What they share is in ``access``
+(grant checks), ``routing`` (URL templates and request parsing) and
+``share_kinds``.
 """
 
 from collections.abc import Callable
@@ -53,6 +54,8 @@ from .errors import AkashaError, MediaInUse
 from .labels import derive_title
 from .media_routes import register_media_routes
 from .media_service import MediaService
+from .research import Researcher, UnavailableResearcher
+from .research_routes import register_research_routes
 from .share_kinds import account_kinds
 from .store import DocumentStore
 from .terms import TERMS
@@ -77,6 +80,9 @@ def create_app(
     book_world: Callable[[str], str | None] | None = None,
     user_cleanup: Callable[[str], None] | None = None,
     media_service: MediaService | None = None,
+    # Research delegated to the GPU box. Left out, research is simply off --
+    # the NAS-only stack and the tests are unchanged.
+    researcher: Researcher | None = None,
 ) -> Flask:
     app = Flask(__name__)
     # A secret key is required to sign session cookies. It must be supplied
@@ -117,6 +123,7 @@ def create_app(
     register_version_routes(app, store, auth_store, csrf)
     if media_service is not None:
         register_media_routes(app, media_service, auth_store, csrf)
+    register_research_routes(app, researcher or UnavailableResearcher(), csrf)
     register_collaborator_routes(app, auth_store, csrf)
     # The account page lists things from both services, so it reaches them all
     # through one uniform family on this origin. See ``visualizer.sharing``.

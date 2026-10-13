@@ -239,6 +239,7 @@ def seeded(client):
         ("/recent?limit=3", "RecentList"),
         ("/suggest?q=arag", "SuggestionList"),
         ("/account/contacts", "Contacts"),
+        ("/research/availability", "ResearchAvailability"),
     ],
 )
 def test_live_response_conforms(schema_doc, seeded, url, schema):

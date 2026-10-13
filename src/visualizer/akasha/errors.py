@@ -140,3 +140,25 @@ class MediaInUse(AkashaError):
     def __init__(self, message: str, references: list[dict]):
         super().__init__(message)
         self.references = references
+
+
+class ResearchUnavailable(AkashaError):
+    """Raised when research cannot run: no GPU box, or it is asleep or broken."""
+
+    status_code = 503
+
+
+class ResearchBusy(AkashaError):
+    """Raised when the GPU box's job queue is full."""
+
+    status_code = 429
+
+    def __init__(self, message: str, retry_after: int | None = None):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+class ResearchJobNotFound(AkashaError):
+    """Raised when the GPU box no longer knows a research job (its result expired)."""
+
+    status_code = 404

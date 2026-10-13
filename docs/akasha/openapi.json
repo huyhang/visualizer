@@ -51,6 +51,10 @@
     {
       "name": "service",
       "description": "Operational endpoints"
+    },
+    {
+      "name": "research",
+      "description": "Research delegated to the GPU box (availability so far)"
     }
   ],
   "security": [
@@ -59,6 +63,30 @@
     }
   ],
   "paths": {
+    "/research/availability": {
+      "get": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Whether research can be requested right now",
+        "description": "What the \"Research…\" button asks before drawing itself. Answered from the GPU-box worker's health report, cached for 30 seconds (failures included), so it costs nothing to call on every page view. `off` when no GPU box is configured.",
+        "responses": {
+          "200": {
+            "description": "The current state, and what to tell the writer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchAvailability"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": [
@@ -2252,6 +2280,70 @@
       }
     },
     "schemas": {
+      "ResearchAvailability": {
+        "type": "object",
+        "description": "Whether research jobs can be submitted to the GPU box. The same classification Logos will use for reviews, so the two never describe one box differently.",
+        "required": [
+          "state",
+          "can_submit",
+          "message",
+          "model",
+          "verifier",
+          "private"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "off",
+              "unreachable",
+              "misconfigured",
+              "incompatible",
+              "degraded",
+              "queue_full",
+              "busy",
+              "cold",
+              "ready"
+            ],
+            "description": "The first that applies, in this order. `busy`, `cold` and `ready` accept jobs; `cold` means the first job loads the model first."
+          },
+          "can_submit": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string",
+            "description": "A sentence for the writer."
+          },
+          "model": {
+            "type": "string",
+            "nullable": true,
+            "description": "The research model, when the box is reachable."
+          },
+          "verifier": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "up",
+              "down",
+              "not_configured",
+              null
+            ],
+            "description": "The optional second checker. Anything but `up` means results will be first-pass only."
+          },
+          "private": {
+            "type": "boolean",
+            "description": "True when the models run on your own hardware."
+          }
+        },
+        "example": {
+          "state": "cold",
+          "can_submit": true,
+          "message": "Ready. The first job loads the model, so it starts 10–30 seconds later.",
+          "model": "qwen3:30b",
+          "verifier": "up",
+          "private": true
+        }
+      },
       "Error": {
         "type": "object",
         "description": "Every failure answers with this. Akasha's errors carry a human-readable message and an HTTP status; there is no separate machine code.",
