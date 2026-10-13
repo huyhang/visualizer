@@ -9,6 +9,9 @@ Where things go, in the world the research was requested in:
 - ``research-inbox`` holds each draft and the *new* sources it cites, all
   ``status: unverified``, authored by ``research-bot``. Nothing in the inbox
   is canon.
+- A **refinement** that replaces a pending draft takes over its slug, so the
+  draft's history holds both versions, and keeps the inbox sources it still
+  cites; the rest of the old draft's inbox sources go.
 - **Accept** moves the draft to ``research`` and its sources to ``sources``,
   ``status: verified``, authored by the writer who accepted. A source whose
   URL ``sources`` already holds is not duplicated: the draft is relinked to it.
@@ -208,22 +211,34 @@ class ImportPlan:
     draft: dict
     new_sources: list[tuple[str, dict]] = field(default_factory=list)
     details: dict = field(default_factory=dict)
+    # Inbox sources of a replaced draft, rewritten from the new result.
+    reused_sources: list[tuple[str, dict]] = field(default_factory=list)
 
 
 def plan_import(result: dict, *, question: str, job_id: str,
-                accepted_sources: dict[str, str], taken: set[str]) -> ImportPlan:
+                accepted_sources: dict[str, str], taken: set[str],
+                reuse: dict[str, str] | None = None,
+                draft_slug: str | None = None) -> ImportPlan:
     """Documents for the inbox from a validated result.
 
     ``accepted_sources`` maps normalised URL -> slug in ``sources``; those are
     linked to, not copied. ``taken`` holds every slug in use in the inbox (and
     in ``research``, so an accepted draft can keep its name); new ones are
     added to it.
+
+    Replacing a draft, ``draft_slug`` is its slug and ``reuse`` maps normalised
+    URL -> slug of its inbox sources: a source found again keeps its document.
     """
-    refs, new_sources, source_rows = {}, [], []
+    reuse = reuse or {}
+    refs, new_sources, reused, source_rows = {}, [], [], []
     for source in result["sources"]:
-        known = accepted_sources.get(normalize_url(source["url"]))
+        url = normalize_url(source["url"])
+        known = accepted_sources.get(url)
         if known:
             refs[source["key"]] = f"{SOURCES}/{known}"
+        elif url in reuse:
+            refs[source["key"]] = f"{INBOX}/{reuse[url]}"
+            reused.append((reuse.pop(url), _source_document(source, job_id)))
         else:
             slug = unique_slug(f"{source['site']} {source['title']}", taken, "source")
             refs[source["key"]] = f"{INBOX}/{slug}"
@@ -232,7 +247,8 @@ def plan_import(result: dict, *, question: str, job_id: str,
                             "url": source["url"], "title": source["title"],
                             "new": not known})
 
-    draft_slug = unique_slug(result["title"], taken, f"research-{job_id[-8:]}")
+    draft_slug = draft_slug or unique_slug(result["title"], taken,
+                                           f"research-{job_id[-8:]}")
     body = _CITE.sub(lambda m: f"[[{refs[m.group(1)]}]]" if m.group(1) in refs else "",
                      result["body"]).strip()
     if result["links"]:
@@ -272,7 +288,7 @@ def plan_import(result: dict, *, question: str, job_id: str,
         "links": result["links"],
     }
     return ImportPlan(draft_slug=draft_slug, draft=draft, new_sources=new_sources,
-                      details=details)
+                      details=details, reused_sources=reused)
 
 
 def _source_document(source: dict, job_id: str) -> dict:

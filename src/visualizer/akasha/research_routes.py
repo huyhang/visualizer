@@ -4,7 +4,8 @@ Everything lives under the world it is about --
 ``/databases/<world>/research/...`` -- and is authorised against that world's
 ``research-inbox``, so a writer who may work in a world may research for it:
 
-- asking, and importing an image into a draft: write on the inbox;
+- asking, approving a job's search plan, refining a draft, and importing an
+  image into a draft: write on the inbox;
 - following jobs and reading the inbox: read on the inbox;
 - accepting a draft: write on the inbox, and on ``research`` and ``sources``,
   where accepting puts things;
@@ -64,6 +65,16 @@ def register_research_routes(app: Flask, researcher: Researcher,
         authorize(auth_store, "GET", database, INBOX)
         return jsonify(service.refresh(database, job_id))
 
+    @app.post(_BASE + "/jobs/<job_id>/plan")
+    @csrf.exempt
+    @login_required
+    def approve_research_plan(database, job_id):
+        """Let a job asked with ``approve_plan`` go on, with its search queries
+        as proposed or edited. To turn the plan down, cancel the job."""
+        authorize(auth_store, "POST", database, INBOX)
+        return jsonify(service.approve_plan(database, job_id,
+                                            request.get_json(silent=True)))
+
     @app.delete(_BASE + "/jobs/<job_id>")
     @csrf.exempt
     @login_required
@@ -95,6 +106,16 @@ def register_research_routes(app: Flask, researcher: Researcher,
         authorize(auth_store, "POST", database, RESEARCH)
         authorize(auth_store, "POST", database, SOURCES)
         return jsonify(service.accept(database, draft, current_user.username))
+
+    @app.post(_DRAFT + "/refine")
+    @csrf.exempt
+    @login_required
+    def refine_research_draft(database, draft):
+        """Research the draft again with feedback; the result replaces it."""
+        authorize(auth_store, "PUT", database, INBOX, draft)
+        job = service.refine(database, draft, current_user.username,
+                             request.get_json(silent=True))
+        return jsonify(job), 202
 
     @app.post(_DRAFT + "/reject")
     @csrf.exempt

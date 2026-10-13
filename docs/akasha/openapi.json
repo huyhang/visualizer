@@ -63,6 +63,146 @@
     }
   ],
   "paths": {
+    "/databases/{database}/research/jobs/{job_id}/plan": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Approve a research job's search plan",
+        "description": "For a job asked with approve_plan and now awaiting_approval: it goes on with these queries, as proposed or edited. To turn the plan down, cancel the job. Needs write on research-inbox.",
+        "parameters": [
+          {
+            "name": "database",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The world."
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchPlanApproval"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The job, running again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchJob"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/databases/{database}/research/inbox/{draft}/refine": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Refine a draft with feedback",
+        "description": "Researches the draft again: the box re-reads the sources you keep (checking every quote anew), skips the ones you exclude, and searches for more, steered by your feedback. If the draft is still pending when the result arrives, the result replaces it under the same slug -- a new version in its history -- and the old job's review becomes superseded. One refinement per draft at a time; it counts against the same job limits as asking. Needs write on research-inbox.",
+        "parameters": [
+          {
+            "name": "database",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The world."
+          },
+          {
+            "name": "draft",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The draft's slug in research-inbox."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchRefinement"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "The refinement job.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchJob"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
     "/databases/{database}/research/jobs": {
       "post": {
         "tags": [
@@ -2846,6 +2986,109 @@
       }
     },
     "schemas": {
+      "ResearchPlanApproval": {
+        "type": "object",
+        "required": [
+          "queries"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "queries": {
+            "type": "array",
+            "maxItems": 6,
+            "items": {
+              "type": "object",
+              "required": [
+                "q",
+                "language"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "q": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "language": {
+                  "type": "string",
+                  "pattern": "^[a-z]{2}(-[A-Z]{2})?$"
+                }
+              }
+            },
+            "description": "Empty only when refining with sources kept: then only those are re-read."
+          }
+        },
+        "example": {
+          "queries": [
+            {
+              "q": "song dynasty tea houses",
+              "language": "en"
+            }
+          ]
+        }
+      },
+      "ResearchRefinement": {
+        "type": "object",
+        "required": [
+          "feedback"
+        ],
+        "additionalProperties": false,
+        "description": "The draft's question and settings carry over; any of them but the question can be changed here.",
+        "properties": {
+          "feedback": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "What to change. Reaches the box's search planner, so it can end up in web searches like the question."
+          },
+          "exclude_sources": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "string"
+            },
+            "description": "Refs of the draft's sources (as in ResearchDraft.sources[].ref) never to read again."
+          },
+          "languages": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 5,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z]{2}(-[A-Z]{2})?$"
+            },
+            "default": [
+              "en"
+            ]
+          },
+          "max_sources": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 15,
+            "description": "Default: the sources kept plus 4, at most 15."
+          },
+          "include_images": {
+            "type": "boolean"
+          },
+          "verify": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "required",
+              "off"
+            ]
+          },
+          "approve_plan": {
+            "type": "boolean"
+          }
+        },
+        "example": {
+          "feedback": "Focus on tea houses and ordinary drinkers, not the court.",
+          "exclude_sources": [
+            "research-inbox/blog-example-tea"
+          ]
+        }
+      },
       "ResearchRequest": {
         "type": "object",
         "required": [
@@ -2890,6 +3133,11 @@
             ],
             "default": "auto",
             "description": "Whether a second machine checks the facts."
+          },
+          "approve_plan": {
+            "type": "boolean",
+            "default": false,
+            "description": "Pause after planning, in `awaiting_approval`, so you can edit or approve the search queries before any page is read."
           }
         },
         "example": {
@@ -2916,7 +3164,10 @@
           "draft",
           "review",
           "accepted",
-          "verification"
+          "verification",
+          "plan",
+          "refines",
+          "superseded_by"
         ],
         "properties": {
           "id": {
@@ -2937,11 +3188,13 @@
               "submitting",
               "queued",
               "running",
+              "awaiting_approval",
               "importing",
               "done",
               "failed",
               "cancelled"
-            ]
+            ],
+            "description": "awaiting_approval: asked with approve_plan, the job waits for POST …/jobs/{job_id}/plan."
           },
           "progress": {
             "type": "object",
@@ -2985,6 +3238,7 @@
               "pending",
               "accepted",
               "rejected",
+              "superseded",
               null
             ]
           },
@@ -3002,6 +3256,58 @@
               "off",
               null
             ]
+          },
+          "plan": {
+            "type": "object",
+            "nullable": true,
+            "required": [
+              "queries",
+              "approved",
+              "expires_at"
+            ],
+            "description": "The search queries, once a job asked with approve_plan has planned.",
+            "properties": {
+              "queries": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "q",
+                    "language"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "q": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "language": {
+                      "type": "string",
+                      "pattern": "^[a-z]{2}(-[A-Z]{2})?$"
+                    }
+                  }
+                }
+              },
+              "approved": {
+                "type": "boolean"
+              },
+              "expires_at": {
+                "type": "string",
+                "nullable": true,
+                "description": "While waiting: when the job fails with plan_expired."
+              }
+            }
+          },
+          "refines": {
+            "type": "string",
+            "nullable": true,
+            "description": "research-inbox/<slug> this job is a refinement of."
+          },
+          "superseded_by": {
+            "type": "string",
+            "nullable": true,
+            "description": "The refinement that replaced this job's draft (review: superseded)."
           }
         },
         "example": {
@@ -3017,7 +3323,10 @@
           "draft": "research-inbox/song-dynasty-tea-preparation",
           "review": "pending",
           "accepted": null,
-          "verification": "checked"
+          "verification": "checked",
+          "plan": null,
+          "refines": null,
+          "superseded_by": null
         }
       },
       "ResearchJobList": {
@@ -3048,7 +3357,10 @@
               "draft": "research-inbox/song-dynasty-tea-preparation",
               "review": "pending",
               "accepted": null,
-              "verification": "checked"
+              "verification": "checked",
+              "plan": null,
+              "refines": null,
+              "superseded_by": null
             }
           ]
         }
@@ -3072,7 +3384,8 @@
                 "created_at",
                 "verification",
                 "facts",
-                "images"
+                "images",
+                "refining"
               ],
               "properties": {
                 "draft": {
@@ -3102,6 +3415,10 @@
                 },
                 "images": {
                   "type": "integer"
+                },
+                "refining": {
+                  "type": "boolean",
+                  "description": "A refinement is under way."
                 }
               }
             }
@@ -3118,7 +3435,8 @@
               "created_at": "2026-10-13T20:01:00+00:00",
               "verification": "checked",
               "facts": 12,
-              "images": 3
+              "images": 3,
+              "refining": false
             }
           ]
         }
@@ -3134,7 +3452,8 @@
           "sources",
           "images",
           "verification",
-          "links"
+          "links",
+          "refining"
         ],
         "properties": {
           "draft": {
@@ -3282,6 +3601,15 @@
             "items": {
               "type": "string"
             }
+          },
+          "refining": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ResearchJob"
+              }
+            ],
+            "nullable": true,
+            "description": "The refinement of this draft under way, if any."
           }
         },
         "example": {
@@ -3311,7 +3639,10 @@
             "draft": "research-inbox/song-dynasty-tea-preparation",
             "review": "pending",
             "accepted": null,
-            "verification": "checked"
+            "verification": "checked",
+            "plan": null,
+            "refines": null,
+            "superseded_by": null
           },
           "facts": [
             {
@@ -3358,7 +3689,8 @@
           },
           "links": [
             "song-dynasty/research/song-tea-bowls"
-          ]
+          ],
+          "refining": null
         }
       },
       "ResearchAccepted": {

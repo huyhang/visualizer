@@ -176,6 +176,13 @@ class ResearchImageUnavailable(AkashaError):
     status_code = 502
 
 
+class ResearchConflict(AkashaError):
+    """Raised when a research job is not in the state an action needs: approving
+    the plan of a job not waiting for one, or refining a draft twice at once."""
+
+    status_code = 409
+
+
 class DraftNotPending(AkashaError):
     """Raised when accepting or rejecting a draft that is no longer in the inbox."""
 

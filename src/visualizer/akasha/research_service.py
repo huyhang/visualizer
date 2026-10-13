@@ -1,8 +1,12 @@
 """Research, end to end on Akasha's side: ask, follow, import, review.
 
     submit  -> a job record, and the question sent to the GPU box
+    approve -> a job paused on its search plan let go, with the queries as
+               the writer left them
     refresh -> the box's progress; when it is done, the result imported
                into research-inbox as drafts (once, however many tabs poll)
+    refine  -> a pending draft researched again with the writer's feedback;
+               the result replaces it, as a new version of the same document
     accept  -> the draft and its sources moved into research / sources
     reject  -> the draft and its new sources deleted (soft: history stays)
 
@@ -28,14 +32,22 @@ from .errors import (
     CollectionAlreadyExists,
     DocumentNotFound,
     DraftNotPending,
+    InvalidResearchRequest,
     MediaNotFound,
     ResearchBusy,
+    ResearchConflict,
     ResearchJobNotFound,
     ResearchUnavailable,
 )
 from .labels import derive_title
 from .media_service import MediaService
-from .research import Researcher, validate_request
+from .research import (
+    MAX_EXCLUDED,
+    Researcher,
+    validate_plan,
+    validate_refinement,
+    validate_request,
+)
 from .research_import import (
     BOT,
     INBOX,
@@ -47,7 +59,7 @@ from .research_import import (
     plan_import,
     validate_result,
 )
-from .research_jobs import ResearchJobStore
+from .research_jobs import REMOTE, ResearchJobStore
 from .store import DocumentStore
 
 MAX_ACTIVE_PER_WRITER = 3
@@ -72,7 +84,17 @@ def job_view(job: dict) -> dict:
         "review": job.get("review"),
         "accepted": job.get("accepted"),
         "verification": (details.get("verification") or {}).get("status"),
+        "plan": job.get("plan"),
+        "refines": f"{INBOX}/{job['refines']}" if job.get("refines") else None,
+        "superseded_by": job.get("superseded_by"),
     }
+
+
+def _local_state(remote_state: str) -> str:
+    """The box's state as a job record holds it: "done" here means imported
+    and "failed" carries an error, so a job the box has finished stays running
+    until a poll settles it."""
+    return remote_state if remote_state in REMOTE else "running"
 
 
 class ResearchService:
@@ -91,34 +113,97 @@ class ResearchService:
 
     def submit(self, world: str, writer: str, payload) -> dict:
         request = validate_request(payload)
-        jobs = self._jobs()
+        self._jobs()
         self.store.list_collections(world)   # the world must exist (404 if not)
+        self._check_capacity(writer)
+        request["known_articles"] = self._known_articles(world)
+        return self._send(world, writer, request)
+
+    def refine(self, world: str, slug: str, writer: str, payload) -> dict:
+        """Research a pending draft again, steered by the writer's feedback.
+
+        The box gets the draft's question and settings (changed as asked), the
+        facts it found, and the sources to keep -- fetched and checked again
+        there, not trusted -- and the ones never to read again, including any
+        an earlier refinement excluded.
+        """
+        feedback, excluded, changes = validate_refinement(payload)
+        job = self._pending(world, slug)
+        if self._jobs().refining(world, slug) is not None:
+            raise ResearchConflict("This draft is already being refined.")
+        self._check_capacity(writer)
+        details = job.get("details") or {}
+        rows = details.get("sources") or []
+        unknown = [ref for ref in excluded if ref not in {row["ref"] for row in rows}]
+        if unknown:
+            raise InvalidResearchRequest(
+                f"Not a source of this draft: {', '.join(unknown)}.")
+        earlier = (job["request"].get("refine") or {}).get("exclude_urls") or []
+        exclude_urls = list(dict.fromkeys(
+            earlier + [row["url"] for row in rows if row["ref"] in excluded]))
+        kept = [{"url": row["url"], "title": row["title"][:300]}
+                for row in rows if row["ref"] not in excluded]
+        base = {k: v for k, v in job["request"].items()
+                if k not in ("known_articles", "refine")}
+        if "max_sources" not in changes:
+            changes["max_sources"] = min(15, len(kept) + 4)
+        request = validate_request({**base, **changes, "question": job["question"]})
+        title = self.store.get(world, INBOX, slug)["document"].get("title")
+        request["refine"] = {
+            "feedback": feedback,
+            "previous": {
+                "title": (title if isinstance(title, str) else job["question"])[:300],
+                "facts": [f["text"][:1000] for f in details.get("facts") or []][:100],
+                "sources": kept[:30]},
+            "exclude_urls": exclude_urls[-MAX_EXCLUDED:],
+        }
+        request["known_articles"] = self._known_articles(world)
+        return self._send(world, writer, request, refines=slug)
+
+    def approve_plan(self, world: str, job_id: str, payload) -> dict:
+        """Let a job paused on its search plan run, with the queries approved."""
+        queries = validate_plan(payload)
+        job = self._job(world, job_id)
+        if job["state"] != "awaiting_approval":
+            raise ResearchConflict(f"This job is {job['state']}, not waiting for its "
+                                   "plan to be approved.")
+        if not queries and not (job["request"].get("refine") or {}).get(
+                "previous", {}).get("sources"):
+            raise InvalidResearchRequest("Approve at least one search query.")
+        remote = self.researcher.approve_plan(job["worker_job"], queries)
+        return job_view(self._jobs().update(
+            job["_id"], state=_local_state(remote["state"]),
+            progress=remote.get("progress"), plan=remote.get("plan")))
+
+    def _check_capacity(self, writer: str) -> None:
+        jobs = self._jobs()
         if jobs.count_active(writer) >= MAX_ACTIVE_PER_WRITER:
             raise ResearchBusy(f"You already have {MAX_ACTIVE_PER_WRITER} research "
                                "jobs running. Wait for one to finish.", retry_after=60)
         if jobs.count_active() >= MAX_ACTIVE:
             raise ResearchBusy("Too many research jobs are running. Try again shortly.",
                                retry_after=60)
-        request["known_articles"] = self._known_articles(world)
+
+    def _send(self, world: str, writer: str, request: dict,
+              refines: str | None = None) -> dict:
+        jobs = self._jobs()
         job = jobs.create(world=world, requester=writer, question=request["question"],
-                          request=request)
+                          request=request, refines=refines)
         try:
             remote = self.researcher.submit(request, job["_id"])
         except Exception:
             # Nothing reached the box (or it refused): leave no job behind.
             jobs.delete(job["_id"])
             raise
-        # Here "done" means imported and "failed" carries an error, so a job the
-        # box has already finished stays running until the first poll settles it.
-        state = remote["state"] if remote["state"] in ("queued", "running") else "running"
-        return job_view(jobs.update(job["_id"], state=state,
+        return job_view(jobs.update(job["_id"], state=_local_state(remote["state"]),
                                     worker_job=remote["id"],
-                                    progress=remote.get("progress")))
+                                    progress=remote.get("progress"),
+                                    plan=remote.get("plan")))
 
     def refresh(self, world: str, job_id: str) -> dict:
         """The job as it stands, asking the box if it is still running."""
         job = self._job(world, job_id)
-        if job["state"] not in ("queued", "running"):
+        if job["state"] not in REMOTE:
             return job_view(job)
         try:
             remote = self.researcher.status(job["worker_job"])
@@ -128,9 +213,10 @@ class ResearchService:
         except ResearchUnavailable:
             return job_view(job)     # asleep or busy: report what we last knew
         state = remote["state"]
-        if state in ("queued", "running"):
+        if state in REMOTE:
             return job_view(self._jobs().update(job["_id"], state=state,
-                                                progress=remote.get("progress")))
+                                                progress=remote.get("progress"),
+                                                plan=remote.get("plan")))
         if state == "failed":
             error = remote.get("error") or {}
             return job_view(self._fail(job, error.get("code", "internal"),
@@ -138,13 +224,15 @@ class ResearchService:
         if state == "cancelled":
             return job_view(self._jobs().update(job["_id"], state="cancelled",
                                                 progress=None))
+        if remote.get("plan") is not None:
+            self._jobs().update(job["_id"], plan=remote["plan"])
         if self._jobs().claim_import(job["_id"]):
             return job_view(self._import(job, remote.get("result")))
         return job_view(self._job(world, job_id))   # another request is importing
 
     def cancel(self, world: str, job_id: str) -> dict:
         job = self._job(world, job_id)
-        if job["state"] not in ("queued", "running"):
+        if job["state"] not in REMOTE:
             return job_view(job)
         try:
             self.researcher.cancel(job["worker_job"])
@@ -158,20 +246,35 @@ class ResearchService:
     # -- importing -------------------------------------------------------------
 
     def _import(self, job: dict, result) -> dict:
+        world = job["world"]
         created: list[tuple[str, str]] = []
         try:
             valid = validate_result(result)
-            self._ensure_collection(job["world"], INBOX, owner=None)
-            self._ensure_bot(job["world"])
+            self._ensure_collection(world, INBOX, owner=None)
+            self._ensure_bot(world)
+            replaced = self._replaceable(job)
+            old_sources = self._inbox_sources(world, replaced[1]) if replaced else {}
             plan = plan_import(
                 valid, question=job["question"], job_id=job["_id"],
-                accepted_sources=self._source_urls(job["world"]),
-                taken=self._ids(job["world"], INBOX) | self._ids(job["world"], RESEARCH))
+                accepted_sources=self._source_urls(world),
+                taken=self._ids(world, INBOX) | self._ids(world, RESEARCH),
+                reuse={normalize_url(doc.get("url", "")): slug
+                       for slug, doc in old_sources.items()},
+                draft_slug=job["refines"] if replaced else None)
             for slug, document in plan.new_sources:
-                self.store.create(job["world"], INBOX, slug, document, author=BOT)
+                self.store.create(world, INBOX, slug, document, author=BOT)
                 created.append((INBOX, slug))
-            self.store.create(job["world"], INBOX, plan.draft_slug, plan.draft,
-                              author=BOT)
+            if replaced:
+                for slug, document in plan.reused_sources:
+                    self.store.update(world, INBOX, slug, document, author=BOT)
+                self.store.update(world, INBOX, plan.draft_slug, plan.draft, author=BOT)
+                kept = {slug for slug, _ in plan.reused_sources}
+                for slug in set(old_sources) - kept:
+                    self._delete(world, INBOX, slug, BOT)
+                self._jobs().update(replaced[0]["_id"], review="superseded",
+                                    superseded_by=job["_id"])
+            else:
+                self.store.create(world, INBOX, plan.draft_slug, plan.draft, author=BOT)
         except InvalidResult as err:
             self._undo(job["world"], created)
             return self._fail(job, "invalid_result",
@@ -183,6 +286,34 @@ class ResearchService:
         return self._jobs().update(job["_id"], state="done", progress=None,
                                    draft=plan.draft_slug, details=plan.details,
                                    review="pending")
+
+    def _replaceable(self, job: dict) -> tuple[dict, dict] | None:
+        """(old job, old draft) when ``job`` refines a draft still pending.
+
+        Accepted, rejected or deleted meanwhile, the draft stays as it is and
+        the refinement arrives as a draft of its own.
+        """
+        if not job.get("refines"):
+            return None
+        old = self._jobs().by_draft(job["world"], job["refines"])
+        if old is None or old["_id"] == job["_id"] or old.get("review") != "pending":
+            return None
+        try:
+            return old, self.store.get(job["world"], INBOX, job["refines"])["document"]
+        except DocumentNotFound:
+            return None
+
+    def _inbox_sources(self, world: str, draft: dict) -> dict[str, dict]:
+        """slug -> document of the inbox sources ``draft`` cites."""
+        found = {}
+        for ref in draft.get("sources") or []:
+            collection, _, slug = ref.partition("/")
+            if collection == INBOX:
+                try:
+                    found[slug] = self.store.get(world, INBOX, slug)["document"]
+                except DocumentNotFound:
+                    pass
+        return found
 
     def _undo(self, world: str, created: list[tuple[str, str]]) -> None:
         for collection, slug in reversed(created):
@@ -211,6 +342,7 @@ class ResearchService:
                 "verification": (details.get("verification") or {}).get("status"),
                 "facts": len(details.get("facts") or []),
                 "images": len(details.get("images") or []),
+                "refining": self._jobs().refining(world, job["draft"]) is not None,
             })
         return drafts
 
@@ -231,20 +363,14 @@ class ResearchService:
                        for n, image in enumerate(details.get("images") or [])],
             "verification": details.get("verification"),
             "links": details.get("links") or [],
+            "refining": (job_view(refining) if (refining := self._jobs().refining(
+                world, slug)) else None),
         }
 
     def accept(self, world: str, slug: str, writer: str) -> dict:
         job = self._pending(world, slug)
         draft = self.store.get(world, INBOX, slug)["document"]
-        inbox_sources = {}
-        for ref in draft.get("sources") or []:
-            collection, _, source_slug = ref.partition("/")
-            if collection == INBOX:
-                try:
-                    inbox_sources[source_slug] = self.store.get(
-                        world, INBOX, source_slug)["document"]
-                except DocumentNotFound:
-                    pass
+        inbox_sources = self._inbox_sources(world, draft)
         plan = plan_accept(
             draft, inbox_sources, writer=writer,
             accepted_at=self._clock().isoformat(),

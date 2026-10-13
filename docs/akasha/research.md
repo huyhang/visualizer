@@ -19,10 +19,12 @@ POST   /databases/<world>/research/jobs                  ask         202  Resear
 GET    /databases/<world>/research/jobs                  recent jobs      ResearchJobList
 GET    /databases/<world>/research/jobs/<id>             follow           ResearchJob
 DELETE /databases/<world>/research/jobs/<id>             cancel           ResearchJob
+POST   /databases/<world>/research/jobs/<id>/plan        approve plan     ResearchJob
 GET    /databases/<world>/research/inbox                 drafts awaiting review
 GET    /databases/<world>/research/inbox/<draft>         draft + facts, sources, images
 POST   /databases/<world>/research/inbox/<draft>/accept  accept           ResearchAccepted
 POST   /databases/<world>/research/inbox/<draft>/reject  reject      204
+POST   /databases/<world>/research/inbox/<draft>/refine  refine      202  ResearchJob
 GET    /databases/<world>/research/inbox/<draft>/images/<n>?size=preview|full
 POST   /databases/<world>/research/inbox/<draft>/images/<n>/import          201  Media
 ```
@@ -56,6 +58,42 @@ The exact shapes are in [`openapi.json`](openapi.json).
    soft: their history stays. Either decision is final, and deciding again
    returns 409.
 
+## Steering a job
+
+**Approving the plan.** Ask with `"approve_plan": true` and the job stops
+after the box has planned its searches, in `awaiting_approval`. The proposed
+queries are on the job as `plan.queries`. `POST …/jobs/<id>/plan` with
+`{"queries": [...]}` (at most 6, each `{q, language}`) lets it go on with
+the queries as given, edited or not. To turn a plan down, cancel the job.
+While it waits, the job holds no GPU time but still counts against the job
+limits. If nobody approves it within a day (`PLAN_TTL_HOURS` on the box), it
+fails with `plan_expired`.
+
+**Refining a draft.** `POST …/inbox/<draft>/refine` with
+`{"feedback": "…", "exclude_sources": ["research-inbox/…"]}` researches a
+pending draft again:
+
+- The box gets the draft's question and settings, and you can change any
+  setting except the question in the same body. It also gets the facts the
+  draft found, your feedback, the sources to keep, and the URLs never to read
+  again. Excluded URLs include any that an earlier refinement of the draft
+  excluded.
+- The box fetches the kept sources again and checks every quote anew; nothing
+  is trusted from the old draft. It searches for more sources to fill
+  `max_sources`, which defaults to the kept sources plus 4.
+- Your feedback reaches the box's search planner, so it can end up in web
+  searches, just like the question.
+- If the draft is still pending when the result arrives, the result
+  **replaces it under the same slug**. It's saved as a new version, so the
+  draft's history can diff the two. Sources found again keep their inbox
+  documents, and the sources the new version no longer cites are deleted. The
+  old job's `review` becomes `superseded`, and its `superseded_by` names the
+  refinement.
+- If you accept, reject or delete the draft while it's being refined, the
+  refinement arrives as a separate new draft.
+- A draft can have only one refinement running at a time (409 otherwise). A
+  draft's detail and its inbox row show when one is running.
+
 ## Images
 
 The worker suggests image candidates, each with a URL, caption, license and
@@ -79,7 +117,7 @@ An image that has vanished from the web returns 502.
 | Action | Needs |
 |---|---|
 | Read jobs, the inbox, drafts, image previews | read on `research-inbox` |
-| Ask, cancel, reject, import an image | write on `research-inbox` |
+| Ask, cancel, approve a plan, refine, reject, import an image | write on `research-inbox` |
 | Accept | write on `research-inbox`, `research` and `sources` |
 
 A world's owner has all of these. Each writer can have 3 jobs running at once,
@@ -92,6 +130,8 @@ and the whole Akasha 10. Beyond that, asking returns 429 with
   in, not in a shared space.
 - **Accepting moves documents, not copies them.** After a decision the inbox
   holds nothing for that draft.
+- **A refinement replaces its draft instead of sitting next to it.** One draft
+  per question in the inbox, with the earlier versions kept in its history.
 - **Pending drafts don't share sources.** Two drafts citing the same new URL
   each get their own inbox copy. Accept de-duplicates against `sources`, so
   the second draft accepted is relinked to the first one's source.
