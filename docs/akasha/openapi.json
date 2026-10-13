@@ -63,6 +63,542 @@
     }
   ],
   "paths": {
+    "/databases/{database}/research/jobs": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Ask a research question",
+        "description": "Sends the question to the GPU box and records a job. Needs write on the world's research-inbox. Akasha adds the world's article refs and titles (never bodies) so the box can suggest links; the question alone is used to search.",
+        "parameters": [
+          {
+            "name": "database",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The world."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "The job, queued on the box.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchJob"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Recent research jobs in this world",
+        "parameters": [
+          {
+            "name": "database",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The world."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest first, at most 50.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchJobList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/databases/{database}/research/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Follow a research job",
+        "description": "Poll this. It asks the box how the job is going, and the first time it finds the job done, imports the result into research-inbox as an unverified draft (`draft` then names it). If the box is asleep, the last known state is returned.",
+        "parameters": [
+          {
+            "name": "database",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The world."
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The job.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchJob"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Cancel a research job",
+        "parameters": [
+          {
+            "name": "database",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The world."
+          },
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The job, cancelled (or unchanged if it had finished).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchJob"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/databases/{database}/research/inbox": {
+      "get": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Drafts waiting for review",
+        "parameters": [
+          {
+            "name": "database",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The world."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchInbox"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/databases/{database}/research/inbox/{draft}": {
+      "get": {
+        "tags": [
+          "research"
+        ],
+        "summary": "A draft, with what the article can't hold",
+        "description": "The draft article as it now stands (edit it with the ordinary document routes), plus its facts with their second-check verdicts, dropped facts, sources and image candidates.",
+        "parameters": [
+          {
+            "name": "database",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The world."
+          },
+          {
+            "name": "draft",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The draft's slug in research-inbox."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The draft.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchDraft"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/databases/{database}/research/inbox/{draft}/accept": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Accept a draft as verified research",
+        "description": "Moves the draft to `research` and its new sources to `sources`, `status: verified`, authored by you. A source already in `sources` is linked rather than duplicated. Needs write on research-inbox, research and sources.",
+        "parameters": [
+          {
+            "name": "database",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The world."
+          },
+          {
+            "name": "draft",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The draft's slug in research-inbox."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Where things went.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchAccepted"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/databases/{database}/research/inbox/{draft}/reject": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Reject a draft",
+        "description": "Deletes the draft and its new sources. Deletes are soft, so their history remains.",
+        "parameters": [
+          {
+            "name": "database",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The world."
+          },
+          {
+            "name": "draft",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The draft's slug in research-inbox."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Rejected."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/databases/{database}/research/inbox/{draft}/images/{index}": {
+      "get": {
+        "tags": [
+          "research"
+        ],
+        "summary": "An image candidate, fetched by the box",
+        "parameters": [
+          {
+            "name": "database",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The world."
+          },
+          {
+            "name": "draft",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The draft's slug in research-inbox."
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "The image candidate's position in the draft's `images`."
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "preview",
+                "full"
+              ],
+              "default": "preview"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The image (JPEG, PNG or WebP).",
+            "content": {
+              "image/jpeg": {},
+              "image/png": {},
+              "image/webp": {}
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "502": {
+            "$ref": "#/components/responses/BadGateway"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/databases/{database}/research/inbox/{draft}/images/{index}/import": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Import an image candidate into the media library",
+        "description": "The box fetches the full image; Akasha stores it through the media pipeline with the candidate's caption as alt text, and keeps its source URL and license.",
+        "parameters": [
+          {
+            "name": "database",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The world."
+          },
+          {
+            "name": "draft",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The draft's slug in research-inbox."
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "The image candidate's position in the draft's `images`."
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "The new media entry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Media"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "502": {
+            "$ref": "#/components/responses/BadGateway"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
     "/research/availability": {
       "get": {
         "tags": [
@@ -2220,6 +2756,36 @@
       }
     },
     "responses": {
+      "TooManyRequests": {
+        "description": "Too many research jobs at once; `Retry-After` says when to come back.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "BadGateway": {
+        "description": "The GPU box could not fetch the image (gone, unreachable, too large, not an image).",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "ServiceUnavailable": {
+        "description": "Research is off, or the GPU box is asleep or broken.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
       "BadRequest": {
         "description": "Malformed input: a non-flat document, a reserved name, a bad `If-Match`, or a search with nothing to go on.",
         "content": {
@@ -2280,6 +2846,553 @@
       }
     },
     "schemas": {
+      "ResearchRequest": {
+        "type": "object",
+        "required": [
+          "question"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "question": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 500,
+            "description": "The only text used to search the web."
+          },
+          "languages": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 5,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z]{2}(-[A-Z]{2})?$"
+            },
+            "default": [
+              "en"
+            ]
+          },
+          "max_sources": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 15,
+            "default": 8
+          },
+          "include_images": {
+            "type": "boolean",
+            "default": false
+          },
+          "verify": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "required",
+              "off"
+            ],
+            "default": "auto",
+            "description": "Whether a second machine checks the facts."
+          }
+        },
+        "example": {
+          "question": "How was tea prepared and served in the Song dynasty?",
+          "languages": [
+            "en",
+            "zh"
+          ],
+          "include_images": true
+        }
+      },
+      "ResearchJob": {
+        "type": "object",
+        "required": [
+          "id",
+          "world",
+          "requester",
+          "question",
+          "state",
+          "progress",
+          "error",
+          "created_at",
+          "updated_at",
+          "draft",
+          "review",
+          "accepted",
+          "verification"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "world": {
+            "type": "string"
+          },
+          "requester": {
+            "type": "string"
+          },
+          "question": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "submitting",
+              "queued",
+              "running",
+              "importing",
+              "done",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "progress": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "stage": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          },
+          "error": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          },
+          "draft": {
+            "type": "string",
+            "nullable": true,
+            "description": "research-inbox/<slug> while awaiting review."
+          },
+          "review": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "pending",
+              "accepted",
+              "rejected",
+              null
+            ]
+          },
+          "accepted": {
+            "type": "string",
+            "nullable": true,
+            "description": "research/<slug> once accepted."
+          },
+          "verification": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "checked",
+              "skipped",
+              "off",
+              null
+            ]
+          }
+        },
+        "example": {
+          "id": "rj_5f2c9a1e7b3d4c60",
+          "world": "song-dynasty",
+          "requester": "mara",
+          "question": "How was tea prepared and served in the Song dynasty?",
+          "state": "done",
+          "progress": null,
+          "error": null,
+          "created_at": "2026-10-13T20:01:00+00:00",
+          "updated_at": "2026-10-13T20:04:10+00:00",
+          "draft": "research-inbox/song-dynasty-tea-preparation",
+          "review": "pending",
+          "accepted": null,
+          "verification": "checked"
+        }
+      },
+      "ResearchJobList": {
+        "type": "object",
+        "required": [
+          "jobs"
+        ],
+        "properties": {
+          "jobs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResearchJob"
+            }
+          }
+        },
+        "example": {
+          "jobs": [
+            {
+              "id": "rj_5f2c9a1e7b3d4c60",
+              "world": "song-dynasty",
+              "requester": "mara",
+              "question": "How was tea prepared and served in the Song dynasty?",
+              "state": "done",
+              "progress": null,
+              "error": null,
+              "created_at": "2026-10-13T20:01:00+00:00",
+              "updated_at": "2026-10-13T20:04:10+00:00",
+              "draft": "research-inbox/song-dynasty-tea-preparation",
+              "review": "pending",
+              "accepted": null,
+              "verification": "checked"
+            }
+          ]
+        }
+      },
+      "ResearchInbox": {
+        "type": "object",
+        "required": [
+          "drafts"
+        ],
+        "properties": {
+          "drafts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "draft",
+                "title",
+                "question",
+                "requester",
+                "job",
+                "created_at",
+                "verification",
+                "facts",
+                "images"
+              ],
+              "properties": {
+                "draft": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "question": {
+                  "type": "string"
+                },
+                "requester": {
+                  "type": "string"
+                },
+                "job": {
+                  "type": "string"
+                },
+                "created_at": {
+                  "type": "string"
+                },
+                "verification": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "facts": {
+                  "type": "integer"
+                },
+                "images": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "example": {
+          "drafts": [
+            {
+              "draft": "research-inbox/song-dynasty-tea-preparation",
+              "title": "Song dynasty tea preparation",
+              "question": "How was tea prepared and served in the Song dynasty?",
+              "requester": "mara",
+              "job": "rj_5f2c9a1e7b3d4c60",
+              "created_at": "2026-10-13T20:01:00+00:00",
+              "verification": "checked",
+              "facts": 12,
+              "images": 3
+            }
+          ]
+        }
+      },
+      "ResearchDraft": {
+        "type": "object",
+        "required": [
+          "draft",
+          "article",
+          "job",
+          "facts",
+          "dropped_facts",
+          "sources",
+          "images",
+          "verification",
+          "links"
+        ],
+        "properties": {
+          "draft": {
+            "type": "string"
+          },
+          "article": {
+            "$ref": "#/components/schemas/DocumentResult"
+          },
+          "job": {
+            "$ref": "#/components/schemas/ResearchJob"
+          },
+          "facts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "text",
+                "check",
+                "citations"
+              ],
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "check": {
+                  "type": "string",
+                  "enum": [
+                    "supported",
+                    "partial",
+                    "unchecked"
+                  ]
+                },
+                "citations": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "source",
+                      "quote"
+                    ],
+                    "properties": {
+                      "source": {
+                        "type": "string"
+                      },
+                      "quote": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "dropped_facts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "text",
+                "reason"
+              ],
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "key",
+                "ref",
+                "url",
+                "title",
+                "new"
+              ],
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "ref": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "new": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "index",
+                "url",
+                "caption",
+                "license",
+                "source",
+                "imported"
+              ],
+              "properties": {
+                "index": {
+                  "type": "integer"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "caption": {
+                  "type": "string"
+                },
+                "license": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "source": {
+                  "type": "string"
+                },
+                "imported": {
+                  "type": "string",
+                  "nullable": true,
+                  "description": "The media id, once imported."
+                }
+              }
+            }
+          },
+          "verification": {
+            "type": "object",
+            "nullable": true
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "example": {
+          "draft": "research-inbox/song-dynasty-tea-preparation",
+          "article": {
+            "id": "song-dynasty-tea-preparation",
+            "rev": 1,
+            "document": {
+              "title": "Song dynasty tea preparation",
+              "status": "unverified",
+              "body": "Tea was whisked [[research-inbox/museum-example-song-tea]].",
+              "sources": [
+                "research-inbox/museum-example-song-tea"
+              ]
+            }
+          },
+          "job": {
+            "id": "rj_5f2c9a1e7b3d4c60",
+            "world": "song-dynasty",
+            "requester": "mara",
+            "question": "How was tea prepared and served in the Song dynasty?",
+            "state": "done",
+            "progress": null,
+            "error": null,
+            "created_at": "2026-10-13T20:01:00+00:00",
+            "updated_at": "2026-10-13T20:04:10+00:00",
+            "draft": "research-inbox/song-dynasty-tea-preparation",
+            "review": "pending",
+            "accepted": null,
+            "verification": "checked"
+          },
+          "facts": [
+            {
+              "text": "Song tea was powdered and whisked.",
+              "check": "supported",
+              "citations": [
+                {
+                  "source": "research-inbox/museum-example-song-tea",
+                  "quote": "Tea was ground to powder and whisked."
+                }
+              ]
+            }
+          ],
+          "dropped_facts": [
+            {
+              "text": "Tea was beaten in a cup.",
+              "reason": "quote_not_found"
+            }
+          ],
+          "sources": [
+            {
+              "key": "s1",
+              "ref": "research-inbox/museum-example-song-tea",
+              "url": "https://museum.example/tea",
+              "title": "Song tea",
+              "new": true
+            }
+          ],
+          "images": [
+            {
+              "index": 0,
+              "url": "https://museum.example/bowl.jpg",
+              "caption": "Jian ware tea bowl",
+              "license": "CC0",
+              "source": "research-inbox/museum-example-song-tea",
+              "imported": null
+            }
+          ],
+          "verification": {
+            "status": "checked",
+            "model": "bespoke-minicheck",
+            "checked": 2,
+            "removed": 1
+          },
+          "links": [
+            "song-dynasty/research/song-tea-bowls"
+          ]
+        }
+      },
+      "ResearchAccepted": {
+        "type": "object",
+        "required": [
+          "article",
+          "sources",
+          "relinked"
+        ],
+        "properties": {
+          "article": {
+            "type": "string"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "relinked": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "example": {
+          "article": "research/song-dynasty-tea-preparation",
+          "sources": [
+            "sources/museum-example-song-tea"
+          ],
+          "relinked": []
+        }
+      },
       "ResearchAvailability": {
         "type": "object",
         "description": "Whether research jobs can be submitted to the GPU box. The same classification Logos will use for reviews, so the two never describe one box differently.",

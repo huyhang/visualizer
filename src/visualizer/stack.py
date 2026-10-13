@@ -27,6 +27,7 @@ from visualizer.akasha.config import (
 )
 from visualizer.akasha.media_service import build_media_service
 from visualizer.akasha.research import RemoteResearcher
+from visualizer.akasha.research_jobs import ResearchJobStore
 from visualizer.akasha.store import DocumentStore
 from visualizer.auth import AuthStore
 from visualizer.chronos.app import create_app as create_chronos_app
@@ -117,6 +118,7 @@ def build_application(client, gpu_worker=None):
             client, get_image_processor(), get_glb_limits()
         ),
         researcher=RemoteResearcher(worker) if worker is not None else None,
+        research_jobs=ResearchJobStore(client) if worker is not None else None,
     )
     chronos_app = create_chronos_app(
         story_store,

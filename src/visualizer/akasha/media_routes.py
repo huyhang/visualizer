@@ -36,7 +36,7 @@ def register_media_routes(app, service: MediaService, auth_store, csrf) -> None:
         shown = records if visible is None else [r for r in records if r["id"] in visible]
         body = {
             "media": [
-                _present(r, database, _can_manage(auth_store, database, r))
+                present_media(r, database, _can_manage(auth_store, database, r))
                 for r in shown
             ],
             "count": len(shown),
@@ -75,7 +75,7 @@ def register_media_routes(app, service: MediaService, auth_store, csrf) -> None:
             data,
             request.form.get("alt"),
         )
-        return jsonify(_present(record, database, can_manage=True)), 201
+        return jsonify(present_media(record, database, can_manage=True)), 201
 
     @app.post(_MEDIA + "/dioramas")
     @csrf.exempt
@@ -98,7 +98,7 @@ def register_media_routes(app, service: MediaService, auth_store, csrf) -> None:
             _manifest_field(),
             poster.stream.read(service.processor.max_bytes + 1) if poster else None,
         )
-        return jsonify(_present(record, database, can_manage=True)), 201
+        return jsonify(present_media(record, database, can_manage=True)), 201
 
     @app.put(_MEDIA_ITEM + "/manifest")
     @csrf.exempt
@@ -125,7 +125,7 @@ def register_media_routes(app, service: MediaService, auth_store, csrf) -> None:
         if not isinstance(payload, dict):
             raise InvalidDiorama("Provide the manifest as a JSON object.")
         updated = service.update_manifest(database, media_id, payload, poster)
-        return jsonify(_present(updated, database, can_manage=True))
+        return jsonify(present_media(updated, database, can_manage=True))
 
     @app.get(_MEDIA_ITEM)
     @login_required
@@ -134,7 +134,7 @@ def register_media_routes(app, service: MediaService, auth_store, csrf) -> None:
         record = service.store.get(database, media_id)
         _require_visible(service, auth_store, database, record)
         return jsonify(
-            _present(record, database, _can_manage(auth_store, database, record))
+            present_media(record, database, _can_manage(auth_store, database, record))
         )
 
     @app.patch(_MEDIA_ITEM)
@@ -148,7 +148,7 @@ def register_media_routes(app, service: MediaService, auth_store, csrf) -> None:
         if not isinstance(payload, dict):
             raise InvalidImage("Provide image metadata as a JSON object.")
         updated = service.update_alt(database, media_id, payload.get("alt"))
-        return jsonify(_present(updated, database, can_manage=True))
+        return jsonify(present_media(updated, database, can_manage=True))
 
     @app.delete(_MEDIA_ITEM)
     @csrf.exempt
@@ -233,7 +233,7 @@ def _manifest_field() -> dict:
     return payload
 
 
-def _present(record: dict, database: str, can_manage: bool) -> dict:
+def present_media(record: dict, database: str, can_manage: bool) -> dict:
     presented = dict(record)
     presented["can_manage"] = can_manage
     # Only the variants this record actually holds: a diorama has no thumbnail

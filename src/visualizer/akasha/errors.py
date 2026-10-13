@@ -162,3 +162,21 @@ class ResearchJobNotFound(AkashaError):
     """Raised when the GPU box no longer knows a research job (its result expired)."""
 
     status_code = 404
+
+
+class InvalidResearchRequest(AkashaError):
+    """Raised when a research request is malformed (question, languages, …)."""
+
+    status_code = 400
+
+
+class ResearchImageUnavailable(AkashaError):
+    """Raised when the GPU box could not fetch an image candidate."""
+
+    status_code = 502
+
+
+class DraftNotPending(AkashaError):
+    """Raised when accepting or rejecting a draft that is no longer in the inbox."""
+
+    status_code = 409

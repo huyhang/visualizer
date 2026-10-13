@@ -55,7 +55,9 @@ from .labels import derive_title
 from .media_routes import register_media_routes
 from .media_service import MediaService
 from .research import Researcher, UnavailableResearcher
+from .research_jobs import ResearchJobStore
 from .research_routes import register_research_routes
+from .research_service import ResearchService
 from .share_kinds import account_kinds
 from .store import DocumentStore
 from .terms import TERMS
@@ -80,9 +82,11 @@ def create_app(
     book_world: Callable[[str], str | None] | None = None,
     user_cleanup: Callable[[str], None] | None = None,
     media_service: MediaService | None = None,
-    # Research delegated to the GPU box. Left out, research is simply off --
-    # the NAS-only stack and the tests are unchanged.
+    # Research delegated to the GPU box, and where its jobs are recorded. Left
+    # out, research is simply off -- the NAS-only stack and the tests are
+    # unchanged.
     researcher: Researcher | None = None,
+    research_jobs: ResearchJobStore | None = None,
 ) -> Flask:
     app = Flask(__name__)
     # A secret key is required to sign session cookies. It must be supplied
@@ -123,7 +127,12 @@ def create_app(
     register_version_routes(app, store, auth_store, csrf)
     if media_service is not None:
         register_media_routes(app, media_service, auth_store, csrf)
-    register_research_routes(app, researcher or UnavailableResearcher(), csrf)
+    researcher = researcher or UnavailableResearcher()
+    register_research_routes(
+        app, researcher,
+        ResearchService(store, auth_store, researcher, research_jobs, media_service),
+        auth_store, csrf,
+    )
     register_collaborator_routes(app, auth_store, csrf)
     # The account page lists things from both services, so it reaches them all
     # through one uniform family on this origin. See ``visualizer.sharing``.
@@ -149,7 +158,10 @@ def _register_error_handlers(app: Flask) -> None:
         payload = {"error": err.message}
         if isinstance(err, MediaInUse):
             payload["references"] = err.references
-        return jsonify(payload), err.status_code
+        response = jsonify(payload)
+        if getattr(err, "retry_after", None):
+            response.headers["Retry-After"] = str(err.retry_after)
+        return response, err.status_code
 
     @app.errorhandler(AuthError)
     def handle_auth_error(err: AuthError):

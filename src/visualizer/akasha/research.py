@@ -11,16 +11,64 @@ So far this is the plumbing: availability, and the job calls the inbox will be
 built on. The worker's contract is ``docs/gpu_worker/``.
 """
 
+import re
 from typing import Protocol
 
 from visualizer.gpubox import (
     WorkerBusy,
     WorkerError,
+    WorkerImageUnavailable,
     WorkerJobNotFound,
     availability,
 )
 
-from .errors import ResearchBusy, ResearchJobNotFound, ResearchUnavailable
+from .errors import (
+    InvalidResearchRequest,
+    ResearchBusy,
+    ResearchImageUnavailable,
+    ResearchJobNotFound,
+    ResearchUnavailable,
+)
+
+_LANGUAGE = re.compile(r"^[a-z]{2}(-[A-Z]{2})?$")
+_FIELDS = {"question", "languages", "max_sources", "include_images", "verify"}
+
+
+def validate_request(payload) -> dict:
+    """A writer's research request, checked and with defaults filled in.
+
+    The same rules the worker's contract sets, so a bad request is refused here
+    with a clear message rather than travelling to the box to be refused there.
+    ``known_articles`` is not the writer's to send: Akasha adds it.
+    """
+    if not isinstance(payload, dict):
+        raise InvalidResearchRequest("A research request must be a JSON object.")
+    unknown = sorted(set(payload) - _FIELDS)
+    if unknown:
+        raise InvalidResearchRequest(f"Unknown fields: {', '.join(unknown)}.")
+    question = payload.get("question")
+    if not isinstance(question, str) or not 3 <= len(question.strip()) <= 500:
+        raise InvalidResearchRequest("The question must be 3-500 characters.")
+    languages = payload.get("languages", ["en"])
+    if (not isinstance(languages, list) or not 1 <= len(languages) <= 5
+            or len(set(languages)) != len(languages)
+            or not all(isinstance(lang, str) and _LANGUAGE.match(lang)
+                       for lang in languages)):
+        raise InvalidResearchRequest(
+            "languages must be 1-5 language codes, such as [\"en\", \"zh\"].")
+    max_sources = payload.get("max_sources", 8)
+    if not isinstance(max_sources, int) or isinstance(max_sources, bool) \
+            or not 1 <= max_sources <= 15:
+        raise InvalidResearchRequest("max_sources must be a whole number from 1 to 15.")
+    include_images = payload.get("include_images", False)
+    if not isinstance(include_images, bool):
+        raise InvalidResearchRequest("include_images must be true or false.")
+    verify = payload.get("verify", "auto")
+    if verify not in ("auto", "required", "off"):
+        raise InvalidResearchRequest("verify must be auto, required or off.")
+    return {"question": question.strip(), "languages": languages,
+            "max_sources": max_sources, "include_images": include_images,
+            "verify": verify}
 
 
 class Researcher(Protocol):
@@ -41,6 +89,9 @@ class Researcher(Protocol):
     def cancel(self, job_id: str) -> dict:
         """Stop a queued or running job. Finished jobs come back unchanged."""
 
+    def fetch_image(self, url: str, token: str, size: str = "full") -> tuple[bytes, str]:
+        """An image candidate's (bytes, content type), fetched by the box."""
+
 
 class UnavailableResearcher:
     """The default: no GPU box, so research is off and says so."""
@@ -57,6 +108,9 @@ class UnavailableResearcher:
         raise self._off()
 
     def cancel(self, job_id: str) -> dict:
+        raise self._off()
+
+    def fetch_image(self, url: str, token: str, size: str = "full") -> tuple[bytes, str]:
         raise self._off()
 
     @staticmethod
@@ -89,11 +143,16 @@ class RemoteResearcher:
     def cancel(self, job_id: str) -> dict:
         return self._ask(self.worker.cancel, job_id)
 
+    def fetch_image(self, url: str, token: str, size: str = "full") -> tuple[bytes, str]:
+        return self._ask(self.worker.fetch_image, url, token, size)
+
     @staticmethod
-    def _ask(call, *args, **kwargs) -> dict:
+    def _ask(call, *args, **kwargs):
         """One worker call, its failures restated in Akasha's own errors."""
         try:
             return call(*args, **kwargs)
+        except WorkerImageUnavailable as err:
+            raise ResearchImageUnavailable(err.message) from err
         except WorkerBusy as err:
             raise ResearchBusy(err.message, retry_after=err.retry_after) from err
         except WorkerJobNotFound as err:

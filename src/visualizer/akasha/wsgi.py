@@ -29,6 +29,7 @@ from .config import (
 )
 from .media_service import build_media_service
 from .research import RemoteResearcher
+from .research_jobs import ResearchJobStore
 from .store import DocumentStore
 
 _client = get_mongo_client()
@@ -68,6 +69,7 @@ app = create_app(
         _client, get_image_processor(), get_glb_limits()
     ),
     researcher=RemoteResearcher(_worker) if _worker is not None else None,
+    research_jobs=ResearchJobStore(_client) if _worker is not None else None,
 )
 
 
