@@ -48,6 +48,8 @@ testpaths = [
     "tests/akasha", "tests/chronos", "tests/prithvi", "tests/logos",
     # The GPU-box worker's contract and the stack's client for it.
     "tests/gpubox",
+    # The worker itself, which runs on the box.
+    "tests/gpu_worker",
 ]
 # `src` is on the path for package imports. `tests/akasha` stays a
 # non-package dir so its historical bare `from conftest import ...` keeps working.
