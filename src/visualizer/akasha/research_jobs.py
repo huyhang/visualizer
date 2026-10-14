@@ -6,6 +6,11 @@ the nested detail an Akasha document cannot hold (facts with their
 second-check verdicts, dropped facts, image candidates and their signed fetch
 tokens). The record outlives the box's copy of the result, which expires.
 
+A job asked from the studio's "Dig deeper" names the job it grew from as
+its ``parent``, so a line of inquiry can be drawn as a tree; a refinement
+inherits its draft's parent and so keeps that place. Saving material into a
+note records the note on the job (``notes``), while the draft stays open.
+
 A refinement is a job of its own with ``refines`` naming the draft it
 revises; when it replaces that draft, the old job's review becomes
 ``superseded`` and ``superseded_by`` points at the new one. Several records
@@ -19,6 +24,8 @@ import secrets
 from collections.abc import Callable
 from datetime import UTC, datetime
 
+DEFAULT_RECENT = 50
+MAX_RECENT = 200
 ACTIVE = ("submitting", "queued", "running", "awaiting_approval", "importing")
 # Whose state is the box's to report: worth asking about, and claimable for import.
 REMOTE = ("queued", "running", "awaiting_approval")
@@ -36,14 +43,15 @@ class ResearchJobStore:
         return self._clock().isoformat()
 
     def create(self, *, world: str, requester: str, question: str, request: dict,
-               refines: str | None = None) -> dict:
+               refines: str | None = None, parent: str | None = None) -> dict:
         now = self._now()
         record = {"_id": "rj_" + secrets.token_hex(8), "world": world,
                   "requester": requester, "question": question, "request": request,
                   "state": "submitting", "worker_job": None, "progress": None,
                   "plan": None, "error": None, "created_at": now, "updated_at": now,
                   "draft": None, "details": None, "review": None, "accepted": None,
-                  "refines": refines, "superseded_by": None}
+                  "refines": refines, "superseded_by": None, "parent": parent,
+                  "notes": []}
         self._jobs.insert_one(record)
         return record
 
@@ -61,7 +69,7 @@ class ResearchJobStore:
         return self._jobs.find_one({"world": world, "refines": draft,
                                     "state": {"$in": list(ACTIVE)}})
 
-    def recent(self, world: str, limit: int = 50) -> list[dict]:
+    def recent(self, world: str, limit: int = DEFAULT_RECENT) -> list[dict]:
         return list(self._jobs.find({"world": world}).sort("created_at", -1).limit(limit))
 
     def pending_review(self, world: str) -> list[dict]:
@@ -92,6 +100,12 @@ class ResearchJobStore:
 
     def delete(self, job_id: str) -> None:
         self._jobs.delete_one({"_id": job_id})
+
+    def add_note(self, job_id: str, note: str) -> None:
+        """Record that material from this job's draft went into ``note``."""
+        self._jobs.update_one({"_id": job_id},
+                              {"$addToSet": {"notes": note},
+                               "$set": {"updated_at": self._now()}})
 
     def mark_image_imported(self, job_id: str, index: int, media_id: str) -> None:
         self._jobs.update_one({"_id": job_id},

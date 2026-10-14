@@ -15,6 +15,7 @@ import { clear, el, toast } from "./dom.js";
 import { confirmDeleteCollection } from "./create.js";
 import { T, count } from "./terms.js";
 import { crumbs, pager, timeAgo, viewHead } from "./views.js";
+import { offerResearch, RESEARCH_CATEGORIES } from "./research-entry.js";
 
 const PER_PAGE = 25;
 const lastState = {}; // "db/col" -> { query, page }
@@ -145,6 +146,7 @@ export async function mountArticles(container, database, collection, handlers) {
   // are (re)drawn from each response rather than guessed at up front.
   function renderActions(data) {
     clear(actions);
+    if (RESEARCH_CATEGORIES.has(collection)) offerResearch(actions, database);
     if (data.can_write) {
       actions.appendChild(el("button", {
         class: "btn sm", type: "button", text: `＋ New ${T.document.one}`,

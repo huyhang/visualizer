@@ -276,11 +276,23 @@
               "type": "string"
             },
             "description": "The world."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            },
+            "description": "How many, newest first. The studio asks for more, to draw its topic tree."
           }
         ],
         "responses": {
           "200": {
-            "description": "Newest first, at most 50.",
+            "description": "Newest first, `limit` of them.",
             "content": {
               "application/json": {
                 "schema": {
@@ -735,6 +747,119 @@
           },
           "503": {
             "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/databases/{database}/research/inbox/{draft}/done": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Close a draft the writer has finished with",
+        "description": "For a draft whose material has gone into notes (or that is no longer wanted): deletes the draft and the inbox sources it still holds, like reject, but records the review as `done`. Sources a note already accepted were relinked away from the inbox and stay. Needs write on research-inbox.",
+        "parameters": [
+          {
+            "name": "database",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The world."
+          },
+          {
+            "name": "draft",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The draft's slug in research-inbox."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Closed."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/databases/{database}/research/notes": {
+      "post": {
+        "tags": [
+          "research"
+        ],
+        "summary": "Save a note composed from research drafts",
+        "description": "Creates a note in `research`, or updates one (`note` and the `rev` it was composed on). Only the inbox sources its body links to are accepted into `sources`, `status: verified`; a source whose URL `sources` already holds is linked instead. The drafts they came from stay open, relinked to the accepted sources, so one draft can feed several notes. An update made on a stale revision is refused before anything is written. Needs write on research-inbox and sources, and create on research (new) or write on the note (update).",
+        "parameters": [
+          {
+            "name": "database",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The world."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchNote"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Where the note and its sources went.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchNoteSaved"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Where the note and its sources went.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchNoteSaved"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
           }
         }
       }
@@ -3138,6 +3263,12 @@
             "type": "boolean",
             "default": false,
             "description": "Pause after planning, in `awaiting_approval`, so you can edit or approve the search queries before any page is read."
+          },
+          "parent": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^rj_[0-9a-f]{16}$",
+            "description": "The job this one digs deeper from, in the same world. Akasha's alone: it places the new topic under its parent and never reaches the GPU box."
           }
         },
         "example": {
@@ -3167,7 +3298,9 @@
           "verification",
           "plan",
           "refines",
-          "superseded_by"
+          "superseded_by",
+          "parent",
+          "notes"
         ],
         "properties": {
           "id": {
@@ -3239,6 +3372,7 @@
               "accepted",
               "rejected",
               "superseded",
+              "done",
               null
             ]
           },
@@ -3308,6 +3442,18 @@
             "type": "string",
             "nullable": true,
             "description": "The refinement that replaced this job's draft (review: superseded)."
+          },
+          "parent": {
+            "type": "string",
+            "nullable": true,
+            "description": "The job this one digs deeper from. A refinement inherits its draft's parent."
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "research/<slug> of each note material from this job's draft was saved into (review: done once the writer closed it)."
           }
         },
         "example": {
@@ -3326,7 +3472,9 @@
           "verification": "checked",
           "plan": null,
           "refines": null,
-          "superseded_by": null
+          "superseded_by": null,
+          "parent": null,
+          "notes": []
         }
       },
       "ResearchJobList": {
@@ -3360,7 +3508,9 @@
               "verification": "checked",
               "plan": null,
               "refines": null,
-              "superseded_by": null
+              "superseded_by": null,
+              "parent": null,
+              "notes": []
             }
           ]
         }
@@ -3642,7 +3792,9 @@
             "verification": "checked",
             "plan": null,
             "refines": null,
-            "superseded_by": null
+            "superseded_by": null,
+            "parent": null,
+            "notes": []
           },
           "facts": [
             {
@@ -3691,6 +3843,92 @@
             "song-dynasty/research/song-tea-bowls"
           ],
           "refining": null
+        }
+      },
+      "ResearchNote": {
+        "type": "object",
+        "required": [
+          "title",
+          "body"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60000,
+            "description": "Wikitext. Its `[[research-inbox/<slug>]]` links must be sources of open drafts; they are rewritten to the accepted `sources/<slug>`."
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "description": "The slug in `research` to update; omit for a new note."
+          },
+          "rev": {
+            "type": "integer",
+            "minimum": 1,
+            "nullable": true,
+            "description": "Required with `note`: the revision the writer composed on."
+          },
+          "drafts": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "string"
+            },
+            "description": "research-inbox/<slug> of the drafts the material came from, recorded on their jobs' `notes`."
+          }
+        },
+        "example": {
+          "title": "Song tea",
+          "body": "Tea was whisked into a froth. [[research-inbox/museum-example-song-tea]]",
+          "drafts": [
+            "research-inbox/song-dynasty-tea-preparation"
+          ]
+        }
+      },
+      "ResearchNoteSaved": {
+        "type": "object",
+        "required": [
+          "note",
+          "rev",
+          "sources",
+          "relinked"
+        ],
+        "properties": {
+          "note": {
+            "type": "string"
+          },
+          "rev": {
+            "type": "integer"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Sources newly accepted for this note."
+          },
+          "relinked": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Sources it cites that were already accepted."
+          }
+        },
+        "example": {
+          "note": "research/song-tea",
+          "rev": 1,
+          "sources": [
+            "sources/museum-example-song-tea"
+          ],
+          "relinked": []
         }
       },
       "ResearchAccepted": {

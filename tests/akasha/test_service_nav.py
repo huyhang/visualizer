@@ -31,6 +31,7 @@ SERVICES = ("akasha", "chronos", "prithvi", "logos")
 STYLESHEETS = {
     "akasha editor": "akasha/static/editor.css",
     "akasha shell": "akasha/static/base.css",
+    "akasha studio": "akasha/static/studio-shell.css",
     "chronos": "chronos/static/visualizer.css",
     "prithvi": "prithvi/static/maps.css",
     "logos": "logos/static/reader.css",
@@ -41,6 +42,7 @@ STYLESHEETS = {
 SHELLS = (
     "akasha/templates/editor.html",
     "akasha/templates/base.html",
+    "akasha/templates/studio.html",
     "chronos/templates/visualizer.html",
     "prithvi/templates/maps.html",
     "logos/templates/reader.html",

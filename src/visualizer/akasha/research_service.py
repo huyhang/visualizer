@@ -9,6 +9,14 @@
                the result replaces it, as a new version of the same document
     accept  -> the draft and its sources moved into research / sources
     reject  -> the draft and its new sources deleted (soft: history stays)
+    save    -> a note the writer composed from drafts, new or updating one in
+               research; only the sources it cites are accepted, and the
+               drafts stay open (relinked to them) for more
+    done    -> a draft closed once the writer has taken what they wanted:
+               like reject, but recorded as used rather than turned down
+
+A submission may name a ``parent`` job -- the studio's "Dig deeper" -- which
+places the new topic under the one it grew from.
 
 Plus the image candidates a draft carries: previewed and imported through the
 box, which alone fetches from the web. Importing goes through the ordinary
@@ -38,12 +46,15 @@ from .errors import (
     ResearchConflict,
     ResearchJobNotFound,
     ResearchUnavailable,
+    RevisionConflict,
 )
 from .labels import derive_title
 from .media_service import MediaService
 from .research import (
     MAX_EXCLUDED,
     Researcher,
+    split_parent,
+    validate_note,
     validate_plan,
     validate_refinement,
     validate_request,
@@ -54,12 +65,17 @@ from .research_import import (
     RESEARCH,
     SOURCES,
     InvalidResult,
+    cited,
     normalize_url,
     plan_accept,
     plan_import,
+    plan_note,
+    relink_details,
+    relink_draft,
+    source_owners,
     validate_result,
 )
-from .research_jobs import REMOTE, ResearchJobStore
+from .research_jobs import DEFAULT_RECENT, MAX_RECENT, REMOTE, ResearchJobStore
 from .store import DocumentStore
 
 MAX_ACTIVE_PER_WRITER = 3
@@ -87,6 +103,8 @@ def job_view(job: dict) -> dict:
         "plan": job.get("plan"),
         "refines": f"{INBOX}/{job['refines']}" if job.get("refines") else None,
         "superseded_by": job.get("superseded_by"),
+        "parent": job.get("parent"),
+        "notes": job.get("notes") or [],
     }
 
 
@@ -112,12 +130,15 @@ class ResearchService:
     # -- asking ----------------------------------------------------------------
 
     def submit(self, world: str, writer: str, payload) -> dict:
+        payload, parent = split_parent(payload)
         request = validate_request(payload)
         self._jobs()
         self.store.list_collections(world)   # the world must exist (404 if not)
+        if parent is not None:
+            self._job(world, parent)         # digging deeper from a real topic
         self._check_capacity(writer)
         request["known_articles"] = self._known_articles(world)
-        return self._send(world, writer, request)
+        return self._send(world, writer, request, parent=parent)
 
     def refine(self, world: str, slug: str, writer: str, payload) -> dict:
         """Research a pending draft again, steered by the writer's feedback.
@@ -158,7 +179,8 @@ class ResearchService:
             "exclude_urls": exclude_urls[-MAX_EXCLUDED:],
         }
         request["known_articles"] = self._known_articles(world)
-        return self._send(world, writer, request, refines=slug)
+        return self._send(world, writer, request, refines=slug,
+                          parent=job.get("parent"))
 
     def approve_plan(self, world: str, job_id: str, payload) -> dict:
         """Let a job paused on its search plan run, with the queries approved."""
@@ -185,10 +207,10 @@ class ResearchService:
                                retry_after=60)
 
     def _send(self, world: str, writer: str, request: dict,
-              refines: str | None = None) -> dict:
+              refines: str | None = None, parent: str | None = None) -> dict:
         jobs = self._jobs()
         job = jobs.create(world=world, requester=writer, question=request["question"],
-                          request=request, refines=refines)
+                          request=request, refines=refines, parent=parent)
         try:
             remote = self.researcher.submit(request, job["_id"])
         except Exception:
@@ -240,8 +262,12 @@ class ResearchService:
             pass
         return job_view(self._jobs().update(job["_id"], state="cancelled", progress=None))
 
-    def recent(self, world: str) -> list[dict]:
-        return [job_view(job) for job in self._jobs().recent(world)]
+    def recent(self, world: str, limit=None) -> list[dict]:
+        if limit is None:
+            limit = DEFAULT_RECENT
+        if not isinstance(limit, int) or not 1 <= limit <= MAX_RECENT:
+            raise InvalidResearchRequest(f"limit must be 1-{MAX_RECENT}.")
+        return [job_view(job) for job in self._jobs().recent(world, limit)]
 
     # -- importing -------------------------------------------------------------
 
@@ -396,6 +422,14 @@ class ResearchService:
                 "relinked": [f"{SOURCES}/{target}" for target in plan.relinked.values()]}
 
     def reject(self, world: str, slug: str, writer: str) -> None:
+        self._close(world, slug, writer, "rejected")
+
+    def done(self, world: str, slug: str, writer: str) -> None:
+        """Close a draft the writer has finished with. Sources a note already
+        accepted were relinked away from the inbox; the rest go with it."""
+        self._close(world, slug, writer, "done")
+
+    def _close(self, world: str, slug: str, writer: str, review: str) -> None:
         job = self._pending(world, slug)
         try:
             draft = self.store.get(world, INBOX, slug)["document"]
@@ -406,7 +440,114 @@ class ResearchService:
             if collection == INBOX:
                 self._delete(world, INBOX, source_slug, writer)
         self._delete(world, INBOX, slug, writer)
-        self._jobs().update(job["_id"], review="rejected")
+        self._jobs().update(job["_id"], review=review)
+
+    # -- notes -----------------------------------------------------------------
+
+    def save_note(self, world: str, writer: str, payload) -> dict:
+        """Save a note composed in the studio, new or over an existing one.
+
+        Only the inbox sources its body cites are accepted into ``sources``;
+        the drafts they came from stay open, relinked to them. An update is
+        checked against the revision the writer composed on before anything
+        is written, so a stale note costs nothing.
+        """
+        note = validate_note(payload)
+        pending = self._jobs().pending_review(world)
+        owners = source_owners(pending)
+        slugs = cited(note["body"])
+        strays = [s for s in slugs if s not in owners]
+        if strays:
+            raise InvalidResearchRequest(
+                "A note can cite only the sources of open drafts, not "
+                + ", ".join(f"{INBOX}/{s}" for s in strays) + ".")
+        drafts = self._drafts_named(pending, note["drafts"])
+        existing = self._note_to_update(world, note)
+        plan = plan_note(
+            title=note["title"], body=note["body"],
+            inbox_sources={s: self.store.get(world, INBOX, s)["document"]
+                           for s in slugs},
+            existing=existing, slug=note["note"], writer=writer,
+            saved_at=self._clock().isoformat(),
+            accepted_sources=self._source_urls(world),
+            taken_research=self._ids(world, RESEARCH),
+            taken_sources=self._ids(world, SOURCES))
+        saved = self._write_note(world, writer, plan, note["rev"])
+        self._relink_drafts(world, writer, owners, plan.mapping)
+        ref = f"{RESEARCH}/{plan.slug}"
+        for job_id in {owners[s]["_id"] for s in slugs} | {j["_id"] for j in drafts}:
+            self._jobs().add_note(job_id, ref)
+        return {"note": ref, "rev": saved["rev"],
+                "sources": [f"{SOURCES}/{target}" for _, target, _ in plan.moves],
+                "relinked": [f"{SOURCES}/{t}" for t in plan.relinked.values()]}
+
+    @staticmethod
+    def _drafts_named(pending: list[dict], slugs: list[str]) -> list[dict]:
+        by_slug = {job["draft"]: job for job in pending}
+        missing = [s for s in slugs if s not in by_slug]
+        if missing:
+            raise DraftNotPending("Not an open draft: "
+                                  + ", ".join(f"{INBOX}/{s}" for s in missing) + ".")
+        return [by_slug[s] for s in slugs]
+
+    def _note_to_update(self, world: str, note: dict) -> dict | None:
+        if note["note"] is None:
+            return None
+        current = self.store.get(world, RESEARCH, note["note"])
+        if current["rev"] != note["rev"]:
+            raise RevisionConflict(
+                f"This note was changed since revision {note['rev']}; "
+                "reload it and compose again.")
+        return current["document"]
+
+    def _write_note(self, world: str, writer: str, plan, rev: int | None) -> dict:
+        """The sources first, then the note -- and the sources undone if the
+        note cannot be written (changed in the last instant, say)."""
+        if plan.moves:
+            self._ensure_collection(world, SOURCES, owner=writer)
+        self._ensure_collection(world, RESEARCH, owner=writer)
+        created: list[tuple[str, str]] = []
+        try:
+            for _, target, document in plan.moves:
+                self.store.create(world, SOURCES, target, document, author=writer)
+                created.append((SOURCES, target))
+            if rev is None:
+                saved = self.store.create(world, RESEARCH, plan.slug, plan.document,
+                                          author=writer)
+            else:
+                saved = self.store.update(world, RESEARCH, plan.slug, plan.document,
+                                          expected_rev=rev, author=writer)
+        except Exception:
+            self._undo(world, created)
+            raise
+        for _, collection_slug in created:
+            self.auth_store.grant_owner(writer, world, SOURCES, collection_slug,
+                                        list(ALL_PERMS))
+        if rev is None:
+            self.auth_store.grant_owner(writer, world, RESEARCH, plan.slug,
+                                        list(ALL_PERMS))
+        return saved
+
+    def _relink_drafts(self, world: str, writer: str, owners: dict[str, dict],
+                       mapping: dict[str, str]) -> None:
+        """Point each open draft at the sources a note just accepted, and take
+        those out of the inbox."""
+        by_job: dict[str, dict[str, str]] = {}
+        for slug, target in mapping.items():
+            by_job.setdefault(owners[slug]["_id"], {})[slug] = target
+        jobs = {job["_id"]: job for job in owners.values()}
+        for job_id, moved in by_job.items():
+            job = jobs[job_id]
+            try:
+                draft = self.store.get(world, INBOX, job["draft"])["document"]
+                self.store.update(world, INBOX, job["draft"],
+                                  relink_draft(draft, moved), author=writer)
+            except DocumentNotFound:
+                pass
+            self._jobs().update(job_id, details=relink_details(
+                job.get("details") or {}, moved))
+            for slug in moved:
+                self._delete(world, INBOX, slug, writer)
 
     # -- images ----------------------------------------------------------------
 

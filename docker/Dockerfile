@@ -8,6 +8,18 @@
 # per-service Dockerfiles still build each one standalone for development.)
 #
 # Build context is the repo root (see docker-compose.nas.yml).
+
+# The research studio's bundle, compiled from frontend/ (React + TypeScript +
+# Vite). Node exists only in this stage: the image that runs gets the built
+# files and nothing else, and loads nothing from a CDN at run time.
+FROM node:22-slim AS studio
+WORKDIR /build/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY frontend/ ./
+# Vite writes into ../src/visualizer/akasha/static/studio (see vite.config.ts).
+RUN npm run build
+
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -25,6 +37,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # The source tree is copied under /app/src so it imports as `visualizer.*`.
 COPY src /app/src
+COPY --from=studio /build/src/visualizer/akasha/static/studio /app/src/visualizer/akasha/static/studio
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/src \

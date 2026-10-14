@@ -21,7 +21,8 @@ Browser GUI (server-rendered): ``/login``, ``/register``, ``/`` (home) and
 This module only wires the app together. The routes live one module per area,
 each a plain ``register_*_routes(app, ...)`` called from ``create_app``:
 ``document_routes`` (the API above), ``browse_routes``, ``version_routes``,
-``media_routes``, ``research_routes``, ``collaborator_routes``,
+``media_routes``, ``research_routes``, ``studio_routes`` (the research
+studio's page), ``collaborator_routes``,
 ``account_routes`` and ``admin_routes``. What they share is in ``access``
 (grant checks), ``routing`` (URL templates and request parsing) and
 ``share_kinds``.
@@ -60,6 +61,7 @@ from .research_routes import register_research_routes
 from .research_service import ResearchService
 from .share_kinds import account_kinds
 from .store import DocumentStore
+from .studio_routes import StudioAssets, register_studio_routes
 from .terms import TERMS
 from .version_routes import register_version_routes
 
@@ -87,6 +89,9 @@ def create_app(
     # unchanged.
     researcher: Researcher | None = None,
     research_jobs: ResearchJobStore | None = None,
+    # Where the research studio's compiled bundle is. Left out, it is read from
+    # the Vite manifest under static/studio; tests hand in what they need.
+    studio_assets: StudioAssets | None = None,
 ) -> Flask:
     app = Flask(__name__)
     # A secret key is required to sign session cookies. It must be supplied
@@ -133,6 +138,7 @@ def create_app(
         ResearchService(store, auth_store, researcher, research_jobs, media_service),
         auth_store, csrf,
     )
+    register_studio_routes(app, studio_assets)
     register_collaborator_routes(app, auth_store, csrf)
     # The account page lists things from both services, so it reaches them all
     # through one uniform family on this origin. See ``visualizer.sharing``.

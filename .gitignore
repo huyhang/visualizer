@@ -223,3 +223,7 @@ __marimo__/
 
 # Claude stuff
 .claude
+# The research studio's frontend: dependencies, and the bundle Vite compiles
+# into Akasha's static folder (the Docker build compiles its own).
+frontend/node_modules/
+src/visualizer/akasha/static/studio/

@@ -9,7 +9,9 @@ Everything lives under the world it is about --
 - following jobs and reading the inbox: read on the inbox;
 - accepting a draft: write on the inbox, and on ``research`` and ``sources``,
   where accepting puts things;
-- rejecting a draft: write on the inbox.
+- rejecting a draft, or closing one as done: write on the inbox;
+- saving a note composed from drafts: write on the inbox and on ``sources``,
+  and create on ``research`` for a new note or write on the note updated.
 
 ``/research/availability`` is world-free: it is about the box, not a world.
 """
@@ -54,7 +56,10 @@ def register_research_routes(app: Flask, researcher: Researcher,
     @login_required
     def list_research_jobs(database):
         authorize(auth_store, "GET", database, INBOX)
-        return jsonify({"jobs": service.recent(database)})
+        limit = request.args.get("limit", type=int)
+        if "limit" in request.args and limit is None:
+            raise InvalidResearchRequest("limit must be a whole number.")
+        return jsonify({"jobs": service.recent(database, limit)})
 
     @app.get(_BASE + "/jobs/<job_id>")
     @csrf.exempt
@@ -124,6 +129,33 @@ def register_research_routes(app: Flask, researcher: Researcher,
         authorize(auth_store, "PUT", database, INBOX, draft)
         service.reject(database, draft, current_user.username)
         return "", 204
+
+    @app.post(_DRAFT + "/done")
+    @csrf.exempt
+    @login_required
+    def close_research_draft(database, draft):
+        """The writer has taken what they wanted from this draft into notes."""
+        authorize(auth_store, "PUT", database, INBOX, draft)
+        service.done(database, draft, current_user.username)
+        return "", 204
+
+    # -- notes -----------------------------------------------------------------
+
+    @app.post(_BASE + "/notes")
+    @csrf.exempt
+    @login_required
+    def save_research_note(database):
+        """A note composed from drafts: a new one, or an update of one."""
+        payload = request.get_json(silent=True)
+        target = payload.get("note") if isinstance(payload, dict) else None
+        authorize(auth_store, "PUT", database, INBOX)
+        authorize(auth_store, "POST", database, SOURCES)
+        if isinstance(target, str):
+            authorize(auth_store, "PUT", database, RESEARCH, target)
+        else:
+            authorize(auth_store, "POST", database, RESEARCH)
+        saved = service.save_note(database, current_user.username, payload)
+        return jsonify(saved), 200 if isinstance(target, str) else 201
 
     # -- image candidates ------------------------------------------------------
 

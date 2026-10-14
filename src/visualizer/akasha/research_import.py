@@ -312,16 +312,22 @@ class AcceptPlan:
     relinked: dict[str, str]             # inbox slug -> existing sources slug
 
 
-def plan_accept(draft: dict, inbox_sources: dict[str, dict], *, writer: str,
-                accepted_at: str, accepted_sources: dict[str, str],
-                taken_research: set[str], taken_sources: set[str],
-                draft_slug: str) -> AcceptPlan:
-    """What accepting ``draft`` writes: the article, and its sources moved.
+@dataclass
+class SourceMoves:
+    """Where accepting a set of inbox sources puts each one."""
+    mapping: dict[str, str]              # inbox slug -> sources slug
+    moves: list[tuple[str, str, dict]]   # (inbox slug, sources slug, document)
+    relinked: dict[str, str]             # inbox slug -> existing sources slug
 
-    ``inbox_sources`` are the draft's own inbox sources (slug -> document) --
-    possibly edited by the writer since import. A source whose URL is now in
-    ``sources`` (accepted from another draft meanwhile) is relinked rather
-    than duplicated. The draft's slug is kept when ``research`` has it free.
+
+def move_sources(inbox_sources: dict[str, dict], *, writer: str, accepted_at: str,
+                 accepted_sources: dict[str, str],
+                 taken_sources: set[str]) -> SourceMoves:
+    """Each inbox source's place in ``sources``, verified by ``writer``.
+
+    A source whose URL ``sources`` already holds (accepted from another draft
+    meanwhile) is relinked rather than duplicated; the rest keep their slug
+    when it is free there.
     """
     mapping, moves, relinked = {}, [], {}
     for slug, document in inbox_sources.items():
@@ -337,20 +343,135 @@ def plan_accept(draft: dict, inbox_sources: dict[str, dict], *, writer: str,
         moves.append((slug, target, {**document, "status": "verified",
                                      "verified_by": writer,
                                      "verified_at": accepted_at}))
+    return SourceMoves(mapping=mapping, moves=moves, relinked=relinked)
 
-    def relink(text: str) -> str:
-        for slug, target in mapping.items():
-            text = text.replace(f"[[{INBOX}/{slug}]]", f"[[{SOURCES}/{target}]]")
-            text = text.replace(f"[[{INBOX}/{slug}|", f"[[{SOURCES}/{target}|")
-        return text
 
+def relink(text: str, mapping: dict[str, str]) -> str:
+    """``text`` with its links to inbox sources pointed at ``sources``."""
+    for slug, target in mapping.items():
+        text = text.replace(f"[[{INBOX}/{slug}]]", f"[[{SOURCES}/{target}]]")
+        text = text.replace(f"[[{INBOX}/{slug}|", f"[[{SOURCES}/{target}|")
+    return text
+
+
+def relink_ref(ref: str, mapping: dict[str, str]) -> str:
+    collection, _, slug = ref.partition("/")
+    if collection == INBOX and slug in mapping:
+        return f"{SOURCES}/{mapping[slug]}"
+    return ref
+
+
+def plan_accept(draft: dict, inbox_sources: dict[str, dict], *, writer: str,
+                accepted_at: str, accepted_sources: dict[str, str],
+                taken_research: set[str], taken_sources: set[str],
+                draft_slug: str) -> AcceptPlan:
+    """What accepting ``draft`` writes: the article, and its sources moved.
+
+    ``inbox_sources`` are the draft's own inbox sources (slug -> document) --
+    possibly edited by the writer since import. A source whose URL is now in
+    ``sources`` (accepted from another draft meanwhile) is relinked rather
+    than duplicated. The draft's slug is kept when ``research`` has it free.
+    """
+    moved = move_sources(inbox_sources, writer=writer, accepted_at=accepted_at,
+                         accepted_sources=accepted_sources,
+                         taken_sources=taken_sources)
     article = {**draft, "status": "verified", "verified_by": writer,
                "verified_at": accepted_at, "drafted_by": BOT}
-    article["body"] = relink(draft.get("body", ""))
-    article["sources"] = [
-        f"{SOURCES}/{mapping[ref.split('/', 1)[1]]}"
-        if ref.startswith(f"{INBOX}/") and ref.split("/", 1)[1] in mapping else ref
-        for ref in draft.get("sources") or []]
+    article["body"] = relink(draft.get("body", ""), moved.mapping)
+    article["sources"] = [relink_ref(ref, moved.mapping)
+                          for ref in draft.get("sources") or []]
     slug = draft_slug if draft_slug not in taken_research else unique_slug(
         draft_slug, taken_research, "research")
-    return AcceptPlan(article_slug=slug, article=article, moves=moves, relinked=relinked)
+    return AcceptPlan(article_slug=slug, article=article, moves=moved.moves,
+                      relinked=moved.relinked)
+
+
+# -- composing a note in the studio --------------------------------------------
+
+_INBOX_LINK = re.compile(r"\[\[" + re.escape(INBOX) + r"/([^\]|]+)(?:\|[^\]]*)?\]\]")
+_SOURCE_LINK = re.compile(r"\[\[" + re.escape(SOURCES) + r"/([^\]|]+)(?:\|[^\]]*)?\]\]")
+
+
+def cited(text: str, collection: str = INBOX) -> list[str]:
+    """Slugs ``text`` links to in ``collection`` (inbox or sources), in order."""
+    pattern = _INBOX_LINK if collection == INBOX else _SOURCE_LINK
+    return list(dict.fromkeys(m.group(1).strip() for m in pattern.finditer(text)))
+
+
+def source_owners(pending_jobs: list[dict]) -> dict[str, dict]:
+    """inbox source slug -> the pending job whose draft cites it.
+
+    Pending drafts never share an inbox source (each gets its own copy), so
+    every inbox source has at most one owner.
+    """
+    owners = {}
+    for job in pending_jobs:
+        for row in (job.get("details") or {}).get("sources") or []:
+            collection, _, slug = row.get("ref", "").partition("/")
+            if collection == INBOX:
+                owners[slug] = job
+    return owners
+
+
+@dataclass
+class NotePlan:
+    slug: str
+    document: dict
+    moves: list[tuple[str, str, dict]]   # (inbox slug, sources slug, document)
+    relinked: dict[str, str]             # inbox slug -> existing sources slug
+    mapping: dict[str, str]              # every inbox slug the note cited
+
+
+def plan_note(*, title: str, body: str, inbox_sources: dict[str, dict],
+              existing: dict | None, slug: str | None, writer: str, saved_at: str,
+              accepted_sources: dict[str, str], taken_research: set[str],
+              taken_sources: set[str]) -> NotePlan:
+    """What saving a composed note writes: the note, and the sources it cites.
+
+    Only the inbox sources the body links to are accepted; the drafts they
+    came from stay open. Updating, ``existing`` is the note as the writer
+    composed on it: its other fields are kept and its sources list grows.
+    A new note gets a slug of its own in ``research``.
+    """
+    moved = move_sources(inbox_sources, writer=writer, accepted_at=saved_at,
+                         accepted_sources=accepted_sources,
+                         taken_sources=taken_sources)
+    text = relink(body, moved.mapping)
+    cites = [f"{SOURCES}/{s}" for s in cited(text, SOURCES)]
+    if existing is not None:
+        earlier = existing.get("sources")
+        earlier = [r for r in earlier if isinstance(r, str)] if isinstance(
+            earlier, list) else []
+        document = {**existing, "title": title, "body": text,
+                    "sources": list(dict.fromkeys(earlier + cites))}
+        return NotePlan(slug=slug, document=document, moves=moved.moves,
+                        relinked=moved.relinked, mapping=moved.mapping)
+    document = {"title": title, "body": text, "status": "verified",
+                "sources": cites, "verified_by": writer, "verified_at": saved_at}
+    new_slug = unique_slug(title, taken_research, "research")
+    return NotePlan(slug=new_slug, document=document, moves=moved.moves,
+                    relinked=moved.relinked, mapping=moved.mapping)
+
+
+def relink_draft(draft: dict, mapping: dict[str, str]) -> dict:
+    """An open draft whose sources were accepted into a note: cited from there."""
+    return {**draft, "body": relink(draft.get("body", ""), mapping),
+            "sources": [relink_ref(r, mapping) for r in draft.get("sources") or []]}
+
+
+def relink_details(details: dict, mapping: dict[str, str]) -> dict:
+    """The job record's nested detail, with the same sources relinked."""
+    def ref(value: str) -> str:
+        return relink_ref(value, mapping)
+
+    return {
+        **details,
+        "facts": [{**fact, "citations": [{**c, "source": ref(c["source"])}
+                                         for c in fact.get("citations") or []]}
+                  for fact in details.get("facts") or []],
+        "sources": [{**row, "ref": ref(row["ref"]),
+                     "new": row.get("new", True) and ref(row["ref"]) == row["ref"]}
+                    for row in details.get("sources") or []],
+        "images": [{**image, "source": ref(image["source"])}
+                   for image in details.get("images") or []],
+    }

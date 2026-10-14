@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Research · {{ world_title }} — Akasha</title>
+  <link rel="icon" href="{{ url_for('static', filename='akasha-icon.svg') }}">
+  {# Palette first: the shell, the studio bundle and the shared nav are all
+     drawn in it. The nav comes last because it owns the geometry it adds. #}
+  <link rel="stylesheet" href="{{ url_for('shared_static', filename='tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='studio-shell.css') }}">
+  {% if assets %}{% for sheet in assets.styles %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='studio/' + sheet) }}">
+  {%- endfor %}{% endif %}
+  <link rel="stylesheet" href="{{ url_for('shared_static', filename='service-nav.css') }}">
+  <script src="{{ url_for('shared_js', filename='prefs.js') }}"></script>
+</head>
+<body>
+  <div class="app-shell">
+    {% include "_service_nav.html" %}
+    <div class="app-shell-main">
+      <header class="app-header">
+        <a class="brand" href="{{ url_for('index') }}" title="All {{ terms.database.many }}"><span class="mark"><img src="{{ url_for('static', filename='akasha-glyph.svg') }}" alt="" width="26" height="26"></span><span class="brand-name">Akasha</span></a>
+        <nav class="studio-crumbs" aria-label="Breadcrumb">
+          <span class="crumb-sep" aria-hidden="true">/</span>
+          <a href="{{ url_for('index') }}#/{{ world | urlencode }}">{{ world_title }}</a>
+          <span class="crumb-sep" aria-hidden="true">/</span>
+          <span class="crumb-here" aria-current="page">Research</span>
+        </nav>
+        <div class="header-actions">
+          <a class="header-link access-link" href="{{ url_for('account_page') }}">Access</a>
+          <button class="icon-btn font-btn" id="font-toggle" aria-label="Text size" title="Text size">A</button>
+          <button class="icon-btn" id="theme-toggle" aria-label="Toggle theme" title="Toggle light/dark">◐</button>
+          <span class="userchip"><span class="avatar">{{ username[0] | upper }}</span>
+            <span class="username">{{ username }}</span></span>
+          <form class="inline-form" method="post" action="{{ url_for('auth.logout') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="icon-btn logout-btn" type="submit"
+                    aria-label="Log out" title="Log out"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+            </svg></button>
+          </form>
+        </div>
+      </header>
+
+      <main class="studio-main" id="studio-root"
+            data-world="{{ world }}"
+            data-world-title="{{ world_title }}"
+            data-api-root="{{ api_root }}"
+            data-akasha-root="{{ url_for('index') }}">
+        {% if not assets %}
+        <div class="studio-unbuilt">
+          <h1>The research studio has not been built</h1>
+          <p>Its sources are in <code>frontend/</code>. Build them once with
+             <code>npm --prefix frontend ci &amp;&amp; npm --prefix frontend run build</code>,
+             or keep them building with <code>npm --prefix frontend run watch</code>,
+             then reload this page.</p>
+        </div>
+        {% endif %}
+      </main>
+    </div>
+  </div>
+  {% if assets %}
+  <script type="module" src="{{ url_for('static', filename='studio/' + assets.script) }}"></script>
+  {% endif %}
+</body>
+</html>

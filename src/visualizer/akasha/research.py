@@ -38,6 +38,13 @@ _FIELDS = {"question", "languages", "max_sources", "include_images", "verify",
 MAX_QUERIES = 6
 MAX_FEEDBACK = 2000
 MAX_EXCLUDED = 50
+_JOB_ID = re.compile(r"^rj_[0-9a-f]{16}$")
+_SLUG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$")
+_NOTE_FIELDS = {"note", "rev", "title", "body", "drafts"}
+_INBOX_PREFIX = "research-inbox/"
+MAX_NOTE_TITLE = 300
+MAX_NOTE_BODY = 60_000
+MAX_NOTE_DRAFTS = 20
 
 
 def validate_request(payload) -> dict:
@@ -124,6 +131,64 @@ def validate_refinement(payload) -> tuple[str, list[str], dict]:
             f"exclude_sources must be a list of at most {MAX_EXCLUDED} source refs.")
     changes = {k: payload[k] for k in _FIELDS - {"question"} if k in payload}
     return feedback.strip(), list(dict.fromkeys(excluded)), changes
+
+
+def split_parent(payload) -> tuple[object, str | None]:
+    """(the request proper, the job it digs deeper from) for a submission.
+
+    ``parent`` is Akasha's alone -- it places the new topic under an earlier
+    one -- so it is taken off before the request is checked against the rules
+    the box shares, and never travels to the box.
+    """
+    if not isinstance(payload, dict) or "parent" not in payload:
+        return payload, None
+    rest = {k: v for k, v in payload.items() if k != "parent"}
+    parent = payload["parent"]
+    if parent is None:
+        return rest, None
+    if not isinstance(parent, str) or not _JOB_ID.match(parent):
+        raise InvalidResearchRequest("parent must be the id of a research job.")
+    return rest, parent
+
+
+def validate_note(payload) -> dict:
+    """A note the writer composed in the studio: what to save, and over what.
+
+    ``note`` names an existing note in ``research`` to update, and then
+    ``rev`` is required -- the revision the writer composed on, so a note
+    changed meanwhile is refused rather than overwritten. Without ``note`` a
+    new note is made. ``drafts`` are the inbox drafts the material came from,
+    recorded on their jobs so a topic can say where it went.
+    """
+    if not isinstance(payload, dict):
+        raise InvalidResearchRequest("A note must be a JSON object.")
+    unknown = sorted(set(payload) - _NOTE_FIELDS)
+    if unknown:
+        raise InvalidResearchRequest(f"Unknown fields: {', '.join(unknown)}.")
+    title = payload.get("title")
+    if not isinstance(title, str) or not 1 <= len(title.strip()) <= MAX_NOTE_TITLE:
+        raise InvalidResearchRequest(f"The title must be 1-{MAX_NOTE_TITLE} characters.")
+    body = payload.get("body")
+    if not isinstance(body, str) or not body.strip() or len(body) > MAX_NOTE_BODY:
+        raise InvalidResearchRequest(
+            f"The body must be 1-{MAX_NOTE_BODY} characters of text.")
+    note = payload.get("note")
+    if note is not None and (not isinstance(note, str) or not _SLUG.match(note)):
+        raise InvalidResearchRequest("note must be the slug of a research note.")
+    rev = payload.get("rev")
+    if note is not None and (not isinstance(rev, int) or isinstance(rev, bool)
+                             or rev < 1):
+        raise InvalidResearchRequest(
+            "Updating a note needs the revision it was composed on (rev).")
+    drafts = payload.get("drafts", [])
+    if (not isinstance(drafts, list) or len(drafts) > MAX_NOTE_DRAFTS
+            or not all(isinstance(ref, str) and ref.startswith(_INBOX_PREFIX)
+                       for ref in drafts)):
+        raise InvalidResearchRequest(
+            f"drafts must be a list of at most {MAX_NOTE_DRAFTS} draft refs.")
+    return {"note": note, "rev": rev if note is not None else None,
+            "title": title.strip(), "body": body.strip(),
+            "drafts": [ref[len(_INBOX_PREFIX):] for ref in dict.fromkeys(drafts)]}
 
 
 class Researcher(Protocol):

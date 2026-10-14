@@ -1,0 +1,71 @@
+/* The research studio's shell: the header the server renders, and the frame the
+   React bundle mounts into. Everything inside `#studio-root` is styled by the
+   bundle (`frontend/src/styles`); this sheet only has to make the page stand
+   up -- including when the bundle has not been built.
+
+   Unlike the article editor, the studio is a fixed-height workspace: the window
+   never scrolls, each of its panes does. */
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; color: var(--text); background: var(--bg); line-height: 1.55;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased; overflow: hidden;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button { font-family: inherit; cursor: pointer; }
+
+.app-shell { height: 100vh; height: 100dvh; min-height: 0; }
+
+/* header -- the same shapes as the article editor's, so moving between the two
+   does not shift a pixel of chrome. */
+.app-header {
+  display: flex; align-items: center; gap: .6rem; padding: .55rem 1rem;
+  background: var(--surface); border-bottom: 1px solid var(--border); z-index: 30;
+  flex: none;
+}
+.brand { display: flex; align-items: center; gap: .5rem; font-weight: 700; letter-spacing: -.01em; color: var(--text); }
+a.brand:hover { text-decoration: none; opacity: .85; }
+.brand .mark {
+  width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center;
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+}
+.studio-crumbs { display: flex; align-items: center; gap: .45rem; min-width: 0; flex: 0 1 auto; overflow: hidden; font-size: .92rem; }
+.studio-crumbs a { color: var(--muted); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.studio-crumbs a:hover { color: var(--text); text-decoration: none; }
+.crumb-sep { color: var(--border); font-weight: 300; }
+.crumb-here { font-weight: 700; color: var(--text); }
+.header-actions { margin-left: auto; display: flex; align-items: center; gap: .5rem; }
+.header-link { color: var(--muted); font-weight: 600; font-size: .9rem; padding: .3rem .5rem; border-radius: 8px; }
+.header-link:hover { background: var(--surface-2); text-decoration: none; }
+.userchip { display: inline-flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .85rem; }
+.userchip .avatar {
+  width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; font-size: .75rem;
+}
+.icon-btn {
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+  width: 34px; height: 34px; border-radius: 9px; font-size: 1rem; display: grid; place-items: center;
+}
+.icon-btn:hover { border-color: var(--accent); }
+.font-btn { font-weight: 800; letter-spacing: -.02em; }
+.logout-btn { color: var(--accent); }
+.inline-form { display: inline; margin: 0; }
+
+.studio-main { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+
+.studio-unbuilt {
+  max-width: 40rem; margin: 3rem auto; padding: 1.5rem 1.75rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.studio-unbuilt h1 { font-size: 1.15rem; margin: 0 0 .5rem; }
+.studio-unbuilt p { margin: 0; color: var(--muted); }
+.studio-unbuilt code { font-size: .85em; background: var(--surface-3); padding: .1em .35em; border-radius: 5px; }
+
+@media (max-width: 820px) {
+  .app-header { padding: .5rem .75rem; }
+  .userchip, .brand-name, .access-link { display: none; }
+}

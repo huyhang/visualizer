@@ -1,0 +1,9 @@
+/* The studio's styles. Drawn entirely in the stack's shared palette
+   (static/tokens.css, linked by the page before this), so light/dark and the
+   text-size setting apply here exactly as everywhere else. Every class is
+   prefixed `st-` so nothing leaks into, or out of, the server-rendered shell. */
+@import "./base.css";
+@import "./layout.css";
+@import "./topics.css";
+@import "./draft.css";
+@import "./note.css";

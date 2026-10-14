@@ -20,7 +20,7 @@ There are two ways to use it:
 Both share one login, one permission model, and one document store. See
 [`editor-design.md`](editor-design.md) for the editor design,
 [`media-design.md`](media-design.md) for images and dioramas,
-[`research.md`](research.md) for AI research drafts (API only, needs a GPU box), and the
+[`research.md`](research.md) for AI research and its studio (needs a GPU box), and the
 [repo README](../../README.md) for the stack as a whole.
 
 > **Companion service — `chronos`.** A plotline & timeline API for fiction
@@ -212,6 +212,13 @@ world/category names *are* its address, pointed at by every `[[link]]`, every
 grant and every chronos reference. To rename, create under the new name, repoint
 what referred to it, and delete the old — which is why the new-article dialog
 warns that the slug is permanent.
+
+**Research.** When a GPU box is configured, a world's page (and its
+`research`, `research-inbox` and `sources` categories) offers **✦ Research**.
+It opens the research studio, where you ask the AI researcher a question, read
+the cited draft it writes, dig deeper into any passage, and compose research
+notes from what you keep, or keep a whole draft as a note. See
+[`research.md`](research.md#the-studio).
 
 **Theme, text size & mobile.** Toggle light/dark with the ◐ button, and cycle the
 text size (Normal → Large → Larger → Largest) with the **A** button — both are

@@ -9,6 +9,7 @@ import { api } from "./api.js";
 import { clear, el } from "./dom.js";
 import { T, count } from "./terms.js";
 import { cardGrid, crumbs, timeAgo, viewHead } from "./views.js";
+import { offerResearch } from "./research-entry.js";
 
 const RECENT_LIMIT = 8;
 
@@ -104,6 +105,7 @@ export async function mountCollections(container, database, handlers) {
     el("div", { class: "view-head" }, [heading, actions]),
     grid,
   ]));
+  offerResearch(actions, database);
   actions.appendChild(el("button", {
     class: "btn sm secondary", type: "button", text: "World Gallery",
     title: "Every image and diorama in this world",

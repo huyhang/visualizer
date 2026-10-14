@@ -1,0 +1,629 @@
+/* On :root rather than #studio-root: popovers, dialogs and toasts are portaled
+   to <body>, outside the root, and need these too. */
+:root {
+  --st-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --st-radius-sm: 9px;
+  --st-glow: 0 0 0 3px var(--accent-soft);
+  --st-serif:
+    "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+}
+
+#studio-root {
+  color: var(--text);
+}
+
+:where(#studio-root, .st-popover, .st-modal, .st-toast-viewport)
+  :where(h1, h2, h3, h4, p, ul, ol, blockquote, dl, dd, figure) {
+  margin: 0;
+}
+:where(#studio-root, .st-popover, .st-modal, .st-toast-viewport) :where(ul, ol) {
+  padding: 0;
+  list-style: none;
+}
+:where(#studio-root, .st-popover, .st-modal) :where(button, input, select, textarea) {
+  font: inherit;
+  color: inherit;
+}
+:where(#studio-root, .st-popover, .st-modal) :focus-visible {
+  outline: none;
+  box-shadow: var(--st-glow);
+}
+
+.st-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+  padding: 0;
+  margin: -1px;
+}
+.st-muted {
+  color: var(--muted);
+}
+.st-small {
+  font-size: 0.82rem;
+}
+.st-pad {
+  padding: 0.75rem 1rem;
+}
+.st-center {
+  display: grid;
+  place-items: center;
+}
+.st-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.st-error-text {
+  color: var(--danger);
+  font-size: 0.85rem;
+  margin-top: 0.4rem;
+}
+.st-icon {
+  flex: none;
+}
+
+/* buttons */
+.st-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border: 1px solid transparent;
+  border-radius: var(--st-radius-sm);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+  transition:
+    background 0.15s var(--st-ease),
+    border-color 0.15s,
+    color 0.15s,
+    transform 0.1s,
+    box-shadow 0.15s;
+}
+.st-btn:hover {
+  text-decoration: none;
+}
+.st-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.st-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.st-btn-md {
+  padding: 0.5rem 0.9rem;
+  font-size: 0.9rem;
+}
+.st-btn-sm {
+  padding: 0.32rem 0.65rem;
+  font-size: 0.82rem;
+}
+.st-btn-primary {
+  color: #fff;
+  background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+  box-shadow:
+    0 1px 2px rgba(16, 24, 40, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+[data-theme="dark"] .st-btn-primary {
+  color: var(--bg);
+}
+.st-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+.st-btn-secondary {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+.st-btn-secondary:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+.st-btn-ghost {
+  background: transparent;
+  color: var(--muted);
+}
+.st-btn-ghost:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.st-btn-danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.st-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.st-icon-btn:hover:not(:disabled),
+.st-icon-btn.is-active {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.st-icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* small tool buttons that appear on passages and facts */
+.st-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.22rem 0.5rem;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color 0.12s,
+    border-color 0.12s,
+    background 0.12s;
+}
+.st-tool:hover:not(:disabled) {
+  color: var(--accent-strong);
+  border-color: var(--accent);
+}
+.st-tool.is-primary {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+.st-tool.is-primary:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.st-tool:disabled {
+  cursor: default;
+  color: var(--ok);
+  background: var(--ok-soft);
+  border-color: transparent;
+}
+
+/* form controls */
+.st-input,
+.st-textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--st-radius-sm);
+  padding: 0.5rem 0.65rem;
+  font-size: 0.9rem;
+  color: var(--text);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.st-textarea {
+  resize: none;
+  line-height: 1.5;
+  display: block;
+}
+.st-input:focus,
+.st-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--st-glow);
+}
+.st-input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+.st-input-sm {
+  padding: 0.32rem 0.55rem;
+  font-size: 0.84rem;
+}
+.st-field {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.st-field > span {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text);
+}
+.st-field output {
+  color: var(--accent-strong);
+  font-variant-numeric: tabular-nums;
+}
+.st-field input[type="range"] {
+  accent-color: var(--accent);
+}
+.st-check {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  cursor: pointer;
+  font-size: 0.86rem;
+}
+.st-check input {
+  margin-top: 0.2rem;
+  accent-color: var(--accent);
+}
+.st-check span {
+  display: grid;
+  gap: 0.1rem;
+}
+.st-check small {
+  color: var(--muted);
+  font-weight: 400;
+}
+fieldset.st-field {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+fieldset.st-field legend {
+  padding: 0;
+  margin-bottom: 0.45rem;
+}
+
+/* badges, counts, dots */
+.st-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  background: var(--surface-3);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.st-badge-accent {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+.st-badge-ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.st-badge-warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.st-badge-danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.st-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.35rem;
+  height: 1.15rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.st-count.is-bump {
+  background: var(--accent);
+  color: #fff;
+  animation: st-bump 0.35s var(--st-ease);
+}
+.st-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  position: relative;
+  background: var(--muted);
+}
+.st-dot-ok {
+  background: var(--ok);
+}
+.st-dot-warn {
+  background: var(--warn);
+}
+.st-dot-off {
+  background: var(--muted);
+  opacity: 0.6;
+}
+.st-dot-accent {
+  background: var(--accent);
+}
+.st-dot-danger {
+  background: var(--danger);
+}
+.st-dot-muted {
+  background: var(--border);
+  box-shadow: inset 0 0 0 1.5px var(--muted);
+  opacity: 0.7;
+}
+.st-dot.is-pulsing::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: inherit;
+  opacity: 0.45;
+  animation: st-pulse 1.6s ease-out infinite;
+}
+
+.st-spinner {
+  display: inline-block;
+  border-radius: 50%;
+  flex: none;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  opacity: 0.8;
+  animation: st-spin 0.7s linear infinite;
+}
+
+.st-skeleton {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.25rem 0;
+}
+.st-skeleton span {
+  height: 0.8rem;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--surface-3), var(--surface-2), var(--surface-3));
+  background-size: 200% 100%;
+  animation: st-shimmer 1.4s ease-in-out infinite;
+}
+
+.st-empty {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 0.45rem;
+  padding: 2.5rem 1.5rem;
+  color: var(--muted);
+}
+.st-empty h3 {
+  color: var(--text);
+  font-size: 1rem;
+}
+.st-empty p {
+  max-width: 26rem;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+.st-empty-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 0.3rem;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+/* overlays: popovers, tooltips, dialogs, toasts */
+.st-popover {
+  z-index: 60;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 0.85rem;
+  animation: st-pop 0.16s var(--st-ease);
+  max-width: min(22rem, calc(100vw - 2rem));
+}
+.st-popover-arrow {
+  fill: var(--surface);
+}
+.st-tooltip {
+  z-index: 70;
+  padding: 0.3rem 0.55rem;
+  border-radius: 7px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  background: var(--text);
+  color: var(--bg);
+  animation: st-pop 0.12s var(--st-ease);
+}
+.st-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(10, 12, 20, 0.42);
+  backdrop-filter: blur(3px);
+  animation: st-fade 0.15s ease;
+}
+.st-modal {
+  position: fixed;
+  z-index: 81;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(32rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(10, 12, 20, 0.28);
+  animation: st-rise 0.2s var(--st-ease);
+  display: flex;
+  flex-direction: column;
+}
+.st-modal.is-wide {
+  width: min(40rem, calc(100vw - 2rem));
+}
+.st-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.1rem 1.25rem 0.2rem;
+}
+.st-modal-title {
+  font-size: 1.08rem;
+  font-weight: 700;
+  margin: 0;
+}
+.st-modal-desc {
+  padding: 0 1.25rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  margin: 0;
+}
+.st-modal-body {
+  padding: 1rem 1.25rem;
+  display: grid;
+  gap: 0.9rem;
+}
+.st-modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.85rem 1.25rem;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  border-radius: 0 0 16px 16px;
+}
+.st-counter {
+  margin-right: auto;
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.st-counter.is-over {
+  color: var(--danger);
+}
+
+.st-toast-viewport {
+  position: fixed;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  z-index: 90;
+  display: grid;
+  gap: 0.5rem;
+  width: min(22rem, calc(100vw - 2.5rem));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  outline: none;
+}
+.st-toast {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.15rem 0.75rem;
+  align-items: center;
+  padding: 0.8rem 1rem;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  border-left: 3px solid var(--ok);
+  animation: st-slide 0.22s var(--st-ease);
+}
+.st-toast-danger {
+  border-left-color: var(--danger);
+}
+.st-toast-title {
+  font-weight: 700;
+  font-size: 0.9rem;
+  grid-column: 1;
+}
+.st-toast-desc {
+  color: var(--muted);
+  font-size: 0.82rem;
+  grid-column: 1;
+}
+.st-toast-action {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.st-fade-in {
+  animation: st-fade 0.25s var(--st-ease);
+}
+
+@keyframes st-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes st-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+@keyframes st-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+@keyframes st-pop {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+@keyframes st-rise {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -46%) scale(0.98);
+  }
+}
+@keyframes st-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes st-slide {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+@keyframes st-bump {
+  50% {
+    transform: scale(1.3);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #studio-root *,
+  .st-popover,
+  .st-modal,
+  .st-toast,
+  .st-overlay,
+  .st-tooltip {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -24,7 +24,12 @@ is the source of truth for anything this doc drifts from.
 - **No new build toolchain.** The editor is **vanilla JS + CSS** served as
   static assets by Flask. No npm/webpack/Node — nothing added to the slim NAS
   image, nothing to break in Container Manager, and no runtime CDN dependency
-  (works on a LAN-only NAS).
+  (works on a LAN-only NAS). *Since revisited:* the research studio
+  ([`research.md`](research.md#the-studio)) is compiled from `frontend/` with
+  React and Vite. The parts of this rule that mattered still hold: the
+  compiling happens in a Docker build stage, so the NAS image runs no Node,
+  and the page loads nothing from a CDN. This editor stays vanilla until it is
+  moved there deliberately.
 - **Reuse the existing auth + grant model unchanged.** Every new endpoint goes
   through the same `authorize(...)` (`access.py`) / `is_allowed(...)` path. No
   new permission concepts.

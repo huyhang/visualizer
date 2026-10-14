@@ -43,6 +43,7 @@ _HTTP_METHODS = {"get", "post", "put", "patch", "delete"}
 # resembling one of these.
 _BROWSER_ONLY = {
     ("get", "/"),                       # the editor SPA shell
+    ("get", "/studio/{database}"),      # the research studio's shell
     ("get", "/static/{filename}"),
     # Assets every service loads, served out of the package root by
     # ``visualizer.shared_assets``. Asset routes, not part of the JSON API.
