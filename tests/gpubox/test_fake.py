@@ -24,6 +24,7 @@ EXAMPLE_REQUESTS = SPEC["paths"]["/jobs"]["post"]["requestBody"]["content"][
     "application/json"]["examples"]
 RESEARCH = EXAMPLE_REQUESTS["research"]["value"]["request"]
 REVIEW = EXAMPLE_REQUESTS["review"]["value"]["request"]
+DISCUSSION = EXAMPLE_REQUESTS["discussion"]["value"]["request"]
 STEP = 1.5
 
 
@@ -198,6 +199,9 @@ def test_any_documented_failure_can_be_staged(code):
     ("research", {"languages": ["en"]}),
     ("review", {"chapter": {"title": "x", "blocks": []}, "references": []}),
     ("portraits", {"question": "Song tea"}),
+    ("discussion", {**DISCUSSION, "messages": []}),
+    ("discussion", {**DISCUSSION, "issue": {"check": "prose"}}),
+    ("discussion", {**DISCUSSION, "messages": [{"role": "reader", "text": "Hi"}]}),
 ])
 def test_it_refuses_what_the_worker_would_refuse(kind, request_):
     with pytest.raises(WorkerRejected) as raised:
@@ -237,6 +241,34 @@ def test_review_issues_quote_their_own_block_verbatim():
     for issue in result["issues"]:
         assert issue["quote"] and issue["quote"] in texts[issue["block"]]
         assert issue["reference"] is None or issue["reference"] in refs
+
+
+def test_a_discussion_job_replies_after_loading_the_model(clock):
+    worker = fake(clock, mode="cold")
+    job = conforms(worker.submit("discussion", DISCUSSION, service="logos", ref="d1"))
+    seen = []
+    while (job := conforms(worker.status(job["id"])))["state"] in ("queued",
+                                                                   "running"):
+        if job["progress"]:
+            seen.append(job["progress"]["stage"])
+        clock.now += STEP
+    assert list(dict.fromkeys(seen)) == ["loading_model", "replying"]
+    validator("DiscussionResult").validate(job["result"])
+    assert job["result"]["reply"].startswith("[Fake]")
+
+
+@pytest.mark.parametrize("said,stance,suggests", [
+    ("It's deliberate: the teapot is a wedding gift from the future.",
+     "withdraws", False),
+    ("What would you do instead?", "revises", True),
+    ("Why does that matter?", "maintains", False),
+])
+def test_every_stance_is_reachable(said, stance, suggests):
+    request = {**DISCUSSION, "messages": [{"role": "writer", "text": said}]}
+    result = finished(fake(verifier="down"), "discussion", request)["result"]
+    validator("DiscussionResult").validate(result)
+    assert result["stance"] == stance
+    assert (result["suggestion"] is not None) == suggests
 
 
 @pytest.mark.parametrize("verifier,verify,status,reason,check", [

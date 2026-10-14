@@ -1,7 +1,7 @@
 """A stand-in GPU box: ``WorkerClient``'s calls, answered in memory.
 
-For tests and the dev server (``--fake-gpubox``), so the research and review
-UIs can be built and exercised before the box exists. Two promises:
+For tests and the dev server (``--fake-gpubox``), so the research, review and
+discussion UIs can be built and exercised before the box exists. Two promises:
 
 - **It obeys the contract.** Every reply validates against
   ``docs/gpu_worker/openapi.json``, and every quote it returns appears verbatim
@@ -19,6 +19,11 @@ A research job asked with ``approve_plan`` stops after planning, exactly like
 the real one, until ``approve_plan()``; its plan expires after ``PLAN_TTL``. A
 ``refine`` request gets a result that keeps the previous sources it was not
 told to exclude and adds one new one, so a caller's re-import can be tested.
+
+A discussion's stance follows the writer's last message, so a UI can reach all
+three: one saying the passage is deliberate (or intentional, or on purpose) is
+withdrawn, one asking what to do instead gets a revised fix, and anything else
+is maintained.
 """
 
 import base64
@@ -65,6 +70,7 @@ _STAGE_MESSAGES = {
     "verifying": "Checking every quote against its page",
     "writing": "Writing the draft",
     "reviewing": "Reviewing the chapter",
+    "replying": "Replying to the writer",
     "second_check": "Second-checking on the verifier",
 }
 
@@ -227,13 +233,17 @@ class FakeWorker:
             stages += list(_RESEARCH_STAGES[:-1])
             stages += ["second_check"] if checked else []
             stages.append(_RESEARCH_STAGES[-1])
-        else:
+        elif job["kind"] == "review":
             stages += ["reviewing"] + (["second_check"] if checked else [])
+        else:
+            stages.append("replying")
         return stages
 
     def _second_check(self, job: dict) -> str:
         """checked | skipped | off | fail, for this job and this verifier."""
         verify = job["request"].get("verify", "auto")
+        if job["kind"] == "discussion":
+            return "off"      # a reply is conversation: nothing to second-check
         if verify == "off" or self.verifier == "not_configured":
             return "off"
         if self.verifier == "down":
@@ -352,9 +362,11 @@ class FakeWorker:
         if job["kind"] == "research":
             view["result"] = _research_result(job["request"], self._verification(job),
                                               finished, self._sign)
-        else:
+        elif job["kind"] == "review":
             view["result"] = _review_result(job["request"], self._verification(job),
                                             finished)
+        else:
+            view["result"] = _discussion_result(job["request"], finished)
 
     def _verification(self, job: dict) -> dict:
         outcome = self._second_check(job)
@@ -382,7 +394,7 @@ def _check(kind: str, request: dict) -> None:
     def invalid(message):
         return WorkerRejected(message, code="invalid_request")
 
-    if kind not in ("research", "review"):
+    if kind not in ("research", "review", "discussion"):
         raise invalid(f"Unknown job kind {kind!r}")
     if not isinstance(request, dict):
         raise invalid("A job request must be an object")
@@ -396,6 +408,19 @@ def _check(kind: str, request: dict) -> None:
                 and refine["feedback"].strip()
                 and isinstance(refine.get("previous"), dict)):
             raise invalid("refine needs feedback and the previous draft")
+    elif kind == "discussion":
+        issue, messages = request.get("issue"), request.get("messages")
+        if not isinstance(issue, dict) or not all(
+                isinstance(issue.get(k), str) and issue[k]
+                for k in ("check", "quote", "message")):
+            raise invalid("issue needs its check, quote and message")
+        if not isinstance(request.get("passage"), str):
+            raise invalid("passage must be the block's text")
+        if not messages or not isinstance(messages, list) or not all(
+                isinstance(m, dict) and m.get("role") in ("writer", "editor")
+                and isinstance(m.get("text"), str) and m["text"]
+                for m in messages):
+            raise invalid("messages must be a non-empty list of {role, text}")
     else:
         blocks = (request.get("chapter") or {}).get("blocks")
         if not blocks or not all(isinstance(b, dict) and b.get("id") for b in blocks):
@@ -529,6 +554,25 @@ def _review_result(request: dict, verification: dict, at: datetime) -> dict:
         "issues": issues,
         "verification": {**verification, "checked": len(issues) if checked else 0,
                          "removed": 0},
+        "model": MODEL,
+        "generated_at": _iso(at),
+    }
+
+
+def _discussion_result(request: dict, at: datetime) -> dict:
+    said = next((m["text"] for m in reversed(request["messages"])
+                 if m["role"] == "writer"), "").lower()
+    if any(word in said for word in ("deliberate", "intentional", "on purpose")):
+        stance, suggestion = "withdraws", None
+    elif "instead" in said:
+        stance, suggestion = "revises", "[Fake] A different fix, also made up."
+    else:
+        stance, suggestion = "maintains", None
+    return {
+        "reply": f"[Fake] A reply the fake worker made up: it {stance} the "
+                 f"{request['issue']['check']} issue.",
+        "stance": stance,
+        "suggestion": suggestion,
         "model": MODEL,
         "generated_at": _iso(at),
     }
