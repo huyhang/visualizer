@@ -19,6 +19,7 @@ from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012
 
 _URI = "urn:visualizer:gpu-worker-openapi"
+KINDS = ("research", "review", "discussion")
 
 
 def default_contract_path() -> Path:
@@ -40,8 +41,8 @@ class Contract:
                 {"$ref": f"{_URI}#/components/schemas/{name}"}, registry=registry
             )
             for name in ("ResearchJobCreate", "ReviewJobCreate",
-                         "ResearchResult", "ReviewResult", "ImageFetch",
-                         "PlanApproval")
+                         "DiscussionJobCreate", "ResearchResult", "ReviewResult",
+                         "DiscussionResult", "ImageFetch", "PlanApproval")
         }
 
     def job_problem(self, body) -> str | None:
@@ -49,8 +50,8 @@ class Contract:
         if not isinstance(body, dict):
             return "the body must be a JSON object"
         kind = body.get("kind")
-        if kind not in ("research", "review"):
-            return "kind: must be 'research' or 'review'"
+        if kind not in KINDS:
+            return "kind: must be 'research', 'review' or 'discussion'"
         return self._problem(f"{kind.capitalize()}JobCreate", body)
 
     def image_problem(self, body) -> str | None:

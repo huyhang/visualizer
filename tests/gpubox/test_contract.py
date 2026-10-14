@@ -77,13 +77,14 @@ def test_every_embedded_example_conforms_to_its_schema():
         assert not errors, f"{where}: {errors[0].message}"
 
 
-def test_a_job_result_is_research_or_review_never_both():
-    """The ``oneOf`` on a finished job only works if the two shapes are disjoint."""
-    research = _resolve("#/paths/~1jobs~1{job_id}/get/responses/200/content/"
-                        "application~1json/examples/researchDone")["value"]
-    review = _resolve("#/paths/~1jobs~1{job_id}/get/responses/200/content/"
-                      "application~1json/examples/reviewDone")["value"]
-    assert validator("ResearchResult").is_valid(research["job"]["result"])
-    assert not validator("ReviewResult").is_valid(research["job"]["result"])
-    assert validator("ReviewResult").is_valid(review["job"]["result"])
-    assert not validator("ResearchResult").is_valid(review["job"]["result"])
+def test_a_job_result_is_exactly_one_kind():
+    """The ``oneOf`` on a finished job only works if the shapes are disjoint."""
+    results = {
+        kind: _resolve("#/paths/~1jobs~1{job_id}/get/responses/200/content/"
+                       f"application~1json/examples/{kind.lower()}Done")["value"][
+                           "job"]["result"]
+        for kind in ("Research", "Review", "Discussion")}
+    for kind, result in results.items():
+        for schema in results:
+            assert validator(f"{schema}Result").is_valid(result) == (schema == kind), \
+                f"a {kind.lower()} result read as {schema}Result"

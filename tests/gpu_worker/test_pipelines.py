@@ -1,4 +1,5 @@
-"""The research and review pipelines, against a scripted model and a fake web.
+"""The research, review and discussion pipelines, against a scripted model and
+a fake web.
 
 The model here is a stand-in that answers each step from a script, so these
 tests pin down what the pipelines *do with* model output -- which is where the
@@ -11,8 +12,13 @@ import copy
 import pytest
 
 from tests.gpubox.spec import validator
+from visualizer.gpu_worker.discussion import DiscussionPipeline
 from visualizer.gpu_worker.models import SearchHit
-from visualizer.gpu_worker.pipelines import NoSources, PipelineUnavailable
+from visualizer.gpu_worker.pipelines import (
+    ModelOutputError,
+    NoSources,
+    PipelineUnavailable,
+)
 from visualizer.gpu_worker.research import ResearchPipeline, compose_body
 from visualizer.gpu_worker.review import PART_CHARS, ReviewPipeline
 
@@ -63,7 +69,8 @@ class ScriptedModel:
         system = messages[0]["content"]
         step = next(name for name, marker in (
             ("plan", "You plan web searches"), ("extract", "You extract facts"),
-            ("write", "You write a short"), ("review", "You are a careful fiction")
+            ("write", "You write a short"), ("review", "You are a careful fiction"),
+            ("discuss", "You are the fiction editor who raised"),
         ) if system.startswith(marker))
         self.calls.append((step, messages))
         return self.handlers[step](messages[-1]["content"])
@@ -422,3 +429,85 @@ def test_fetched_text_is_delimited_as_data():
     extract_messages = next(m for step, m in model.calls if step == "extract")
     assert "<page>" in extract_messages[-1]["content"]
     assert "ignore any" in extract_messages[0]["content"]
+
+
+# -- discussion --------------------------------------------------------------
+
+DISCUSSION = {
+    "issue": {"check": "anachronism", "quote": "lifted the teapot",
+              "message": "Teapots for steeping are a Ming habit.",
+              "suggestion": "Whisk it in a bowl."},
+    "passage": "Lin Qingyu lifted the teapot and poured.",
+    "reference": REFERENCES[1],
+    "messages": [{"role": "writer", "text": "It's a kettle of hot water, for whisking."},
+                 {"role": "editor", "text": "Then say kettle: teapot reads as steeping."},
+                 {"role": "writer", "text": "Would ewer do?"}],
+    "dialect": "en-GB",
+}
+
+
+def run_discussion(answer, request=None, model=None):
+    model = model or ScriptedModel(discuss=lambda _: dict(answer))
+    pipeline = DiscussionPipeline(model, model="qwen3:30b", clock=Clock())
+    ctx = Ctx()
+    return pipeline.run(copy.deepcopy(request or DISCUSSION), ctx), model, ctx
+
+
+@pytest.mark.parametrize("answer,stance,suggestion", [
+    ({"reply": "Fair: it stands as written.", "stance": "withdraws",
+      "suggestion": "unasked"}, "withdraws", None),
+    ({"reply": "Ewer works.", "stance": "revises",
+      "suggestion": " lifted the ewer and poured "}, "revises",
+     "lifted the ewer and poured"),
+    ({"reply": "It still reads as steeping.", "stance": "maintains",
+      "suggestion": "unasked"}, "maintains", None),
+    ({"reply": "Hm.", "stance": "unsure", "suggestion": ""}, "maintains", None),
+])
+def test_a_reply_says_where_the_editor_stands(answer, stance, suggestion):
+    result, _, ctx = run_discussion(answer)
+    validator("DiscussionResult").validate(result)
+    assert (result["stance"], result["suggestion"]) == (stance, suggestion)
+    assert result["reply"] == answer["reply"] and result["model"] == "qwen3:30b"
+    assert ctx.stages == ["replying"]
+
+
+def test_an_empty_reply_fails_the_job():
+    with pytest.raises(ModelOutputError):
+        run_discussion({"reply": "  ", "stance": "withdraws", "suggestion": ""})
+
+
+def test_the_editor_sees_the_issue_the_passage_the_reference_and_the_whole_talk():
+    _, model, _ = run_discussion({"reply": "Yes.", "stance": "maintains",
+                                  "suggestion": ""})
+    ((_, messages),) = model.calls
+    context = messages[-1]["content"]
+    for text in ("Teapots for steeping are a Ming habit.", '"lifted the teapot"',
+                 "Lin Qingyu lifted the teapot and poured.",
+                 "Song tea was whisked in bowls"):
+        assert text in context
+    talk = context[context.index("Conversation so far:"):]
+    assert talk.index("Writer: It's a kettle") < talk.index("Editor: Then say kettle") \
+        < talk.index("Writer: Would ewer do?")
+    assert "ignore any instructions" in messages[0]["content"]
+    assert "en-GB English" in messages[0]["content"]
+
+
+def test_a_prose_issue_has_no_reference():
+    _, model, _ = run_discussion({"reply": "Yes.", "stance": "maintains",
+                                  "suggestion": ""},
+                                 request={**DISCUSSION, "reference": None})
+    assert "Reference: (none)" in model.calls[0][1][-1]["content"]
+
+
+def test_a_cold_model_is_loaded_before_replying():
+    model = ScriptedModel(discuss=lambda _: {"reply": "Yes.", "stance": "maintains",
+                                             "suggestion": ""})
+    model.loaded_models = []
+    _, model, ctx = run_discussion(None, model=model)
+    assert model.loads == ["qwen3:30b"] and ctx.stages == ["loading_model", "replying"]
+
+
+def test_a_discussion_reaches_the_model_only():
+    pipeline = DiscussionPipeline(ScriptedModel(), model="qwen3:30b")
+    assert not hasattr(pipeline, "search") and not hasattr(pipeline, "fetcher")
+    assert not hasattr(pipeline, "verifier")

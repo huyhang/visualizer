@@ -27,8 +27,9 @@ from .store import JobStore
 LOG = logging.getLogger("visualizer.gpu_worker")
 
 API_VERSION = "1"
-# Per the contract: research requests are small, review requests carry a chapter.
-SIZE_LIMITS = {"research": 64 * 1024, "review": 1024 * 1024}
+# Per the contract: research requests are small, review requests carry a chapter,
+# and a discussion carries one passage and the conversation about it.
+SIZE_LIMITS = {"research": 64 * 1024, "review": 1024 * 1024, "discussion": 256 * 1024}
 QUEUE_RETRY_AFTER = 30
 
 _STATUS_CODES = {400: "invalid_request", 401: "unauthorized", 404: "not_found",

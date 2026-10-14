@@ -32,7 +32,8 @@ from .store import JobStore
 
 LOG = logging.getLogger("visualizer.gpu_worker")
 
-TIME_LIMITS = {"research": timedelta(minutes=15), "review": timedelta(minutes=5)}
+TIME_LIMITS = {"research": timedelta(minutes=15), "review": timedelta(minutes=5),
+               "discussion": timedelta(minutes=2)}
 SWEEP_EVERY = timedelta(minutes=1)
 
 
@@ -171,7 +172,7 @@ class Runner:
                 "internal", "The worker hit an unexpected error", False)
         if kind == "review":
             result = _drop_unanchored_issues(result, request)
-        else:
+        elif kind == "research":
             result = _signed_candidates(result, self._sign)
         if self.contract.result_problem(kind, result) is not None:
             LOG.error("job pipeline returned a result outside the contract")

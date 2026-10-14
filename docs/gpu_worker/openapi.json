@@ -4,7 +4,7 @@
     "title": "GPU Box AI Worker",
     "version": "1.2.0-draft",
     "summary": "Async research and writing-review jobs for the visualizer stack.",
-    "description": "Runs on the RTX 3090 box and serves Akasha (research jobs) and Logos (LLM review jobs). Callers never talk to Ollama or SearXNG directly. Every job is asynchronous: submit with POST /jobs, poll GET /jobs/{job_id}. The worker never initiates connections to callers and never accepts URLs to fetch from callers. Status: proposal, not implemented. Human-readable spec: README.md beside this file."
+    "description": "Runs on the RTX 3090 box and serves Akasha (research jobs) and Logos (LLM review jobs, and discussions of a review's issues). Callers never talk to Ollama or SearXNG directly. Every job is asynchronous: submit with POST /jobs, poll GET /jobs/{job_id}. The worker never initiates connections to callers and never accepts URLs to fetch from callers. Status: proposal, not implemented. Human-readable spec: README.md beside this file."
   },
   "servers": [
     {
@@ -30,7 +30,7 @@
     },
     {
       "name": "jobs",
-      "description": "Submit, poll, and cancel research and review jobs."
+      "description": "Submit, poll, and cancel research, review and discussion jobs."
     },
     {
       "name": "images",
@@ -174,7 +174,7 @@
           "jobs"
         ],
         "operationId": "createJob",
-        "summary": "Submit a research or review job",
+        "summary": "Submit a research, review or discussion job",
         "description": "Queues a job. Repeating a request with the same `Idempotency-Key` returns the original job with 200 instead of creating a new one; reusing a key with a different body returns 409.",
         "parameters": [
           {
@@ -248,6 +248,38 @@
                     "client": {
                       "service": "logos",
                       "ref": "logos-review-91ab"
+                    }
+                  }
+                },
+                "discussion": {
+                  "summary": "Discussion of a review issue, from Logos",
+                  "value": {
+                    "kind": "discussion",
+                    "request": {
+                      "issue": {
+                        "check": "anachronism",
+                        "quote": "lifted the teapot and poured",
+                        "message": "Song-dynasty tea was powdered and whisked in bowls; steeping in teapots is a Ming-era habit.",
+                        "suggestion": "Show her whisking powdered tea in a bowl."
+                      },
+                      "passage": "Lin Qingyu lifted the teapot and poured.",
+                      "reference": {
+                        "ref": "song-dynasty/research/song-tea",
+                        "kind": "research",
+                        "title": "Song tea",
+                        "text": "Tea was ground to powder and whisked in bowls; teapots for steeping are a Ming-era habit."
+                      },
+                      "messages": [
+                        {
+                          "role": "writer",
+                          "text": "The teapot holds hot water for the whisking, not tea. Is that wrong too?"
+                        }
+                      ],
+                      "dialect": "en-GB"
+                    },
+                    "client": {
+                      "service": "logos",
+                      "ref": "logos-discussion-91ab-i1-1"
                     }
                   }
                 }
@@ -478,6 +510,30 @@
                             "checked": 3,
                             "removed": 2
                           }
+                        },
+                        "error": null,
+                        "plan": null
+                      }
+                    }
+                  },
+                  "discussionDone": {
+                    "value": {
+                      "job": {
+                        "id": "j_01J9ZC4R",
+                        "kind": "discussion",
+                        "state": "done",
+                        "position": null,
+                        "progress": null,
+                        "created_at": "2026-10-11T09:25:00Z",
+                        "started_at": "2026-10-11T09:25:01Z",
+                        "finished_at": "2026-10-11T09:25:09Z",
+                        "expires_at": "2026-10-12T09:25:09Z",
+                        "result": {
+                          "reply": "A kettle of hot water is right for the period -- whisked tea needs it. It's the pouring into cups that reads as steeped tea. If she pours water over powder in a bowl, the scene works.",
+                          "stance": "revises",
+                          "suggestion": "lifted the kettle and poured hot water over the powdered tea in her bowl",
+                          "model": "qwen3:30b",
+                          "generated_at": "2026-10-11T09:25:09Z"
                         },
                         "error": null,
                         "plan": null
@@ -826,7 +882,7 @@
         }
       },
       "PayloadTooLarge": {
-        "description": "Request exceeds the size limit (research 64 KB, review 1 MB).",
+        "description": "Request exceeds the size limit (research 64 KB, review 1 MB, discussion 256 KB).",
         "content": {
           "application/json": {
             "schema": {
@@ -1132,7 +1188,8 @@
         "type": "string",
         "enum": [
           "research",
-          "review"
+          "review",
+          "discussion"
         ]
       },
       "JobState": {
@@ -1178,13 +1235,17 @@
           },
           {
             "$ref": "#/components/schemas/ReviewJobCreate"
+          },
+          {
+            "$ref": "#/components/schemas/DiscussionJobCreate"
           }
         ],
         "discriminator": {
           "propertyName": "kind",
           "mapping": {
             "research": "#/components/schemas/ResearchJobCreate",
-            "review": "#/components/schemas/ReviewJobCreate"
+            "review": "#/components/schemas/ReviewJobCreate",
+            "discussion": "#/components/schemas/DiscussionJobCreate"
           }
         }
       },
@@ -1224,6 +1285,27 @@
           },
           "request": {
             "$ref": "#/components/schemas/ReviewRequest"
+          },
+          "client": {
+            "$ref": "#/components/schemas/Client"
+          }
+        }
+      },
+      "DiscussionJobCreate": {
+        "type": "object",
+        "required": [
+          "kind",
+          "request",
+          "client"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "discussion"
+          },
+          "request": {
+            "$ref": "#/components/schemas/DiscussionRequest"
           },
           "client": {
             "$ref": "#/components/schemas/Client"
@@ -1427,6 +1509,111 @@
           }
         }
       },
+      "DiscussionRequest": {
+        "type": "object",
+        "required": [
+          "issue",
+          "passage",
+          "messages"
+        ],
+        "additionalProperties": false,
+        "description": "One issue from a review, and the writer's conversation with the editor about it so far. The caller keeps the conversation; the worker keeps nothing between jobs, so every turn sends it all again.",
+        "properties": {
+          "issue": {
+            "type": "object",
+            "required": [
+              "check",
+              "quote",
+              "message"
+            ],
+            "additionalProperties": false,
+            "description": "The issue as the review reported it.",
+            "properties": {
+              "check": {
+                "type": "string",
+                "enum": [
+                  "continuity",
+                  "anachronism",
+                  "prose"
+                ]
+              },
+              "quote": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "suggestion": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 2000
+              }
+            }
+          },
+          "passage": {
+            "type": "string",
+            "maxLength": 20000,
+            "description": "The block the issue is about, as it reads now. It may have been revised since the review, so the issue's quote may no longer be in it."
+          },
+          "reference": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ReviewReference"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The article the issue is based on, sent as for a review; null for a prose issue, or when the article is no longer available to the writer."
+          },
+          "messages": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 40,
+            "items": {
+              "$ref": "#/components/schemas/DiscussionMessage"
+            },
+            "description": "The conversation so far, oldest first; the editor replies to it."
+          },
+          "dialect": {
+            "type": "string",
+            "enum": [
+              "en-US",
+              "en-GB"
+            ],
+            "default": "en-US"
+          }
+        }
+      },
+      "DiscussionMessage": {
+        "type": "object",
+        "required": [
+          "role",
+          "text"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "writer",
+              "editor"
+            ],
+            "description": "writer: the person who wrote the chapter. editor: an earlier reply of the worker's."
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          }
+        }
+      },
       "JobEnvelope": {
         "type": "object",
         "required": [
@@ -1518,6 +1705,9 @@
                 "$ref": "#/components/schemas/ReviewResult"
               },
               {
+                "$ref": "#/components/schemas/DiscussionResult"
+              },
+              {
                 "type": "null"
               }
             ]
@@ -1554,7 +1744,7 @@
         "properties": {
           "stage": {
             "type": "string",
-            "description": "Research: loading_model, planning, searching, fetching, extracting, verifying, writing, second_check. Review: loading_model, reviewing, second_check. second_check appears only when the optional verifier runs.",
+            "description": "Research: loading_model, planning, searching, fetching, extracting, verifying, writing, second_check. Review: loading_model, reviewing, second_check. Discussion: loading_model, replying. second_check appears only when the optional verifier runs.",
             "enum": [
               "loading_model",
               "planning",
@@ -1564,6 +1754,7 @@
               "verifying",
               "writing",
               "reviewing",
+              "replying",
               "second_check"
             ]
           },
@@ -1893,6 +2084,48 @@
               "null"
             ],
             "description": "true: the second check confirmed the issue. null: not second-checked (verification skipped or off). Issues judged not real are removed, not returned as false."
+          }
+        }
+      },
+      "DiscussionResult": {
+        "type": "object",
+        "required": [
+          "reply",
+          "stance",
+          "suggestion",
+          "model",
+          "generated_at"
+        ],
+        "description": "The editor's reply to the writer's last message.",
+        "properties": {
+          "reply": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "stance": {
+            "type": "string",
+            "enum": [
+              "maintains",
+              "revises",
+              "withdraws"
+            ],
+            "description": "Where the editor now stands on the issue. maintains: it still holds. revises: it holds, but a different fix would serve better (see suggestion). withdraws: the writer has shown it is wrong, or that the passage is deliberate. The writer still decides the issue's status."
+          },
+          "suggestion": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000,
+            "description": "A new minimal fix; only with stance revises, otherwise null."
+          },
+          "model": {
+            "type": "string"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },

@@ -15,7 +15,13 @@ from visualizer.gpu_worker.pipelines import (
 )
 from visualizer.gpu_worker.runner import Runner
 
-from .conftest import RESEARCH_JOB, RESEARCH_RESULT, REVIEW_JOB, REVIEW_RESULT
+from .conftest import (
+    DISCUSSION_JOB,
+    RESEARCH_JOB,
+    RESEARCH_RESULT,
+    REVIEW_JOB,
+    REVIEW_RESULT,
+)
 
 
 def queue(store, clock, body=RESEARCH_JOB, key=None):
@@ -135,9 +141,11 @@ def test_the_shipped_pipelines_say_they_are_not_built(store, contract, clock,
                     clock=clock)
     research = queue(store, clock)
     review = queue(store, clock, REVIEW_JOB)
-    runner.run_next()
-    runner.run_next()
-    for job_id, kind in ((research, "research"), (review, "review")):
+    discussion = queue(store, clock, DISCUSSION_JOB)
+    for _ in range(3):
+        runner.run_next()
+    for job_id, kind in ((research, "research"), (review, "review"),
+                         (discussion, "discussion")):
         error = ended(store, job_id)["error"]
         assert error["code"] == "internal"
         assert error["message"] == f"The {kind} pipeline is not built yet"

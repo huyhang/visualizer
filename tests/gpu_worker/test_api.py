@@ -7,7 +7,15 @@ import pytest
 from tests.gpubox.spec import validator
 from visualizer.gpu_worker.app import create_app
 
-from .conftest import AUTH, RESEARCH_JOB, REVIEW_JOB, SPEC, StaticProbes, submit
+from .conftest import (
+    AUTH,
+    DISCUSSION_JOB,
+    RESEARCH_JOB,
+    REVIEW_JOB,
+    SPEC,
+    StaticProbes,
+    submit,
+)
 
 HTTP_METHODS = {"get", "post", "put", "patch", "delete"}
 
@@ -87,7 +95,8 @@ def test_the_optional_verifier_never_affects_ok(config, store, runner, contract,
 # -- creating jobs -----------------------------------------------------------
 
 
-@pytest.mark.parametrize("body", [RESEARCH_JOB, REVIEW_JOB], ids=["research", "review"])
+@pytest.mark.parametrize("body", [RESEARCH_JOB, REVIEW_JOB, DISCUSSION_JOB],
+                         ids=["research", "review", "discussion"])
 def test_the_documented_examples_are_accepted(client, body):
     response = submit(client, body)
     assert response.status_code == 202
@@ -159,6 +168,13 @@ def test_research_requests_are_small(client):
     body["request"]["known_articles"] = [
         {"ref": f"world/research/article-{n:03d}", "title": "x" * 300}
         for n in range(200)]
+    documented_error(submit(client, body), 413, "payload_too_large")
+
+
+def test_a_discussion_carries_one_passage_not_a_chapter(client):
+    body = copy.deepcopy(DISCUSSION_JOB)
+    # Within every per-field limit, but Chinese is three bytes a character.
+    body["request"]["messages"] = [{"role": "writer", "text": "字" * 4000}] * 40
     documented_error(submit(client, body), 413, "payload_too_large")
 
 

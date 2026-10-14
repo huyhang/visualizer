@@ -36,6 +36,7 @@ from visualizer.gpubox import WorkerClient, availability
 from visualizer.gpubox import WorkerConfig as ClientConfig
 
 from .conftest import (
+    DISCUSSION_JOB,
     RESEARCH_JOB,
     REVIEW_JOB,
     TOKEN,
@@ -140,6 +141,15 @@ def test_a_review_job_from_logos_to_result(box):
     blocks = {b["id"]: b["text"] for b in REVIEW_JOB["request"]["chapter"]["blocks"]}
     for issue in done["result"]["issues"]:
         assert issue["quote"] in blocks[issue["block"]]
+
+
+def test_a_discussion_job_from_logos_to_result(box):
+    worker = client_for(box())
+    job = worker.submit("discussion", DISCUSSION_JOB["request"], service="logos",
+                        ref="logos-discussion-1")
+    done = until_finished(worker.status, job["id"])
+    validator("Job").validate(done)
+    validator("DiscussionResult").validate(done["result"])
 
 
 def test_the_shipped_worker_fails_jobs_honestly(box):

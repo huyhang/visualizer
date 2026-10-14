@@ -12,6 +12,7 @@ from pathlib import Path
 from .app import create_app
 from .config import WorkerConfig, config_from_env
 from .contract import Contract
+from .discussion import DiscussionPipeline
 from .fetch import Fetcher
 from .images import Images, TokenSigner, load_signing_key
 from .models import OllamaClient, SearxClient, Verifier
@@ -40,17 +41,22 @@ def build():
 
 
 class LocalPipelines:
-    """Research and review, on the box's own models."""
+    """Research, review and discussion, on the box's own models."""
 
-    def __init__(self, research: ResearchPipeline, review: ReviewPipeline):
+    def __init__(self, research: ResearchPipeline, review: ReviewPipeline,
+                 discussion: DiscussionPipeline):
         self._research = research
         self._review = review
+        self._discussion = discussion
 
     def research(self, request, ctx):
         return self._research.run(request, ctx)
 
     def review(self, request, ctx):
         return self._review.run(request, ctx)
+
+    def discussion(self, request, ctx):
+        return self._discussion.run(request, ctx)
 
 
 def build_pipelines(config: WorkerConfig, fetcher: Fetcher) -> LocalPipelines:
@@ -65,7 +71,9 @@ def build_pipelines(config: WorkerConfig, fetcher: Fetcher) -> LocalPipelines:
     search = SearxClient(config.searxng_url, timeout=config.fetch_timeout)
     return LocalPipelines(
         ResearchPipeline(ollama, search, fetcher, verifier, model=config.research_model),
-        ReviewPipeline(ollama, verifier, model=config.review_model))
+        ReviewPipeline(ollama, verifier, model=config.review_model),
+        # The editor who raised an issue answers for it: the same model.
+        DiscussionPipeline(ollama, model=config.review_model))
 
 
 application = build()

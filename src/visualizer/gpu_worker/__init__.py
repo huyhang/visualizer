@@ -1,6 +1,7 @@
 """The AI worker that runs on the GPU box, serving the visualizer stack's jobs.
 
-Akasha submits research jobs and Logos submits review jobs, over the v1 API in
+Akasha submits research jobs and Logos submits review jobs -- and discussions
+of a review's issues -- over the v1 API in
 ``docs/gpu_worker/``; the worker runs them one at a time on the box's GPU and
 keeps their results until they expire. It is the only thing that talks to
 Ollama and SearXNG, which stay bound to the box's localhost.
@@ -11,6 +12,7 @@ copies nothing else into the image -- so it deploys to the box alone, and could
 leave this repository without a rewrite.
 
 Pipelines: ``research.py`` (plan, search, read, quote-check, write) and
-``review.py`` (anchored issues against canon, research and deviations), on the
+``review.py`` (anchored issues against canon, research and deviations) and
+``discussion.py`` (the editor's reply to a writer answering one issue), on the
 box's own models through ``models.py``, fetching only through ``fetch.py``.
 """

@@ -1,13 +1,16 @@
 # GPU-box AI worker — API (v1)
 
 The contract between the visualizer stack and the AI worker on the RTX 3090 box.
-**Akasha** submits `research` jobs and **Logos** submits LLM `review` jobs; neither
-talks to Ollama or SearXNG, which stay bound to the box's localhost behind the
+**Akasha** submits `research` jobs and **Logos** submits LLM `review` jobs, and
+`discussion` jobs when a writer answers one of a review's issues; neither talks
+to Ollama or SearXNG, which stay bound to the box's localhost behind the
 worker.
 
 **Status: built; not yet run on the real box.** The research and review
 pipelines run on local models (smoke-tested end to end on a laptop with
 `granite4.2:8b`, a local SearXNG and the open web; see *Smoke testing* below).
+The discussion pipeline, added later, has so far run only against a scripted
+model in the tests.
 This document and [`openapi.json`](openapi.json) (OpenAPI 3.1) are what
 both sides are written and tested against -- the worker validates against the
 JSON file at runtime -- so if the two disagree, fix one of them.
@@ -25,8 +28,8 @@ NAS (visualizer stack)                     GPU box
 
 **Decisions that shape the API:**
 
-- **One worker, two job kinds.** Reviews and research share authentication, health
-  checks, the job store and GPU scheduling.
+- **One worker, one queue.** Research, reviews and discussions share
+  authentication, health checks, the job store and GPU scheduling.
 - **Everything is an async job.** A chapter review can take 30–90 s — longer than
   typical reverse-proxy timeouts (Synology's default is ~60 s).
 - **The NAS stack never depends on it.** With no worker configured, or the box
@@ -256,6 +259,7 @@ Response `202` (or `200` for a repeated idempotency key):
 | `state` | `queued` → `running` → `done` \| `failed` \| `cancelled`; research asked with `approve_plan` pauses in `awaiting_approval` after planning |
 | `progress.stage` (research) | `loading_model`, `planning`, `searching`, `fetching`, `extracting`, `verifying`, `writing`, `second_check` |
 | `progress.stage` (review) | `loading_model`, `reviewing`, `second_check` |
+| `progress.stage` (discussion) | `loading_model`, `replying` |
 | `result` | Set only when `state` is `done` (shapes below) |
 | `error` | Set only when `state` is `failed` (same shape as API errors) |
 | `expires_at` | When the result will be deleted (`finished_at` + `RESULT_TTL_HOURS`) |
@@ -457,6 +461,62 @@ draft is the caller's decision.
 | Mapping | Logos maps issues onto the finding shape its `RuleBasedWritingAdvisor` already produces |
 
 **Limits:** request ≤ 1 MB; job time limit 5 min.
+
+---
+
+## Discussion job (`kind: "discussion"`) — used by Logos
+
+A writer answering one issue from a review -- "that's deliberate", "why?",
+"what would you do instead?" -- and the editor's reply. **Logos keeps the
+conversation** and sends all of it every turn; the worker keeps nothing between
+jobs, as for every kind. It runs on `REVIEW_MODEL`: the editor who raised an
+issue answers for it.
+
+**Request:**
+
+```json
+{
+  "issue": {"check": "anachronism", "quote": "lifted the teapot and poured",
+            "message": "Song-dynasty tea was powdered and whisked in bowls; steeping in teapots is a Ming-era habit.",
+            "suggestion": "Show her whisking powdered tea in a bowl."},
+  "passage": "Lin Qingyu lifted the teapot and poured.",
+  "reference": {"ref": "song-dynasty/research/song-tea", "kind": "research",
+                "title": "Song tea", "text": "…"},
+  "messages": [
+    {"role": "writer", "text": "The teapot holds hot water for the whisking, not tea. Is that wrong too?"}
+  ],
+  "dialect": "en-GB"
+}
+```
+
+| Field | Rules |
+|---|---|
+| `issue` | The issue as the review reported it: `check`, `quote`, `message`, and `suggestion` (or `null`) |
+| `passage` | The issue's block **as it reads now**, up to 20,000 characters. It may have been revised since the review |
+| `reference` | The article the issue cites, shaped as in a review request; `null` for a prose issue or one whose article the writer can no longer read |
+| `messages` | The conversation so far, oldest first: 1–40 of `{role: "writer" \| "editor", text}`, each at most 4,000 characters |
+| `dialect` | As for a review |
+
+**Result:**
+
+```json
+{
+  "reply": "A kettle of hot water is right for the period -- whisked tea needs it. It's the pouring into cups that reads as steeped tea.",
+  "stance": "revises",
+  "suggestion": "lifted the kettle and poured hot water over the powdered tea in her bowl",
+  "model": "qwen3:30b",
+  "generated_at": "2026-10-11T09:25:09Z"
+}
+```
+
+| Rule | Detail |
+|---|---|
+| `stance` | Where the editor now stands: `maintains` (the issue holds), `revises` (it holds, but a different fix would serve better), `withdraws` (the writer has shown it is wrong, or deliberate). The writer still decides the issue's status |
+| `suggestion` | A new minimal fix, only with `revises`; otherwise `null` |
+| `reply` | At most 2,000 characters. An empty one fails the job (`internal`) |
+| No second check | A reply is conversation, not a finding: the verifier is not asked |
+
+**Limits:** request ≤ 256 KB; job time limit 2 min.
 
 ---
 

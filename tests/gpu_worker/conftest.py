@@ -41,10 +41,13 @@ def example(path, name):
 
 RESEARCH_JOB = example(("post", "/jobs", "request"), "research")
 REVIEW_JOB = example(("post", "/jobs", "request"), "review")
+DISCUSSION_JOB = example(("post", "/jobs", "request"), "discussion")
 RESEARCH_RESULT = example(("get", "/jobs/{job_id}", "response"),
                           "researchDone")["job"]["result"]
 REVIEW_RESULT = example(("get", "/jobs/{job_id}", "response"),
                         "reviewDone")["job"]["result"]
+DISCUSSION_RESULT = example(("get", "/jobs/{job_id}", "response"),
+                            "discussionDone")["job"]["result"]
 
 
 class Clock:
@@ -74,6 +77,9 @@ class CannedPipelines:
 
     def review(self, request, ctx):
         return self._run("review", request, ctx, ["reviewing"], REVIEW_RESULT)
+
+    def discussion(self, request, ctx):
+        return self._run("discussion", request, ctx, ["replying"], DISCUSSION_RESULT)
 
     def _run(self, kind, request, ctx, stages, result):
         self.calls.append((kind, request))

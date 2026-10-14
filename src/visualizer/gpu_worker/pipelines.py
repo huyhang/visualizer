@@ -55,6 +55,9 @@ class Pipelines(Protocol):
     def review(self, request: dict, ctx: JobContext) -> dict:
         """A ``ReviewResult`` for a ``ReviewRequest``."""
 
+    def discussion(self, request: dict, ctx: JobContext) -> dict:
+        """A ``DiscussionResult`` for a ``DiscussionRequest``."""
+
 
 class NotBuiltPipelines:
     """Every job fails, honestly, saying it isn't built: a placeholder for tests
@@ -68,3 +71,7 @@ class NotBuiltPipelines:
     def review(self, request: dict, ctx: JobContext) -> dict:
         ctx.progress("reviewing")
         raise NotBuilt("The review pipeline is not built yet")
+
+    def discussion(self, request: dict, ctx: JobContext) -> dict:
+        ctx.progress("replying")
+        raise NotBuilt("The discussion pipeline is not built yet")
