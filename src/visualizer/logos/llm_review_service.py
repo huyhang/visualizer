@@ -9,7 +9,9 @@
 Issues are presented against the draft as it is *now*: one whose block is gone,
 or whose quote is no longer in its block, is ``stale`` -- the writer has
 already changed what it was about -- and a review of an older revision says
-it is ``outdated``. Routes authorise; this module assumes they have.
+it is ``outdated``. An issue the writer dismissed in an earlier review of the
+section starts out dismissed, saying so (``dismissed_before``). Routes
+authorise; this module assumes they have.
 """
 
 import json
@@ -148,6 +150,8 @@ class LlmReviewService:
         except MalformedResult:
             return self._fail(record, "invalid_result",
                               "The GPU box sent a malformed review.")
+        _carry_dismissals(issues, reviews.dismissed(record["book"], record["volume"],
+                                                    record["section"]))
         result = remote["result"]
         stored = reviews.update(
             record["_id"], state="done", progress=None, issues=issues,
@@ -270,7 +274,8 @@ def _issue_view(issue: dict, current: dict | None) -> dict:
     blocks = {block["id"]: block_text(block)
               for block in (current or {}).get("document", {}).get("content", [])}
     stale = issue["quote"] not in blocks.get(issue["block"], "")
-    return {**issue, "category": issue["check"], "title": TITLES[issue["check"]],
+    return {**issue, "dismissed_before": issue.get("dismissed_before"),
+            "category": issue["check"], "title": TITLES[issue["check"]],
             "excerpt": issue["quote"], "replacement": None, "stale": stale}
 
 
@@ -298,8 +303,28 @@ def _issues(result) -> list[dict]:
             "reference": reference[:400] if isinstance(reference, str) else None,
             "verified": raw.get("verified") is True or None,
             "status": "open",
+            "dismissed_before": None,
         })
     return issues
+
+
+def _carry_dismissals(issues: list[dict], dismissed: list[tuple[str, dict]]) -> None:
+    """Start an issue dismissed if the writer dismissed it in an earlier review of
+    the section, noting which -- so a second review doesn't raise again what the
+    writer has already said no to. Only dismissals carry: a resolved issue that
+    comes back was not resolved after all."""
+    for issue in issues:
+        earlier = next((review_id for review_id, old in dismissed
+                        if _same_issue(issue, old)), None)
+        if earlier is not None:
+            issue.update(status="dismissed", dismissed_before=earlier)
+
+
+def _same_issue(new: dict, old: dict) -> bool:
+    """The same check on the same block about overlapping words: a model seldom
+    quotes exactly the same span twice."""
+    return (new["check"] == old["check"] and new["block"] == old["block"]
+            and (new["quote"] in old["quote"] or old["quote"] in new["quote"]))
 
 
 def _verification(value) -> dict | None:

@@ -83,7 +83,16 @@ class LlmReviewStore:
         self._reviews.delete_one({"_id": review_id})
 
     def set_issue_status(self, review_id: str, index: int, status: str) -> dict:
-        return self.update(review_id, **{f"issues.{index}.status": status})
+        """The writer's own decision, which replaces one carried over."""
+        return self.update(review_id, **{f"issues.{index}.status": status,
+                                         f"issues.{index}.dismissed_before": None})
+
+    def dismissed(self, book: str, volume: str, section: str) -> list[tuple[str, dict]]:
+        """(review id, issue) for every issue dismissed in a kept review of a section."""
+        found = self._reviews.find({"book": book, "volume": volume, "section": section,
+                                    "issues.status": "dismissed"}, {"issues": 1})
+        return [(record["_id"], issue) for record in found
+                for issue in record["issues"] if issue["status"] == "dismissed"]
 
     def prune(self, book: str, volume: str, section: str) -> int:
         """Delete all but the newest ``KEEP_PER_SECTION`` finished reviews."""

@@ -22,6 +22,7 @@ from visualizer.logos.llm_review import (
     reference_text,
 )
 from visualizer.logos.llm_review_jobs import KEEP_PER_SECTION, LlmReviewStore
+from visualizer.logos.llm_review_service import _same_issue
 
 from .conftest import BOOK, SECTION, VOLUME, WORLD, login, section_payload
 from .test_contract import OPENAPI_PATH, _as_json_schema
@@ -318,6 +319,38 @@ def test_marking_issues(client):
     assert client.put(url, json={"status": "ignored"}).status_code == 400
     assert client.put(f"{REVIEWS}/{review['id']}/issues/i999",
                       json={"status": "resolved"}).status_code == 404
+
+
+def test_a_dismissed_issue_starts_dismissed_in_the_next_review(client):
+    first = reviewed(client)
+    dismissed, resolved = first["issues"][0], first["issues"][1]
+    issues = f"{REVIEWS}/{first['id']}/issues"
+    client.put(f"{issues}/{dismissed['id']}", json={"status": "dismissed"})
+    client.put(f"{issues}/{resolved['id']}", json={"status": "resolved"})
+
+    second = reviewed(client)
+    again = {issue["id"]: issue for issue in second["issues"]}
+    assert again[dismissed["id"]]["status"] == "dismissed"
+    assert again[dismissed["id"]]["dismissed_before"] == first["id"]
+    # Back again, so not resolved after all.
+    assert again[resolved["id"]]["status"] == "open"
+    assert again[resolved["id"]]["dismissed_before"] is None
+    summary = conforms(client.get(REVIEWS).get_json(), "LlmReviewList")["reviews"][0]
+    assert summary["open"] == summary["issue_count"] - 1
+
+    reopened = client.put(f"{REVIEWS}/{second['id']}/issues/{dismissed['id']}",
+                          json={"status": "open"})
+    reopened = conforms(reopened.get_json(), "LlmReviewIssue")
+    assert reopened["status"] == "open" and reopened["dismissed_before"] is None
+
+
+def test_the_same_issue_is_known_by_its_check_block_and_overlapping_quote():
+    old = {"check": "prose", "block": "p1", "quote": "her brown eyes"}
+    assert _same_issue({**old, "quote": "with her brown eyes at"}, old)
+    assert _same_issue({**old, "quote": "brown eyes"}, old)
+    assert not _same_issue({**old, "quote": "at the gate"}, old)
+    assert not _same_issue({**old, "block": "p2"}, old)
+    assert not _same_issue({**old, "check": "continuity"}, old)
 
 
 def test_issues_go_stale_as_the_draft_changes(client):

@@ -100,6 +100,16 @@ Issues are shown against the draft **as it is now**. An issue is `stale`
 when its quote is no longer in its block, which means you have already changed
 the passage. A review of an older revision says `outdated: true`.
 
+**Dismissals carry over.** When a review finishes, an issue you dismissed in
+an earlier review of the same section starts out `dismissed`, and its
+`dismissed_before` names that review. It counts as the same issue when it is
+the same check on the same block and one quote contains the other, because a
+model seldom quotes exactly the same words twice. Setting the status yourself
+clears `dismissed_before`. Only dismissals carry: an issue you marked
+`resolved` that comes back was not resolved after all, so it is `open`. A
+dismissal is remembered for as long as one of the section's ten kept reviews
+holds it, and each review that carries it over keeps it for longer.
+
 ## Privacy
 
 - The chapter goes to the box on your own hardware. Logos doesn't store it,

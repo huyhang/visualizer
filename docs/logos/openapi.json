@@ -1646,6 +1646,7 @@
           "reference",
           "verified",
           "status",
+          "dismissed_before",
           "stale",
           "category",
           "title",
@@ -1709,6 +1710,11 @@
               "dismissed",
               "resolved"
             ]
+          },
+          "dismissed_before": {
+            "type": "string",
+            "nullable": true,
+            "description": "The earlier review of this section in which the writer dismissed the same issue (same check and block, overlapping quote), which is why it starts out dismissed. Null otherwise, and cleared once the writer sets the status themselves."
           },
           "stale": {
             "type": "boolean",
@@ -1970,6 +1976,7 @@
               "reference": "ember/characters/lyra",
               "verified": true,
               "status": "open",
+              "dismissed_before": null,
               "stale": false,
               "category": "continuity",
               "title": "Continuity",
