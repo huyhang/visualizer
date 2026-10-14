@@ -227,3 +227,6 @@ __marimo__/
 # into Akasha's static folder (the Docker build compiles its own).
 frontend/node_modules/
 src/visualizer/akasha/static/studio/
+# A machine's own compose overrides (a different port, say); see
+# docs/simple-docker-local-deployment-guide.md.
+docker/compose.local.yml

@@ -98,7 +98,9 @@ docker compose -f docker/docker-compose.nas.yml up --build -d
 
 Each service's README documents its own configuration and API. For a NAS
 install — including HTTPS, updating to a new commit, and backups — see
-[Deploy on a Synology NAS](docs/synology-deployment.md).
+[Deploy on a Synology NAS](docs/synology-deployment.md). To try it on a Mac
+with Docker Desktop and no GPU box, step by step, see
+[Run it on a Mac](docs/simple-docker-local-deployment-guide.md).
 
 ### Observability
 
