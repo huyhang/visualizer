@@ -3,7 +3,7 @@
     python -m visualizer.devserver              # http://127.0.0.1:5050
     python -m visualizer.devserver --seed       # ...with the demo story loaded
     python -m visualizer.devserver --fresh      # start from an empty database
-    python -m visualizer.devserver --fake-gpubox busy   # research against a fake box
+    python -m visualizer.devserver --fake-gpubox busy   # research and LLM review, faked
 
 The same four apps, wired by the same ``visualizer.stack.build_application``
 that gunicorn serves in production, over an in-memory ``mongomock`` client
@@ -21,12 +21,12 @@ An empty database gets the same ``mara`` account the Docker deployment uses, so
 the seed and smoke scripts under ``docker/`` work here unchanged; ``--seed``
 runs the demo seeds against this server once it is listening.
 
-``--fake-gpubox [MODE]`` stands a fake GPU box behind the research features
-(``visualizer.gpubox.fake``): jobs walk the real stages a second or so apiece,
-and MODE puts the box in any state a writer can meet -- ``ready`` by default,
-or ``cold``, ``busy``, ``degraded``, ``queue_full``, ``unreachable`` and the
-rest. Without it the box comes from ``GPU_WORKER_URL`` as in production, which
-on a laptop usually means research is off.
+``--fake-gpubox [MODE]`` stands a fake GPU box behind Akasha's research and
+Logos's LLM review (``visualizer.gpubox.fake``): jobs walk the real stages a
+second or so apiece, and MODE puts the box in any state a writer can meet --
+``ready`` by default, or ``cold``, ``busy``, ``degraded``, ``queue_full``,
+``unreachable`` and the rest. Without it the box comes from ``GPU_WORKER_URL``
+as in production, which on a laptop usually means both are off.
 
 The dev server's session cookie has its own name, so it can run beside the
 Docker stack on :5002 without the two logging each other out. It is mongomock
@@ -275,7 +275,8 @@ def parse_args(argv=None):
                         help="use this MongoDB instead of the in-memory one")
     parser.add_argument("--fake-gpubox", nargs="?", const="ready", default=None,
                         choices=FAKE_GPUBOX_MODES, metavar="MODE",
-                        help="put a fake GPU box behind research, in MODE "
+                        help="put a fake GPU box behind research and LLM "
+                             "review, in MODE "
                              f"({', '.join(FAKE_GPUBOX_MODES)}; default ready)")
     parser.add_argument("--no-reload", dest="reload", action="store_false",
                         help="do not restart when a Python file changes")

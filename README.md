@@ -277,7 +277,7 @@ npm run format      # prettier, the frontend's equivalent of ruff
 python -m visualizer.devserver           # http://127.0.0.1:5050 — log in as mara / ember-pact-demo
 python -m visualizer.devserver --seed    # ...and load the demo story into all four services
 python -m visualizer.devserver --fresh   # discard the saved data and start empty
-python -m visualizer.devserver --fake-gpubox busy   # research against a fake GPU box
+python -m visualizer.devserver --fake-gpubox busy   # research and LLM review against a fake GPU box
 ```
 
 The same wiring gunicorn serves (`visualizer.stack`), over an in-memory MongoDB
