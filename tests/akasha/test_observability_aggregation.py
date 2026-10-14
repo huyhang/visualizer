@@ -33,8 +33,7 @@ def test_floor_hour_converts_before_flooring():
 
 
 def test_floor_hour_assumes_utc_for_naive_input():
-    # A naive datetime is the case under test.
-    naive = datetime(2026, 8, 19, 14, 37)
+    naive = datetime(2026, 8, 19, 14, 37)  # noqa: DTZ001 -- the case under test
     assert floor_hour(naive) == datetime(2026, 8, 19, 14, tzinfo=UTC)
 
 
