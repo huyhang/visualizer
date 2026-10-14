@@ -215,7 +215,7 @@ class ExportJobs:
             self.store.finish_export_job(job, data=exported.data)
         except LogosError as exc:
             self.store.finish_export_job(job, error=exc.message)
-        except Exception:
+        except Exception:  # noqa: BLE001 -- the job must always settle
             # Deliberately broad: this runs on a thread nobody is waiting on, so
             # an escaping exception would leave the job saying "running" until
             # the age sweep, and the reader polling forever.
