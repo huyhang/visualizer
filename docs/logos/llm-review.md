@@ -10,7 +10,7 @@ prose for three things:
 - **prose**: clarity, rhythm, redundancy.
 
 It reports issues anchored to a block and a verbatim quote, and you work
-through them. Only the API exists so far; there is no UI yet. The Writing
+through them, answering any you want to talk over. Only the API exists so far; there is no UI yet. The Writing
 Coach's deterministic rules are unchanged and still send nothing anywhere.
 
 LLM review is off unless `GPU_WORKER_URL` is set. When it is off,
@@ -32,6 +32,9 @@ GET    …/sections/<section>/reviews                      recent           LlmR
 GET    …/sections/<section>/reviews/<id>                 follow           LlmReview
 DELETE …/sections/<section>/reviews/<id>                 cancel           LlmReview
 PUT    …/sections/<section>/reviews/<id>/issues/<issue>  {"status": "open|dismissed|resolved"}
+GET    …/sections/<section>/reviews/<id>/issues/<issue>  follow a reply  LlmReviewIssue
+POST   …/sections/<section>/reviews/<id>/issues/<issue>/messages
+                                                         {"text": "…"}   202  LlmReviewIssue
 ```
 
 `…` is `/books/<book>/volumes/<volume>`. The request body accepts these
@@ -110,12 +113,39 @@ clears `dismissed_before`. Only dismissals carry: an issue you marked
 dismissal is remembered for as long as one of the section's ten kept reviews
 holds it, and each review that carries it over keeps it for longer.
 
+## Discussing an issue
+
+You can answer an issue -- "that's deliberate", "why?", "what would you do
+instead?" -- and the editor who raised it replies. Post your message to
+`…/issues/<issue>/messages`, then poll `GET …/issues/<issue>` until `reply`
+is `null` again. Each reply is a turn in the issue's `discussion`, with:
+
+- `stance`: where the editor now stands. `maintains` means the issue still
+  holds; `revises` means it holds but a different fix would serve better, given
+  in `suggestion`; `withdraws` means you've shown it's wrong or deliberate.
+- Your status for the issue is never changed by a reply. If the editor
+  withdraws, dismissing the issue is still your call.
+
+Every turn sends the box the issue, its block **as it reads now** (just the
+quote if the block is gone), the article it cites -- looked up again for you,
+under the same rules as a review, so research must still be verified -- and
+the whole conversation so far. Logos keeps the conversation; the box keeps
+nothing between turns. The reply runs on the box's review model and isn't
+second-checked: it's conversation, not a finding.
+
+One reply is on its way at a time: sending another message before it arrives
+answers 429. A reply that fails says so in `reply.error`, and your message
+stays; send another to ask again. An issue takes at most ten of your messages,
+after which a fresh review of the passage serves better.
+
 ## Privacy
 
 - The chapter goes to the box on your own hardware. Logos doesn't store it,
   and the box erases it when the job ends.
 - What Logos keeps is the review record: settings, the refs and titles sent,
-  and the issues. The issues quote a few of your words.
+  and the issues. The issues quote a few of your words, and their
+  discussions keep your messages and the editor's replies, without saying who
+  wrote which message: a discussion belongs to its review.
 - Each section keeps only its ten newest finished reviews.
 - Reviews are deleted with their book (`purge_book`) and with the account
   that asked for them (`purge_user`).

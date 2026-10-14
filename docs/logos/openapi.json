@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Logos API",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "description": "Versioned manuscripts for Chronos books, named writing drafts, volume and section organisation, private reader annotations and writing feedback, Akasha lookup, cross-volume search, and whole-series PDF/EPUB publication.\n\nPaths are relative to the service mount. In the combined deployment that is `/logos`; running Logos standalone it is `/`.\n\nUpdates to revisioned resources and reader items require an `If-Match` header carrying the `rev` from the last read."
   },
   "servers": [
@@ -325,6 +325,64 @@
       }
     },
     "/books/{book}/volumes/{volume}/sections/{section}/reviews/{review_id}/issues/{issue_id}": {
+      "get": {
+        "tags": [
+          "writer"
+        ],
+        "summary": "One issue and its discussion",
+        "description": "Poll this while the editor replies (`reply.state` queued or running): it asks the GPU box, and adds the reply to `discussion` the first time it finds it done. Needs write on the book.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Book"
+          },
+          {
+            "$ref": "#/components/parameters/Volume"
+          },
+          {
+            "$ref": "#/components/parameters/Section"
+          },
+          {
+            "name": "review_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "issue_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The issue.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmReviewIssue"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/LlmReviewUnavailable"
+          }
+        }
+      },
       "put": {
         "tags": [
           "writer"
@@ -1056,6 +1114,82 @@
         }
       }
     },
+    "/books/{book}/volumes/{volume}/sections/{section}/reviews/{review_id}/issues/{issue_id}/messages": {
+      "post": {
+        "tags": [
+          "writer"
+        ],
+        "summary": "Answer an issue, and ask the editor to reply",
+        "description": "Adds the writer's message to the issue's discussion and asks the GPU box for the editor's reply, sending the issue, its block as it reads now, the article it cites (under the review's rules, for the writer asking) and the whole conversation. Poll the issue for the reply. One reply is on its way at a time, at most ten messages per issue, and a reply never changes the issue's status. Needs write on the book.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Book"
+          },
+          {
+            "$ref": "#/components/parameters/Volume"
+          },
+          {
+            "$ref": "#/components/parameters/Section"
+          },
+          {
+            "name": "review_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "issue_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LlmReviewMessage"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "The issue, with the message added and the reply on its way.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmReviewIssue"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/LlmReviewUnavailable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyReviews"
+          }
+        }
+      }
+    },
     "/books/{book}/ui/writing-review": {
       "get": {
         "tags": ["writer"], "summary": "Review writing across the series",
@@ -1387,7 +1521,7 @@
     },
     "responses": {
       "TooManyReviews": {
-        "description": "Too many LLM reviews at once; `Retry-After` says when to come back.",
+        "description": "Too many LLM reviews at once, or the editor is still replying to an issue's last message; `Retry-After` says when to come back.",
         "content": {
           "application/json": {
             "schema": {
@@ -1647,6 +1781,8 @@
           "verified",
           "status",
           "dismissed_before",
+          "discussion",
+          "reply",
           "stale",
           "category",
           "title",
@@ -1711,6 +1847,22 @@
               "resolved"
             ]
           },
+          "discussion": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LlmReviewTurn"
+            },
+            "description": "The writer's messages about the issue and the editor's replies, oldest first. Empty until the writer answers it."
+          },
+          "reply": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LlmReviewReply"
+              }
+            ],
+            "nullable": true,
+            "description": "The editor's reply to the last message while it is on its way, or how it failed; null otherwise."
+          },
           "dismissed_before": {
             "type": "string",
             "nullable": true,
@@ -1738,6 +1890,115 @@
             "type": "string",
             "nullable": true
           }
+        }
+      },
+      "LlmReviewTurn": {
+        "type": "object",
+        "required": [
+          "role",
+          "text",
+          "at",
+          "stance",
+          "suggestion",
+          "model"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "writer",
+              "editor"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "nullable": true
+          },
+          "stance": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "maintains",
+              "revises",
+              "withdraws",
+              null
+            ],
+            "description": "The editor's only: where it now stands on the issue. maintains: it holds. revises: it holds, with a better fix in suggestion. withdraws: the writer has shown it wrong or deliberate. The writer still sets the status."
+          },
+          "suggestion": {
+            "type": "string",
+            "nullable": true,
+            "description": "The editor's only, with stance revises: a new minimal fix."
+          },
+          "model": {
+            "type": "string",
+            "nullable": true,
+            "description": "The editor's only: the model that replied."
+          }
+        }
+      },
+      "LlmReviewReply": {
+        "type": "object",
+        "required": [
+          "state",
+          "progress",
+          "error"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "importing",
+              "failed"
+            ]
+          },
+          "progress": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "stage": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          },
+          "error": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "description": "When it failed. The writer's message stays in the discussion; sending another asks again."
+          }
+        }
+      },
+      "LlmReviewMessage": {
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "example": {
+          "text": "It's deliberate: the teapot holds hot water for whisking."
         }
       },
       "LlmReviewSummary": {
@@ -1977,6 +2238,25 @@
               "verified": true,
               "status": "open",
               "dismissed_before": null,
+              "discussion": [
+                {
+                  "role": "writer",
+                  "text": "Her eyes change colour with her mood; that's deliberate.",
+                  "at": "2026-10-13T20:05:00+00:00",
+                  "stance": null,
+                  "suggestion": null,
+                  "model": null
+                },
+                {
+                  "role": "editor",
+                  "text": "Then it isn't a slip. Worth a line in her canon article, so the next review knows.",
+                  "at": "2026-10-13T20:05:12+00:00",
+                  "stance": "withdraws",
+                  "suggestion": null,
+                  "model": "qwen3:30b"
+                }
+              ],
+              "reply": null,
               "stale": false,
               "category": "continuity",
               "title": "Continuity",

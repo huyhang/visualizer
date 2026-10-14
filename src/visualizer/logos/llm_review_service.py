@@ -5,6 +5,9 @@
     refresh    -> the box's progress; when it is done, its issues stored
                   (once, however many tabs poll)
     set_status -> an issue marked open, dismissed or resolved
+    discuss    -> the writer's message about an issue, and the editor's reply
+                  asked of the GPU box
+    issue      -> one issue and its discussion, storing the reply once it is in
 
 Issues are presented against the draft as it is *now*: one whose block is gone,
 or whose quote is no longer in its block, is ``stale`` -- the writer has
@@ -12,6 +15,12 @@ already changed what it was about -- and a review of an older revision says
 it is ``outdated``. An issue the writer dismissed in an earlier review of the
 section starts out dismissed, saying so (``dismissed_before``). Routes
 authorise; this module assumes they have.
+
+A discussion sends the box the issue, its block as it reads *now* (just the
+quote if the block is gone), the article it cites -- looked up again for the
+writer asking, under the review's rules -- and the whole conversation, which
+Logos keeps: the box keeps nothing between jobs. One reply is on its way at a
+time, and a reply never changes the issue's status: the writer decides.
 """
 
 import json
@@ -25,11 +34,14 @@ from .errors import (
 )
 from .llm_review import (
     CHECKS,
+    STANCES,
     Reviewer,
     assemble_references,
+    discussion_reference,
+    validate_message,
     validate_review_request,
 )
-from .llm_review_jobs import ISSUE_STATUSES, REMOTE, LlmReviewStore
+from .llm_review_jobs import ISSUE_STATUSES, REMOTE, REPLYING, LlmReviewStore
 from .richtext import article_refs, block_text
 
 MAX_ACTIVE_PER_WRITER = 3
@@ -38,6 +50,9 @@ MAX_ACTIVE = 10
 MAX_REQUEST_BYTES = 1024 * 1024 - 4096
 TITLES = {"continuity": "Continuity", "anachronism": "Possible anachronism",
           "prose": "Prose"}
+# Writer's messages per issue: past this, a fresh review serves better.
+MAX_WRITER_MESSAGES = 10
+PASSAGE_CHARS = 20_000     # what the box accepts as one discussion's passage
 
 
 class MalformedResult(Exception):
@@ -187,14 +202,90 @@ class LlmReviewService:
             raise InvalidReviewRequest(
                 f"Set an issue's status to one of {', '.join(ISSUE_STATUSES)}.")
         record = self._record(book, volume, section, review_id)
-        index = next((n for n, issue in enumerate(record.get("issues") or [])
-                      if issue["id"] == issue_id), None)
-        if index is None:
-            raise LlmReviewNotFound(f"This review has no issue '{issue_id}'.")
+        index = _issue_index(record, issue_id)
         record = self._reviews().set_issue_status(record["_id"], index,
                                                   payload["status"])
         current = self._current(record, writer)
         return _issue_view(record["issues"][index], current)
+
+    # -- discussing an issue ---------------------------------------------------
+
+    def issue(self, book: str, volume: str, section: str, review_id: str,
+              issue_id: str, writer: str) -> dict:
+        """One issue with its discussion, asking the box about a reply on its way."""
+        record = self._record(book, volume, section, review_id)
+        index = _issue_index(record, issue_id)
+        if (record["issues"][index].get("reply") or {}).get("state") in REMOTE:
+            record = self._poll_reply(record, index)
+        return _issue_view(record["issues"][index], self._current(record, writer))
+
+    def discuss(self, book: str, volume: str, section: str, review_id: str,
+                issue_id: str, writer: str, payload) -> dict:
+        text = validate_message(payload)
+        reviews = self._reviews()
+        record = self._record(book, volume, section, review_id)
+        index = _issue_index(record, issue_id)
+        issue = record["issues"][index]
+        thread = issue.get("discussion") or []
+        if (issue.get("reply") or {}).get("state") in REPLYING:
+            raise _still_replying()
+        if sum(turn["role"] == "writer" for turn in thread) >= MAX_WRITER_MESSAGES:
+            raise InvalidReviewRequest(
+                f"This issue's discussion has its {MAX_WRITER_MESSAGES} messages. "
+                "Ask for a new review of the passage instead.")
+        current = self._current(record, writer)
+        kinds = {r["ref"]: r["kind"] for r in record["references"]}
+        turn = {"role": "writer", "text": text}
+        request = {
+            "issue": {k: issue[k] for k in ("check", "quote", "message", "suggestion")},
+            "passage": _passage(issue, current),
+            "reference": discussion_reference(
+                self.articles, self.auth_store.grants_for(writer), issue["reference"],
+                kinds.get(issue["reference"])),
+            "messages": [_said(t) for t in [*thread, turn]],
+            "dialect": record["settings"]["dialect"],
+        }
+        remote = self.reviewer.discuss(request, f"{record['_id']}-{issue['id']}-"
+                                                f"{len(thread) + 1}")
+        reply = {"state": _local_state(remote["state"]), "worker_job": remote["id"],
+                 "progress": remote.get("progress"), "error": None}
+        if not reviews.start_reply(record["_id"], index, turn, reply):
+            # Another tab sent a message first: this one's reply isn't wanted.
+            try:
+                self.reviewer.cancel(remote["id"])
+            except LogosError:
+                pass
+            raise _still_replying()
+        record = self._record(book, volume, section, review_id)
+        return _issue_view(record["issues"][index], current)
+
+    def _poll_reply(self, record: dict, index: int) -> dict:
+        reviews = self._reviews()
+        reply = record["issues"][index]["reply"]
+        try:
+            remote = self.reviewer.status(reply["worker_job"])
+        except LlmReviewNotFound:
+            return reviews.set_reply(record["_id"], index, _reply_failed(
+                reply, "expired", "The GPU box no longer has this reply."))
+        except (LlmReviewUnavailable, LlmReviewBusy):
+            return record      # asleep or busy: report what we last knew
+        state = remote["state"]
+        if state in REMOTE:
+            return reviews.set_reply(record["_id"], index, {
+                **reply, "state": state, "progress": remote.get("progress")})
+        if state in ("failed", "cancelled"):
+            error = remote.get("error") or {}
+            return reviews.set_reply(record["_id"], index, _reply_failed(
+                reply, error.get("code", state),
+                error.get("message", "The editor could not reply.")))
+        if not reviews.claim_reply(record["_id"], index):
+            return reviews.update(record["_id"])   # another request is storing it
+        try:
+            turn = _editor_turn(remote.get("result"))
+        except MalformedResult:
+            return reviews.set_reply(record["_id"], index, _reply_failed(
+                reply, "invalid_result", "The GPU box sent a malformed reply."))
+        return reviews.finish_reply(record["_id"], index, turn)
 
     # -- plumbing --------------------------------------------------------------
 
@@ -254,6 +345,58 @@ class LlmReviewService:
         }
 
 
+def _issue_index(record: dict, issue_id: str) -> int:
+    index = next((n for n, issue in enumerate(record.get("issues") or [])
+                  if issue["id"] == issue_id), None)
+    if index is None:
+        raise LlmReviewNotFound(f"This review has no issue '{issue_id}'.")
+    return index
+
+
+def _still_replying() -> LlmReviewBusy:
+    return LlmReviewBusy("The editor is still replying to the last message.",
+                         retry_after=5)
+
+
+def _passage(issue: dict, current: dict | None) -> str:
+    """The issue's block as it reads now; just its quote if the block is gone."""
+    blocks = {block["id"]: block_text(block)
+              for block in (current or {}).get("document", {}).get("content", [])}
+    return (blocks.get(issue["block"]) or issue["quote"])[:PASSAGE_CHARS]
+
+
+def _said(turn: dict) -> dict:
+    """A turn as the box reads it: who spoke, and what they said."""
+    text = turn["text"]
+    if turn.get("suggestion"):
+        text += f"\n(Suggested fix: {turn['suggestion']})"
+    return {"role": turn["role"], "text": text}
+
+
+def _reply_failed(reply: dict, code: str, message: str) -> dict:
+    return {**reply, "state": "failed", "progress": None,
+            "error": {"code": code, "message": message}}
+
+
+def _editor_turn(result) -> dict:
+    """The box's reply as a turn of the discussion; ``MalformedResult`` if not."""
+    if (not isinstance(result, dict) or not isinstance(result.get("reply"), str)
+            or not result["reply"].strip() or result.get("stance") not in STANCES):
+        raise MalformedResult("malformed reply")
+    suggestion = result.get("suggestion")
+    return {"role": "editor", "text": result["reply"].strip()[:2000],
+            "stance": result["stance"],
+            "suggestion": suggestion[:1000] if isinstance(suggestion, str)
+            and suggestion.strip() else None,
+            "model": str(result.get("model") or "")[:100] or None}
+
+
+def _turn_view(turn: dict) -> dict:
+    return {"role": turn["role"], "text": turn["text"], "at": turn.get("at"),
+            "stance": turn.get("stance"), "suggestion": turn.get("suggestion"),
+            "model": turn.get("model")}
+
+
 def _head(record: dict) -> dict:
     return {
         "id": record["_id"],
@@ -274,7 +417,11 @@ def _issue_view(issue: dict, current: dict | None) -> dict:
     blocks = {block["id"]: block_text(block)
               for block in (current or {}).get("document", {}).get("content", [])}
     stale = issue["quote"] not in blocks.get(issue["block"], "")
+    reply = issue.get("reply")
     return {**issue, "dismissed_before": issue.get("dismissed_before"),
+            "discussion": [_turn_view(turn) for turn in issue.get("discussion") or []],
+            "reply": None if reply is None else
+            {k: reply.get(k) for k in ("state", "progress", "error")},
             "category": issue["check"], "title": TITLES[issue["check"]],
             "excerpt": issue["quote"], "replacement": None, "stale": stale}
 
@@ -304,6 +451,8 @@ def _issues(result) -> list[dict]:
             "verified": raw.get("verified") is True or None,
             "status": "open",
             "dismissed_before": None,
+            "discussion": [],
+            "reply": None,
         })
     return issues
 

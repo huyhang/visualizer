@@ -1,4 +1,4 @@
-"""LLM review on the GPU box, as JSON routes: preview, ask, follow, triage.
+"""LLM review on the GPU box, as JSON routes: preview, ask, follow, triage, discuss.
 
 Every route but availability lives under the section it reviews --
 ``.../sections/<section>/reviews`` -- and needs write on the book, like the
@@ -17,6 +17,7 @@ from .routing import SECTION, authorize, json_body
 
 REVIEWS = SECTION + "/reviews"
 REVIEW = REVIEWS + "/<review_id>"
+ISSUE = REVIEW + "/issues/<issue_id>"
 
 
 def register_llm_review_routes(app, csrf, auth_store, reviewer: Reviewer,
@@ -77,7 +78,26 @@ def register_llm_review_routes(app, csrf, auth_store, reviewer: Reviewer,
         return jsonify(service.cancel(book, volume, section, review_id,
                                       current_user.username))
 
-    @app.put(REVIEW + "/issues/<issue_id>")
+    @app.get(ISSUE)
+    @csrf.exempt
+    @login_required
+    def get_llm_review_issue(book, volume, section, review_id, issue_id):
+        """Poll this while the editor replies: it asks the box, and adds the
+        reply to the discussion the first time it finds it done."""
+        authorize(auth_store, "write", book)
+        return jsonify(service.issue(book, volume, section, review_id, issue_id,
+                                     current_user.username))
+
+    @app.post(ISSUE + "/messages")
+    @csrf.exempt
+    @login_required
+    def discuss_llm_review_issue(book, volume, section, review_id, issue_id):
+        authorize(auth_store, "write", book)
+        issue = service.discuss(book, volume, section, review_id, issue_id,
+                                current_user.username, json_body())
+        return jsonify(issue), 202
+
+    @app.put(ISSUE)
     @csrf.exempt
     @login_required
     def set_llm_review_issue(book, volume, section, review_id, issue_id):

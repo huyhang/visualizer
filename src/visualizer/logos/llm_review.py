@@ -23,6 +23,11 @@ because it is a decision about the writer's world, not about the model:
 
 Everything left out is reported with its reason, so the writer can see what
 the review did not know.
+
+A writer can then **discuss** an issue: answer it, and get the editor's reply
+and where it now stands (``maintains``, ``revises``, ``withdraws``). The
+article the issue cites goes with it under the same rules, looked up again for
+the writer asking (``discussion_reference``).
 """
 
 import re
@@ -57,6 +62,8 @@ _NOT_FACTS = {"status", "sources", "research_job", "generated_by", "generated_at
               "dropped_facts", "partial_facts", "kind", "url", "excerpts"}
 _REF = re.compile(r"^[^/\s]+/[^/\s]+/[^/\s]+$")
 _FIELDS = {"draft", "checks", "dialect", "verify", "include"}
+STANCES = ("maintains", "revises", "withdraws")
+MAX_MESSAGE_CHARS = 2000
 
 
 def parse_ref(value) -> dict:
@@ -98,6 +105,18 @@ def validate_review_request(payload) -> dict:
             f"include must be a list of at most {MAX_INCLUDED} article refs.")
     return {"draft": draft, "checks": checks, "dialect": dialect, "verify": verify,
             "include": [parse_ref(ref) for ref in dict.fromkeys(include)]}
+
+
+def validate_message(payload) -> str:
+    """A writer's message to the editor about one issue: its text, trimmed."""
+    if (not isinstance(payload, dict) or set(payload) != {"text"}
+            or not isinstance(payload["text"], str)):
+        raise InvalidReviewRequest('A message is {"text": "..."}.')
+    text = payload["text"].strip()
+    if not 1 <= len(text) <= MAX_MESSAGE_CHARS:
+        raise InvalidReviewRequest(
+            f"A message is 1-{MAX_MESSAGE_CHARS} characters.")
+    return text
 
 
 def reference_text(document: dict) -> str:
@@ -158,6 +177,26 @@ def assemble_references(articles, grants: list[dict], world: str | None,
     return sent, skipped
 
 
+def discussion_reference(articles, grants: list[dict], ref: str | None,
+                         kind: str | None) -> dict | None:
+    """The article an issue cites, as a review would send it -- or None for a
+    prose issue, an article gone or no longer the writer's to read, or research
+    no longer verified. ``kind`` is what the review sent it as."""
+    if not isinstance(ref, str) or not _REF.match(ref):
+        return None
+    parsed = parse_ref(ref)
+    if parsed["collection"] in NEVER_SENT:
+        return None
+    kind = kind or ("research" if parsed["collection"] == RESEARCH else "canon")
+    found = articles.review_articles([parsed], grants).get(
+        (parsed["database"], parsed["collection"], parsed["id"]))
+    if found is None or (kind == "research"
+                         and found["document"].get("status") != "verified"):
+        return None
+    return {"ref": ref, "kind": kind, "title": found["title"][:300],
+            "text": reference_text(found["document"])}
+
+
 class Reviewer(Protocol):
     """Runs LLM reviews somewhere else and reports on them; never edits prose."""
 
@@ -169,6 +208,9 @@ class Reviewer(Protocol):
 
     def submit(self, request: dict, ref: str) -> dict:
         """Queue a review job; ``ref`` is Logos's own review id. Returns the job."""
+
+    def discuss(self, request: dict, ref: str) -> dict:
+        """Queue the editor's reply to a writer answering one issue. Returns the job."""
 
     def status(self, job_id: str) -> dict:
         """The job as it stands: queued, running (with its stage), or finished."""
@@ -186,6 +228,9 @@ class UnavailableReviewer:
         return availability(None, "review")
 
     def submit(self, request: dict, ref: str) -> dict:
+        raise self._off()
+
+    def discuss(self, request: dict, ref: str) -> dict:
         raise self._off()
 
     def status(self, job_id: str) -> dict:
@@ -216,6 +261,10 @@ class RemoteReviewer:
 
     def submit(self, request: dict, ref: str) -> dict:
         return self._ask(self.worker.submit, "review", request, service="logos",
+                         ref=ref)
+
+    def discuss(self, request: dict, ref: str) -> dict:
+        return self._ask(self.worker.submit, "discussion", request, service="logos",
                          ref=ref)
 
     def status(self, job_id: str) -> dict:

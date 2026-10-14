@@ -19,10 +19,11 @@ from visualizer.logos.llm_review import (
     REFERENCE_CHARS,
     RemoteReviewer,
     assemble_references,
+    discussion_reference,
     reference_text,
 )
 from visualizer.logos.llm_review_jobs import KEEP_PER_SECTION, LlmReviewStore
-from visualizer.logos.llm_review_service import _same_issue
+from visualizer.logos.llm_review_service import MAX_WRITER_MESSAGES, _same_issue
 
 from .conftest import BOOK, SECTION, VOLUME, WORLD, login, section_payload
 from .test_contract import OPENAPI_PATH, _as_json_schema
@@ -367,14 +368,172 @@ def test_issues_go_stale_as_the_draft_changes(client):
     assert by_block.get("p2", False) is False
 
 
+# -- discussing an issue -----------------------------------------------------------------
+
+
+def issue_url(review, check="continuity"):
+    issue = next(i for i in review["issues"] if i["check"] == check)
+    return f"{REVIEWS}/{review['id']}/issues/{issue['id']}"
+
+
+def discussions(fake):
+    return [job["request"] for job in fake._jobs.values() if job["kind"] == "discussion"]
+
+
+def say(client, url, text):
+    """Send a message and poll until the editor's reply is in."""
+    sent = client.post(url + "/messages", json={"text": text})
+    assert sent.status_code == 202, sent.get_json()
+    conforms(sent.get_json(), "LlmReviewIssue")
+    return conforms(client.get(url).get_json(), "LlmReviewIssue")
+
+
+def test_answering_an_issue_gets_the_editors_reply(client):
+    url = issue_url(reviewed(client))
+    sent = client.post(url + "/messages", json={"text": "  Why does that matter?  "})
+    assert sent.status_code == 202
+    waiting = conforms(sent.get_json(), "LlmReviewIssue")
+    assert [(t["role"], t["text"]) for t in waiting["discussion"]] == [
+        ("writer", "Why does that matter?")]
+    assert waiting["reply"]["state"] == "running"
+
+    replied = conforms(client.get(url).get_json(), "LlmReviewIssue")
+    assert replied["reply"] is None and len(replied["discussion"]) == 2
+    editor = replied["discussion"][-1]
+    assert (editor["role"], editor["stance"], editor["model"]) == (
+        "editor", "maintains", "fake-model")
+    assert editor["text"].startswith("[Fake]") and editor["at"]
+    assert client.get(f"{url.rsplit('/issues', 1)[0]}").get_json()["issues"][0][
+        "discussion"] == replied["discussion"]
+
+
+@pytest.mark.parametrize("said,stance,suggests", [
+    ("That's deliberate.", "withdraws", False),
+    ("What would you do instead?", "revises", True),
+])
+def test_a_reply_never_changes_the_writers_status(client, said, stance, suggests):
+    replied = say(client, issue_url(reviewed(client)), said)
+    editor = replied["discussion"][-1]
+    assert editor["stance"] == stance and (editor["suggestion"] is not None) == suggests
+    assert replied["status"] == "open"
+
+
+def test_the_box_gets_the_issue_its_passage_its_article_and_the_whole_talk(client,
+                                                                           fake):
+    url = issue_url(reviewed(client, dialect="en-GB"))
+    first = say(client, url, "Her eyes were brown as a child.")
+    say(client, url, "Does that change anything?")
+    sent = discussions(fake)[-1]
+    assert sent["passage"] == "Lyra looked up with her brown eyes at the gate."
+    assert sent["reference"] == {"ref": "ember/characters/lyra", "kind": "canon",
+                                 "title": "Lyra",
+                                 "text": "Eyes: grey\nLyra keeps the broken gate."}
+    assert [m["role"] for m in sent["messages"]] == ["writer", "editor", "writer"]
+    assert sent["messages"][1]["text"] == first["discussion"][1]["text"]
+    assert sent["messages"][2]["text"] == "Does that change anything?"
+    assert sent["issue"]["check"] == "continuity" and sent["dialect"] == "en-GB"
+
+
+def test_a_prose_issue_goes_without_an_article(client, fake):
+    say(client, issue_url(reviewed(client), "prose"), "Is it the rhythm?")
+    assert discussions(fake)[-1]["reference"] is None
+
+
+def test_the_passage_is_the_block_as_it_reads_now(client, fake):
+    url = issue_url(reviewed(client))
+    current = client.get(SECTION_URL).get_json()
+    edited = json.loads(json.dumps(CHAPTER))
+    edited["content"][0]["content"][1]["text"] = " looked up at the gate."
+    client.put(SECTION_URL, json=section_payload(doc=edited),
+               headers={"If-Match": f'"{current["rev"]}"'})
+    say(client, url, "I changed it; does it read better?")
+    assert discussions(fake)[-1]["passage"] == "Lyra looked up at the gate."
+
+
+def test_the_cited_article_is_sent_only_while_the_writer_may_rely_on_it(articles):
+    lyra = discussion_reference(articles, [], "ember/characters/lyra", "canon")
+    assert lyra["text"] == "Eyes: grey\nLyra keeps the broken gate."
+    assert discussion_reference(articles, [], "ember/research/song-tea",
+                                "research")["kind"] == "research"
+    for ref, kind in (("ember/research/rumours", "research"),      # unverified
+                      ("ember/research-inbox/a-draft", None),        # never sent
+                      ("ember/characters/ghost", "canon"),           # missing
+                      (None, None), ("not-a-ref", None)):
+        assert discussion_reference(articles, [], ref, kind) is None
+
+
+def test_one_reply_at_a_time(make, client):
+    worker = FakeWorker(stage_seconds=10, clock=Clock())
+    slow = make(worker)
+    review = slow.post(REVIEWS).get_json()
+    worker.stage_seconds = 0      # the review finishes; replies are slow again below
+    review = slow.get(f"{REVIEWS}/{review['id']}").get_json()
+    worker.stage_seconds = 10
+    url = issue_url(review)
+    assert slow.post(url + "/messages", json={"text": "Why?"}).status_code == 202
+    again = slow.post(url + "/messages", json={"text": "Hello?"})
+    assert again.status_code == 429 and again.headers["Retry-After"] == "5"
+    assert len(discussions(worker)) == 1
+    assert slow.get(url).get_json()["reply"]["state"] == "queued"
+
+
+def test_a_failed_reply_keeps_the_message_and_can_be_asked_again(client, fake):
+    url = issue_url(reviewed(client))
+    fake.fail_next("timeout")
+    client.post(url + "/messages", json={"text": "Why?"})
+    failed = conforms(client.get(url).get_json(), "LlmReviewIssue")
+    assert failed["reply"]["state"] == "failed"
+    assert failed["reply"]["error"]["code"] == "timeout"
+    assert [t["role"] for t in failed["discussion"]] == ["writer"]
+    replied = say(client, url, "Why, though?")
+    assert [t["role"] for t in replied["discussion"]] == ["writer", "writer", "editor"]
+
+
+@pytest.mark.parametrize("body", [{"text": ""}, {"text": "   "}, {"text": "x" * 2001},
+                                  {"text": 3}, {"message": "Why?"},
+                                  {"text": "Why?", "colour": "red"}])
+def test_a_bad_message_never_reaches_the_box(client, fake, body):
+    url = issue_url(reviewed(client))
+    response = client.post(url + "/messages", json=body)
+    assert response.status_code == 400
+    assert response.get_json()["code"] == "INVALID_REVIEW_REQUEST"
+    assert discussions(fake) == []
+
+
+def test_an_issue_takes_a_limited_number_of_messages(client):
+    url = issue_url(reviewed(client))
+    for n in range(MAX_WRITER_MESSAGES):
+        say(client, url, f"Point {n}.")
+    response = client.post(url + "/messages", json={"text": "One more."})
+    assert response.status_code == 400
+
+
+def test_an_issue_that_is_not_there(client):
+    review = reviewed(client)
+    url = f"{REVIEWS}/{review['id']}/issues/i999"
+    assert client.get(url).status_code == 404
+    assert client.post(url + "/messages", json={"text": "Why?"}).status_code == 404
+
+
+def test_a_discussion_records_no_username(client, mongo_client):
+    say(client, issue_url(reviewed(client)), "Why?")
+    (record,) = mongo_client["_logos"]["llm_reviews"].find()
+    turns = [t for issue in record["issues"] for t in issue.get("discussion", [])]
+    assert turns and "mara" not in json.dumps(turns)
+
+
 # -- who may, and when it is off ---------------------------------------------------------
 
 
 def test_a_reader_of_the_book_may_not(make, client):
+    review = reviewed(client)
     reader = make(FakeWorker(), user="devi")
     assert reader.get(REVIEWS + "/references").status_code == 403
     assert reader.post(REVIEWS).status_code == 403
     assert reader.get(REVIEWS).status_code == 403
+    url = issue_url(review)
+    assert reader.get(url).status_code == 403
+    assert reader.post(url + "/messages", json={"text": "Hi"}).status_code == 403
 
 
 def test_with_no_box_review_is_off(make, client):

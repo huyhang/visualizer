@@ -3,7 +3,9 @@
 One record per review asked for: which draft of which section, at which
 revision, who asked and with what settings, which references were sent (refs
 and titles -- never their text) and which were left out, how the box is getting
-on, and finally the issues, each with the writer's status for it.
+on, and finally the issues, each with the writer's status for it and any
+discussion of it: the writer's messages, the editor's replies, and the reply on
+its way. A discussion's turns carry no username; they belong to the review.
 
 Nothing else from the manuscript is kept: the chapter goes to the box and is
 not stored here, and the box erases it when the job ends. The issues' quotes
@@ -21,6 +23,7 @@ from .store import LLM_REVIEWS, LOGOS_DB
 
 ACTIVE = ("submitting", "queued", "running", "importing")
 REMOTE = ("queued", "running")
+REPLYING = ("queued", "running", "importing")   # an editor's reply on its way
 FINISHED = ("done", "failed", "cancelled")
 KEEP_PER_SECTION = 10
 ISSUE_STATUSES = ("open", "dismissed", "resolved")
@@ -86,6 +89,34 @@ class LlmReviewStore:
         """The writer's own decision, which replaces one carried over."""
         return self.update(review_id, **{f"issues.{index}.status": status,
                                          f"issues.{index}.dismissed_before": None})
+
+    def start_reply(self, review_id: str, index: int, turn: dict, reply: dict) -> bool:
+        """Add the writer's message and the reply it awaits -- false, changing
+        nothing, if a reply to an earlier message is still on its way."""
+        added = self._reviews.update_one(
+            {"_id": review_id, f"issues.{index}.reply.state": {"$nin": list(REPLYING)}},
+            {"$push": {f"issues.{index}.discussion": {**turn, "at": self._now()}},
+             "$set": {f"issues.{index}.reply": reply, "updated_at": self._now()}})
+        return added.modified_count == 1
+
+    def set_reply(self, review_id: str, index: int, reply: dict) -> dict:
+        return self.update(review_id, **{f"issues.{index}.reply": reply})
+
+    def claim_reply(self, review_id: str, index: int) -> bool:
+        """Move a finished reply to ``importing`` -- true for exactly one caller."""
+        claimed = self._reviews.update_one(
+            {"_id": review_id, f"issues.{index}.reply.state": {"$in": list(REMOTE)}},
+            {"$set": {f"issues.{index}.reply.state": "importing",
+                      "updated_at": self._now()}})
+        return claimed.modified_count == 1
+
+    def finish_reply(self, review_id: str, index: int, turn: dict) -> dict:
+        """Add the editor's reply to the discussion; nothing is on its way now."""
+        self._reviews.update_one(
+            {"_id": review_id},
+            {"$push": {f"issues.{index}.discussion": {**turn, "at": self._now()}},
+             "$set": {f"issues.{index}.reply": None, "updated_at": self._now()}})
+        return self._reviews.find_one({"_id": review_id})
 
     def dismissed(self, book: str, volume: str, section: str) -> list[tuple[str, dict]]:
         """(review id, issue) for every issue dismissed in a kept review of a section."""
