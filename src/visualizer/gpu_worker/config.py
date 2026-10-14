@@ -26,7 +26,7 @@ class WorkerConfig:
     plan_ttl_hours: int = 24
     verifier_url: str | None = None
     verifier_research_model: str = "bespoke-minicheck"
-    verifier_review_model: str = "gemma3:27b"
+    verifier_review_model: str = "gemma3:27b-it-qat"
     verifier_timeout: int = 180
     # Health must answer within the stack's 2 s budget, so each probe gets less.
     probe_timeout: float = 1.5

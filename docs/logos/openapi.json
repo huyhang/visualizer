@@ -1942,7 +1942,7 @@
           "verify": "auto",
           "verification": {
             "status": "checked",
-            "model": "gemma3:27b",
+            "model": "gemma3:27b-it-qat",
             "checked": 2,
             "removed": 1
           },
@@ -2016,7 +2016,7 @@
               "verify": "auto",
               "verification": {
                 "status": "checked",
-                "model": "gemma3:27b",
+                "model": "gemma3:27b-it-qat",
                 "checked": 2,
                 "removed": 1
               },

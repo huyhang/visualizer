@@ -123,7 +123,7 @@ def test_the_optional_verifier(answer, status):
         "http://m1max:11434/api/tags": answer}))
     verifier = probes.snapshot()["verifier"]
     assert verifier == {"status": status, "models": {
-        "research": "bespoke-minicheck", "review": "gemma3:27b"}}
+        "research": "bespoke-minicheck", "review": "gemma3:27b-it-qat"}}
 
 
 def test_a_failing_nvidia_smi_is_unknown_not_fatal():

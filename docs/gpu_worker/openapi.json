@@ -84,7 +84,7 @@
                         "status": "up",
                         "models": {
                           "research": "bespoke-minicheck",
-                          "review": "gemma3:27b"
+                          "review": "gemma3:27b-it-qat"
                         }
                       }
                     }
@@ -118,7 +118,7 @@
                         "status": "up",
                         "models": {
                           "research": "bespoke-minicheck",
-                          "review": "gemma3:27b"
+                          "review": "gemma3:27b-it-qat"
                         }
                       }
                     }
@@ -153,7 +153,7 @@
                         "status": "down",
                         "models": {
                           "research": "bespoke-minicheck",
-                          "review": "gemma3:27b"
+                          "review": "gemma3:27b-it-qat"
                         }
                       }
                     }
@@ -473,7 +473,7 @@
                           "generated_at": "2026-10-11T09:20:51Z",
                           "verification": {
                             "status": "checked",
-                            "model": "gemma3:27b",
+                            "model": "gemma3:27b-it-qat",
                             "reason": null,
                             "checked": 3,
                             "removed": 2

@@ -199,7 +199,7 @@ Returns `200` whenever the worker process is up; `ok` reflects its dependencies.
   "searxng": {"status": "up"},
   "gpu":     {"busy": false, "vram_used_mb": 812, "vram_total_mb": 24576},
   "queue":   {"queued": 0, "running": 0, "max": 20},
-  "verifier": {"status": "up", "models": {"research": "bespoke-minicheck", "review": "gemma3:27b"}}
+  "verifier": {"status": "up", "models": {"research": "bespoke-minicheck", "review": "gemma3:27b-it-qat"}}
 }
 ```
 
@@ -439,7 +439,7 @@ draft is the caller's decision.
      "reference": "song-dynasty/research/song-tea",
      "verified": true}
   ],
-  "verification": {"status": "checked", "model": "gemma3:27b", "reason": null,
+  "verification": {"status": "checked", "model": "gemma3:27b-it-qat", "reason": null,
                    "checked": 3, "removed": 2},
   "model": "qwen3:30b",
   "generated_at": "2026-10-11T09:20:51Z"
