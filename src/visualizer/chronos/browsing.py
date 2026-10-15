@@ -201,6 +201,9 @@ def _present_timeline_event(row: Mapping) -> dict:
         # string and never needs a second request to know where a year turns.
         "start_parts": row.get("start_parts"),
         "end_parts": row.get("end_parts"),
+        # Its place, cast and things, whole: following a character through the
+        # book takes this one read, threads or no threads.
+        "cast": list(row.get("cast", [])),
     })
     return event
 

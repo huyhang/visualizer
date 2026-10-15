@@ -1,14 +1,17 @@
 // ⌘K: jump to any thread, scene, goal or book, or start something new.
 //
-// Inside a book everything comes from the story graph and the cast the rest
-// of the workspace already holds, so opening the palette costs no request.
+// Inside a book everything comes from the story graph, the scene listing and
+// the cast the rest of the workspace already holds, read in the calendar the
+// book is being read in, so opening the palette costs no request. Before
+// anything is typed it offers where to go and what to start; scenes and people
+// answer a search.
 
 import { Dialog } from "radix-ui";
-import { useEffect, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useQueries } from "@tanstack/react-query";
-import type { EntityRef, Graph } from "../../api/types";
+import type { EntityRef, Graph, TimelineEvent } from "../../api/types";
 import { useApi } from "../../deps";
-import { keys, useBooks, useGraph } from "../../hooks/queries";
+import { keys, useBooks, useGraph, useSceneListing } from "../../hooks/queries";
 import { useRoute } from "../../hooks/useRoute";
 import type { InspectorTarget } from "../../logic/inspector";
 import { bookOf, to, type Route } from "../../logic/route";
@@ -19,6 +22,7 @@ import { collectionIcon } from "../common/Chips";
 import { topDialog } from "../common/layers";
 import { entityTitle } from "../common/EntityName";
 import { useActions, type WorkspaceActions } from "./Actions";
+import { useOptionalBookScope } from "./BookScope";
 import { useInspector } from "./InspectorContext";
 import { useLens } from "./Lens";
 import { Icon, type IconName } from "../../../components/ui/Icon";
@@ -29,6 +33,8 @@ export interface PaletteItem {
   hint: string;
   icon: IconName;
   run: () => void;
+  /** Offered only once something is typed: there are too many to browse. */
+  searchOnly?: boolean;
 }
 
 interface Sinks {
@@ -74,7 +80,7 @@ function creations(actions: WorkspaceActions): PaletteItem[] {
   });
 }
 
-/** Everything in the book worth jumping to, from its story graph. */
+/** The book's threads and goals, from its story graph. */
 export function graphItems(
   book: string,
   graph: Graph | undefined,
@@ -88,13 +94,6 @@ export function graphItems(
     icon: "branch" as IconName,
     run: () => sinks.go(to.plotline(book, p.id)),
   }));
-  const scenes = graph.nodes.map((n) => ({
-    key: `scene:${n.id}`,
-    label: n.title || n.id,
-    hint: n.start_label ? `Scene · ${n.start_label}` : "Scene",
-    icon: "scenes" as IconName,
-    run: () => sinks.inspect({ kind: "scene", id: n.id }),
-  }));
   const goals = (graph.goals ?? []).map((g) => ({
     key: `goal:${g.id}`,
     label: g.title,
@@ -102,7 +101,19 @@ export function graphItems(
     icon: "target" as IconName,
     run: () => sinks.go(to.goals(book, g.id)),
   }));
-  return [...threads, ...scenes, ...goals];
+  return [...threads, ...goals];
+}
+
+/** Every scene in the book, threaded or not, dated in the calendar it is read in. */
+export function sceneItems(scenes: TimelineEvent[], sinks: Sinks): PaletteItem[] {
+  return scenes.map((s) => ({
+    key: `scene:${s.id}`,
+    label: s.title || s.id,
+    hint: s.scheduled ? `Scene · ${s.when}` : "Scene · unscheduled",
+    icon: "scenes" as IconName,
+    run: () => sinks.inspect({ kind: "scene", id: s.id }),
+    searchOnly: true,
+  }));
 }
 
 /** Who appears in the book: open their article beside the page, or follow them. */
@@ -117,6 +128,7 @@ export function castItems(
       hint: `${ref.collection} · ${plural(scenes, "scene")}`,
       icon: collectionIcon(ref.collection),
       run: () => sinks.inspect({ kind: "article", ref }),
+      searchOnly: true,
     },
     {
       key: `follow:${refKey(ref)}`,
@@ -124,6 +136,7 @@ export function castItems(
       hint: "Fade every scene they are not in",
       icon: "lens" as IconName,
       run: () => sinks.follow(ref),
+      searchOnly: true,
     },
   ]);
 }
@@ -151,8 +164,10 @@ function usePaletteItems(): PaletteItem[] {
   const inspector = useInspector();
   const actions = useActions();
   const book = bookOf(route);
+  const calendar = useOptionalBookScope()?.calendar ?? null;
   const { data: books } = useBooks();
-  const { data: graph } = useGraph(book, null);
+  const { data: graph } = useGraph(book, calendar);
+  const { data: scenes } = useSceneListing(book, calendar);
   const { follow } = useLens();
   const cast = useNamedCast(book);
   // Rebuilt on each render rather than memoised: a few hundred plain objects,
@@ -176,6 +191,7 @@ function usePaletteItems(): PaletteItem[] {
     ...(book ? bookPlaces(book, sinks) : []),
     ...creations(actions),
     ...(book ? graphItems(book, graph, sinks) : []),
+    ...sceneItems(scenes ?? [], sinks),
     ...castItems(cast, { ...sinks, follow }),
     ...bookItems,
     calendars,
@@ -202,7 +218,17 @@ function PaletteBody({ onChosen }: { onChosen: () => void }) {
   const items = usePaletteItems();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
-  const found = rank(items, query, 40);
+  const found = query.trim() ? rank(items, query, 40) : items.filter((i) => !i.searchOnly);
+  const list = useRef<HTMLUListElement>(null);
+
+  // The arrows walk past the bottom of the list: it scrolls to keep up.
+  const activeKey = found[active]?.key;
+  useEffect(() => {
+    if (!activeKey) return;
+    list.current?.ownerDocument
+      .getElementById(`cw-palette-${activeKey}`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [activeKey]);
 
   const choose = (item: PaletteItem | undefined) => {
     if (!item) return;
@@ -225,7 +251,6 @@ function PaletteBody({ onChosen }: { onChosen: () => void }) {
       <div className="cw-palette-field">
         <Icon name="search" size={18} />
         <input
-          autoFocus
           className="cw-palette-input"
           placeholder="Search threads, scenes, goals, people and books…"
           aria-label="Search or jump to"
@@ -243,7 +268,7 @@ function PaletteBody({ onChosen }: { onChosen: () => void }) {
           onKeyDown={onKeyDown}
         />
       </div>
-      <ul className="cw-palette-list" id="cw-palette-list" role="listbox">
+      <ul ref={list} className="cw-palette-list" id="cw-palette-list" role="listbox">
         {found.map((item, n) => (
           <li
             key={item.key}
@@ -274,11 +299,27 @@ export function CommandPalette({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const returnTo = useRef<HTMLElement | null>(null);
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="st-overlay" />
-        <Dialog.Content className="st-modal cw-palette" aria-describedby={undefined}>
+        <Dialog.Content
+          className="st-modal cw-palette"
+          aria-describedby={undefined}
+          onOpenAutoFocus={() => {
+            returnTo.current = document.activeElement as HTMLElement | null;
+          }}
+          onCloseAutoFocus={(e) => {
+            // Back to whatever was focused before, unless what was chosen took
+            // focus itself (the inspector opening on a scene).
+            e.preventDefault();
+            const back = returnTo.current;
+            const free =
+              !document.activeElement || document.activeElement === document.body;
+            if (free && back?.isConnected) back.focus();
+          }}
+        >
           <Dialog.Title className="st-sr-only">Search or jump to</Dialog.Title>
           <PaletteBody onChosen={() => onOpenChange(false)} />
         </Dialog.Content>

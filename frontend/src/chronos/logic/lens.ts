@@ -1,34 +1,19 @@
 // The character lens: pick someone (or somewhere, or something) and every
 // screen lights up the scenes they are in and fades the rest.
 //
-// Who is in a scene is on each scene, and the threads already carry their
-// scenes in full (`?expand=events`), so the cast is read from the threads --
-// one request per thread, shared with the screens that show them.
+// Who is in a scene comes with the book's scene listing, each row carrying its
+// place, cast and things whole (`cast`): one read, shared with the Scenes
+// screen, and every scene in it -- on a thread or not.
 
-import type { EntityRef, EventSummary, Plotline } from "../api/types";
+import type { EntityRef } from "../api/types";
 
 export const refKey = (ref: EntityRef) => `${ref.database}/${ref.collection}/${ref.id}`;
 
-/** Every scene the threads pass through, and who, where and what is in it. */
-export function castIndex(plotlines: Plotline[]): Map<string, EntityRef[]> {
-  const index = new Map<string, EntityRef[]>();
-  for (const plotline of plotlines) {
-    for (const entry of plotline.effective_events) {
-      if (typeof entry === "string" || index.has(entry.id)) continue;
-      index.set(entry.id, sceneCast(entry));
-    }
-  }
-  return index;
-}
-
-export function sceneCast(
-  scene: Pick<EventSummary, "characters" | "items" | "location">,
-): EntityRef[] {
-  return [
-    ...(scene.characters ?? []),
-    ...(scene.location ? [scene.location] : []),
-    ...(scene.items ?? []),
-  ];
+/** Every scene in the listing, and who, where and what is in it. */
+export function castIndex(
+  scenes: { id: string; cast?: EntityRef[] }[],
+): Map<string, EntityRef[]> {
+  return new Map(scenes.map((s) => [s.id, s.cast ?? []]));
 }
 
 /** The scenes `ref` is in. */

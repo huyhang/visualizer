@@ -16,6 +16,8 @@ import { Link } from "../common/Link";
 import { useOptionalBookScope } from "./BookScope";
 import { LensPicker } from "./Lens";
 import { Icon, type IconName } from "../../../components/ui/Icon";
+import { plural } from "../../logic/text";
+import { shortcutLabel } from "../common/keys";
 
 interface Section {
   label: string;
@@ -62,7 +64,7 @@ function NavLink({ section }: { section: Section }) {
       {section.badge ? (
         <span
           className={`cw-nav-badge is-${section.tone ?? "muted"}`}
-          aria-label={`${section.badge} problems`}
+          aria-label={plural(section.badge, "problem")}
         >
           {section.badge}
         </span>
@@ -145,7 +147,7 @@ export function Sidebar({ onSearch }: { onSearch: () => void }) {
       <button type="button" className="cw-search-trigger" onClick={onSearch}>
         <Icon name="search" size={15} />
         <span>Search or jump to…</span>
-        <kbd className="cw-kbd">⌘K</kbd>
+        <kbd className="cw-kbd">{shortcutLabel("K")}</kbd>
       </button>
       {book ? <BookNav book={book} /> : null}
       {scope ? (

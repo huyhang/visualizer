@@ -145,6 +145,17 @@ describe("the thread editor", () => {
     ).toBeInTheDocument();
   });
 
+  it("does not read a deleted thread again on the way out", async () => {
+    const { api, dialog, location } = await openEditor();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete thread" }));
+    const before = api.callsTo("getPlotline").length;
+    await userEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(location.current()).toBe("#/ember-pact"));
+    await screen.findByRole("heading", { level: 1, name: "The Ember Pact" });
+    const after = api.callsTo("getPlotline").slice(before);
+    expect(after.filter((args) => args[1] === "road")).toEqual([]);
+  });
+
   it("offers to fold the thread into the ones that continue into it", async () => {
     const { api, dialog, location } = await openEditor();
     api.refuse("deletePlotline", 409, "PLOTLINE_IN_USE", { plotlines: ["shadow"] });

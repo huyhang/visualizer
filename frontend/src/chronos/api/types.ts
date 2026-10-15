@@ -387,6 +387,8 @@ export interface TimelineEvent extends EventRow {
   end_label: string | null;
   start_parts: string[] | null;
   end_parts: string[] | null;
+  /** Its place, characters and things, whole. Absent from an older server. */
+  cast?: EntityRef[];
 }
 
 export interface SceneTimeline {

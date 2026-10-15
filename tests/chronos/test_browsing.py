@@ -236,6 +236,13 @@ def test_timeline_is_unpaginated_with_bounds_and_undated_scenes_apart():
     assert out["total"] == 121
 
 
+def test_timeline_rows_hand_on_the_cast_but_picker_rows_do_not():
+    cast = [{"database": "ember-pact", "collection": "characters", "id": "aldric"}]
+    rows = [{**scene("a", start=0), "cast": cast}]
+    assert timeline_events(rows)["events"][0]["cast"] == cast
+    assert "cast" not in browse_events(rows)["events"][0]
+
+
 def test_timeline_filter_recomputes_its_bounds():
     out = timeline_events([
         scene("departure", name="Departure", start=-20),

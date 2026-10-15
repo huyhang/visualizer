@@ -4704,7 +4704,8 @@
               "start_label",
               "end_label",
               "start_parts",
-              "end_parts"
+              "end_parts",
+              "cast"
             ],
             "properties": {
               "start_label": {
@@ -4732,6 +4733,13 @@
                   "type": "string"
                 },
                 "description": "`end_label` pre-split into coarse-to-fine components. Null when unscheduled."
+              },
+              "cast": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/EntityRef"
+                },
+                "description": "Every article the scene references -- its place, then its characters, then its items -- as whole references, so a client can follow one of them through the book from this single read, whether or not the scene is on a thread."
               }
             }
           }

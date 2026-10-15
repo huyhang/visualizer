@@ -257,6 +257,7 @@ export function fakeApi(): FakeApi {
           end_label: s.end_label ?? null,
           start_parts: summary(s.id).start_parts ?? null,
           end_parts: summary(s.id).end_parts ?? null,
+          cast: [s.location, ...(s.characters ?? []), ...(s.items ?? [])],
           location: s.location.id,
           location_ref: s.location,
           plotlines: Object.entries({

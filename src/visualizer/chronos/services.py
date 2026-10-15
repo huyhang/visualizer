@@ -909,6 +909,9 @@ class VisualizerService(_Service):
             "location_ref": event.location.to_dict(),
             # Findable by where it happens and who is in it, not just its title.
             "keywords": [ref.id for ref in event.entity_refs()],
+            # Who and what is in it, as whole references: the timeline hands them
+            # on so a client can follow someone through every scene from one read.
+            "cast": [ref.to_dict() for ref in event.entity_refs()],
             "plotlines": sorted(pid for pid, path in paths.items() if event.id in path),
         }
 

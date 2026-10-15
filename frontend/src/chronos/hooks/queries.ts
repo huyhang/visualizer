@@ -120,6 +120,22 @@ export function useTimeline(book: string, options: PageOptions) {
   });
 }
 
+/**
+ * Every scene in the book, threaded or not, from the timeline's one unfiltered
+ * read: what the lens and the palette know scenes by. The Scenes screen asks
+ * for the same thing while its filter is empty, so the three share one request.
+ */
+export function useSceneListing(book: string | null, calendar: Calendar) {
+  const api = useApi();
+  const options = { filter: "", calendar };
+  return useQuery({
+    queryKey: keys.timeline(book ?? "", options),
+    queryFn: () => api.timelineEvents(book ?? "", options),
+    enabled: book !== null,
+    select: (listing) => [...listing.events, ...listing.unscheduled],
+  });
+}
+
 export function useEvents(book: string, options: PageOptions) {
   const api = useApi();
   return useQuery({

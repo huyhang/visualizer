@@ -2,12 +2,9 @@
 // every screen that shows scenes asks `useLens()` which of them to light up.
 // It belongs to the book -- leaving the book puts it down.
 
-import { useQueries, type UseQueryResult } from "@tanstack/react-query";
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
-import type { EntityRef, Plotline } from "../../api/types";
-import { useApi } from "../../deps";
-import { keys, useEntity } from "../../hooks/queries";
-import { useThreads } from "../../hooks/useThreads";
+import type { EntityRef } from "../../api/types";
+import { useEntity, useSceneListing } from "../../hooks/queries";
 import {
   castIndex,
   castList,
@@ -43,21 +40,10 @@ const NO_LENS: Lens = {
 
 const LensContext = createContext<Lens>(NO_LENS);
 
-// Module-level, so React Query keeps the combined answer until a thread changes.
-const combineCast = (results: UseQueryResult<Plotline>[]) =>
-  castIndex(results.flatMap((r) => (r.data ? [r.data] : [])));
-
-/** Who is in each scene, from every thread in the book, expanded. */
+/** Who is in each scene of the book, from its one scene listing. */
 function useCastIndex(book: string, calendar: string | null) {
-  const api = useApi();
-  const { list } = useThreads(book);
-  return useQueries({
-    queries: list.map((t) => ({
-      queryKey: keys.plotline(book, t.id, calendar),
-      queryFn: () => api.getPlotline(book, t.id, { calendar }),
-    })),
-    combine: combineCast,
-  });
+  const { data: scenes } = useSceneListing(book, calendar);
+  return useMemo(() => castIndex(scenes ?? []), [scenes]);
 }
 
 function BookLens({

@@ -357,6 +357,18 @@ def test_timeline_returns_one_unpaginated_scene_snapshot(book_with_plotlines):
     }
 
 
+def test_timeline_scenes_carry_their_whole_cast_threads_or_not(book_with_plotlines):
+    _event(book_with_plotlines, "aside", characters=("aldric", "lyra"), title="Aside")
+    body = book_with_plotlines.get(f"/books/{BOOK}/ui/timeline").get_json()
+    aside = next(e for e in body["events"] if e["id"] == "aside")
+    assert aside["plotlines"] == []
+    assert aside["cast"] == [
+        ref("highkeep", "locations").to_dict(),
+        ref("aldric").to_dict(),
+        ref("lyra").to_dict(),
+    ]
+
+
 def test_timeline_requires_read_permission(book_with_plotlines, app):
     from tests.chronos.conftest import _login
 
