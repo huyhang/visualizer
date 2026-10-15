@@ -9,8 +9,8 @@
 #
 # Build context is the repo root (see docker-compose.nas.yml).
 
-# The compiled browser surfaces -- Akasha's research studio and Logos's writing
-# page -- built from frontend/ (React + TypeScript + Vite). Node exists only in
+# The compiled browser surfaces -- Akasha's research studio, Logos's writing
+# page and Chronos's workspace -- built from frontend/ (React + TypeScript + Vite). Node exists only in
 # this stage: the image that runs gets the built files and nothing else, and
 # loads nothing from a CDN at run time.
 FROM node:22-slim AS studio
@@ -18,8 +18,9 @@ WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
-# Vite writes into ../src/visualizer/akasha/static/studio (vite.config.ts) and
-# ../src/visualizer/logos/static/writer (vite.logos.config.ts).
+# Vite writes into ../src/visualizer/akasha/static/studio (vite.config.ts),
+# ../src/visualizer/logos/static/writer (vite.logos.config.ts) and
+# ../src/visualizer/chronos/static/workspace (vite.chronos.config.ts).
 RUN npm run build
 
 FROM python:3.11-slim
@@ -41,6 +42,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src /app/src
 COPY --from=studio /build/src/visualizer/akasha/static/studio /app/src/visualizer/akasha/static/studio
 COPY --from=studio /build/src/visualizer/logos/static/writer /app/src/visualizer/logos/static/writer
+COPY --from=studio /build/src/visualizer/chronos/static/workspace /app/src/visualizer/chronos/static/workspace
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/src \

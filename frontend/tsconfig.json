@@ -16,5 +16,11 @@
     "noEmit": true,
     "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"]
   },
-  "include": ["src", "vite.config.ts", "vite.logos.config.ts", "eslint.config.js"]
+  "include": [
+    "src",
+    "vite.config.ts",
+    "vite.logos.config.ts",
+    "vite.chronos.config.ts",
+    "eslint.config.js"
+  ]
 }

@@ -1,0 +1,792 @@
+/* The Scenes screen: the timeline rail, scene cards, the maintenance list,
+   and the scene editor's own pieces. Ported from the classic visualiser's
+   timeline styles, drawn in the stack's tokens. */
+
+/* -- a segmented choice (Timeline / List, Date / Tick) -------------------------- */
+
+.cw-segmented {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.cw-segment {
+  padding: 0.32rem 0.8rem;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 0.15s var(--st-ease),
+    color 0.15s;
+}
+.cw-segment:hover {
+  color: var(--text);
+}
+.cw-segment.is-active {
+  background: var(--surface);
+  color: var(--accent-strong);
+  box-shadow: var(--shadow);
+}
+
+/* -- the timeline ---------------------------------------------------------------- */
+
+.cw-tl-root {
+  display: grid;
+  gap: 0.85rem;
+}
+.cw-tl {
+  display: grid;
+  gap: 0.6rem;
+}
+.cw-tl-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 2rem;
+}
+.cw-tl-count {
+  margin-right: auto;
+}
+.cw-tl-zoom {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+.cw-tl-zoom .st-btn {
+  min-width: 2rem;
+  font-size: 1rem;
+}
+.cw-tl-zoom-label {
+  min-width: 3.2rem;
+  text-align: center;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.cw-tl-stage {
+  --cursor-y: 50%;
+  --fade-top: 1;
+  --fade-bottom: 1;
+  --stage-pad: 14px;
+  --rail-x: calc((100% - 42px) / 2);
+  position: relative;
+  height: min(68vh, 680px);
+  min-height: 460px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background:
+    radial-gradient(
+      circle at 50% 50%,
+      color-mix(in srgb, var(--accent-soft) 58%, transparent),
+      transparent 34%
+    ),
+    linear-gradient(var(--surface), var(--surface-2));
+  box-shadow: var(--shadow);
+  touch-action: pan-y;
+}
+.cw-tl-stage::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  left: var(--rail-x);
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--border);
+  pointer-events: none;
+}
+.cw-tl-scroll {
+  position: absolute;
+  inset: 0 34px 0 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scroll-behavior: smooth;
+  outline: none;
+}
+.cw-tl-scroll:focus-visible {
+  box-shadow: inset 0 0 0 3px var(--accent-soft);
+}
+.cw-tl-spacer {
+  width: 1px;
+  pointer-events: none;
+}
+.cw-tl-layer,
+.cw-tl-breaks,
+.cw-tl-periods {
+  position: absolute;
+  inset: 0 42px 0 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.cw-tl-periods {
+  z-index: 1;
+}
+.cw-tl-breaks {
+  z-index: 2;
+}
+.cw-tl-layer {
+  z-index: 3;
+}
+
+.cw-tl-period {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  --period-offset: 10px;
+}
+.cw-tl-period-rule {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+}
+.cw-tl-period-label {
+  position: absolute;
+  left: var(--stage-pad);
+  padding: 0.08rem 0.55rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
+  color: var(--accent-strong);
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+/* Hung on the far side of its rule from the cursor, so the cursor's line never crosses it. */
+.cw-tl-period.mark-above .cw-tl-period-label {
+  bottom: var(--period-offset);
+}
+.cw-tl-period.mark-below .cw-tl-period-label {
+  top: var(--period-offset);
+}
+.cw-tl-period.level-1 .cw-tl-period-label {
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cw-tl-break {
+  position: absolute;
+  left: 11%;
+  right: 11%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--muted);
+}
+.cw-tl-break-line {
+  flex: 1;
+  border-top: 2px dashed var(--border);
+}
+.cw-tl-break-label {
+  padding: 0.12rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cw-tl-item {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 78px;
+  pointer-events: none;
+  transition:
+    top 80ms linear,
+    opacity 120ms ease;
+  --anchor-y: 39px;
+  --duration-top: 39px;
+  --duration-height: 3px;
+  --stem-top: 39px;
+  --stem-height: 2px;
+  --thread: var(--accent);
+}
+.cw-tl-card {
+  position: absolute;
+  top: 0;
+  pointer-events: auto;
+  width: calc(50% - 28px - var(--stage-pad));
+}
+.cw-tl-item.side-0 .cw-tl-card {
+  left: var(--stage-pad);
+}
+.cw-tl-item.side-1 .cw-tl-card {
+  right: var(--stage-pad);
+}
+.cw-tl-link {
+  position: absolute;
+  top: 38px;
+  height: 1px;
+  width: 28px;
+  background: color-mix(in srgb, var(--thread) 55%, var(--border));
+}
+.cw-tl-item.side-0 .cw-tl-link {
+  left: calc(50% - 28px);
+}
+.cw-tl-item.side-1 .cw-tl-link {
+  left: 50%;
+}
+.cw-tl-stem {
+  position: absolute;
+  left: calc(50% - 0.5px);
+  top: var(--stem-top);
+  width: 1px;
+  height: var(--stem-height);
+  background: color-mix(in srgb, var(--thread) 55%, var(--border));
+}
+.cw-tl-duration {
+  position: absolute;
+  left: calc(50% + 3px);
+  top: var(--duration-top);
+  width: 3px;
+  height: var(--duration-height);
+  border-radius: 999px;
+  background: var(--thread);
+  opacity: 0.42;
+}
+.cw-tl-item.side-0 .cw-tl-duration {
+  left: calc(50% - 6px);
+}
+.cw-tl-dot {
+  position: absolute;
+  left: calc(50% - 6px);
+  top: calc(var(--anchor-y) - 6px);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--thread);
+  border: 3px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--thread);
+}
+
+.cw-tl-cursor {
+  position: absolute;
+  z-index: 4;
+  left: 0;
+  right: 42px;
+  top: var(--cursor-y);
+  height: 0;
+  pointer-events: none;
+  transition: top 80ms linear;
+}
+.cw-tl-rule {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--accent) 12%,
+    var(--accent) 88%,
+    transparent
+  );
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 38%, transparent);
+}
+.cw-tl-label {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: min(70%, 30rem);
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: var(--shadow);
+  font-size: 0.75rem;
+  font-weight: 750;
+}
+[data-theme="dark"] .cw-tl-label {
+  color: var(--bg);
+}
+.cw-tl-label:empty {
+  display: none;
+}
+
+/* The scrim that dissolves a card the stage is about to cut in half; worth only as much as there is card under it. */
+.cw-tl-fade {
+  position: absolute;
+  z-index: 5;
+  left: 0;
+  right: 42px;
+  height: 4.5rem;
+  pointer-events: none;
+  transition: opacity 80ms linear;
+}
+.cw-tl-fade.top {
+  top: 0;
+  opacity: var(--fade-top);
+  background: linear-gradient(var(--surface), transparent);
+}
+.cw-tl-fade.bottom {
+  bottom: 0;
+  opacity: var(--fade-bottom);
+  background: linear-gradient(transparent, var(--surface-2));
+}
+
+.cw-tl-overview {
+  position: absolute;
+  z-index: 6;
+  top: 1rem;
+  right: 0.45rem;
+  bottom: 1rem;
+  width: 22px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-3) 80%, transparent);
+}
+.cw-tl-density {
+  position: absolute;
+  inset: 8px 7px;
+  pointer-events: none;
+}
+.cw-tl-density span {
+  position: absolute;
+  left: 0;
+  width: 8px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent-strong);
+}
+.cw-tl-range {
+  position: absolute;
+  inset: 0;
+  width: 22px;
+  height: 100%;
+  margin: 0;
+  writing-mode: vertical-lr;
+  direction: ltr;
+  opacity: 0.72;
+  accent-color: var(--accent);
+}
+
+.cw-tl-moment {
+  pointer-events: auto;
+}
+.cw-tl-moment > summary {
+  position: relative;
+  display: flex;
+  height: 78px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: 0.55rem 0.7rem;
+  cursor: pointer;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow: var(--shadow);
+}
+.cw-tl-moment > summary::-webkit-details-marker {
+  display: none;
+}
+.cw-tl-moment-count {
+  font-size: 0.85rem;
+  font-weight: 750;
+}
+.cw-tl-moment-names {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+.cw-tl-moment-scenes {
+  display: grid;
+  gap: 0.4rem;
+  position: relative;
+  z-index: 12;
+  max-height: min(52vh, 420px);
+  overflow-y: auto;
+  padding: 0.45rem;
+  margin-top: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.cw-tl-undated {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.cw-tl-undated summary {
+  cursor: pointer;
+  padding: 0.65rem 0.85rem;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+.cw-tl-undated-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: 0.6rem;
+  padding: 0 0.75rem 0.75rem;
+}
+
+/* One column: the rail runs down the left, every card to its right. */
+.cw-tl-stage.is-narrow {
+  --stage-pad: 0.4rem;
+  --rail-x: 1.25rem;
+  min-height: 440px;
+}
+.cw-tl-stage.is-narrow .cw-tl-layer,
+.cw-tl-stage.is-narrow .cw-tl-breaks,
+.cw-tl-stage.is-narrow .cw-tl-periods,
+.cw-tl-stage.is-narrow .cw-tl-cursor,
+.cw-tl-stage.is-narrow .cw-tl-fade {
+  right: 32px;
+}
+.cw-tl-stage.is-narrow .cw-tl-break,
+.cw-tl-stage.is-narrow .cw-tl-period {
+  left: 2.7rem;
+  right: 0.5rem;
+}
+.cw-tl-stage.is-narrow .cw-tl-period {
+  --period-offset: 17px;
+}
+.cw-tl-stage.is-narrow .cw-tl-item .cw-tl-card {
+  left: 2.7rem;
+  right: var(--stage-pad);
+  width: auto;
+}
+.cw-tl-stage.is-narrow .cw-tl-dot {
+  left: calc(1.25rem - 6px);
+}
+.cw-tl-stage.is-narrow .cw-tl-stem {
+  left: calc(1.25rem - 0.5px);
+}
+.cw-tl-stage.is-narrow .cw-tl-duration {
+  left: calc(1.25rem + 3px);
+}
+.cw-tl-stage.is-narrow .cw-tl-link {
+  left: 1.25rem;
+  width: 1.45rem;
+}
+.cw-tl-stage.is-narrow .cw-tl-label {
+  left: 1.25rem;
+  transform: translate(-18%, -50%);
+}
+.cw-tl-stage.is-narrow .cw-tl-overview {
+  right: 0.25rem;
+  width: 18px;
+}
+
+/* -- a scene card -------------------------------------------------------------------- */
+
+.cw-scene-card {
+  --thread: var(--accent);
+  position: relative;
+  height: 78px;
+  overflow: hidden;
+  padding: 0.32rem 0.6rem 0.3rem 0.85rem;
+  line-height: 1.32;
+  border: 1px solid color-mix(in srgb, var(--thread) 26%, var(--border));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(7px);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.cw-scene-card:hover,
+.cw-scene-card:focus-within {
+  border-color: var(--thread);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--thread) 18%, transparent);
+}
+.cw-scene-stripe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  display: flex;
+  flex-direction: column;
+}
+.cw-thread-mark {
+  flex: 1;
+  background: var(--thread);
+}
+.cw-thread-mark.stroke-1 {
+  background: repeating-linear-gradient(var(--thread) 0 7px, transparent 7px 11px);
+}
+.cw-thread-mark.stroke-2 {
+  background: repeating-linear-gradient(var(--thread) 0 2px, transparent 2px 6px);
+}
+.cw-scene-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.cw-scene-card-title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.cw-scene-card-title:hover {
+  color: var(--accent-strong);
+}
+.cw-scene-tools {
+  display: flex;
+  gap: 0.1rem;
+  flex: none;
+}
+.cw-scene-card .cw-scene-tools .st-icon-btn {
+  width: 1.3rem;
+  height: 1.3rem;
+}
+.cw-scene-card-time {
+  /* The date is the card's reason for being on a clock: never the row that gives way. */
+  flex-shrink: 0;
+  margin-top: 0.08rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--thread) 55%, var(--text));
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+.cw-scene-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  margin-top: 0.18rem;
+  font-size: 0.72rem;
+}
+.cw-scene-card-meta > :first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cw-scene-threads {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 0.25rem;
+  overflow: hidden;
+}
+.cw-scene-thread {
+  --thread: var(--muted);
+  padding: 0.04rem 0.4rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-size: 0.68rem;
+  font-weight: 650;
+  background: color-mix(in srgb, var(--thread) 14%, transparent);
+  color: color-mix(in srgb, var(--thread) 60%, var(--text));
+}
+.cw-scene-thread.is-more {
+  background: var(--surface-3);
+  color: var(--muted);
+}
+.cw-scene-unused {
+  font-style: italic;
+  font-size: 0.78rem;
+}
+
+/* -- the list -------------------------------------------------------------------------- */
+
+.cw-scene-list-head,
+.cw-scene-row {
+  display: grid;
+  grid-template-columns:
+    minmax(16.5rem, 1.2fr) minmax(10rem, 1.2fr) minmax(7rem, 0.7fr)
+    minmax(9rem, 1fr) auto;
+  gap: 0.9rem;
+  align-items: center;
+}
+.cw-scene-list-head {
+  padding: 0 1rem 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.cw-scene-list {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.cw-scene-row {
+  padding: 0.6rem 0.75rem 0.6rem 1rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.88rem;
+}
+.cw-scene-row:first-child {
+  border-top: 0;
+}
+.cw-scene-row:hover {
+  background: var(--surface-2);
+}
+.cw-scene-row-when {
+  display: flex;
+  flex-direction: column;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.cw-scene-row-when-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cw-scene-row-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.cw-scene-row .cw-scene-threads {
+  flex-wrap: wrap;
+}
+
+@media (max-width: 900px) {
+  .cw-scene-list-head {
+    display: none;
+  }
+  .cw-scene-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .cw-scene-row > :nth-child(3),
+  .cw-scene-row > :nth-child(4) {
+    grid-column: 1 / -1;
+  }
+}
+
+/* -- the scene editor ------------------------------------------------------------------- */
+
+.cw-ref-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-height: 1.6rem;
+  align-items: center;
+}
+.cw-ref-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.16rem 0.3rem 0.16rem 0.55rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+.cw-ref-remove {
+  display: grid;
+  place-items: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.cw-ref-remove:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.cw-ref-search {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.cw-ref-search .cw-typeahead {
+  flex: 1;
+}
+.cw-ref-collection {
+  width: auto;
+}
+
+.cw-scene-timing {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.cw-scene-timing legend {
+  padding: 0 0.3rem;
+}
+.cw-scene-timing-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+.cw-scene-calendar {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.cw-scene-calendar .st-input {
+  width: auto;
+}
+.cw-scene-dates {
+  display: grid;
+  gap: 0.6rem;
+}
+.cw-scene-hint {
+  min-height: 1.3em;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--accent-strong);
+}
+.cw-scene-readings {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cw-tl-scroll {
+    scroll-behavior: auto;
+  }
+  .cw-tl-item,
+  .cw-tl-cursor,
+  .cw-tl-fade {
+    transition: none;
+  }
+}

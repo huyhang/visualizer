@@ -1,0 +1,239 @@
+/* The calendar library, and the book form's calendars. */
+
+/* -- the library ---------------------------------------------------------------- */
+
+.cw-calendar-tools {
+  margin-bottom: 1rem;
+}
+.cw-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  gap: 1rem;
+}
+.cw-calendar-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 1.1rem 1.15rem 0.9rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  transition:
+    border-color 0.18s,
+    box-shadow 0.18s,
+    transform 0.18s var(--st-ease);
+}
+.cw-calendar-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  transform: translateY(-1px);
+}
+.cw-calendar-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+}
+.cw-calendar-card-mark {
+  flex: none;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+.cw-calendar-card-titles {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cw-calendar-card-name {
+  font-size: 1.08rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+.cw-calendar-card-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+.cw-calendar-card-notes {
+  font-size: 0.88rem;
+  color: var(--muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.cw-calendar-card-tools {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  margin-top: auto;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--border);
+}
+
+.cw-calendar-reading {
+  font-size: 0.86rem;
+  color: var(--muted);
+}
+
+/* hour ×24 day ×30 month: how the calendar nests, at a glance */
+.cw-cycle-chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+.cw-cycle-pill {
+  padding: 0.12rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: var(--surface-3);
+  color: var(--text);
+}
+.cw-cycle-pill.is-earth {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.cw-cycle-size {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--accent-strong);
+  font-variant-numeric: tabular-nums;
+}
+.cw-cycle-epoch {
+  margin-left: 0.2rem;
+  padding: 0.1rem 0.45rem;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* -- the calendar editor --------------------------------------------------------- */
+
+.cw-calendar-draft {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.cw-cycle-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.cw-cycle-row {
+  display: grid;
+  grid-template-columns: 1.6rem minmax(6rem, 1fr) auto 5rem repeat(3, auto);
+  align-items: center;
+  gap: 0.4rem;
+}
+.cw-cycle-index {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-align: right;
+}
+.cw-cycle-row .st-icon-btn {
+  width: 1.9rem;
+  height: 1.9rem;
+}
+
+/* -- the book form's calendars ----------------------------------------------------- */
+
+.cw-attach-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.cw-attach-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 0.85rem 1rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.cw-attach-row:first-child {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+.cw-attach-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.cw-attach-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+.cw-attach-tools .st-icon-btn {
+  width: 1.9rem;
+  height: 1.9rem;
+}
+.cw-attach-choice {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.cw-attach-choice .st-input {
+  flex: 1;
+}
+.cw-attach-origin {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+.cw-attach-none {
+  padding: 0.7rem 0.9rem;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+.cw-update-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 10px;
+  background: var(--warn-soft);
+  color: var(--text);
+  font-size: 0.86rem;
+}
+
+.cw-terminus {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.cw-terminus-current {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+@media (max-width: 640px) {
+  .cw-cycle-row {
+    grid-template-columns: 1.4rem minmax(0, 1fr) 4rem repeat(3, auto);
+  }
+  .cw-cycle-row > .cw-muted {
+    display: none;
+  }
+}

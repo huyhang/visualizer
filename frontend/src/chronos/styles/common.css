@@ -1,0 +1,288 @@
+/* The pieces every screen shares: the page frame and heading, chips, search
+   fields, the pager, empty and loading states. */
+
+:root {
+  --cw-attention: #c2410c;
+  --cw-attention-soft: #ffefe4;
+  /* A raised panel: the inspector when it floats over a narrow screen. */
+  --cw-shadow-raised: 0 10px 40px rgba(16, 24, 40, 0.18);
+}
+[data-theme="dark"] {
+  --cw-attention: #fb923c;
+  --cw-attention-soft: #3a2515;
+  --cw-shadow-raised: 0 12px 48px rgba(0, 0, 0, 0.55);
+}
+
+.cw-muted {
+  color: var(--muted);
+}
+.cw-small {
+  font-size: 0.82rem;
+}
+.cw-quiet {
+  color: var(--muted);
+  opacity: 0.7;
+}
+.cw-problems {
+  color: var(--danger);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+/* -- the page ------------------------------------------------------------------ */
+
+.cw-page {
+  padding: 1.6rem 2rem 4rem;
+}
+.cw-page-inner {
+  max-width: var(--cw-page-w);
+  margin: 0 auto;
+  animation: cw-rise 0.25s var(--st-ease);
+}
+.cw-page.is-wide .cw-page-inner {
+  max-width: none;
+}
+@keyframes cw-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+.cw-page-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.75rem 1.5rem;
+  margin-bottom: 1.4rem;
+}
+.cw-page-titles {
+  min-width: 0;
+}
+.cw-eyebrow {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 0.2rem;
+}
+.cw-page-title {
+  font-size: clamp(1.6rem, 2.4vw, 2.1rem);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+}
+.cw-page-sub {
+  margin-top: 0.45rem;
+  max-width: 46rem;
+  color: var(--muted);
+  font-size: 0.98rem;
+}
+.cw-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+.cw-page-tools {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.cw-section-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.cw-section-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 2rem 0 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.cw-loading {
+  padding: 1rem 0;
+}
+
+/* -- chips --------------------------------------------------------------------- */
+
+.cw-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+.cw-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 100%;
+  padding: 0.16rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  background: var(--surface-3);
+  color: var(--text);
+}
+.cw-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+button.cw-chip {
+  cursor: pointer;
+  transition:
+    border-color 0.12s,
+    background 0.12s,
+    transform 0.1s;
+}
+button.cw-chip:hover {
+  border-color: currentColor;
+}
+button.cw-chip:active {
+  transform: translateY(1px);
+}
+.cw-chip-ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.cw-chip-warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.cw-chip-danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.cw-chip-accent {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+.cw-chip-muted {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--muted);
+}
+.cw-chip-thread {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.cw-thread-dot {
+  display: inline-block;
+  flex: none;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 0%, var(--surface));
+}
+.cw-thread-dot.is-turn-1 {
+  border-radius: 3px;
+}
+.cw-thread-dot.is-turn-2 {
+  border-radius: 1px;
+  transform: rotate(45deg) scale(0.85);
+}
+
+/* -- fields -------------------------------------------------------------------- */
+
+.cw-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 18rem;
+  max-width: 26rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--muted);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.cw-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--st-glow);
+}
+.cw-search-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  padding: 0.55rem 0;
+  background: transparent;
+}
+#chronos-root .cw-search-input:focus-visible {
+  box-shadow: none;
+}
+
+.cw-calendar-switch {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.cw-calendar-switch-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* -- lists and paging ------------------------------------------------------------ */
+
+.cw-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 1.1rem;
+}
+.cw-pager-where {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.cw-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+/* -- goals not landed on what is shown --------------------------------------------- */
+
+.cw-unplaced {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.2rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.cw-unplaced-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+}
+.cw-unplaced-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}

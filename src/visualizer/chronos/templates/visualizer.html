@@ -25,6 +25,10 @@
       <header class="app-header">
         <span class="brand"><span class="mark"><img src="{{ url_for('static', filename='chronos-glyph.svg') }}" alt="" width="26" height="26"></span><span class="brand-name">Chronos</span></span>
         <div class="header-actions">
+          {# The React workspace, at the same place: app.js keeps the hash on it. #}
+          <a class="header-link workspace-link" id="workspace-link"
+             href="{{ url_for('index', ui='next') }}"
+             data-base="{{ url_for('index', ui='next') }}">Try the new workspace</a>
           <a class="header-link access-link{% if not service_links.active %} active{% endif %}"
              href="{{ service_links.account }}"
              {%- if not service_links.active %} aria-current="true"{% endif %}>Access</a>

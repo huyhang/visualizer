@@ -1,0 +1,68 @@
+/* The workspace's shell: the header the server renders, and the frame the React
+   bundle mounts into. Everything inside `#chronos-root` is styled by the bundle
+   (`frontend/src/chronos/styles`); this sheet only has to make the page stand
+   up -- including when the bundle has not been built.
+
+   Unlike the classic visualiser, the workspace is a fixed-height frame: the
+   window never scrolls, each of its panes does. */
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0; color: var(--text); background: var(--bg); line-height: 1.55;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased; overflow: hidden;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button { font-family: inherit; cursor: pointer; }
+
+.app-shell { height: 100vh; height: 100dvh; min-height: 0; }
+
+/* header -- the same shapes as the classic page's, so moving between the two
+   does not shift a pixel of chrome. */
+.app-header {
+  display: flex; align-items: center; gap: .6rem; padding: .55rem 1rem;
+  background: var(--surface); border-bottom: 1px solid var(--border); z-index: 30;
+  flex: none;
+}
+.brand { display: flex; align-items: center; gap: .5rem; font-weight: 700; letter-spacing: -.01em; color: var(--text); }
+a.brand:hover { text-decoration: none; opacity: .85; }
+.brand .mark {
+  width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center;
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+}
+.header-actions { margin-left: auto; display: flex; align-items: center; gap: .5rem; }
+.header-link { color: var(--muted); font-weight: 600; font-size: .9rem; padding: .3rem .5rem; border-radius: 8px; }
+.header-link:hover { background: var(--surface-2); text-decoration: none; }
+.header-link.active { color: var(--text); }
+.userchip { display: inline-flex; align-items: center; gap: .4rem; color: var(--muted); font-size: .85rem; }
+.userchip .avatar {
+  width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; font-size: .75rem;
+}
+.icon-btn {
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+  width: 34px; height: 34px; border-radius: 9px; font-size: 1rem; display: grid; place-items: center;
+}
+.icon-btn:hover { border-color: var(--accent); }
+.font-btn { font-weight: 800; letter-spacing: -.02em; }
+.logout-btn { color: var(--accent); }
+.inline-form { display: inline; margin: 0; }
+
+.workspace-main { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+
+.workspace-unbuilt {
+  max-width: 40rem; margin: 3rem auto; padding: 1.5rem 1.75rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.workspace-unbuilt h1 { font-size: 1.15rem; margin: 0 0 .5rem; }
+.workspace-unbuilt p { margin: 0 0 .5rem; color: var(--muted); }
+.workspace-unbuilt code { font-size: .85em; background: var(--surface-3); padding: .1em .35em; border-radius: 5px; }
+
+@media (max-width: 820px) {
+  .app-header { padding: .5rem .75rem; }
+  .userchip, .brand-name, .access-link { display: none; }
+}

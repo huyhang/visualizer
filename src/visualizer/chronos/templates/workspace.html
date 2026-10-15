@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chronos — plotline workspace</title>
+  <link rel="icon" href="{{ url_for('static', filename='chronos-icon.svg') }}">
+  {# Palette first: the shell, the workspace bundle and the shared nav are all
+     drawn in it. The nav comes last because it owns the geometry it adds. #}
+  <link rel="stylesheet" href="{{ url_for('shared_static', filename='tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='workspace-shell.css') }}">
+  {% if assets %}{% for sheet in assets.styles %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='workspace/' + sheet) }}">
+  {%- endfor %}{% endif %}
+  <link rel="stylesheet" href="{{ url_for('shared_static', filename='service-nav.css') }}">
+  <script src="{{ url_for('shared_js', filename='prefs.js') }}"></script>
+</head>
+<body>
+  <div class="app-shell">
+    {% include "_service_nav.html" %}
+    <div class="app-shell-main">
+      <header class="app-header">
+        <a class="brand" href="{{ url_for('index', ui='next') }}#/" title="All books"><span class="mark"><img src="{{ url_for('static', filename='chronos-glyph.svg') }}" alt="" width="26" height="26"></span><span class="brand-name">Chronos</span></a>
+        <div class="header-actions">
+          <a class="header-link access-link{% if not service_links.active %} active{% endif %}"
+             href="{{ service_links.account }}"
+             {%- if not service_links.active %} aria-current="true"{% endif %}>Access</a>
+          <button class="icon-btn font-btn" id="font-toggle" aria-label="Text size" title="Text size">A</button>
+          <button class="icon-btn" id="theme-toggle" aria-label="Toggle theme" title="Toggle light/dark">◐</button>
+          <span class="userchip"><span class="avatar">{{ username[0] | upper }}</span>
+            <span class="username">{{ username }}</span></span>
+          <form class="inline-form" method="post" action="{{ url_for('auth.logout') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="icon-btn logout-btn" type="submit"
+                    aria-label="Log out" title="Log out"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+            </svg></button>
+          </form>
+        </div>
+      </header>
+
+      <main class="workspace-main" id="chronos-root"
+            data-base="{{ base }}"
+            data-user="{{ username }}"
+            data-akasha-url="{{ service_links.akasha }}"
+            data-classic-url="{{ url_for('index') }}">
+        {% if not assets %}
+        <div class="workspace-unbuilt">
+          <h1>The workspace has not been built</h1>
+          <p>Its sources are in <code>frontend/src/chronos</code>. Build them once with
+             <code>npm --prefix frontend ci &amp;&amp; npm --prefix frontend run build</code>,
+             or keep them building with <code>npm --prefix frontend run watch:chronos</code>,
+             then reload this page.</p>
+          <p><a href="{{ url_for('index') }}">Open the classic visualiser</a></p>
+        </div>
+        {% endif %}
+      </main>
+    </div>
+  </div>
+  {% if assets %}
+  <script type="module" src="{{ url_for('static', filename='workspace/' + assets.script) }}"></script>
+  {% endif %}
+</body>
+</html>

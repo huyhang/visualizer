@@ -26,6 +26,7 @@ from visualizer.auth.authz import ALL_PERMS, is_allowed, perm_for_method
 from visualizer.auth.errors import AuthError
 from visualizer.observability import Observability
 from visualizer.shared_assets import register_shared_assets
+from visualizer.vite_assets import BundleAssets
 
 from .entity_gate import EntityGate
 from .errors import ChronosError, Forbidden, InvalidRevision, InvalidTimeframe
@@ -40,6 +41,8 @@ from .services import (
     VisualizerService,
 )
 from .store import CalendarStore, StoryStore
+from .workspace_page import is_workspace_request, render_workspace
+from .workspace_page import manifest_assets as workspace_manifest_assets
 
 _BOOK = "/books/<book>"
 _PLOTLINE = "/books/<book>/plotlines/<plotline>"
@@ -79,6 +82,9 @@ def create_app(
     prithvi_url: str = "http://localhost:5004",
     logos_url: str = "http://localhost:5005",
     observability: Observability | None = None,
+    # Where the workspace bundle is. Defaulted to the build's own manifest; tests
+    # pass a lookup that answers whatever they need, built or not.
+    workspace_assets: BundleAssets | None = None,
 ) -> Flask:
     if not secret_key:
         raise ValueError("create_app requires a non-empty secret_key.")
@@ -115,7 +121,9 @@ def create_app(
     _register_routes(app, csrf, auth_store, books, plotlines, events, visualizer)
     _register_goal_routes(app, csrf, auth_store, goals)
     _register_calendar_routes(app, csrf, auth_store, calendars)
-    _register_ui_routes(app, csrf, auth_store, visualizer)
+    _register_ui_routes(
+        app, csrf, auth_store, visualizer, workspace_assets or workspace_manifest_assets()
+    )
     if observability is not None:
         observability.install(app, "chronos")
     _register_error_handler(app)
@@ -700,7 +708,7 @@ def _revoke_book_grants(auth_store, book: str) -> None:
 _SUGGEST_LIMIT = 20
 
 
-def _register_ui_routes(app, csrf, auth_store, visualizer):
+def _register_ui_routes(app, csrf, auth_store, visualizer, workspace_assets: BundleAssets):
     """The single-page plotline visualiser: an HTML shell plus its helper seams.
 
     The SPA (served at ``/``) reads and writes plotlines/events through the
@@ -717,6 +725,10 @@ def _register_ui_routes(app, csrf, auth_store, visualizer):
     @app.get("/")
     @login_required
     def index():
+        # The React workspace, behind a switch while it grows to cover
+        # everything the classic page does (see workspace_page.py).
+        if is_workspace_request():
+            return render_workspace(workspace_assets())
         return render_template("visualizer.html")
 
     @app.get(_BOOK + "/ui/plotlines")

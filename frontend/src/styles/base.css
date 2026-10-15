@@ -9,25 +9,40 @@
 }
 
 #studio-root,
-#writer-root {
+#writer-root,
+#chronos-root {
   color: var(--text);
 }
 
-:where(#studio-root, #writer-root, .st-popover, .st-modal, .st-toast-viewport)
+:where(
+    #studio-root,
+    #writer-root,
+    #chronos-root,
+    .st-popover,
+    .st-modal,
+    .st-toast-viewport
+  )
   :where(h1, h2, h3, h4, p, ul, ol, blockquote, dl, dd, figure) {
   margin: 0;
 }
-:where(#studio-root, #writer-root, .st-popover, .st-modal, .st-toast-viewport)
+:where(
+    #studio-root,
+    #writer-root,
+    #chronos-root,
+    .st-popover,
+    .st-modal,
+    .st-toast-viewport
+  )
   :where(ul, ol) {
   padding: 0;
   list-style: none;
 }
-:where(#studio-root, #writer-root, .st-popover, .st-modal)
+:where(#studio-root, #writer-root, #chronos-root, .st-popover, .st-modal)
   :where(button, input, select, textarea) {
   font: inherit;
   color: inherit;
 }
-:where(#studio-root, #writer-root, .st-popover, .st-modal) :focus-visible {
+:where(#studio-root, #writer-root, #chronos-root, .st-popover, .st-modal) :focus-visible {
   outline: none;
   box-shadow: var(--st-glow);
 }
@@ -633,6 +648,7 @@ button.st-toast-action {
 @media (prefers-reduced-motion: reduce) {
   #studio-root *,
   #writer-root *,
+  #chronos-root *,
   .st-popover,
   .st-modal,
   .st-toast,

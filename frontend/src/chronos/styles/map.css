@@ -1,0 +1,385 @@
+/* The story map: a sticky picker, the weave drawn in SVG, and the rows that
+   name it. Drawn in the shared tokens so light and dark both hold. */
+
+.cw-map {
+  --cw-map-row: 2.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+.cw-map.is-compact {
+  --cw-map-row: 1.9rem;
+}
+
+.cw-map-note {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.cw-map-note .cw-link-btn {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  font-weight: 700;
+  cursor: pointer;
+}
+.cw-map-note .cw-link-btn:hover {
+  text-decoration: underline;
+}
+
+.cw-map-lens {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  align-self: flex-start;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 0.86rem;
+}
+
+/* -- the picker ---------------------------------------------------------------- */
+
+.cw-map-picker {
+  position: sticky;
+  top: -1.6rem;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.85rem 1rem;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.cw-map-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1rem;
+}
+.cw-map-buttons {
+  display: flex;
+  gap: 0.35rem;
+}
+.cw-map-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.cw-map-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.28rem 0.7rem 0.28rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s var(--st-ease),
+    border-color 0.15s,
+    color 0.15s,
+    opacity 0.15s;
+}
+.cw-map-pick:not(.is-on) {
+  opacity: 0.7;
+}
+.cw-map-pick:hover {
+  border-color: var(--accent);
+  opacity: 1;
+}
+.cw-map-pick.is-on {
+  background: var(--surface);
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+}
+
+/* A thread's mark: a solid disc, or a hollow ring once a stroke carries its identity. */
+.cw-map-swatch,
+.cw-map-lane-dot {
+  flex: none;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  border: 2px solid transparent;
+}
+.cw-map-swatch.is-dashed,
+.cw-map-lane-dot.is-dashed {
+  border-style: dashed;
+}
+.cw-map-swatch.is-dotted,
+.cw-map-lane-dot.is-dotted {
+  border-style: dotted;
+}
+.cw-map-lane-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+}
+
+/* -- the drawing ------------------------------------------------------------- */
+
+.cw-sg-pane {
+  overflow-x: auto;
+  padding: 0.4rem 0.2rem 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.cw-sg {
+  display: grid;
+  column-gap: 12px;
+  align-items: start;
+}
+.cw-sg-svg {
+  display: block;
+  overflow: visible;
+}
+.cw-sg-edge {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  transition:
+    opacity 0.18s var(--st-ease),
+    stroke-width 0.18s;
+}
+.cw-sg-edge.is-focus {
+  stroke-width: 3.5;
+}
+.cw-sg-edge.is-hot {
+  stroke-width: 4;
+}
+.cw-sg-edge.is-cold,
+.cw-sg-node.is-cold {
+  opacity: 0.18;
+}
+.cw-sg-node {
+  transition: opacity 0.18s var(--st-ease);
+}
+.cw-sg-node.is-faded {
+  opacity: 0.22;
+}
+.cw-sg-dot {
+  stroke: var(--surface);
+  stroke-width: 2.5;
+}
+.cw-sg-node.is-hot .cw-sg-dot {
+  stroke-width: 1.5;
+}
+.cw-sg-dot.is-band {
+  fill: var(--surface);
+  stroke-width: 2.5;
+}
+.cw-sg-ring {
+  fill: none;
+  stroke-width: 2;
+}
+.cw-sg-focus {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-dasharray: 3 2;
+}
+
+/* -- rows ---------------------------------------------------------------------- */
+
+.cw-sg-rows {
+  min-width: 0;
+  padding: 0.4rem 0.6rem 0.8rem 0;
+}
+.cw-map-period {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 1.9rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.cw-map-period.is-level-0 {
+  font-size: 1rem;
+}
+.cw-map-period.is-level-0::before {
+  content: "";
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 3px;
+  background: var(--accent);
+}
+.cw-map-period.is-level-1,
+.cw-map-period.is-level-2 {
+  padding-left: 1rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.cw-map-row {
+  border-radius: 10px;
+}
+.cw-map-scene {
+  border-radius: 10px;
+  padding: 0 0.35rem;
+  transition: background 0.15s var(--st-ease);
+}
+.cw-map-scene:hover {
+  background: var(--surface-2);
+}
+.cw-map-scene.is-open {
+  background: var(--surface-2);
+  padding-bottom: 0.6rem;
+  margin: 0.2rem 0;
+}
+.cw-map-scene.is-focused {
+  box-shadow: inset 3px 0 0 var(--accent);
+  background: var(--accent-soft);
+}
+.cw-map-line {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: var(--cw-map-row);
+  min-width: 0;
+}
+.cw-map-twisty {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.cw-map-twisty:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.cw-map-title {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: none;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cw-map-title:hover {
+  color: var(--accent-strong);
+}
+.cw-map-title.is-terminus {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+.cw-map-when {
+  flex: none;
+  margin-left: auto;
+  padding-left: 0.6rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.cw-map-band {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  padding: 0.12rem 0.7rem 0.12rem 0.35rem;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cw-map-band:hover {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+.cw-map-band-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cw-map-marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  padding: 0 0 0.35rem 2.3rem;
+}
+
+.cw-map-row.is-moment {
+  margin: 0.15rem 0;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+}
+.cw-map-moment-bar {
+  padding: 0 0.35rem;
+}
+.cw-map-moment-count {
+  font-weight: 800;
+  font-size: 0.88rem;
+}
+.cw-map-moment-scenes {
+  padding: 0 0 0.25rem 1.1rem;
+  border-left: 2px solid var(--border);
+  margin-left: 1rem;
+}
+.cw-map.is-compact .cw-map-title {
+  font-size: 0.88rem;
+}
+
+.cw-map-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin: 0.2rem 0 0 2.3rem;
+  padding: 0.75rem 0.9rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  animation: cw-rise 0.2s var(--st-ease);
+}
+.cw-map-card-when {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.cw-map-card-text {
+  font-family: var(--st-serif);
+  line-height: 1.6;
+}
+.cw-map-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.cw-map-foot {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 900px) {
+  .cw-map-picker {
+    position: static;
+  }
+}

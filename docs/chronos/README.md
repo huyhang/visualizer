@@ -49,6 +49,45 @@ Chronos references them and refuses to invent them.
 
 ---
 
+## The workspace (preview)
+
+`/timeline/?ui=next` opens the **workspace**: the same visualiser rebuilt in
+React, the way Akasha's research studio and Logos's writing page already are.
+It reads the same `#/…` addresses as the classic page, so any link opens the
+same place in either — the classic header's **Try the new workspace** and the
+workspace's **Classic view** carry you across without losing your place. The
+classic page stays the default until the workspace has been lived in.
+
+What changes is the shape of the page, not the rules — every verdict, message
+and date still comes from the server:
+
+- **One frame per book.** A sidebar lists the book's threads, scenes, goals,
+  story map and issues, with the report's problem count always in sight, the
+  "Dates in" calendar picker, and the way to the calendar library.
+- **The inspector.** A scene, goal, thread or Akasha article opens in a panel
+  beside whatever you are reading, replacing the classic peek card and most of
+  its modals; following a link inside it stacks, and Back unwinds.
+- **⌘K** (Ctrl+K) jumps to any thread, scene, goal, book or member of the cast
+  (open their article, or follow them), or starts something new.
+- **Triage** on the Issues screen walks the report one issue at a time
+  (`J`/`K`), each opened beside the list. A save anywhere marks the book stale,
+  so the report re-checks as soon as a fix lands and triage moves on to the next.
+- **Follow** a character, place or thing from the sidebar and every screen that
+  shows scenes fades the ones they are not in.
+- The thread editor gains **undo/redo** and **compare an alternative order**:
+  fork the order, edit both, see each previewed by the server side by side, and
+  keep the one that holds together. Nothing is saved until Save.
+
+The sources are in `frontend/src/chronos` (React, TypeScript, React Query,
+Radix, built by Vite into `static/workspace/`; see `workspace_page.py`).
+Build once with `npm --prefix frontend ci && npm --prefix frontend run build`,
+or keep it building while you work with `npm --prefix frontend run
+watch:chronos` beside `python -m visualizer.devserver --seed`. Its tests are
+`npm --prefix frontend test` (vitest, over an in-memory fake of this API) and
+`tests/chronos/test_workspace_page.py` for the shell.
+
+---
+
 ## Run it
 
 Chronos is one of three containers (`akasha`, `chronos`, `mongo`)

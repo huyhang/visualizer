@@ -97,10 +97,18 @@ let currentBook = null;
 // the writer's own and under whose name a new one is created.
 let me = null;
 
+// The header's way into the new workspace opens it where the writer is: both
+// pages read the same addresses, so carrying the hash across is all it takes.
+function syncWorkspaceLink() {
+  const link = document.getElementById("workspace-link");
+  if (link) link.href = link.dataset.base + window.location.hash;
+}
+
 function route() {
   // Whatever the outgoing view still owns — listeners, timers, observers — goes
   // first. Replacing the content node does not stop any of them.
   runTeardowns();
+  syncWorkspaceLink();
   clearPeek();
   const parts = parseHash();
   currentBook = parts[0] === CALENDARS ? null : (parts[0] || null);

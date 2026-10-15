@@ -229,6 +229,8 @@ frontend/node_modules/
 src/visualizer/akasha/static/studio/
 # ...and the Logos writing page's bundle, compiled the same way.
 src/visualizer/logos/static/writer/
+# ...and the Chronos workspace's bundle, compiled the same way.
+src/visualizer/chronos/static/workspace/
 # A machine's own compose overrides (a different port, say); see
 # docs/simple-docker-local-deployment-guide.md.
 docker/compose.local.yml
