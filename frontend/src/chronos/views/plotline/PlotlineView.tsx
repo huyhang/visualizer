@@ -5,7 +5,7 @@
 // the inspector -- scrolls to that scene and lights it up, so "here is what is
 // wrong" lands on the scene it is wrong about.
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { EventSummary, GoalRef, Plotline } from "../../api/types";
 import { usePlotline } from "../../hooks/queries";
 import { useThreads } from "../../hooks/useThreads";
@@ -104,9 +104,18 @@ function Body({ plotline, focusEvent }: { plotline: Plotline; focusEvent: string
   );
   const { container, jump } = useJump((id) => inspector.open({ kind: "scene", id }));
 
+  // Arrive once per address. The page re-renders for other reasons -- the
+  // inspector opening, focus mode -- and none of them is a reason to scroll
+  // back, or to reopen a scene from another thread the writer has closed.
+  // Marked done only once the jump has run, so a mount undone before its
+  // frame (React's development double mount) still arrives.
+  const arrived = useRef<string | null>(null);
   useEffect(() => {
-    if (!focusEvent) return;
-    const frame = requestAnimationFrame(() => jump(focusEvent));
+    if (!focusEvent || arrived.current === focusEvent) return;
+    const frame = requestAnimationFrame(() => {
+      arrived.current = focusEvent;
+      jump(focusEvent);
+    });
     return () => cancelAnimationFrame(frame);
   }, [focusEvent, jump]);
 

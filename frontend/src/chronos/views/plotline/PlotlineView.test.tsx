@@ -76,6 +76,33 @@ describe("one thread's timeline", () => {
     expect(document.querySelector('[data-event="departs"]')).not.toHaveClass("is-focused");
   });
 
+  it("arrives once: opening the inspector later does not scroll back", async () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    renderWorkspace("#/ember-pact/road/at/exchange");
+    await timeline();
+    await vi.waitFor(() => expect(scrolled).toHaveBeenCalled());
+    scrolled.mockClear();
+    await userEvent.click(screen.getByRole("button", { name: "The Coronation" }));
+    await screen.findByRole("complementary", { name: "Details" });
+    await new Promise((r) => requestAnimationFrame(r));
+    expect(scrolled).not.toHaveBeenCalled();
+    scrolled.mockRestore();
+  });
+
+  it("lets a scene from another thread, opened on arrival, be closed", async () => {
+    renderWorkspace("#/ember-pact/road/at/sighting");
+    await timeline();
+    const details = await screen.findByRole("complementary", { name: "Details" });
+    expect(
+      await within(details).findByRole("heading", { name: "Aldric Seen At Emberport" }),
+    ).toBeInTheDocument();
+    await userEvent.click(within(details).getByRole("button", { name: "Close the panel" }));
+    await new Promise((r) => requestAnimationFrame(r));
+    expect(
+      screen.queryByRole("complementary", { name: "Details" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("opens a scene beside the timeline from its title", async () => {
     renderWorkspace("#/ember-pact/road");
     await timeline();

@@ -14,6 +14,15 @@
     transform: translateX(12px);
   }
 }
+/* Focused as it opens, so the keyboard is in it: the panel arriving is the sign. */
+.cw-inspector:focus-visible {
+  box-shadow: none;
+}
+@media (max-width: 1100px) {
+  .cw-inspector:focus-visible {
+    box-shadow: var(--cw-shadow-raised);
+  }
+}
 .cw-inspector-bar {
   display: flex;
   align-items: center;

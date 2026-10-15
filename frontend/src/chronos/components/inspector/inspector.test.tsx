@@ -68,6 +68,16 @@ describe("the inspector", () => {
     },
   );
 
+  it("takes the keyboard when it opens and gives it back when it closes", async () => {
+    renderWorkspace("#/ember-pact/~issues");
+    const look = (await screen.findAllByRole("button", { name: "Look at this issue" }))[0];
+    await userEvent.click(look as HTMLElement);
+    const panel = await screen.findByRole("complementary", { name: "Details" });
+    expect(panel).toHaveFocus();
+    await userEvent.keyboard("{Escape}");
+    expect(look).toHaveFocus();
+  });
+
   it("closes on Escape", async () => {
     await openFromIssues();
     await userEvent.keyboard("{Escape}");

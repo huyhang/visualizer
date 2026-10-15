@@ -30,7 +30,7 @@ function Frame() {
   return (
     <div className={`cw-frame${target ? " has-inspector" : ""}`}>
       <Sidebar onSearch={openPalette} />
-      <main className="cw-main" id="cw-main">
+      <main className="cw-main" id="cw-main" tabIndex={-1}>
         <RouteView route={route} />
       </main>
       <Inspector />
