@@ -109,6 +109,37 @@ describe("triage", () => {
     expect(
       screen.queryByText("Threads that do not reach the ending"),
     ).not.toBeInTheDocument();
+    // The issue now in its place is the one beside the list.
+    const panel = screen.getByRole("complementary", { name: "Details" });
+    expect(
+      await within(panel).findByRole("heading", { name: "Establish who was where" }),
+    ).toBeInTheDocument();
+  });
+
+  it("stops once the last issue is fixed", async () => {
+    const api = fakeApi();
+    const { client } = renderWorkspace(ISSUES, api);
+    await userEvent.click(await screen.findByRole("button", { name: "Triage 4 issues" }));
+    api.reportValue = {
+      ...report(),
+      problems: [],
+      notes: [],
+      summary: { problems: 0, notes: 0, unscheduled: 0 },
+    };
+    await act(() => client.invalidateQueries());
+    expect(await screen.findByText(/Nothing to fix/)).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Triage" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/move through the list/)).not.toBeInTheDocument();
+  });
+
+  it("leaves J and K to an editor open over the list", async () => {
+    renderWorkspace(ISSUES);
+    await userEvent.click(await screen.findByRole("button", { name: "Triage 4 issues" }));
+    const panel = await screen.findByRole("complementary", { name: "Details" });
+    await userEvent.click(await within(panel).findByRole("button", { name: "Edit scene" }));
+    await screen.findByRole("dialog", { name: /Edit “Aldric Departs”/ });
+    await userEvent.keyboard("j");
+    expect(screen.getByText("1 of 4")).toBeInTheDocument();
   });
 
   it("starts where a click puts it", async () => {
