@@ -4,13 +4,14 @@ import { ChronosApp } from "../../ChronosApp";
 import { fakeApi } from "../../test/fakeApi";
 import { harness, renderWorkspace } from "../../test/renderChronos";
 import { testQueryClient } from "../../../test/render";
+import scenesCss from "../../styles/scenes.css?raw";
 
 async function timeline() {
   return screen.findByRole("heading", { level: 1, name: "The Knight's Road" });
 }
 
 const titles = () =>
-  Array.from(document.querySelectorAll(".cw-pl-row .cw-scene-card-title")).map(
+  Array.from(document.querySelectorAll(".cw-pl-row .cw-pl-card-title")).map(
     (el) => el.textContent,
   );
 
@@ -22,6 +23,21 @@ describe("one thread's timeline", () => {
     expect(screen.getByText("1 problem in this thread")).toBeInTheDocument();
     // The finding quotes the article by id; the page reads it as its title.
     expect(await screen.findByText(/'Sir Aldric' cannot be here/)).toBeInTheDocument();
+  });
+
+  it("draws its cards in classes the Scenes screen's stylesheet does not style", async () => {
+    renderWorkspace("#/ember-pact/road");
+    await timeline();
+    const classes = new Set(
+      Array.from(document.querySelectorAll(".cw-pl-row *")).flatMap((el) =>
+        Array.from(el.classList),
+      ),
+    );
+    // scenes.css sizes its own cards to a fixed height; shared names clipped these.
+    const styled = [...classes].filter((c) =>
+      new RegExp(`\\.${c}(?![\\w-])`).test(scenesCss),
+    );
+    expect(styled).toEqual([]);
   });
 
   it("marks the scene's role in the weave and the goals it delivers", async () => {

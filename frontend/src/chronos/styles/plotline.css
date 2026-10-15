@@ -125,7 +125,7 @@
   padding: 0.45rem 0 0.85rem;
   min-width: 0;
 }
-.cw-pl-row.is-focused .cw-scene-card {
+.cw-pl-row.is-focused .cw-pl-card {
   border-color: var(--accent);
   box-shadow:
     0 0 0 3px var(--accent-soft),
@@ -233,9 +233,9 @@
   border-color: var(--danger);
 }
 
-/* -- scene cards ---------------------------------------------------------------------- */
+/* -- scene cards, the thread screen's own (scenes.css has the Scenes screen's) --------- */
 
-.cw-scene-card {
+.cw-pl-card {
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
@@ -249,24 +249,24 @@
     box-shadow 0.15s,
     transform 0.15s var(--st-ease);
 }
-.cw-scene-card:hover {
+.cw-pl-card:hover {
   border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
 }
-.cw-scene-card-head {
+.cw-pl-card-head {
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
-.cw-scene-card-head .st-icon-btn {
+.cw-pl-card-head .st-icon-btn {
   margin-left: auto;
   opacity: 0;
   transition: opacity 0.15s;
 }
-.cw-scene-card:hover .st-icon-btn,
-.cw-scene-card:focus-within .st-icon-btn {
+.cw-pl-card:hover .st-icon-btn,
+.cw-pl-card:focus-within .st-icon-btn {
   opacity: 1;
 }
-.cw-scene-card-title {
+.cw-pl-card-title {
   border: 0;
   padding: 0;
   background: none;
@@ -277,16 +277,16 @@
   color: var(--text);
   cursor: pointer;
 }
-.cw-scene-card-title:hover {
+.cw-pl-card-title:hover {
   color: var(--accent-strong);
 }
-.cw-scene-where {
+.cw-pl-card-where {
   display: flex;
   align-items: center;
   gap: 0.35rem;
   font-size: 0.85rem;
 }
-.cw-scene-preview {
+.cw-pl-card-preview {
   font-family: var(--st-serif);
   color: var(--muted);
   font-size: 0.95rem;

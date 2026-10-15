@@ -81,12 +81,14 @@ export function meetCount(events: EventSummary[]): number {
   return others.size;
 }
 
-/** The "another thread meets here" hint on a scene, or null when there is none to give. */
-export function meetHint(scene: EventSummary): string | null {
-  if (scene.is_terminus) return null;
-  if (scene.is_convergence) return "Threads join here";
-  if (scene.is_divergence) return "A thread departs here";
+/** The "another thread meets here" hints on a scene: joining and departing both show. */
+export function meetHints(scene: EventSummary): string[] {
+  if (scene.is_terminus) return [];
+  const hints: string[] = [];
+  if (scene.is_convergence) hints.push("Threads join here");
+  if (scene.is_divergence) hints.push("A thread departs here");
   const shared = (scene.shared_with ?? []).length;
-  if (!shared) return null;
-  return `Shared with ${shared} other thread${shared === 1 ? "" : "s"}`;
+  if (!hints.length && shared)
+    hints.push(`Shared with ${shared} other thread${shared === 1 ? "" : "s"}`);
+  return hints;
 }

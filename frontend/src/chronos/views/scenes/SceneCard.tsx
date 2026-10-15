@@ -6,6 +6,7 @@
 import type { CSSProperties } from "react";
 import type { EventRow } from "../../api/types";
 import type { Threads } from "../../hooks/useThreads";
+import { spanLabel } from "../../logic/timeaxis";
 import { EntityName } from "../../components/common/EntityName";
 import { Badge } from "../../../components/ui/Badge";
 import { SceneTools, type SceneActions } from "./SceneTools";
@@ -126,7 +127,11 @@ export function SceneCard({
         {scene.id === terminus ? <Badge tone="warn">Ending</Badge> : null}
         <SceneTools scene={scene} actions={actions} />
       </div>
-      <div className="cw-scene-card-time">{scene.when}</div>
+      {/* The year and month go first when the card is narrow: the axis says them. */}
+      <div className="cw-scene-card-time" title={scene.when}>
+        <span className="is-long">{spanLabel(scene) ?? scene.when}</span>
+        <span className="is-short">{spanLabel(scene, true) ?? scene.when}</span>
+      </div>
       <div className="cw-scene-card-meta">
         <Place book={book} scene={scene} />
         <UsedBy plotlines={scene.plotlines} threads={threads} limit={2} />

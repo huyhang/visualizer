@@ -52,6 +52,22 @@ export function firstDiff(a: readonly string[], b: readonly string[]): number {
 }
 
 /**
+ * A scene's span, its end saying only what changes: "Year 1, Month 1, Day 3,
+ * 00:00 AF → Day 4, 00:00 AF". `within` drops what the periods around it
+ * already say -- "Day 3, 00:00 AF → Day 4, 00:00 AF" under a Year 1 · Month 1
+ * heading. Room on a card is short; repeating the year and month is what
+ * pushed the end off it.
+ */
+export function spanLabel(e: TimedScene, within = false): string | null {
+  if (!e.scheduled || e.start_label == null) return null;
+  const start = startParts(e);
+  const label = within ? start.slice(-2).join(", ") : e.start_label;
+  const end = endParts(e);
+  if (!end || e.end_label === e.start_label) return label;
+  return `${label} → ${end.slice(firstDiff(start, end)).join(", ")}`;
+}
+
+/**
  * Scenes as period headings and rows, in order. Every component coarser than
  * the finest (cycle, clock) pair becomes a heading level; a span's end drops
  * what it shares with its start; an undated scene reads "unscheduled" under
@@ -65,13 +81,8 @@ export function groupByPeriod<T extends TimedScene>(events: T[]): AxisItem<T>[] 
       items.push({ type: "event", event: e, label: "unscheduled", depth: shown.length });
       continue;
     }
-    const parts = startParts(e);
-    const headers = parts.slice(0, -2);
-    let label = parts.slice(-2).join(", ");
-    const end = endParts(e);
-    if (end && e.end_label !== e.start_label) {
-      label += ` → ${end.slice(firstDiff(parts, end)).join(", ")}`;
-    }
+    const headers = startParts(e).slice(0, -2);
+    const label = spanLabel(e, true) ?? "unscheduled";
     for (let i = firstDiff(shown, headers); i < headers.length; i++) {
       items.push({ type: "header", level: i, label: headers[i] ?? "" });
     }

@@ -1,4 +1,10 @@
-import { allScheduled, firstDiff, groupByPeriod, type TimedScene } from "./timeaxis";
+import {
+  allScheduled,
+  firstDiff,
+  groupByPeriod,
+  spanLabel,
+  type TimedScene,
+} from "./timeaxis";
 
 const at = (parts: string[], end?: string[]): TimedScene & { id: string } => ({
   id: parts.join("|"),
@@ -82,5 +88,56 @@ describe("firstDiff", () => {
     [["a"], ["a", "b"], 1],
   ])("%j vs %j", (a, b, expected) => {
     expect(firstDiff(a, b)).toBe(expected);
+  });
+});
+
+describe("spanLabel", () => {
+  it.each<[TimedScene, string | null]>([
+    [{ scheduled: false }, null],
+    [at(["Year 1", "Month 1", "Day 3", "00:00 AF"]), "Year 1, Month 1, Day 3, 00:00 AF"],
+    [
+      at(
+        ["Year 1", "Month 1", "Day 3", "00:00 AF"],
+        ["Year 1", "Month 1", "Day 4", "00:00 AF"],
+      ),
+      "Year 1, Month 1, Day 3, 00:00 AF → Day 4, 00:00 AF",
+    ],
+    [
+      at(
+        ["Year 1", "Month 1", "Day 9", "08:00 AF"],
+        ["Year 1", "Month 1", "Day 9", "18:00 AF"],
+      ),
+      "Year 1, Month 1, Day 9, 08:00 AF → 18:00 AF",
+    ],
+    [
+      at(
+        ["Year 1", "Month 12", "Day 30", "00:00 AF"],
+        ["Year 2", "Month 1", "Day 1", "00:00 AF"],
+      ),
+      "Year 1, Month 12, Day 30, 00:00 AF → Year 2, Month 1, Day 1, 00:00 AF",
+    ],
+  ])("%j", (scene, expected) => {
+    expect(spanLabel(scene)).toBe(expected);
+  });
+
+  it.each<[TimedScene, string | null]>([
+    [{ scheduled: false }, null],
+    [at(["Year 1", "Month 1", "Day 3", "00:00 AF"]), "Day 3, 00:00 AF"],
+    [
+      at(
+        ["Year 1", "Month 1", "Day 3", "00:00 AF"],
+        ["Year 1", "Month 1", "Day 4", "00:00 AF"],
+      ),
+      "Day 3, 00:00 AF → Day 4, 00:00 AF",
+    ],
+    [
+      at(
+        ["Year 1", "Month 12", "Day 30", "00:00 AF"],
+        ["Year 2", "Month 1", "Day 1", "00:00 AF"],
+      ),
+      "Day 30, 00:00 AF → Year 2, Month 1, Day 1, 00:00 AF",
+    ],
+  ])("within its periods, %j", (scene, expected) => {
+    expect(spanLabel(scene, true)).toBe(expected);
   });
 });

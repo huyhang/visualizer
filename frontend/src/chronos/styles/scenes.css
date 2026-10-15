@@ -221,6 +221,8 @@
   top: 0;
   pointer-events: auto;
   width: calc(50% - 28px - var(--stage-pad));
+  /* Its width is the layout's, never its content's: the card asks it below. */
+  container-type: inline-size;
 }
 .cw-tl-item.side-0 .cw-tl-card {
   left: var(--stage-pad);
@@ -576,6 +578,17 @@
   color: color-mix(in srgb, var(--thread) 55%, var(--text));
   font-size: 0.72rem;
   font-weight: 650;
+}
+.cw-scene-card-time .is-short {
+  display: none;
+}
+@container (max-width: 23rem) {
+  .cw-scene-card-time .is-long {
+    display: none;
+  }
+  .cw-scene-card-time .is-short {
+    display: inline;
+  }
 }
 .cw-scene-card-meta {
   display: flex;

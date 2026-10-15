@@ -4,7 +4,7 @@
 
 import type { EntityRef, EventSummary, GoalRef } from "../../api/types";
 import { useRoute } from "../../hooks/useRoute";
-import { meetHint } from "../../logic/plotline/verdicts";
+import { meetHints } from "../../logic/plotline/verdicts";
 import { to } from "../../logic/route";
 import { ArticleChip, Chip, GoalChip } from "../../components/common/Chips";
 import { useActions } from "../../components/shell/Actions";
@@ -31,7 +31,7 @@ function Cast({
 }) {
   if (!refs.length) return null;
   return (
-    <div className="cw-chip-row cw-scene-cast">
+    <div className="cw-chip-row cw-pl-card-cast">
       {refs.map((r) => (
         <ArticleChip
           key={`${r.collection}/${r.id}`}
@@ -61,14 +61,14 @@ export function SceneCard({
   const actions = useActions();
   const { go } = useRoute();
   const openArticle = (ref: EntityRef) => inspector.open({ kind: "article", ref });
-  const hint = meetHint(scene);
+  const hints = meetHints(scene);
   const cast = [...(scene.characters ?? []), ...(scene.items ?? [])];
   return (
-    <article className="cw-scene-card">
-      <header className="cw-scene-card-head">
+    <article className="cw-pl-card">
+      <header className="cw-pl-card-head">
         <button
           type="button"
-          className="cw-scene-card-title"
+          className="cw-pl-card-title"
           onClick={() => inspector.open({ kind: "scene", id: scene.id })}
         >
           {scene.title || scene.id}
@@ -83,17 +83,17 @@ export function SceneCard({
         ) : null}
       </header>
       {scene.location ? (
-        <div className="cw-scene-where">
+        <div className="cw-pl-card-where">
           <span className="cw-muted">at</span>{" "}
           <ArticleChip book={book} entity={scene.location} onOpen={openArticle} />
         </div>
       ) : null}
       <Cast book={book} refs={cast} onOpen={openArticle} />
       {scene.description_preview ? (
-        <p className="cw-scene-preview">{scene.description_preview}</p>
+        <p className="cw-pl-card-preview">{scene.description_preview}</p>
       ) : null}
-      {hint || inheritedFrom || goals.length ? (
-        <div className="cw-chip-row cw-scene-marks">
+      {hints.length || inheritedFrom || goals.length ? (
+        <div className="cw-chip-row cw-pl-card-marks">
           {inheritedFrom ? (
             <Chip
               tone="muted"
@@ -103,8 +103,9 @@ export function SceneCard({
               From {inheritedFrom}
             </Chip>
           ) : null}
-          {hint ? (
+          {hints.map((hint) => (
             <Chip
+              key={hint}
               tone="accent"
               icon="branch"
               onClick={() => go(to.connected(book, plotline, scene.id))}
@@ -112,7 +113,7 @@ export function SceneCard({
             >
               {hint}
             </Chip>
-          ) : null}
+          ))}
           {goals.map((g) => (
             <GoalChip
               key={g.id}

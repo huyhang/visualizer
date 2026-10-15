@@ -24,7 +24,7 @@ import {
   conflictCount,
   markerOf,
   meetCount,
-  meetHint,
+  meetHints,
   problemScenes,
   roleOf,
   verdictNotes,
@@ -293,15 +293,19 @@ describe("verdicts", () => {
     expect(meetCount(events)).toBe(2);
   });
 
-  it.each<[Partial<EventSummary>, string | null]>([
-    [{ is_terminus: true, is_convergence: true }, null],
-    [{ is_convergence: true }, "Threads join here"],
-    [{ is_divergence: true }, "A thread departs here"],
-    [{ shared_with: ["x"] }, "Shared with 1 other thread"],
-    [{ shared_with: ["x", "y"] }, "Shared with 2 other threads"],
-    [{}, null],
+  it.each<[Partial<EventSummary>, string[]]>([
+    [{ is_terminus: true, is_convergence: true }, []],
+    [{ is_convergence: true }, ["Threads join here"]],
+    [{ is_divergence: true }, ["A thread departs here"]],
+    [
+      { is_convergence: true, is_divergence: true, shared_with: ["x"] },
+      ["Threads join here", "A thread departs here"],
+    ],
+    [{ shared_with: ["x"] }, ["Shared with 1 other thread"]],
+    [{ shared_with: ["x", "y"] }, ["Shared with 2 other threads"]],
+    [{}, []],
   ])("hints %j", (flags, expected) => {
-    expect(meetHint(scene("s", flags))).toBe(expected);
+    expect(meetHints(scene("s", flags))).toEqual(expected);
   });
 });
 
