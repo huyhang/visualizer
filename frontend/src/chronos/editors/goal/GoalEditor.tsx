@@ -123,7 +123,7 @@ function DeliveringScene({
 
 export function GoalEditor({
   book,
-  goal,
+  goal: current,
   goals,
   open,
   onOpenChange,
@@ -141,6 +141,10 @@ export function GoalEditor({
   const api = useApi();
   const refresh = useRefreshBook();
   const notify = useNotify();
+  // The goal as the draft was made from it, kept while the form is open: Save
+  // and Delete send its revision, so a list refetched meanwhile cannot let a
+  // stale draft overwrite someone else's newer save.
+  const [goal] = useState(current);
   const editing = goal !== null;
   const [draft, setDraft] = useState(() => draftFor(goal));
   const [error, setError] = useState<string | null>(null);

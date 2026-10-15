@@ -4,7 +4,8 @@
 // conflict is shown -- the Issues triage, the inspector, a thread.
 //
 // An existing scene is read afresh when the editor opens, so the revision the
-// save sends is the scene as it is now, not as some list last saw it.
+// save sends is the scene as it was then, not as some list last saw it -- and
+// it stays that one, so a save over someone else's newer copy is refused.
 
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -230,8 +231,15 @@ function EditScene({
     queryFn: () => api.getEvent(book, id, { calendar }),
     refetchOnMount: "always",
   });
-  if (query.data && !query.isFetching)
-    return <SceneForm event={query.data} onClose={onClose} onSaved={onSaved} />;
+  // The scene as it was read on opening, kept until the editor closes. A
+  // refetch while the writer types -- the tab regaining focus, a save elsewhere
+  // in the book -- must neither swap the form for a fresh one, losing the
+  // draft, nor move the revision Save sends under it.
+  const [opened, setOpened] = useState<SceneEvent | null>(null);
+  const fresh = query.data && !query.isFetching && !query.isError ? query.data : null;
+  if (!opened && fresh) setOpened(fresh);
+  const event = opened ?? fresh;
+  if (event) return <SceneForm event={event} onClose={onClose} onSaved={onSaved} />;
   return (
     <Modal open onOpenChange={(open) => !open && onClose()} title="Opening the scene…">
       <QueryState query={{ ...query, data: undefined }}>{() => null}</QueryState>

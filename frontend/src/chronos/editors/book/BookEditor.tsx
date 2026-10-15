@@ -80,7 +80,7 @@ function WorldField({
 }
 
 function BookForm({
-  book,
+  book: current,
   worlds,
   library,
   onClose,
@@ -94,6 +94,10 @@ function BookForm({
   const refreshBook = useRefreshBook();
   const notify = useNotify();
   const { go } = useRoute();
+  // The record the draft was made from, kept while the form is open: Save sends
+  // its revision, so a copy refetched meanwhile cannot let a stale draft
+  // overwrite someone else's newer save.
+  const [book] = useState(current);
   const editing = book !== null;
   const [draft, setDraft] = useState<BookDraft>(() => bookDraft(book, worlds));
   const [rows, setRows] = useState<AttachmentDraft[]>(() =>

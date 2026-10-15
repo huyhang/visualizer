@@ -119,7 +119,7 @@ function RefusalNote({
 
 function EditorBody({
   creating,
-  loaded,
+  loaded: current,
   onClose,
   onReload,
 }: {
@@ -132,6 +132,11 @@ function EditorBody({
   const { list: threads } = useThreads(book);
   const { go } = useRoute();
   const { editScene, newScene } = useActions();
+  // The thread as it was opened, kept for the whole session: Save sends its
+  // revision, so a refetch while the draft is open -- the tab regaining focus,
+  // a scene saved from a row -- cannot let the draft overwrite a newer save.
+  // "Reload their version" starts a new session from the server's copy.
+  const [loaded] = useState(current);
   const draftControls = useThreadDraft(loaded.draft);
   const { editing, edit, update } = draftControls;
   const { draft, alternative } = editing;

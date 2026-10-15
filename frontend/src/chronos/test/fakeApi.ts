@@ -76,6 +76,13 @@ function notFound(what: string): never {
   throw new ChronosApiError(404, `No such ${what}.`, "NOT_FOUND");
 }
 
+/** Refuse a write sent with any revision but the current one, as the server does. */
+function checkRev(current: { rev: number }, rev: number) {
+  if (rev !== current.rev) {
+    throw new ChronosApiError(409, "Revision mismatch.", "REVISION_CONFLICT");
+  }
+}
+
 export function fakeApi(): FakeApi {
   const refusals = new Map<string, ChronosApiError>();
   const calls: Call[] = [];
@@ -146,6 +153,7 @@ export function fakeApi(): FakeApi {
     updateBook: (b, body, rev) =>
       record("updateBook", [b, body, rev], () => {
         const current = findBook(b);
+        checkRev(current, rev);
         const next = { ...current, ...body, rev: current.rev + 1 } as Book;
         state.books = state.books.map((x) => (x.id === b ? next : x));
         return next;
@@ -196,6 +204,7 @@ export function fakeApi(): FakeApi {
     updatePlotline: (b, p, body, rev) =>
       record("updatePlotline", [b, p, body, rev], () => {
         const current = state.plotlines.get(p) ?? notFound("plotline");
+        checkRev(current, rev);
         const next = {
           ...current,
           ...body,
@@ -288,6 +297,7 @@ export function fakeApi(): FakeApi {
     updateEvent: (b, e, body, rev, opts) =>
       record("updateEvent", [b, e, body, rev, opts], () => {
         const current = state.scenes.get(e) ?? notFound("scene");
+        checkRev(current, rev);
         const next = { ...current, ...sceneFields(body), rev: current.rev + 1 };
         state.scenes.set(e, next);
         return next;
@@ -324,6 +334,7 @@ export function fakeApi(): FakeApi {
     updateGoal: (b, g, body, rev) =>
       record("updateGoal", [b, g, body, rev], () => {
         const current = state.goals.get(g) ?? notFound("goal");
+        checkRev(current, rev);
         const next = { ...current, ...body, rev: current.rev + 1 } as Goal;
         state.goals.set(g, next);
         return next;
