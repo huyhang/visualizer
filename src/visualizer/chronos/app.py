@@ -729,7 +729,9 @@ def _register_ui_routes(app, csrf, auth_store, visualizer, workspace_assets: Bun
         # everything the classic page does (see workspace_page.py).
         if is_workspace_request():
             return render_workspace(workspace_assets())
-        return render_template("visualizer.html")
+        return render_template(
+            "visualizer.html", workspace_ready=workspace_assets() is not None
+        )
 
     @app.get(_BOOK + "/ui/plotlines")
     @csrf.exempt

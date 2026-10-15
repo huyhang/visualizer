@@ -76,6 +76,20 @@ button { font-family: inherit; cursor: pointer; }
 
 /* Narrow screens: one row again, now that the three service links live in the
    shared nav. Nothing left in the header is wide enough to need wrapping. */
+/* The way into the new workspace: one line always, and its short name on a
+   phone, where "Try the new workspace" pushed the header off the screen. */
+.workspace-link { white-space: nowrap; }
+.workspace-link-short { display: none; }
+@media (max-width: 560px) {
+  .workspace-link-long { display: none; }
+  .workspace-link-short { display: inline; }
+}
+/* The narrowest phones: a little less air, so Log out stays on the screen. */
+@media (max-width: 380px) {
+  .header-actions { gap: .25rem; }
+  .header-link { padding: .3rem .3rem; }
+}
+
 @media (max-width: 820px) {
   .app-header { flex-wrap: nowrap; padding: .5rem .75rem; }
   .header-actions { flex-wrap: nowrap; gap: .4rem; min-width: 0; }

@@ -18,7 +18,14 @@ if (root) {
     user,
     akashaUrl,
     classicUrl: (hash: string) => classicUrl + hash,
-    signIn: () => window.location.assign(`${base}/login`),
+    // Back to this very place once signed in: the path and ?ui=next as `next`,
+    // the #… address on the login page itself, which carries it through.
+    signIn: () => {
+      const { pathname, search, hash } = window.location;
+      window.location.assign(
+        `${base}/login?next=${encodeURIComponent(pathname + search)}${hash}`,
+      );
+    },
   };
   createRoot(root).render(
     <StrictMode>

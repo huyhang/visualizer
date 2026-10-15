@@ -99,9 +99,14 @@ let me = null;
 
 // The header's way into the new workspace opens it where the writer is: both
 // pages read the same addresses, so carrying the hash across is all it takes.
+// Read again as the link is reached, too: the story map rewrites the hash
+// with replaceState, which never reaches route().
 function syncWorkspaceLink() {
   const link = document.getElementById("workspace-link");
   if (link) link.href = link.dataset.base + window.location.hash;
+}
+for (const reach of ["pointerdown", "focus", "mouseenter"]) {
+  document.getElementById("workspace-link")?.addEventListener(reach, syncWorkspaceLink);
 }
 
 function route() {

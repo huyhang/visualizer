@@ -64,5 +64,6 @@ a.brand:hover { text-decoration: none; opacity: .85; }
 
 @media (max-width: 820px) {
   .app-header { padding: .5rem .75rem; }
-  .userchip, .brand-name, .access-link { display: none; }
+  /* As on the classic page: Access stays, the avatar and the name go. */
+  .userchip, .brand-name { display: none; }
 }

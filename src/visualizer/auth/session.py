@@ -213,7 +213,18 @@ def init_login(app, auth_store: AuthStore) -> None:
     def unauthorized():
         if _wants_json():
             raise Unauthorized("Authentication required.")
-        return redirect(url_for("auth.login", next=request.path))
+        return redirect(url_for("auth.login", next=_here()))
+
+
+def _here() -> str:
+    """Where the request was going, as a path from the site's root.
+
+    Behind the gateway an app's own path ("/") is not the page ("/timeline/"),
+    and the query can say which page it is ("?ui=next"), so both ride along to
+    the login form and back.
+    """
+    query = request.query_string.decode()
+    return request.script_root + request.path + (f"?{query}" if query else "")
 
 
 def admin_required(view):
@@ -377,8 +388,8 @@ def register_auth_routes(
         if record.get("must_change_password", False):
             return redirect(url_for("auth.change_password_page"))
         target = request.args.get("next") or request.form.get("next") or ""
-        # Only allow same-app relative redirects.
-        if not target.startswith("/"):
+        # Only a path on this site: "//host" and "/\\host" are another site to a browser.
+        if not target.startswith("/") or target.startswith(("//", "/\\")):
             target = _home_url()
         return redirect(target)
 

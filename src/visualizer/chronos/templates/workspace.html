@@ -41,7 +41,8 @@
         </div>
       </header>
 
-      <main class="workspace-main" id="chronos-root"
+      {# A plain frame: the workspace draws its own <main>, and a page has one. #}
+      <div class="workspace-main" id="chronos-root"
             data-base="{{ base }}"
             data-user="{{ username }}"
             data-akasha-url="{{ service_links.akasha }}"
@@ -53,10 +54,14 @@
              <code>npm --prefix frontend ci &amp;&amp; npm --prefix frontend run build</code>,
              or keep them building with <code>npm --prefix frontend run watch:chronos</code>,
              then reload this page.</p>
-          <p><a href="{{ url_for('index') }}">Open the classic visualiser</a></p>
+          <p><a id="classic-link" href="{{ url_for('index') }}">Open the classic visualiser</a></p>
+          <script>
+            // At the same place: both pages read the same #… addresses.
+            document.getElementById("classic-link").href += location.hash;
+          </script>
         </div>
         {% endif %}
-      </main>
+      </div>
     </div>
   </div>
   {% if assets %}
