@@ -194,7 +194,7 @@ src/visualizer/
   gpubox/            the client for the AI worker on the GPU box (and a fake one)
   gpu_worker/        that worker itself -- deployed to the box, never the NAS
   static/js/         the few ES modules the *browser* services load
-frontend/            compiled surfaces (React + TypeScript + Vite): Akasha's research studio, Logos's writing page
+frontend/            compiled surfaces (React + TypeScript + Vite): Akasha's research studio, Logos's writing page, Chronos's workspace
 tests/               one suite per service (in-memory MongoDB)
 docker/              Dockerfiles, the compose stack, demo seed + backup scripts
 docs/                per-service READMEs, design documents, NAS deployment
@@ -217,15 +217,18 @@ popovers and dialogs and TanStack Query for polling. Vite compiles it into
 result like any other static file. Logos's writing page followed, in
 `frontend/src/logos/`, on [Tiptap](https://tiptap.dev) for the editor; it
 compiles into `src/visualizer/logos/static/writer/` the same way, with its own
-Vite config because each app serves only its own static folder, and both
-share the design-system components in `frontend/src/components/ui/`. The
-Docker images compile them in a Node build stage, so the NAS image still has
-no Node at run time and no page loads anything from a CDN. The same
-conventions hold there: each API is one injected interface (`ResearchApi`,
-`LogosApi`), the rules are pure modules (`frontend/src/logic/`,
-`frontend/src/logos/logic/`), and components get what they need as props or,
+Vite config because each app serves only its own static folder. Chronos's
+workspace (`/timeline/?ui=next`, beside the classic visualiser, which stays the
+default) is the third, in `frontend/src/chronos/`, compiled into
+`src/visualizer/chronos/static/workspace/`. All three share the design-system
+components in `frontend/src/components/ui/`. The Docker images compile them in
+a Node build stage, so the NAS image still has no Node at run time and no page
+loads anything from a CDN. The same conventions hold there: each API is one
+injected interface (`ResearchApi`, `LogosApi`, `ChronosApi`), the rules are
+pure modules (`frontend/src/logic/`, `frontend/src/logos/logic/`,
+`frontend/src/chronos/logic/`), and components get what they need as props or,
 for the page's own dependencies, from the one injected context that carries
-them (`WriterDeps`). Other surfaces can move here one at a time.
+them (`WriterDeps`, `ChronosDeps`). Other surfaces can move here one at a time.
 
 Every service follows the same conventions: **inversion of control** (every
 database or network boundary is a seam injected into an app factory) and **pure,
@@ -265,12 +268,13 @@ The frontend has its own tools, run from `frontend/` with Node 20.19+ or
 22.12+:
 
 ```bash
-npm ci              # once
-npm run build       # compile both pages into their apps' static folders (each page says if you haven't)
-npm run watch       # ...and keep compiling the studio while you edit; reload to see changes
-npm run watch:logos # ...or the writing page
-npm run check       # typecheck, lint, formatting, and the vitest suite
-npm run format      # prettier, the frontend's equivalent of ruff
+npm ci                # once
+npm run build         # compile all three pages into their apps' static folders (each page says if you haven't)
+npm run watch         # ...and keep compiling the studio while you edit; reload to see changes
+npm run watch:logos   # ...or the writing page
+npm run watch:chronos # ...or the Chronos workspace
+npm run check         # typecheck, lint, formatting, and the vitest suite
+npm run format        # prettier, the frontend's equivalent of ruff
 ```
 
 `docker/smoke_research_studio_ui.py` drives the whole studio in a real browser
