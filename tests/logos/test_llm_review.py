@@ -415,7 +415,53 @@ def test_a_reply_never_changes_the_writers_status(client, said, stance, suggests
     replied = say(client, issue_url(reviewed(client)), said)
     editor = replied["discussion"][-1]
     assert editor["stance"] == stance and (editor["suggestion"] is not None) == suggests
+    assert (editor["replacement"] is not None) == suggests
     assert replied["status"] == "open"
+
+
+@pytest.mark.parametrize("check,offers", [("continuity", False), ("prose", True)])
+def test_an_issue_carries_the_exact_replacement_when_there_is_one(client, check,
+                                                                 offers):
+    issue = next(i for i in reviewed(client)["issues"] if i["check"] == check)
+    assert issue["replacement"] == (f"[Fake fix] {issue['quote']}" if offers
+                                    else None)
+
+
+def test_a_revised_replacement_goes_back_to_the_box_next_turn(client, fake):
+    review = reviewed(client)
+    issue = next(i for i in review["issues"] if i["check"] == "prose")
+    url = issue_url(review, "prose")
+    revised = say(client, url, "What would you do instead?")["discussion"][-1]
+    say(client, url, "Why that?")
+    sent = discussions(fake)[-1]
+    assert sent["issue"]["replacement"] == issue["replacement"]
+    assert f"(Suggested replacement: {revised['replacement']})" in \
+        sent["messages"][1]["text"]
+
+
+@pytest.mark.parametrize("given,kept", [
+    ("  ", None),
+    (42, None),
+    ("QUOTE", None),                              # the quote itself is no fix
+    ("Lyra looked up, grey-eyed", "Lyra looked up, grey-eyed"),
+])
+def test_a_replacement_from_the_box_is_checked(make, given, kept):
+    class Rewording(FakeWorker):
+        def status(self, job_id):
+            job = super().status(job_id)
+            if job["kind"] == "review" and job["result"]:
+                for issue in job["result"]["issues"]:
+                    issue["replacement"] = issue["quote"] if given == "QUOTE" \
+                        else given
+            return job
+
+    rewording = make(Rewording())
+    assert rewording.post(f"/books/{BOOK}/volumes/{VOLUME}",
+                          json={"title": "The Ember Pact"}).status_code == 201
+    assert rewording.post(SECTION_URL, json=section_payload(doc=CHAPTER)
+                          ).status_code == 201
+    review = reviewed(rewording, checks=["prose"])
+    assert [i["replacement"] for i in review["issues"]] == [kept]
 
 
 def test_the_box_gets_the_issue_its_passage_its_article_and_the_whole_talk(client,

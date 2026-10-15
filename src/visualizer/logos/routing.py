@@ -7,6 +7,7 @@ the reverse import would be a cycle. ``RouteDeps`` is the bundle of services
 ``create_app`` builds once and hands to every registrar.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from flask import jsonify, request
@@ -135,3 +136,5 @@ class RouteDeps:
     articles: ArticleGateway
     writing_advisor: WritingAdvisor
     series_review: SeriesWritingReview
+    # The writing page's compiled bundle: which script and styles to link.
+    writer_assets: Callable[[], dict | None]

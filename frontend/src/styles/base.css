@@ -8,23 +8,26 @@
     "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
 }
 
-#studio-root {
+#studio-root,
+#writer-root {
   color: var(--text);
 }
 
-:where(#studio-root, .st-popover, .st-modal, .st-toast-viewport)
+:where(#studio-root, #writer-root, .st-popover, .st-modal, .st-toast-viewport)
   :where(h1, h2, h3, h4, p, ul, ol, blockquote, dl, dd, figure) {
   margin: 0;
 }
-:where(#studio-root, .st-popover, .st-modal, .st-toast-viewport) :where(ul, ol) {
+:where(#studio-root, #writer-root, .st-popover, .st-modal, .st-toast-viewport)
+  :where(ul, ol) {
   padding: 0;
   list-style: none;
 }
-:where(#studio-root, .st-popover, .st-modal) :where(button, input, select, textarea) {
+:where(#studio-root, #writer-root, .st-popover, .st-modal)
+  :where(button, input, select, textarea) {
   font: inherit;
   color: inherit;
 }
-:where(#studio-root, .st-popover, .st-modal) :focus-visible {
+:where(#studio-root, #writer-root, .st-popover, .st-modal) :focus-visible {
   outline: none;
   box-shadow: var(--st-glow);
 }
@@ -559,6 +562,17 @@ fieldset.st-field legend {
   font-weight: 700;
   font-size: 0.85rem;
 }
+button.st-toast-action {
+  padding: 0.3rem 0.6rem;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
 
 .st-fade-in {
   animation: st-fade 0.25s var(--st-ease);
@@ -618,6 +632,7 @@ fieldset.st-field legend {
 
 @media (prefers-reduced-motion: reduce) {
   #studio-root *,
+  #writer-root *,
   .st-popover,
   .st-modal,
   .st-toast,

@@ -26,6 +26,7 @@ from visualizer.auth import (
 )
 from visualizer.observability import Observability
 from visualizer.shared_assets import register_shared_assets
+from visualizer.vite_assets import BundleAssets
 
 from .draft_routes import register_draft_routes
 from .errors import LogosError
@@ -44,6 +45,7 @@ from .search import SearchService
 from .services import DraftService, ManuscriptService, SectionService, VolumeService
 from .store import LogosStore
 from .structure_routes import register_structure_routes
+from .writer_page import manifest_assets as writer_manifest_assets
 from .writing import RuleBasedWritingAdvisor, SeriesWritingReview, WritingAdvisor
 
 # BOOK_RESOURCE is defined beside the guards that use it, and re-exported here
@@ -70,6 +72,7 @@ def create_app(
     writing_advisor: WritingAdvisor | None = None,
     reviewer: Reviewer | None = None,
     llm_reviews: LlmReviewStore | None = None,
+    writer_assets: BundleAssets | None = None,
 ) -> Flask:
     if not secret_key:
         raise ValueError("create_app requires a non-empty secret_key.")
@@ -121,6 +124,7 @@ def create_app(
         articles=articles,
         writing_advisor=advisor,
         series_review=series_review,
+        writer_assets=writer_assets or writer_manifest_assets(),
     )
     register_reader_routes(app, csrf, deps)
     register_review_routes(app, csrf, deps)

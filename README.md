@@ -194,7 +194,7 @@ src/visualizer/
   gpubox/            the client for the AI worker on the GPU box (and a fake one)
   gpu_worker/        that worker itself -- deployed to the box, never the NAS
   static/js/         the few ES modules the *browser* services load
-frontend/            Akasha's compiled surfaces (React + TypeScript + Vite): the research studio
+frontend/            compiled surfaces (React + TypeScript + Vite): Akasha's research studio, Logos's writing page
 tests/               one suite per service (in-memory MongoDB)
 docker/              Dockerfiles, the compose stack, demo seed + backup scripts
 docs/                per-service READMEs, design documents, NAS deployment
@@ -214,11 +214,16 @@ small and dependency-free; a module there cannot import from either service.
 built with a toolchain: React, TypeScript and Vite, with Radix for accessible
 popovers and dialogs and TanStack Query for polling. Vite compiles it into
 `src/visualizer/akasha/static/studio/` (git-ignored), and Flask serves the
-result like any other static file. The Docker images compile it in a Node
-build stage, so the NAS image still has no Node at run time and the page
-loads nothing from a CDN. The same conventions hold there: the API is one
-injected interface (`ResearchApi`), the rules are pure modules under
-`frontend/src/logic/`, and components only take props. Other Akasha surfaces
+result like any other static file. Logos's writing page followed, in
+`frontend/src/logos/`, on [Tiptap](https://tiptap.dev) for the editor; it
+compiles into `src/visualizer/logos/static/writer/` the same way, with its own
+Vite config because each app serves only its own static folder, and both
+share the design-system components in `frontend/src/components/ui/`. The
+Docker images compile them in a Node build stage, so the NAS image still has
+no Node at run time and no page loads anything from a CDN. The same
+conventions hold there: each API is one injected interface (`ResearchApi`,
+`LogosApi`), the rules are pure modules (`frontend/src/logic/`,
+`frontend/src/logos/logic/`), and components only take props. Other surfaces
 can move here one at a time.
 
 Every service follows the same conventions: **inversion of control** (every
@@ -255,21 +260,23 @@ ruff check    # lint
 
 The editable install puts `visualizer` on the path, so no `PYTHONPATH` is needed.
 
-The research studio's frontend has its own tools, run from `frontend/` with
-Node 20.19+ or 22.12+:
+The frontend has its own tools, run from `frontend/` with Node 20.19+ or
+22.12+:
 
 ```bash
 npm ci              # once
-npm run build       # compile into Akasha's static folder (the page says if you haven't)
-npm run watch       # ...and keep compiling while you edit; reload to see changes
+npm run build       # compile both pages into their apps' static folders (each page says if you haven't)
+npm run watch       # ...and keep compiling the studio while you edit; reload to see changes
+npm run watch:logos # ...or the writing page
 npm run check       # typecheck, lint, formatting, and the vitest suite
 npm run format      # prettier, the frontend's equivalent of ruff
 ```
 
 `docker/smoke_research_studio_ui.py` drives the whole studio in a real browser
-(Playwright) against a running stack; with no GPU box, run it against
+(Playwright) against a running stack, and `docker/smoke_logos_editor_ui.py`
+does the same for the writing page's Editor; with no GPU box, run them against
 `python -m visualizer.devserver --fake-gpubox --seed --port 5099` and
-`BASE=http://127.0.0.1:5099`.
+`BASE=http://127.0.0.1:5099`. `docker/smoke_logos_writer.py` needs no server.
 
 ### Run the stack without Docker
 

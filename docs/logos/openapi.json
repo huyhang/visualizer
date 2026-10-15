@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Logos API",
-    "version": "1.6.0",
+    "version": "1.7.0",
     "description": "Versioned manuscripts for Chronos books, named writing drafts, volume and section organisation, private reader annotations and writing feedback, Akasha lookup, cross-volume search, and whole-series PDF/EPUB publication.\n\nPaths are relative to the service mount. In the combined deployment that is `/logos`; running Logos standalone it is `/`.\n\nUpdates to revisioned resources and reader items require an `If-Match` header carrying the `rev` from the last read."
   },
   "servers": [
@@ -1888,7 +1888,8 @@
           },
           "replacement": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "description": "The exact words to put in place of quote to make the fix, so the writer can accept it in one step; null when the editor's fix is advice rather than a rewording of the quoted words."
           }
         }
       },
@@ -1900,6 +1901,7 @@
           "at",
           "stance",
           "suggestion",
+          "replacement",
           "model"
         ],
         "properties": {
@@ -1932,6 +1934,11 @@
             "type": "string",
             "nullable": true,
             "description": "The editor's only, with stance revises: a new minimal fix."
+          },
+          "replacement": {
+            "type": "string",
+            "nullable": true,
+            "description": "The editor's only, with stance revises: the exact words to put in place of the issue's quote for the new fix, when it is a rewording of them."
           },
           "model": {
             "type": "string",
@@ -2233,7 +2240,7 @@
               "block": "p1",
               "quote": "her brown eyes",
               "message": "Lyra's eyes are grey in canon.",
-              "suggestion": "her grey eyes",
+              "suggestion": "Give her the grey eyes her canon article describes.",
               "reference": "ember/characters/lyra",
               "verified": true,
               "status": "open",
@@ -2245,6 +2252,7 @@
                   "at": "2026-10-13T20:05:00+00:00",
                   "stance": null,
                   "suggestion": null,
+                  "replacement": null,
                   "model": null
                 },
                 {
@@ -2253,6 +2261,7 @@
                   "at": "2026-10-13T20:05:12+00:00",
                   "stance": "withdraws",
                   "suggestion": null,
+                  "replacement": null,
                   "model": "qwen3:30b"
                 }
               ],
@@ -2261,7 +2270,7 @@
               "category": "continuity",
               "title": "Continuity",
               "excerpt": "her brown eyes",
-              "replacement": null
+              "replacement": "her grey eyes"
             }
           ]
         }

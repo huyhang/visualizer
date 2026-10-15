@@ -4,6 +4,7 @@ from .models import OllamaClient, Verifier
 from .pipelines import JobContext, PipelineUnavailable
 
 _QUOTE_EDGES = " \t\n\"'“”‘’.…"
+MAX_REPLACEMENT_CHARS = 1000
 
 
 def second_check_mode(verify: str, verifier: Verifier | None) -> str:
@@ -46,3 +47,12 @@ def resolve_ref(value, known: set[str]) -> str | None:
 def clean_quote(value) -> str:
     """A model's quote without the ellipses and quote marks it wraps it in."""
     return str(value or "").strip(_QUOTE_EDGES).strip()
+
+
+def clean_replacement(value, quote: str, limit: int = MAX_REPLACEMENT_CHARS
+                      ) -> str | None:
+    """The exact words to put in place of ``quote``, or None when the model gave
+    none, or gave back the quote itself. Cleaned as the quote is, so the two
+    line up when one replaces the other."""
+    replacement = clean_quote(value)[:limit]
+    return replacement if replacement and replacement != quote else None

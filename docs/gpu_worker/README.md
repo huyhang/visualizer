@@ -440,6 +440,7 @@ draft is the caller's decision.
      "block": "b1", "quote": "lifted the teapot and poured",
      "message": "Song-dynasty tea was powdered and whisked in bowls; steeping in teapots is a Ming-era habit.",
      "suggestion": "Show her whisking powdered tea in a bowl.",
+     "replacement": "whisked the powdered tea in her bowl",
      "reference": "song-dynasty/research/song-tea",
      "verified": true}
   ],
@@ -453,6 +454,7 @@ draft is the caller's decision.
 | Rule | Detail |
 |---|---|
 | `quote` | Must appear verbatim in the cited block — the worker drops issues whose quote it can't find |
+| `replacement` | The exact words to put in place of `quote` to make the fix, so the writer can accept it in one step; `null` when the fix is advice rather than a rewording of those words. Cleaned as the quote is, and never equal to it. `suggestion` explains the fix either way |
 | Second check | When the verifier runs, each issue is re-judged against its block and reference: confirmed issues get `verified: true`; issues judged not real are **removed** (counted in `verification.removed`). When skipped or off, `verified` is `null` |
 | `verification` | Same shape as for research. Logos can show "second-checked" vs. "first pass only" in its review panel |
 | `reference` | The `ref` the issue is based on; `null` for `prose` issues |
@@ -478,7 +480,8 @@ issue answers for it.
 {
   "issue": {"check": "anachronism", "quote": "lifted the teapot and poured",
             "message": "Song-dynasty tea was powdered and whisked in bowls; steeping in teapots is a Ming-era habit.",
-            "suggestion": "Show her whisking powdered tea in a bowl."},
+            "suggestion": "Show her whisking powdered tea in a bowl.",
+            "replacement": "whisked the powdered tea in her bowl"},
   "passage": "Lin Qingyu lifted the teapot and poured.",
   "reference": {"ref": "song-dynasty/research/song-tea", "kind": "research",
                 "title": "Song tea", "text": "…"},
@@ -491,7 +494,7 @@ issue answers for it.
 
 | Field | Rules |
 |---|---|
-| `issue` | The issue as the review reported it: `check`, `quote`, `message`, and `suggestion` (or `null`) |
+| `issue` | The issue as the review reported it: `check`, `quote`, `message`, and `suggestion` and `replacement` (either may be `null`) |
 | `passage` | The issue's block **as it reads now**, up to 20,000 characters. It may have been revised since the review |
 | `reference` | The article the issue cites, shaped as in a review request; `null` for a prose issue or one whose article the writer can no longer read |
 | `messages` | The conversation so far, oldest first: 1–40 of `{role: "writer" \| "editor", text}`, each at most 4,000 characters |
@@ -503,7 +506,8 @@ issue answers for it.
 {
   "reply": "A kettle of hot water is right for the period -- whisked tea needs it. It's the pouring into cups that reads as steeped tea.",
   "stance": "revises",
-  "suggestion": "lifted the kettle and poured hot water over the powdered tea in her bowl",
+  "suggestion": "Keep the kettle, but have her pour the water over powdered tea in her bowl.",
+  "replacement": "lifted the kettle and poured hot water over the powdered tea in her bowl",
   "model": "qwen3:30b",
   "generated_at": "2026-10-11T09:25:09Z"
 }
@@ -513,6 +517,7 @@ issue answers for it.
 |---|---|
 | `stance` | Where the editor now stands: `maintains` (the issue holds), `revises` (it holds, but a different fix would serve better), `withdraws` (the writer has shown it is wrong, or deliberate). The writer still decides the issue's status |
 | `suggestion` | A new minimal fix, only with `revises`; otherwise `null` |
+| `replacement` | With `revises`, the exact words to put in place of the issue's `quote` for the new fix, when it is a rewording of them; otherwise `null` |
 | `reply` | At most 2,000 characters. An empty one fails the job (`internal`) |
 | No second check | A reply is conversation, not a finding: the verifier is not asked |
 

@@ -10,8 +10,10 @@ prose for three things:
 - **prose**: clarity, rhythm, redundancy.
 
 It reports issues anchored to a block and a verbatim quote, and you work
-through them, answering any you want to talk over. Only the API exists so far; there is no UI yet. The Writing
-Coach's deterministic rules are unchanged and still send nothing anywhere.
+through them, answering any you want to talk over. On the writing page it is
+the **Editor** tab, and its issues are underlined in the prose (see the
+[Logos README](README.md#the-writer)). The Writing Coach's deterministic rules
+are unchanged and still send nothing anywhere.
 
 LLM review is off unless `GPU_WORKER_URL` is set. When it is off,
 `GET /llm-review/availability` says so and asking for a review answers 503.
@@ -91,6 +93,9 @@ issues are stored once, however many tabs are polling. Each issue has:
 - `block` and `quote`: the quote appears verbatim in that block, a rule the
   box enforces;
 - `message` and `suggestion`;
+- `replacement`: the exact words to put in place of the quote, when the fix
+  is a rewording of them, so it can be accepted in one step; `null` when the
+  suggestion is advice;
 - `reference`: the article the issue is based on, `null` for prose issues;
 - `verified`: `true` when a second machine confirmed it, `null` when there
   was no second check;
@@ -122,7 +127,9 @@ is `null` again. Each reply is a turn in the issue's `discussion`, with:
 
 - `stance`: where the editor now stands. `maintains` means the issue still
   holds; `revises` means it holds but a different fix would serve better, given
-  in `suggestion`; `withdraws` means you've shown it's wrong or deliberate.
+  in `suggestion` -- and in `replacement`, the exact words for the quote, when
+  the fix rewords them; `withdraws` means you've shown it's wrong or
+  deliberate.
 - Your status for the issue is never changed by a reply. If the editor
   withdraws, dismissing the issue is still your call.
 

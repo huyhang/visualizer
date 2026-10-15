@@ -7,7 +7,8 @@ export interface Notice {
   title: string;
   description?: string;
   tone?: "ok" | "danger";
-  action?: { label: string; href: string };
+  /** A link to follow, or something to do -- "Undo" -- before the notice goes. */
+  action?: { label: string; href: string } | { label: string; onClick: () => void };
 }
 
 type Notify = (notice: Notice) => void;
@@ -43,9 +44,19 @@ export function Toaster({ children }: { children: ReactNode }) {
             ) : null}
             {notice.action ? (
               <Toast.Action asChild altText={notice.action.label}>
-                <a className="st-toast-action" href={notice.action.href}>
-                  {notice.action.label}
-                </a>
+                {"href" in notice.action ? (
+                  <a className="st-toast-action" href={notice.action.href}>
+                    {notice.action.label}
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    className="st-toast-action"
+                    onClick={notice.action.onClick}
+                  >
+                    {notice.action.label}
+                  </button>
+                )}
               </Toast.Action>
             ) : null}
           </Toast.Root>

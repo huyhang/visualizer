@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "GPU Box AI Worker",
-    "version": "1.2.0-draft",
+    "version": "1.3.0-draft",
     "summary": "Async research and writing-review jobs for the visualizer stack.",
     "description": "Runs on the RTX 3090 box and serves Akasha (research jobs) and Logos (LLM review jobs, and discussions of a review's issues). Callers never talk to Ollama or SearXNG directly. Every job is asynchronous: submit with POST /jobs, poll GET /jobs/{job_id}. The worker never initiates connections to callers and never accepts URLs to fetch from callers. Status: proposal, not implemented. Human-readable spec: README.md beside this file."
   },
@@ -260,7 +260,8 @@
                         "check": "anachronism",
                         "quote": "lifted the teapot and poured",
                         "message": "Song-dynasty tea was powdered and whisked in bowls; steeping in teapots is a Ming-era habit.",
-                        "suggestion": "Show her whisking powdered tea in a bowl."
+                        "suggestion": "Show her whisking powdered tea in a bowl.",
+                        "replacement": "whisked the powdered tea in her bowl"
                       },
                       "passage": "Lin Qingyu lifted the teapot and poured.",
                       "reference": {
@@ -497,6 +498,7 @@
                               "quote": "lifted the teapot and poured",
                               "message": "Song-dynasty tea was powdered and whisked in bowls; steeping in teapots is a Ming-era habit.",
                               "suggestion": "Show her whisking powdered tea in a bowl.",
+                              "replacement": "whisked the powdered tea in her bowl",
                               "reference": "song-dynasty/research/song-tea",
                               "verified": true
                             }
@@ -531,7 +533,8 @@
                         "result": {
                           "reply": "A kettle of hot water is right for the period -- whisked tea needs it. It's the pouring into cups that reads as steeped tea. If she pours water over powder in a bowl, the scene works.",
                           "stance": "revises",
-                          "suggestion": "lifted the kettle and poured hot water over the powdered tea in her bowl",
+                          "suggestion": "Keep the kettle, but have her pour the water over powdered tea in her bowl.",
+                          "replacement": "lifted the kettle and poured hot water over the powdered tea in her bowl",
                           "model": "qwen3:30b",
                           "generated_at": "2026-10-11T09:25:09Z"
                         },
@@ -585,6 +588,7 @@
                               "quote": "lifted the teapot and poured",
                               "message": "Song-dynasty tea was powdered and whisked in bowls; steeping in teapots is a Ming-era habit.",
                               "suggestion": "Show her whisking powdered tea in a bowl.",
+                              "replacement": "whisked the powdered tea in her bowl",
                               "reference": "song-dynasty/research/song-tea",
                               "verified": null
                             }
@@ -1553,6 +1557,14 @@
                   "null"
                 ],
                 "maxLength": 2000
+              },
+              "replacement": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 1000,
+                "description": "The exact replacement for quote the review offered, if any."
               }
             }
           },
@@ -2067,6 +2079,14 @@
               "null"
             ]
           },
+          "replacement": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000,
+            "description": "The exact text to put in place of quote to make the fix, so the writer can accept it in one step; null when the fix is not a direct rewording of the quoted words. Never equal to quote."
+          },
           "reference": {
             "oneOf": [
               {
@@ -2119,6 +2139,14 @@
             ],
             "maxLength": 1000,
             "description": "A new minimal fix; only with stance revises, otherwise null."
+          },
+          "replacement": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000,
+            "description": "The exact text to put in place of the issue's quote for the new fix; only with stance revises, and only when the fix is a direct rewording of the quoted words. Otherwise null."
           },
           "model": {
             "type": "string"

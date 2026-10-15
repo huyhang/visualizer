@@ -539,14 +539,17 @@ def _review_result(request: dict, verification: dict, at: datetime) -> dict:
             continue
         block = blocks[len(issues) % len(blocks)]
         reference = based_on[check]
+        quote = _excerpt(block["text"])
         issues.append({
             "check": check,
             "severity": "info" if check == "prose" else "warning",
             "confidence": "possible",
             "block": block["id"],
-            "quote": _excerpt(block["text"]),
+            "quote": quote,
             "message": f"[Fake] A {check} issue the fake worker made up.",
             "suggestion": "[Fake] A suggestion, also made up.",
+            # Continuity issues come as advice only, so both kinds of fix show.
+            "replacement": None if check == "continuity" else _reworded(quote),
             "reference": reference["ref"] if reference else None,
             "verified": True if checked else None,
         })
@@ -568,14 +571,21 @@ def _discussion_result(request: dict, at: datetime) -> dict:
         stance, suggestion = "revises", "[Fake] A different fix, also made up."
     else:
         stance, suggestion = "maintains", None
+    replacement = _reworded(request["issue"]["quote"]) if suggestion else None
     return {
         "reply": f"[Fake] A reply the fake worker made up: it {stance} the "
                  f"{request['issue']['check']} issue.",
         "stance": stance,
         "suggestion": suggestion,
+        "replacement": replacement,
         "model": MODEL,
         "generated_at": _iso(at),
     }
+
+
+def _reworded(quote: str) -> str:
+    """A replacement for ``quote`` that says it is made up, and is not the quote."""
+    return f"[Fake fix] {quote}"
 
 
 def _excerpt(text: str, limit: int = 40) -> str:

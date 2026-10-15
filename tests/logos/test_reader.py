@@ -382,12 +382,8 @@ def test_the_reader_assets_are_served(client):
         "/static/js/contents.js",
         "/static/js/contentmanager.js",
         "/static/js/touchdrag.js",
-        "/static/js/editor.js",
-        "/static/js/comparison.js",
-        "/static/js/recovery.js",
         "/static/js/review.js",
-        "/static/js/typography.js",
-        "/static/js/writer.js",
+        "/static/js/writerlinks.js",
         "/static/js/shared/prefs.js",
         "/static/shared/service-nav.css",
     ):
@@ -400,15 +396,11 @@ def test_logos_has_a_deliberate_mobile_action_hierarchy(client):
     html = client.get("/").get_data(as_text=True)
     sheet = (_LOGOS / "static" / "reader.css").read_text()
     app = (_LOGOS / "static" / "js" / "app.js").read_text()
-    writer = (_LOGOS / "static" / "js" / "writer.js").read_text()
 
+    # The writing page's own hierarchy is the bundle's (frontend/src/logos),
+    # held there by vitest and in a browser by docker/smoke_logos_writer.py.
     assert html.count("compact-action") >= 6
     assert "compact-actions" in app
-    assert "writer-draft-actions" in writer
-    assert "format-insertOrderedList" in sheet
-    assert "writer-block-style-compact" in writer
-    assert '["P", "H1", "H2", "H3"]' in writer
-    assert "grid-template-columns: repeat(7, 32px) 48px" in sheet
     assert ".compact-action-label" in sheet
     assert ".compact-action-glyph" in sheet
     assert "min-height: 44px" in sheet
@@ -465,19 +457,10 @@ def test_one_action_group_never_draws_two_actions_the_same_way(client):
     never appear together, which is why this is not one global set.
     """
     app = (_LOGOS / "static" / "js" / "app.js").read_text()
-    writer = (_LOGOS / "static" / "js" / "writer.js").read_text()
+    # The writing page's bar and formatting tools are the bundle's, and
+    # frontend/src/logos/components/writer/chrome.test.tsx holds them to this.
     groups = {
         "book actions": _glyphs_in(_function_body(app, "function bookActions(")),
-        # The draft actions are built by their own function so that promotion
-        # can repaint them from state, but they draw into the topbar's one row,
-        # so distinctness is still a property of the two bodies together.
-        "writer topbar": _glyphs_in(
-            _function_body(writer, "function topbar(")
-            + _function_body(writer, "function draftActionButtons(")
-        ),
-        "formatting bar": _glyphs_in(
-            _between(writer, "const toolbar = el(", "]);")
-        ),
     }
     html = client.get("/").get_data(as_text=True)
     toolbar = html.split('id="reader-toolbar"', 1)[1].split("</div>", 1)[0]

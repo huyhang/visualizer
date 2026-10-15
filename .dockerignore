@@ -1,7 +1,7 @@
 # Keeps the Docker build context small and fast (the context is the repo root).
-# Only the requirements files, src/, frontend/ (the research studio's sources,
-# compiled in a build stage) and the GPU worker's contract are needed to build
-# the images; everything below is excluded.
+# Only the requirements files, src/, frontend/ (the research studio's and the
+# writing page's sources, compiled in a build stage) and the GPU worker's
+# contract are needed to build the images; everything below is excluded.
 
 # Version control
 .git
@@ -28,10 +28,11 @@ docs/
 # ...except the contract the GPU worker enforces at runtime (Dockerfile.worker).
 !docs/gpu_worker/openapi.json
 
-# The studio's frontend: the image builds it from source (package files and
-# src/ only), so local dependencies and a local build never enter the context.
+# The frontend: the images build it from source (package files and src/ only),
+# so local dependencies and a local build never enter the context.
 frontend/node_modules/
 src/visualizer/akasha/static/studio/
+src/visualizer/logos/static/writer/
 
 # Virtualenvs
 .venv/

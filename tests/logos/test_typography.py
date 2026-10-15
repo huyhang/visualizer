@@ -3,8 +3,8 @@
 Two rules share one module. ``curl_text`` reads both ways and owns every write
 that reaches the API; ``curl_typed_mark`` reads only backwards, because at a
 caret nothing follows the mark yet, and ``fix_elisions`` is how the second
-catches up with the first. The browser mirrors all three in
-``static/js/typography.js``; ``test_reader_js`` holds that side.
+catches up with the first. The writing page mirrors all three in
+``frontend/src/logos/doc/typography.ts``; its vitest suite holds that side.
 """
 
 import pytest

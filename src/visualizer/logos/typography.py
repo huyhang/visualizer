@@ -2,11 +2,12 @@
 
 ``curl_text`` looks both ways to tell an opening quote from a closing one,
 which is the right rule for prose that already exists -- every API write comes
-through here. The browser mirrors it in ``static/js/typography.js`` and adds a
-backwards-only rule for the caret, where nothing follows the mark yet; keep the
-two files in step. ``fix_elisions`` is the shared correction that lets the
-cheap rule catch up: a leading apostrophe cannot be told from an opening single
-quote until its word arrives.
+through here. The writing page mirrors it in
+``frontend/src/logos/doc/typography.ts`` and adds a backwards-only rule for the
+caret, where nothing follows the mark yet; keep the two files in step.
+``fix_elisions`` is the shared correction that lets the cheap rule catch up: a
+leading apostrophe cannot be told from an opening single quote until its word
+arrives.
 
 Only visible prose is touched. Code spans keep their literal characters, and a
 link's destination is a separate field this never reads.

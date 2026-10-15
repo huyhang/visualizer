@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
+  <title>Logos — writing</title>
+  <link rel="icon" href="{{ url_for('static', filename='logos-icon.svg') }}">
+  {# Palette first; then the reader's sheet, which owns the header and the
+     manuscript's typography, so prose looks the same written as read; then
+     the writing page's own bundle; the shared nav last, as everywhere. #}
+  <link rel="stylesheet" href="{{ url_for('shared_static', filename='tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='reader.css') }}">
+  {% if assets %}
+  {% for sheet in assets.styles %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='writer/' + sheet) }}">
+  {% endfor %}
+  {% endif %}
+  <link rel="stylesheet" href="{{ url_for('shared_static', filename='service-nav.css') }}">
+  <script src="{{ url_for('shared_js', filename='prefs.js') }}"></script>
+</head>
+<body class="lw-body">
+  <div class="app-shell">
+    {% include "_service_nav.html" %}
+    <div class="app-shell-main">
+      {% include "_logos_header.html" %}
+      <main class="lw-root" id="writer-root"
+            data-base="{{ base }}"
+            data-user="{{ username }}"
+            data-akasha-url="{{ service_links.akasha }}">
+        {% if not assets %}
+        <div class="lw-unbuilt">
+          <h1>The writing page has not been built</h1>
+          <p>Its sources are in <code>frontend/src/logos</code>. Build them once with
+             <code>npm --prefix frontend ci &amp;&amp; npm --prefix frontend run build</code>,
+             or keep them building with <code>npm --prefix frontend run watch:logos</code>,
+             then reload this page.</p>
+        </div>
+        {% endif %}
+      </main>
+    </div>
+  </div>
+  {% if assets %}
+  <script type="module" src="{{ url_for('static', filename='writer/' + assets.script) }}"></script>
+  {% endif %}
+</body>
+</html>

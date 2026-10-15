@@ -1,12 +1,13 @@
 {
-  "name": "akasha-frontend",
+  "name": "visualizer-frontend",
   "private": true,
   "version": "0.1.0",
-  "description": "Akasha's compiled browser surfaces. The research studio first; built into src/visualizer/akasha/static/studio and served by Flask.",
+  "description": "Visualizer's compiled browser surfaces: Akasha's research studio and Logos's writing page, built into each app's static folder and served by Flask.",
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && vite build -c vite.logos.config.ts",
     "watch": "vite build --watch --mode development",
+    "watch:logos": "vite build -c vite.logos.config.ts --watch --mode development",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p .",
@@ -17,6 +18,10 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.104.2",
+    "@tiptap/core": "^3.32.0",
+    "@tiptap/extensions": "^3.32.0",
+    "@tiptap/pm": "^3.32.0",
+    "@tiptap/react": "^3.32.0",
     "radix-ui": "^1.8.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"

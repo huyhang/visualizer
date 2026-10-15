@@ -15,9 +15,16 @@ to that mount.
 
 ## The writer
 
-Open a section and choose **Edit**. Above 1100px the workspace places the
-manuscript outline beside a centered rich-text page and a collapsible
-Akasha/Writing Coach panel. Below that the two panels become drawers and the
+Open a section and choose **Edit**. The writing page is compiled from
+`frontend/src/logos` -- React, TypeScript and [Tiptap](https://tiptap.dev) (a
+layer over ProseMirror), built by Vite into `static/writer/` -- and served at
+the address it always had, `?…&mode=write`; the reader and contents page are
+untouched. Its schema is Logos's document vocabulary and nothing else, so what
+it saves is exactly what the API validates, block ids included.
+
+Above 1100px the workspace places the manuscript outline beside a centered
+rich-text page and a panel of writing tools -- **Akasha**, the **Coach** and the
+**Editor**. Below that the two panels become drawers and the
 formatting bar docks to the foot of the screen — the same width at which the
 shared service navigation drops to its glyph rail, so the whole application
 changes over together rather than Logos switching in the middle of someone
@@ -27,10 +34,10 @@ rail has taken its share. On a phone the global navigation disappears
 temporarily as well, and the formatting bar stays above the software keyboard.
 The current draft, panel controls and **Done** remain visible; action labels
 compact to icons rather than wrapping unpredictably. The formatting controls
-stay in one row, using a compact P/H1/H2/H3 style selector; on a squeezed
-desktop column the labelled row scrolls within its own bar rather than spilling
-through it. Only one drawer opens at a time, and tapping its backdrop or
-pressing Escape closes it. **Done** returns to the same passage in the reader.
+stay in one row, using a compact P/H1/H2/H3 style selector. Only one drawer
+opens at a time, and tapping its backdrop or pressing Escape closes it. Notes
+open as a popover beside their words on a wide screen and rise as a sheet from
+the bottom of a phone. **Done** returns to the same passage in the reader.
 
 **Akasha lookup lives on the right-click menu.** Select a name and right-click
 it for *Look up in Akasha*; right-click words that are already linked for *Open
@@ -49,20 +56,40 @@ Words already linked stay ordinary prose: selectable, editable, and left-click
 opens their entity in the side panel rather than the menu — the panel shows
 what the entity *is*, the menu does something to it.
 
+**Notes are drawn in the prose.** Whatever the Coach or the Editor finds is
+underlined on the exact words it is about -- a quiet dotted line for the Coach,
+a wavy one in its check's colour for the Editor, stronger for a warning -- with
+a mark in the margin beside each paragraph that has one. Underlines are
+decorations, not content: they follow every edit, never reach the saved
+document, and let go when the words they quote are rewritten. Clicking one
+opens its note: what is wrong, and, when the note offers exact words, a
+before/after preview with **Accept**, which rewrites the quoted words as one
+undoable edit (and offers Undo). Advice without exact words offers **Edit
+here**, which selects the words for the writer to rewrite. Each panel's
+*Underline in the manuscript* switch turns its layer off.
+
 The Writing Coach uses only local deterministic rules; it sends no prose to an
-external service. Its series Review workspace checks every primary draft in one
+external service. It reads the draft when the page opens and again whenever
+typing pauses. Its series Review workspace checks every primary draft in one
 place and can include named alternatives on demand. Alongside mechanics and
 flow it checks dialect consistency:
 choose US or UK and it reports spellings from the other side, offering the
 local form. Which dialect a manuscript uses is the writer's choice, so it
 reports the mismatch rather than deciding.
 
-**LLM review** is the opt-in AI counterpart. When a GPU box is configured, a
-model there checks one draft for continuity against canon, anachronism against
-verified research, and prose. It reports issues anchored to a block and a quote,
-and the writer marks each one open, dismissed or resolved. It's an API only so
-far; see [`llm-review.md`](llm-review.md) for what is sent, what is kept, and the
-routes.
+**The Editor** is the opt-in AI counterpart: LLM review on the GPU box. When a
+box is configured, **Ask the editor** has a model there read the saved draft
+for continuity against canon, anachronism against verified research, and
+prose; the tab shows whether the box is ready, warming up, busy or asleep, and
+what stage a review has reached. Its issues are listed in reading order with
+filters, and each can be accepted, dismissed, resolved or **discussed**: the
+writer answers -- "that's deliberate", "why?", "what would you do instead?" --
+and the editor replies, maintaining, revising (with a new fix to accept) or
+withdrawing its note. `J`/`K` move through the list, `A` accepts and `D`
+dismisses. The settings popover chooses the checks, the dialect, the second
+check and extra articles to send, and shows exactly what the editor will read
+and what it will be left without. See [`llm-review.md`](llm-review.md) for what
+is sent, what is kept, and the routes.
 
 Each section has one or more named drafts and exactly one primary draft. Authors
 can preview any named draft in the reader without changing that primary. New

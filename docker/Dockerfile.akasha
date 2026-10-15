@@ -12,8 +12,9 @@ WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
-# Vite writes into ../src/visualizer/akasha/static/studio (see vite.config.ts).
-RUN npm run build
+# The studio only (vite.config.ts), into ../src/visualizer/akasha/static/studio;
+# Logos's writing page is its own image's business.
+RUN npx vite build
 
 FROM python:3.11-slim
 

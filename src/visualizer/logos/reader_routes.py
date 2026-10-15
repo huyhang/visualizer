@@ -14,6 +14,7 @@ from .routing import (
     resource,
     with_permissions,
 )
+from .writer_page import is_writer_request, render_writer
 
 
 def register_reader_routes(app, csrf, deps: RouteDeps):
@@ -25,7 +26,10 @@ def register_reader_routes(app, csrf, deps: RouteDeps):
     @app.get("/")
     @login_required
     def index():
-        """The reader and writer shell. Manuscript data itself arrives as JSON."""
+        """The reader shell, or the writing page's for ``?mode=write``.
+        Manuscript data itself arrives as JSON."""
+        if is_writer_request():
+            return render_writer(deps.writer_assets())
         return render_template("reader.html")
 
     @app.get("/health")

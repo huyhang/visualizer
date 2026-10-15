@@ -11,6 +11,7 @@ export function Modal({
   children,
   footer,
   wide = false,
+  className = "",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -19,12 +20,14 @@ export function Modal({
   children?: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  /** Extra classes on the dialog, for a surface that shapes it differently. */
+  className?: string;
 }) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="st-overlay" />
-        <Dialog.Content className={`st-modal${wide ? " is-wide" : ""}`}>
+        <Dialog.Content className={`st-modal${wide ? " is-wide" : ""} ${className}`.trim()}>
           <header className="st-modal-head">
             <Dialog.Title className="st-modal-title">{title}</Dialog.Title>
             <Dialog.Close className="st-icon-btn" aria-label="Close">

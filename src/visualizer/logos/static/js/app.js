@@ -52,7 +52,7 @@ import {
 import {
   filterAnnotations, filterIssues, reviewPage, sectionKindName,
 } from "./review.js";
-import { beginWriting, mountWriter, writerUrl } from "./writer.js";
+import { beginWriting, writerUrl } from "./writerlinks.js";
 
 const root = document.documentElement;
 const content = document.getElementById("content");
@@ -238,8 +238,6 @@ function bookActions(manuscript) {
 function hideReaderChrome() {
   toolbar.hidden = true;
   progressRegion.hidden = true;
-  content.classList.remove("writer-content");
-  document.body.classList.remove("writer-active", "show-writer-outline", "show-writer-context");
   open = null;
   reviewState = null;
 }
@@ -1454,8 +1452,8 @@ function renderReviewAnnotations() {
     : [el("p", { class: "empty", text: "No notes or checklists match these filters." })]);
 }
 
-// The writing workspace's own keys, so the Review page and the coach panel
-// share one dialect and one set of dismissed rules. See `mountWriter`.
+// The writing page's own keys, so the Review page and its Coach share one
+// dialect and one set of ignored rules. See `frontend/src/logos/logic/preferences.ts`.
 const writingDialectKey = () => `logos-writing-dialect:${encodeURIComponent(readerUser)}`;
 const writingIgnoredKey = () => `logos-writing-ignored:${encodeURIComponent(readerUser)}`;
 
@@ -2224,26 +2222,9 @@ async function openSection(manuscript, entry) {
   let section = await api.section(
     manuscript.book, entry.volume.id, entry.section.id,
   );
+  // `?mode=write` never reaches here: the server answers it with the writing
+  // page's own shell (`writer_page.py`).
   const query = new URLSearchParams(window.location.search);
-  if (query.get("mode") === "write" && manuscript.permissions.write) {
-    hideReaderChrome();
-    document.body.classList.add("writer-active");
-    await mountWriter({
-      container: content,
-      manuscript,
-      entry,
-      section,
-      user: readerUser,
-      base: BASE,
-      akashaUrl: window.__AKASHA_URL__ || "/",
-      onDone: (block, draft) => {
-        window.location.href = readerUrl(
-          manuscript.book, entry.volume.id, entry.section.id, block, draft,
-        );
-      },
-    });
-    return;
-  }
   let draft = {
     id: section.primary_draft_id,
     name: "Primary draft",

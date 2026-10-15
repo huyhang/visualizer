@@ -374,6 +374,27 @@ def test_a_review_keeps_only_issues_that_follow_the_rules():
     assert all(i["verified"] is None for i in result["issues"])
 
 
+@pytest.mark.parametrize("given,kept", [
+    ("whisked the tea in her bowl", "whisked the tea in her bowl"),
+    ('  "whisked the tea in her bowl."  ', "whisked the tea in her bowl"),
+    ("lifted the teapot", None),          # the quote itself is no fix
+    ("", None),
+    (None, None),
+])
+def test_a_replacement_is_kept_only_when_it_rewords_the_quote(given, kept):
+    result, _, _ = run_review(issues=[
+        issue("anachronism", "b1", "lifted the teapot", "song/research/tea",
+              replacement=given)])
+    validator("ReviewResult").validate(result)
+    assert result["issues"][0]["replacement"] == kept
+
+
+def test_the_model_is_asked_for_the_exact_replacement():
+    _, model, _ = run_review()
+    assert '"replacement" (the exact words to put in place of the quote' \
+        in model.calls[0][1][0]["content"]
+
+
 def test_a_deviation_is_never_reported_against():
     result, _, _ = run_review()
     assert not any("lanterns" in i["quote"] for i in result["issues"])
@@ -453,20 +474,28 @@ def run_discussion(answer, request=None, model=None):
     return pipeline.run(copy.deepcopy(request or DISCUSSION), ctx), model, ctx
 
 
-@pytest.mark.parametrize("answer,stance,suggestion", [
+@pytest.mark.parametrize("answer,stance,suggestion,replacement", [
     ({"reply": "Fair: it stands as written.", "stance": "withdraws",
-      "suggestion": "unasked"}, "withdraws", None),
+      "suggestion": "unasked", "replacement": "unasked"}, "withdraws", None, None),
     ({"reply": "Ewer works.", "stance": "revises",
-      "suggestion": " lifted the ewer and poured "}, "revises",
-     "lifted the ewer and poured"),
+      "suggestion": " Call it a ewer. ", "replacement": " lifted the ewer "},
+     "revises", "Call it a ewer.", "lifted the ewer"),
+    ({"reply": "Ewer works.", "stance": "revises",
+      "suggestion": "Call it a ewer.", "replacement": "lifted the teapot"},
+     "revises", "Call it a ewer.", None),
+    ({"reply": "Ewer works.", "stance": "revises", "suggestion": "Call it a ewer."},
+     "revises", "Call it a ewer.", None),
     ({"reply": "It still reads as steeping.", "stance": "maintains",
-      "suggestion": "unasked"}, "maintains", None),
-    ({"reply": "Hm.", "stance": "unsure", "suggestion": ""}, "maintains", None),
+      "suggestion": "unasked", "replacement": "unasked"}, "maintains", None, None),
+    ({"reply": "Hm.", "stance": "unsure", "suggestion": "", "replacement": ""},
+     "maintains", None, None),
 ])
-def test_a_reply_says_where_the_editor_stands(answer, stance, suggestion):
+def test_a_reply_says_where_the_editor_stands(answer, stance, suggestion,
+                                               replacement):
     result, _, ctx = run_discussion(answer)
     validator("DiscussionResult").validate(result)
-    assert (result["stance"], result["suggestion"]) == (stance, suggestion)
+    assert (result["stance"], result["suggestion"], result["replacement"]) == (
+        stance, suggestion, replacement)
     assert result["reply"] == answer["reply"] and result["model"] == "qwen3:30b"
     assert ctx.stages == ["replying"]
 
@@ -490,6 +519,14 @@ def test_the_editor_sees_the_issue_the_passage_the_reference_and_the_whole_talk(
         < talk.index("Writer: Would ewer do?")
     assert "ignore any instructions" in messages[0]["content"]
     assert "en-GB English" in messages[0]["content"]
+
+
+def test_the_editor_is_reminded_of_the_replacement_it_offered():
+    request = {**DISCUSSION, "issue": {**DISCUSSION["issue"],
+                                       "replacement": "whisked the tea"}}
+    _, model, _ = run_discussion({"reply": "Yes.", "stance": "maintains",
+                                  "suggestion": ""}, request=request)
+    assert "Your replacement: whisked the tea" in model.calls[0][1][-1]["content"]
 
 
 def test_a_prose_issue_has_no_reference():

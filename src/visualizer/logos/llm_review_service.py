@@ -237,7 +237,9 @@ class LlmReviewService:
         kinds = {r["ref"]: r["kind"] for r in record["references"]}
         turn = {"role": "writer", "text": text}
         request = {
-            "issue": {k: issue[k] for k in ("check", "quote", "message", "suggestion")},
+            "issue": {**{k: issue[k] for k in ("check", "quote", "message",
+                                               "suggestion")},
+                      "replacement": issue.get("replacement")},
             "passage": _passage(issue, current),
             "reference": discussion_reference(
                 self.articles, self.auth_store.grants_for(writer), issue["reference"],
@@ -370,6 +372,8 @@ def _said(turn: dict) -> dict:
     text = turn["text"]
     if turn.get("suggestion"):
         text += f"\n(Suggested fix: {turn['suggestion']})"
+    if turn.get("replacement"):
+        text += f"\n(Suggested replacement: {turn['replacement']})"
     return {"role": turn["role"], "text": text}
 
 
@@ -383,18 +387,22 @@ def _editor_turn(result) -> dict:
     if (not isinstance(result, dict) or not isinstance(result.get("reply"), str)
             or not result["reply"].strip() or result.get("stance") not in STANCES):
         raise MalformedResult("malformed reply")
-    suggestion = result.get("suggestion")
     return {"role": "editor", "text": result["reply"].strip()[:2000],
             "stance": result["stance"],
-            "suggestion": suggestion[:1000] if isinstance(suggestion, str)
-            and suggestion.strip() else None,
+            "suggestion": _optional_text(result.get("suggestion"), 1000),
+            "replacement": _optional_text(result.get("replacement"), 1000),
             "model": str(result.get("model") or "")[:100] or None}
+
+
+def _optional_text(value, limit: int) -> str | None:
+    """A string the box may leave out or null, cut to ``limit``; None if blank."""
+    return value[:limit] if isinstance(value, str) and value.strip() else None
 
 
 def _turn_view(turn: dict) -> dict:
     return {"role": turn["role"], "text": turn["text"], "at": turn.get("at"),
             "stance": turn.get("stance"), "suggestion": turn.get("suggestion"),
-            "model": turn.get("model")}
+            "replacement": turn.get("replacement"), "model": turn.get("model")}
 
 
 def _head(record: dict) -> dict:
@@ -419,11 +427,12 @@ def _issue_view(issue: dict, current: dict | None) -> dict:
     stale = issue["quote"] not in blocks.get(issue["block"], "")
     reply = issue.get("reply")
     return {**issue, "dismissed_before": issue.get("dismissed_before"),
+            "replacement": issue.get("replacement"),
             "discussion": [_turn_view(turn) for turn in issue.get("discussion") or []],
             "reply": None if reply is None else
             {k: reply.get(k) for k in ("state", "progress", "error")},
             "category": issue["check"], "title": TITLES[issue["check"]],
-            "excerpt": issue["quote"], "replacement": None, "stale": stale}
+            "excerpt": issue["quote"], "stale": stale}
 
 
 def _issues(result) -> list[dict]:
@@ -438,6 +447,7 @@ def _issues(result) -> list[dict]:
         if not all(isinstance(value, str) and value for value in text.values()):
             raise MalformedResult("malformed issue")
         suggestion, reference = raw.get("suggestion"), raw.get("reference")
+        replacement = _optional_text(raw.get("replacement"), 1000)
         issues.append({
             "id": f"i{n}", "check": raw["check"],
             "severity": raw.get("severity") if raw.get("severity") in (
@@ -447,6 +457,7 @@ def _issues(result) -> list[dict]:
             "block": text["block"][:64], "quote": text["quote"][:1000],
             "message": text["message"][:2000],
             "suggestion": suggestion[:2000] if isinstance(suggestion, str) else None,
+            "replacement": replacement if replacement != text["quote"] else None,
             "reference": reference[:400] if isinstance(reference, str) else None,
             "verified": raw.get("verified") is True or None,
             "status": "open",

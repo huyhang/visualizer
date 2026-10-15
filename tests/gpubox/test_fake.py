@@ -243,6 +243,22 @@ def test_review_issues_quote_their_own_block_verbatim():
         assert issue["reference"] is None or issue["reference"] in refs
 
 
+def test_review_issues_offer_both_kinds_of_fix():
+    """Continuity comes as advice only, the rest with an exact replacement, so a
+    writer on the dev server meets both."""
+    canon = {"ref": "ember/characters/lin", "kind": "canon", "title": "Lin",
+             "text": "Lin has brown eyes."}
+    request = {**REVIEW, "references": [*REVIEW["references"], canon]}
+    result = finished(fake(), "review", request)["result"]
+    validator("ReviewResult").validate(result)
+    fixes = {issue["check"]: (issue["quote"], issue["replacement"])
+             for issue in result["issues"]}
+    assert fixes.keys() == {"continuity", "anachronism", "prose"}
+    for check, (quote, replacement) in fixes.items():
+        assert replacement == (None if check == "continuity"
+                               else f"[Fake fix] {quote}")
+
+
 def test_a_discussion_job_replies_after_loading_the_model(clock):
     worker = fake(clock, mode="cold")
     job = conforms(worker.submit("discussion", DISCUSSION, service="logos", ref="d1"))
@@ -269,6 +285,7 @@ def test_every_stance_is_reachable(said, stance, suggests):
     validator("DiscussionResult").validate(result)
     assert result["stance"] == stance
     assert (result["suggestion"] is not None) == suggests
+    assert (result["replacement"] is not None) == suggests
 
 
 @pytest.mark.parametrize("verifier,verify,status,reason,check", [
