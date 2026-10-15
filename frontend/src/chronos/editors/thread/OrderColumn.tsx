@@ -35,16 +35,21 @@ export interface OrderColumnProps {
 }
 
 export function OrderColumn(props: OrderColumnProps) {
-  // Where a scene picked next goes: after a row, or (null) at the end.
-  const [insertAfter, setInsertAfter] = useState<number | null>(null);
+  // Where a scene picked next goes: a position in the order, or (null) the end.
+  const [insertAt, setInsertAt] = useState<number | null>(null);
   const rows = displayRows(props.order, props.preview.current, props.known);
   const verdict = props.preview.current;
   const add = (scene: EventSummary) => {
-    props.onAdd(scene, insertAfter === null ? undefined : insertAfter + 1);
-    setInsertAfter(null);
+    props.onAdd(scene, insertAt ?? undefined);
+    setInsertAt(null);
   };
-  const afterTitle =
-    insertAfter === null ? null : rows.find((r) => r.index === insertAfter)?.title;
+  const titleAt = (index: number) => rows.find((r) => r.index === index)?.title;
+  const where =
+    insertAt === null
+      ? null
+      : insertAt === 0
+        ? `Insert before “${titleAt(0) ?? "the first scene"}”`
+        : `Insert after “${titleAt(insertAt - 1) ?? "that scene"}”`;
   return (
     <section className="cw-order-column" aria-label={props.label}>
       <div className="cw-order-column-head">
@@ -78,27 +83,27 @@ export function OrderColumn(props: OrderColumnProps) {
         moved={props.moved}
         onMove={props.onMove}
         onRemove={props.onRemove}
-        onInsertAfter={setInsertAfter}
+        onInsertAt={setInsertAt}
         onMakeEnding={props.onMakeEnding}
         onEditScene={props.onEditScene}
         onJump={props.onJump}
       />
       <div className="cw-order-actions">
         <AddScene
-          key={insertAfter ?? "end"}
-          label={afterTitle ? `Insert after “${afterTitle}”` : "Add a scene"}
+          key={insertAt ?? "end"}
+          label={where ?? "Add a scene"}
           already={props.order}
-          autoFocus={insertAfter !== null}
+          autoFocus={insertAt !== null}
           onAdd={add}
           onWriteNew={
             props.onWriteNew
               ? () => {
-                  props.onWriteNew?.(insertAfter === null ? undefined : insertAfter + 1);
-                  setInsertAfter(null);
+                  props.onWriteNew?.(insertAt ?? undefined);
+                  setInsertAt(null);
                 }
               : undefined
           }
-          onCancel={insertAfter === null ? undefined : () => setInsertAfter(null)}
+          onCancel={insertAt === null ? undefined : () => setInsertAt(null)}
         />
         {props.order.length > 1 ? (
           <Button

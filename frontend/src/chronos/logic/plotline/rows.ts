@@ -5,6 +5,7 @@
 
 import type { EventSummary, PlotlinePreview } from "../../api/types";
 import { timeframe } from "../text";
+import { spanLabel } from "../timeaxis";
 
 export interface OrderRow {
   id: string;
@@ -20,7 +21,8 @@ function row(scene: EventSummary, index: number | null): OrderRow {
   return {
     id: scene.id,
     title: scene.title || scene.id,
-    when: timeframe(scene),
+    // Its end says only what changes, as on the Scenes cards.
+    when: spanLabel(scene) ?? timeframe(scene),
     owned: scene.owned !== false,
     index,
     scene,

@@ -141,9 +141,11 @@
   }
 }
 
-/* Focus mode: the marks go, the scenes stay. */
+/* Focus mode: the marks go, the scenes stay -- on the thread and in its editor. */
 .cw-plotline.is-focus .cw-pl-findings,
-.cw-plotline.is-focus .cw-pl-banner {
+.cw-plotline.is-focus .cw-pl-banner,
+.cw-editor.is-focus .cw-pl-findings,
+.cw-editor.is-focus .cw-pl-banner {
   display: none;
 }
 
@@ -321,6 +323,15 @@
 }
 .cw-editor-toolbar-gap {
   flex: 1;
+}
+.cw-goal-add {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.cw-goal-add .cw-typeahead {
+  flex: 1;
+  min-width: 0;
 }
 .cw-editor-fields {
   display: grid;
@@ -515,9 +526,12 @@
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 0.45rem;
+  gap: 0.2rem 0.45rem;
 }
+/* The date on a line of its own above the title, on every row: rows with tools
+   and rows without are not different widths of the same thing. */
 .cw-order-when {
+  flex-basis: 100%;
   font-size: 0.74rem;
   font-weight: 700;
   color: var(--muted);

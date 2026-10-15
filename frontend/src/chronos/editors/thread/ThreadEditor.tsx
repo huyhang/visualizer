@@ -48,6 +48,9 @@ import { InspectorPeek } from "../../components/inspector/Inspector";
 import { Skeleton } from "../../../components/ui/Skeleton";
 import { ConfirmDialog } from "../../components/form/ConfirmDialog";
 import { sceneElement } from "../../views/plotline/useJump";
+import { useFocusMode } from "../../views/plotline/useFocusMode";
+import { focusLabel } from "../../logic/plotline/focus";
+import { conflictCount } from "../../logic/plotline/verdicts";
 import { CompareBar } from "./Compare";
 import { OrderColumn } from "./OrderColumn";
 import {
@@ -166,6 +169,8 @@ function EditorBody({
   const [recheck, setRecheck] = useState(0);
   const [confirm, setConfirm] = useState<"delete" | { ending: OrderRow } | null>(null);
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
+  // The thread screen's focus mode, remembered with it: the marks go, the order stays.
+  const [hideMarks, toggleMarks] = useFocusMode();
   const writes = useThreadWrites(book, creating, loaded.rev);
   useHistoryKeys(draftControls.undo, draftControls.redo, root);
   const { canUndo } = draftControls;
@@ -287,7 +292,7 @@ function EditorBody({
       : null;
 
   return (
-    <div ref={setRoot} className="cw-editor">
+    <div ref={setRoot} className={`cw-editor${hideMarks ? " is-focus" : ""}`}>
       <DraftToolbar
         canUndo={draftControls.canUndo}
         canRedo={draftControls.canRedo}
@@ -297,6 +302,8 @@ function EditorBody({
         canCompare={draft.events.length > 0}
         onStartComparing={() => update(startComparing)}
         onStopComparing={() => update((e) => keep(e, "A"))}
+        focusLabel={focusLabel(hideMarks, conflictCount(previewA.current?.status))}
+        onFocus={toggleMarks}
       />
       <ThreadFields
         draft={draft}

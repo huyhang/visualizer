@@ -3,7 +3,7 @@
 // on screen: a verdict on the order before the last drag is stale, and drawn
 // as "checking" rather than trusted.
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { PlotlinePreview, PlotlineWrite } from "../../api/types";
 import { messageOf } from "../../api/errors";
 import { useApi } from "../../deps";
@@ -35,16 +35,19 @@ export function usePreview(
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [last, setLast] = useState<PlotlinePreview | null>(null);
   const empty = candidate.events.length === 0;
-  // The candidate as a value, so the effect depends on what it says, not on
-  // which object happened to carry it this render.
-  const asked = JSON.stringify(candidate);
+  // Asked again when `key` -- what can change the verdict -- changes, with the
+  // candidate as it stands then: typing a title is not a reason to re-judge.
+  const latest = useRef(candidate);
+  useLayoutEffect(() => {
+    latest.current = candidate;
+  });
 
   useEffect(() => {
     if (empty) return;
     let live = true;
     const timer = setTimeout(() => {
       api
-        .previewPlotline(book, JSON.parse(asked), { calendar })
+        .previewPlotline(book, latest.current, { calendar })
         .then((preview) => {
           if (!live) return;
           setAnswer({ key, preview, error: null });
@@ -64,7 +67,7 @@ export function usePreview(
       live = false;
       clearTimeout(timer);
     };
-  }, [api, book, asked, key, calendar, empty]);
+  }, [api, book, key, calendar, empty]);
 
   const fresh = answer !== null && answer.key === key;
   return {

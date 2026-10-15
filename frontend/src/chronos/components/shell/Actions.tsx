@@ -4,17 +4,22 @@
 // need to know how a scene is written.
 
 import { createContext, useContext, type ReactNode } from "react";
-import type { SceneEvent } from "../../api/types";
+import type { Goal, SceneEvent } from "../../api/types";
 
 /** How a caller hears that the scene it opened was saved: the thread editor adds it. */
 export interface SceneEditOptions {
   onSaved?: (scene: SceneEvent) => void;
 }
 
+/** How a caller hears that the goal it started was created: the thread editor adds it. */
+export interface GoalEditOptions {
+  onSaved?: (goal: Goal) => void;
+}
+
 export interface WorkspaceActions {
   newThread?: () => void;
   newScene?: (options?: SceneEditOptions) => void;
-  newGoal?: () => void;
+  newGoal?: (options?: GoalEditOptions) => void;
   newBook?: () => void;
   editThread?: (id: string) => void;
   editScene?: (id: string, options?: SceneEditOptions) => void;

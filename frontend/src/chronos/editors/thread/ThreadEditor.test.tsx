@@ -61,6 +61,15 @@ describe("the thread editor", () => {
     );
   });
 
+  it("does not ask the server again for a new name", async () => {
+    const { api, dialog } = await openEditor();
+    await waitFor(() => expect(lastPreviewOrder(api)).toEqual(ORDER));
+    const asked = api.callsTo("previewPlotline").length;
+    await userEvent.type(within(dialog).getByLabelText("Name"), " Revised");
+    await new Promise((r) => setTimeout(r, 400));
+    expect(api.callsTo("previewPlotline")).toHaveLength(asked);
+  });
+
   it("moves with Alt held as well, and takes a scene out with Delete", async () => {
     const { api, dialog } = await openEditor();
     await waitFor(() => expect(lastPreviewOrder(api)).toEqual(ORDER));

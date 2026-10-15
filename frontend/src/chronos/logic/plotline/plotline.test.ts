@@ -163,6 +163,8 @@ describe("draft", () => {
   it("re-judges for what changes a verdict, not for a new title", () => {
     const draft = draftFrom(PLOTLINE);
     expect(candidateKey({ ...draft, title: "Other" })).toBe(candidateKey(draft));
+    expect(candidateKey({ ...draft, overview: "Other" })).toBe(candidateKey(draft));
+    expect(candidateKey({ ...draft, id: "other" })).not.toBe(candidateKey(draft));
     expect(candidateKey({ ...draft, events: ["b", "a"] })).not.toBe(candidateKey(draft));
     expect(candidateKey(draft, ["b", "a"])).toBe(
       candidateKey({ ...draft, events: ["b", "a"] }),

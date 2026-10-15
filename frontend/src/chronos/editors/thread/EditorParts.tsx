@@ -18,6 +18,8 @@ export function DraftToolbar({
   canCompare,
   onStartComparing,
   onStopComparing,
+  focusLabel,
+  onFocus,
 }: {
   canUndo: boolean;
   canRedo: boolean;
@@ -27,12 +29,24 @@ export function DraftToolbar({
   canCompare: boolean;
   onStartComparing: () => void;
   onStopComparing: () => void;
+  /** "Hide problems", or what showing them again would show. */
+  focusLabel: string;
+  onFocus: () => void;
 }) {
   return (
     <div className="cw-editor-toolbar" role="toolbar" aria-label="Draft">
       <IconButton icon="undo" label="Undo (⌘Z)" disabled={!canUndo} onClick={onUndo} />
       <IconButton icon="redo" label="Redo (⇧⌘Z)" disabled={!canRedo} onClick={onRedo} />
       <span className="cw-editor-toolbar-gap" />
+      <Button
+        size="sm"
+        variant="ghost"
+        icon="eye"
+        title="Continuity marks stay computed either way — this only hides them."
+        onClick={onFocus}
+      >
+        {focusLabel}
+      </Button>
       {comparing ? (
         <Button size="sm" variant="ghost" icon="x" onClick={onStopComparing}>
           Stop comparing

@@ -7,6 +7,7 @@ const PATHS = {
   chevronRight: "M9 6l6 6-6 6",
   chevronDown: "M6 9l6 6 6-6",
   arrowUp: "M12 19V5M6 11l6-6 6 6",
+  arrowUpToLine: "M12 20V9M6 15l6-6 6 6M5 4h14",
   arrowDown: "M12 5v14M6 13l6 6 6-6",
   send: "M5 12h13M13 6l6 6-6 6",
   sparkle:

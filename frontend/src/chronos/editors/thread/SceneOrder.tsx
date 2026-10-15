@@ -26,7 +26,8 @@ export interface SceneOrderProps {
   moved?: Set<string>;
   onMove: (from: number, to: number) => void;
   onRemove: (index: number) => void;
-  onInsertAfter?: (index: number) => void;
+  /** Pick a scene to go at position `at` in the order. */
+  onInsertAt?: (at: number) => void;
   onMakeEnding?: (row: OrderRow) => void;
   onEditScene?: (id: string) => void;
   onJump: (scene: string) => void;
@@ -55,12 +56,19 @@ function RowTools({ row, props }: { row: OrderRow; props: SceneOrderProps }) {
         disabled={index === last}
         onClick={() => props.onMove(index, index + 1)}
       />
-      {props.onInsertAfter ? (
-        <IconButton
-          icon="plus"
-          label="Insert a scene after this one"
-          onClick={() => props.onInsertAfter?.(index)}
-        />
+      {props.onInsertAt ? (
+        <>
+          <IconButton
+            icon="arrowUpToLine"
+            label="Insert a scene before this one"
+            onClick={() => props.onInsertAt?.(index)}
+          />
+          <IconButton
+            icon="plus"
+            label="Insert a scene after this one"
+            onClick={() => props.onInsertAt?.(index + 1)}
+          />
+        </>
       ) : null}
       {props.onEditScene ? (
         <IconButton

@@ -6,10 +6,12 @@
 import { useMemo, useState } from "react";
 import { useGoals } from "../../hooks/queries";
 import { useOptionalBookScope } from "../../components/shell/BookScope";
+import type { GoalEditOptions } from "../../components/shell/Actions";
 import { EMPTY_SLOT, type EditorSlot } from "../slot";
 import { GoalEditor } from "./GoalEditor";
 
-type Editing = { mode: "new" } | { mode: "edit"; id: string } | null;
+type Editing =
+  { mode: "new"; options: GoalEditOptions } | { mode: "edit"; id: string } | null;
 
 function GoalEditorMount({
   book,
@@ -35,6 +37,7 @@ function GoalEditorMount({
       goals={goals}
       open
       onOpenChange={(open) => !open && onClose()}
+      onSaved={editing.mode === "new" ? editing.options.onSaved : undefined}
     />
   );
 }
@@ -47,7 +50,8 @@ export function useGoalEditors(): EditorSlot {
     () =>
       writable
         ? {
-            newGoal: () => setEditing({ mode: "new" }),
+            newGoal: (options: GoalEditOptions = {}) =>
+              setEditing({ mode: "new", options }),
             editGoal: (id: string) => setEditing({ mode: "edit", id }),
           }
         : {},

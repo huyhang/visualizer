@@ -11,6 +11,7 @@ import { Field } from "../../components/form/Fields";
 import { TypeAhead, type Option } from "../../components/form/TypeAhead";
 import { Chip } from "../../components/common/Chips";
 import { useBookScope } from "../../components/shell/BookScope";
+import { useActions } from "../../components/shell/Actions";
 import { Button } from "../../../components/ui/Button";
 
 /** Every word typed appears in the text: the goals are in hand, tens not thousands. */
@@ -30,6 +31,8 @@ export function GoalsField({
 }) {
   const { id: book, calendar } = useBookScope();
   const { data: goals = [] } = useGoals(book, calendar);
+  // A goal the thread needs may not exist yet: write it here, and it joins.
+  const { newGoal } = useActions();
   const titleOf = (id: string) => goals.find((g) => g.id === id)?.title ?? id;
   const search = useCallback(
     (q: string): Option<string>[] =>
@@ -62,12 +65,24 @@ export function GoalsField({
           ))}
         </div>
       ) : null}
-      <TypeAhead
-        label="Add a goal"
-        placeholder="Add a goal this thread serves…"
-        search={search}
-        onPick={(id) => onChange([...value, id])}
-      />
+      <div className="cw-goal-add">
+        <TypeAhead
+          label="Add a goal"
+          placeholder="Add a goal this thread serves…"
+          search={search}
+          onPick={(id) => onChange([...value, id])}
+        />
+        {newGoal ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            icon="plus"
+            onClick={() => newGoal({ onSaved: (goal) => onChange([...value, goal.id]) })}
+          >
+            New goal
+          </Button>
+        ) : null}
+      </div>
     </Field>
   );
 }

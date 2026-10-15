@@ -80,7 +80,7 @@ function Goals({
         title="No goals yet"
         action={
           canWrite && newGoal ? (
-            <Button variant="primary" icon="plus" onClick={newGoal}>
+            <Button variant="primary" icon="plus" onClick={() => newGoal()}>
               New goal
             </Button>
           ) : undefined
@@ -121,7 +121,7 @@ export function GoalsView({ selected }: { selected: string | null }) {
         subtitle={LEDE}
         actions={
           canWrite && newGoal ? (
-            <Button variant="primary" icon="plus" onClick={newGoal}>
+            <Button variant="primary" icon="plus" onClick={() => newGoal()}>
               New goal
             </Button>
           ) : null

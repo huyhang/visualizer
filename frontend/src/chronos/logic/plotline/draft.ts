@@ -65,9 +65,19 @@ export function candidateOf(draft: ThreadDraft, order: string[] = draft.events) 
   return { ...bodyOf({ ...draft, events: order }), id: draft.id || undefined };
 }
 
-/** Only what changes a verdict: a retitled thread does not need re-judging. */
+/**
+ * Only what changes a verdict: a retitled thread does not need re-judging. The
+ * id does -- a continuation can loop back to it -- and a new thread's id
+ * follows its title until the writer takes it over.
+ */
 export function candidateKey(draft: ThreadDraft, order: string[] = draft.events): string {
-  return JSON.stringify([order, draft.goals, draft.continuesInto, draft.continuesIntoAt]);
+  return JSON.stringify([
+    draft.id,
+    order,
+    draft.goals,
+    draft.continuesInto,
+    draft.continuesIntoAt,
+  ]);
 }
 
 /** Why the draft cannot be saved yet, in the writer's words. */

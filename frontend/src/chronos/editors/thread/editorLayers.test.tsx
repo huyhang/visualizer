@@ -122,6 +122,51 @@ describe("the thread editor's keys", () => {
   });
 });
 
+describe("what the classic editor could do", () => {
+  it("inserts a scene before the first one", async () => {
+    const { dialog } = await openEditor();
+    await userEvent.click(
+      within(row(dialog, /^Aldric Departs/)).getByRole("button", {
+        name: "Insert a scene before this one",
+      }),
+    );
+    const search = await within(dialog).findByRole("combobox", {
+      name: "Insert before “Aldric Departs”",
+    });
+    await userEvent.type(search, "lyra");
+    await userEvent.click(
+      await within(dialog).findByRole("option", { name: /Lyra Infiltrates/ }),
+    );
+    await waitFor(() =>
+      expect(titles(dialog)).toEqual(["infiltrates", "departs", "exchange", "coronation"]),
+    );
+  });
+
+  it("writes a new goal and adds it to the thread", async () => {
+    const { api, dialog } = await openEditor();
+    await userEvent.click(within(dialog).getByRole("button", { name: "New goal" }));
+    const goal = await screen.findByRole("dialog", { name: "New goal" });
+    await userEvent.type(within(goal).getByLabelText("Name"), "Keep the road open");
+    await userEvent.click(within(goal).getByRole("button", { name: "Create goal" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "New goal" })).not.toBeInTheDocument(),
+    );
+    expect(await within(dialog).findByText("Keep the road open")).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(api.callsTo("updatePlotline")).toHaveLength(1));
+    expect((api.callsTo("updatePlotline")[0]?.[2] as { goals: string[] }).goals).toContain(
+      "keep-the-road-open",
+    );
+  });
+
+  it("hides the problems, as the thread screen does, and remembers", async () => {
+    const { dialog, store } = await openEditor();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Hide problems" }));
+    expect(dialog.querySelector(".cw-editor")).toHaveClass("is-focus");
+    expect(store.data["chronos-focus"]).toBe("1");
+  });
+});
+
 describe("leaving the thread editor", () => {
   it.each(["Escape", "Cancel"])(
     "closes at once on %s when nothing changed",
