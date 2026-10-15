@@ -90,22 +90,25 @@ export function SceneOrder(props: SceneOrderProps) {
   const list = useRef<HTMLOListElement>(null);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dropAt, setDropAt] = useState<{ index: number; below: boolean } | null>(null);
-  const [refocus, setRefocus] = useState<string | null>(null);
+  // The scene a keyboard move is about to redraw, focused again once it has
+  // been: a run of presses walks it along. Taken once, so focus is never
+  // pulled back to the row from a field the writer moves on to.
+  const refocus = useRef<string | null>(null);
   const owned = props.rows.filter((r) => r.owned).length;
 
-  // A keyboard move redraws the list; keep focus on the scene that moved, so
-  // a run of presses walks it along.
   useEffect(() => {
-    if (!refocus) return;
-    sceneElement(list.current, refocus)?.focus();
-  }, [refocus, props.rows]);
+    const scene = refocus.current;
+    if (!scene) return;
+    refocus.current = null;
+    sceneElement(list.current, scene)?.focus();
+  }, [props.rows]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLLIElement>, row: OrderRow) => {
     if (e.target !== e.currentTarget || row.index === null) return;
     const to = keyMove(e.key, row.index, owned);
     if (to !== null) {
       e.preventDefault();
-      setRefocus(row.id);
+      refocus.current = row.id;
       props.onMove(row.index, to);
     } else if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();

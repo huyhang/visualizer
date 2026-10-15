@@ -17,8 +17,15 @@ export interface InspectorControls {
 
 const InspectorContext = createContext<InspectorControls | null>(null);
 
-export function InspectorProvider({ children }: { children: ReactNode }) {
-  const [stack, dispatch] = useReducer(inspectorReducer, []);
+export function InspectorProvider({
+  initial = [],
+  children,
+}: {
+  /** What it starts on: a peek opens straight onto its subject. */
+  initial?: InspectorTarget[];
+  children: ReactNode;
+}) {
+  const [stack, dispatch] = useReducer(inspectorReducer, initial);
   // The verbs never change, so a screen can depend on them without re-running.
   const verbs = useMemo(
     () => ({

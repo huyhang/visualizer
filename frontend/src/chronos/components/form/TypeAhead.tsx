@@ -73,7 +73,8 @@ export function TypeAhead<T>({
         pick(options[active]);
       }
     } else if (e.key === "Escape" && open) {
-      e.stopPropagation();
+      // Handled: the dialog around it (see Modal) and the inspector leave it be.
+      e.preventDefault();
       setOpen(false);
     }
   };

@@ -10,6 +10,7 @@ import {
   type TextField,
 } from "../../logic/plotline/editing";
 import type { ThreadDraft } from "../../logic/plotline/draft";
+import { onTop } from "../../components/common/layers";
 
 export interface ThreadDraftControls {
   editing: Editing;
@@ -70,17 +71,24 @@ export function historyKey(
   return null;
 }
 
-/** Undo and redo from the keyboard while the editor is open. */
-export function useHistoryKeys(onUndo: () => void, onRedo: () => void) {
+/**
+ * Undo and redo from the keyboard while the editor is open and on top: a
+ * scene dialog opened from a row takes its own keys.
+ */
+export function useHistoryKeys(
+  onUndo: () => void,
+  onRedo: () => void,
+  editor: Element | null,
+) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const step = historyKey(e);
-      if (!step || typingIn(e.target)) return;
+      if (!step || typingIn(e.target) || !onTop(editor)) return;
       e.preventDefault();
       if (step === "undo") onUndo();
       else onRedo();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onUndo, onRedo]);
+  }, [onUndo, onRedo, editor]);
 }

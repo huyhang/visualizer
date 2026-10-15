@@ -16,6 +16,7 @@ import { refKey } from "../../logic/lens";
 import { rank } from "../../logic/search";
 import { plural } from "../../logic/text";
 import { collectionIcon } from "../common/Chips";
+import { topDialog } from "../common/layers";
 import { entityTitle } from "../common/EntityName";
 import { useActions, type WorkspaceActions } from "./Actions";
 import { useInspector } from "./InspectorContext";
@@ -187,7 +188,8 @@ export function usePaletteShortcut(open: () => void) {
     const onKey = (e: globalThis.KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        open();
+        // Not over a dialog: jumping away from an open editor would drop its draft.
+        if (!topDialog()) open();
       }
     };
     window.addEventListener("keydown", onKey);

@@ -54,6 +54,18 @@ describe("the inspector", () => {
     ).not.toBeInTheDocument();
   });
 
+  it.each([
+    ["the palette", "Search or jump to", "dialog"],
+    ["the book menu", "Switch book", "menu"],
+  ] as const)("stays open when Escape closes %s over it", async (_, opener, role) => {
+    await openFromIssues();
+    await userEvent.click(screen.getByRole("button", { name: new RegExp(opener) }));
+    expect(await screen.findByRole(role)).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    await vi.waitFor(() => expect(screen.queryByRole(role)).not.toBeInTheDocument());
+    expect(screen.getByRole("complementary", { name: "Details" })).toBeInTheDocument();
+  });
+
   it("says plainly when an article has gone", async () => {
     const api = fakeApi();
     const read = api.getEntity;

@@ -13,7 +13,7 @@
 // And one that is new: an alternative order can be tried beside the current
 // one, each judged on its own, before either is kept.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import type { EventSummary, Plotline } from "../../api/types";
 import { useRoute } from "../../hooks/useRoute";
 import { usePlotline } from "../../hooks/queries";
@@ -41,10 +41,11 @@ import { remember, type OrderRow } from "../../logic/plotline/rows";
 import { to } from "../../logic/route";
 import { useActions } from "../../components/shell/Actions";
 import { useBookScope } from "../../components/shell/BookScope";
-import { useInspector } from "../../components/shell/InspectorContext";
 import { Button } from "../../../components/ui/Button";
 import { Modal } from "../../../components/ui/Modal";
+import { InspectorPeek } from "../../components/inspector/Inspector";
 import { Skeleton } from "../../../components/ui/Skeleton";
+import { ConfirmDialog } from "../../components/form/ConfirmDialog";
 import { sceneElement } from "../../views/plotline/useJump";
 import { CompareBar } from "./Compare";
 import { OrderColumn } from "./OrderColumn";
@@ -79,16 +80,24 @@ function loadedFrom(plotline: Plotline): Loaded {
   };
 }
 
-/** Flash a row the writer was pointed at, or open the scene beside the editor when it is not here. */
+/**
+ * Flash a row the writer was pointed at, or, when the scene is not in this
+ * order, peek at it over the editor: the inspector beside the page is out of
+ * reach while the dialog is open.
+ */
 function useEditorJump(root: HTMLElement | null) {
-  const inspector = useInspector();
-  return (scene: string) => {
+  const [peek, setPeek] = useState<string | null>(null);
+  const jump = (scene: string) => {
     const target = sceneElement(root, scene);
-    if (!target) return inspector.open({ kind: "scene", id: scene });
+    if (!target) return setPeek(scene);
     target.scrollIntoView({ block: "center", behavior: "smooth" });
     target.classList.add("is-flash");
     setTimeout(() => target.classList.remove("is-flash"), 1200);
   };
+  const peeking = peek ? (
+    <InspectorPeek target={{ kind: "scene", id: peek }} onClose={() => setPeek(null)} />
+  ) : null;
+  return { jump, peeking };
 }
 
 function RefusalNote({
@@ -117,16 +126,25 @@ function RefusalNote({
   );
 }
 
+/** Whether closing now would lose edits; the body keeps it current. */
+type Unsaved = MutableRefObject<() => boolean>;
+
 function EditorBody({
   creating,
   loaded: current,
   onClose,
+  onCancel,
   onReload,
+  unsavedRef,
 }: {
   creating: boolean;
   loaded: Loaded;
+  /** Done: saved or deleted. */
   onClose: () => void;
+  /** Leave without saving, asking first if there is anything to lose. */
+  onCancel: () => void;
   onReload: () => void;
+  unsavedRef: Unsaved;
 }) {
   const { id: book, book: record, calendar } = useBookScope();
   const { list: threads } = useThreads(book);
@@ -147,7 +165,11 @@ function EditorBody({
   const [confirm, setConfirm] = useState<"delete" | { ending: OrderRow } | null>(null);
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
   const writes = useThreadWrites(book, creating, loaded.rev);
-  useHistoryKeys(draftControls.undo, draftControls.redo);
+  useHistoryKeys(draftControls.undo, draftControls.redo, root);
+  const { canUndo } = draftControls;
+  useEffect(() => {
+    unsavedRef.current = () => canUndo;
+  }, [unsavedRef, canUndo]);
 
   const previewA = usePreview(
     book,
@@ -172,7 +194,7 @@ function EditorBody({
     [loaded.scenes, picked, previewA.last, previewB.last],
   );
 
-  const jump = useEditorJump(root);
+  const { jump, peeking } = useEditorJump(root);
   const terminus = record?.terminus ?? null;
   const problems = draftProblems(
     draft,
@@ -304,7 +326,7 @@ function EditorBody({
         problems={problems}
         busy={writes.busy}
         onDelete={() => setConfirm("delete")}
-        onCancel={onClose}
+        onCancel={onCancel}
         onSave={save}
       />
 
@@ -328,11 +350,22 @@ function EditorBody({
         onCancel={() => setConfirm(null)}
         onConfirm={makeEnding}
       />
+      {peeking}
     </div>
   );
 }
 
-function ExistingThread({ id, onClose }: { id: string; onClose: () => void }) {
+function ExistingThread({
+  id,
+  onClose,
+  onCancel,
+  unsavedRef,
+}: {
+  id: string;
+  onClose: () => void;
+  onCancel: () => void;
+  unsavedRef: Unsaved;
+}) {
   const { id: book, calendar } = useBookScope();
   const query = usePlotline(book, id, calendar);
   // A reload is a fresh start from the server's copy: a new session of the body.
@@ -353,32 +386,59 @@ function ExistingThread({ id, onClose }: { id: string; onClose: () => void }) {
       creating={false}
       loaded={loadedFrom(query.data)}
       onClose={onClose}
+      onCancel={onCancel}
       onReload={reload}
+      unsavedRef={unsavedRef}
     />
   );
 }
 
-/** The editor in its dialog: `id` null writes a new thread. */
+/**
+ * The editor in its dialog: `id` null writes a new thread. A draft can be a
+ * long rearrangement, so Escape, a click outside or Cancel asks before
+ * throwing one away.
+ */
 export function ThreadEditor({ id, onClose }: { id: string | null; onClose: () => void }) {
+  const unsavedRef = useRef<() => boolean>(() => false);
+  const [asking, setAsking] = useState(false);
+  const cancel = () => (unsavedRef.current() ? setAsking(true) : onClose());
   return (
-    <Modal
-      open
-      onOpenChange={(open) => !open && onClose()}
-      title={id ? "Edit thread" : "New thread"}
-      description="Arrange the scenes; Chronos checks the order as you go."
-      wide
-      className="cw-thread-editor"
-    >
-      {id ? (
-        <ExistingThread id={id} onClose={onClose} />
-      ) : (
-        <EditorBody
-          creating
-          loaded={{ draft: emptyDraft(), rev: null, scenes: [] }}
-          onClose={onClose}
-          onReload={onClose}
-        />
-      )}
-    </Modal>
+    <>
+      <Modal
+        open
+        onOpenChange={(open) => !open && cancel()}
+        title={id ? "Edit thread" : "New thread"}
+        description="Arrange the scenes; Chronos checks the order as you go."
+        wide
+        className="cw-thread-editor"
+      >
+        {id ? (
+          <ExistingThread
+            id={id}
+            onClose={onClose}
+            onCancel={cancel}
+            unsavedRef={unsavedRef}
+          />
+        ) : (
+          <EditorBody
+            creating
+            loaded={{ draft: emptyDraft(), rev: null, scenes: [] }}
+            onClose={onClose}
+            onCancel={cancel}
+            onReload={onClose}
+            unsavedRef={unsavedRef}
+          />
+        )}
+      </Modal>
+      <ConfirmDialog
+        open={asking}
+        onOpenChange={setAsking}
+        title="Discard your changes?"
+        confirmLabel="Discard changes"
+        onConfirm={onClose}
+      >
+        <p>Nothing has been saved. Closing the editor throws this draft away.</p>
+      </ConfirmDialog>
+    </>
   );
 }
