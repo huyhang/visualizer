@@ -95,6 +95,27 @@ export function useTiming(
   const lastTicks = useRef<Ticks | null>(
     scheduled ? { start: event.start_tick as number, end: event.end_tick as number } : null,
   );
+  // What the writer has typed, counted, and the count when a conversion set
+  // off (null when none is on its way). A conversion that comes back after
+  // they typed leaves their input alone; a save while one is still on its way
+  // takes the ticks the form already knows, not the boxes still being filled.
+  const edits = useRef(0);
+  const carrying = useRef<number | null>(null);
+  const typed =
+    <T>(set: (value: T) => void) =>
+    (value: T) => {
+      edits.current += 1;
+      set(value);
+    };
+  const carry = useCallback(async (work: (stale: () => boolean) => Promise<void>) => {
+    const since = edits.current;
+    carrying.current = since;
+    try {
+      await work(() => edits.current !== since);
+    } finally {
+      if (carrying.current === since) carrying.current = null;
+    }
+  }, []);
 
   /**
    * Show a known timeframe in date boxes. A reckoning not kept then has no date
@@ -102,28 +123,30 @@ export function useTiming(
    * scene on save -- the form drops to ticks holding the ticks themselves.
    */
   const showTicksAsDate = useCallback(
-    async (ticks: Ticks, inUnits: DateUnit[], inCalendar: string | null) => {
-      setStartTick(String(ticks.start));
-      setEndTick(String(ticks.end));
-      const pair = dateTicksFor(ticks.start, ticks.end);
-      if (!inUnits.length || !pair) return setMode("tick");
-      try {
-        const labels = await api.formatTicks(book, pair, { calendar: inCalendar });
-        const at = (tick: number) =>
-          labels.find((t) => t.tick === tick)?.components ?? null;
-        const from = at(pair[0]);
-        const to = at(pair[1]);
-        if (from && to) {
-          setStartDate(dateDraft(inUnits, from));
-          setEndDate(dateDraft(inUnits, to));
-          return;
+    (ticks: Ticks, inUnits: DateUnit[], inCalendar: string | null) =>
+      carry(async (stale) => {
+        setStartTick(String(ticks.start));
+        setEndTick(String(ticks.end));
+        const pair = dateTicksFor(ticks.start, ticks.end);
+        if (!inUnits.length || !pair) return setMode("tick");
+        try {
+          const labels = await api.formatTicks(book, pair, { calendar: inCalendar });
+          if (stale()) return;
+          const at = (tick: number) =>
+            labels.find((t) => t.tick === tick)?.components ?? null;
+          const from = at(pair[0]);
+          const to = at(pair[1]);
+          if (from && to) {
+            setStartDate(dateDraft(inUnits, from));
+            setEndDate(dateDraft(inUnits, to));
+            return;
+          }
+        } catch {
+          // The hint will say what went wrong.
         }
-      } catch {
-        // The hint will say what went wrong.
-      }
-      setMode("tick");
-    },
-    [api, book],
+        if (!stale()) setMode("tick");
+      }),
+    [api, book, carry],
   );
 
   // An existing scene opens in dates where its calendar can say them.
@@ -203,14 +226,19 @@ export function useTiming(
           lastTicks.current = null;
           return;
         }
-        try {
-          const r = await api.resolveDates(book, asked.body, { calendar: calendarId });
-          setStartTick(String(r.start_tick));
-          setEndTick(String(r.end_tick));
-          lastTicks.current = { start: r.start_tick, end: r.end_tick };
-        } catch {
-          // The hint will say what went wrong.
-        }
+        const body = asked.body;
+        await carry(async (stale) => {
+          try {
+            const r = await api.resolveDates(book, body, { calendar: calendarId });
+            lastTicks.current = { start: r.start_tick, end: r.end_tick };
+            // Typed into the tick boxes while the dates were being read: theirs wins.
+            if (stale()) return;
+            setStartTick(String(r.start_tick));
+            setEndTick(String(r.end_tick));
+          } catch {
+            // The hint will say what went wrong.
+          }
+        });
         return;
       }
       const asked = tickBody(startTick, endTick);
@@ -236,6 +264,7 @@ export function useTiming(
       book,
       calendarId,
       showTicksAsDate,
+      carry,
     ],
   );
 
@@ -254,6 +283,14 @@ export function useTiming(
   );
 
   const timeframe = useCallback((): Read<TimeframeBody> & { calendar?: string | null } => {
+    // Mid-conversion and untouched since: the boxes in view are not filled yet,
+    // and reading them would un-schedule the scene. The known ticks are the truth.
+    const known = lastTicks.current;
+    if (known && carrying.current !== null && carrying.current === edits.current)
+      return {
+        body: { start_tick: known.start, end_tick: known.end },
+        calendar: calendarId,
+      };
     const read: Read<TimeframeBody> =
       mode === "date"
         ? withNulls(dateBody(units, startDate, endDate))
@@ -274,10 +311,10 @@ export function useTiming(
     hint,
     readings,
     explanation: calendarHint(descriptor),
-    setStartTick,
-    setEndTick,
-    setStartDate,
-    setEndDate,
+    setStartTick: typed(setStartTick),
+    setEndTick: typed(setEndTick),
+    setStartDate: typed(setStartDate),
+    setEndDate: typed(setEndDate),
     switchMode: (m) => void switchMode(m),
     switchCalendar,
     timeframe,

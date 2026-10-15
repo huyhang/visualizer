@@ -13,9 +13,38 @@ import {
   type RefRole,
 } from "../../logic/scenes/refs";
 import { collectionIcon } from "../../components/common/Chips";
-import { EntityName } from "../../components/common/EntityName";
+import { entityTitle } from "../../components/common/EntityName";
+import { useEntity } from "../../hooks/queries";
 import { TypeAhead, type Option } from "../../components/form/TypeAhead";
 import { Icon } from "../../../components/ui/Icon";
+
+/** One chosen article, by its title, with a way to take it off that says whose it is. */
+function PickedRef({
+  book,
+  entity,
+  onRemove,
+}: {
+  book: string;
+  entity: EntityRef;
+  onRemove: () => void;
+}) {
+  const { data } = useEntity(book, entity);
+  const name = entityTitle(data?.document, entity.id);
+  return (
+    <span className="cw-ref-chip">
+      <Icon name={collectionIcon(entity.collection)} size={12} />
+      {name}
+      <button
+        type="button"
+        className="cw-ref-remove"
+        aria-label={`Remove ${name}`}
+        onClick={onRemove}
+      >
+        <Icon name="x" size={12} />
+      </button>
+    </span>
+  );
+}
 
 export function RefField({
   book,
@@ -62,18 +91,12 @@ export function RefField({
       <div className="cw-ref-chips">
         {value.length ? (
           value.map((ref) => (
-            <span key={`${ref.collection}/${ref.id}`} className="cw-ref-chip">
-              <Icon name={collectionIcon(ref.collection)} size={12} />
-              <EntityName book={book} entity={ref} />
-              <button
-                type="button"
-                className="cw-ref-remove"
-                aria-label={`Remove ${ref.id}`}
-                onClick={() => onChange(unpick(value, ref))}
-              >
-                <Icon name="x" size={12} />
-              </button>
-            </span>
+            <PickedRef
+              key={`${ref.collection}/${ref.id}`}
+              book={book}
+              entity={ref}
+              onRemove={() => onChange(unpick(value, ref))}
+            />
           ))
         ) : (
           <span className="cw-muted cw-small">None chosen.</span>

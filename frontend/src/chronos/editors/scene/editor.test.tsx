@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { CalendarDescriptor } from "../../api/types";
 import { fakeApi, type FakeApi } from "../../test/fakeApi";
@@ -142,6 +142,46 @@ describe("the timing section", () => {
     ]);
   });
 
+  it("keeps ticks typed while the dates were still being read", async () => {
+    const api = datedApi();
+    let answer: () => void = () => {};
+    const resolve = api.resolveDates;
+    api.resolveDates = (...args) =>
+      new Promise((done) => {
+        answer = () => done(resolve(...args));
+      });
+    const dialog = await openNewScene(api);
+    for (const name of ["Starts", "Ends"]) {
+      await userEvent.type(
+        within(within(dialog).getByRole("group", { name })).getByLabelText("Year"),
+        "1",
+      );
+    }
+    await userEvent.click(within(dialog).getByRole("radio", { name: "Tick" }));
+    const end = within(dialog).getByLabelText("Ends at (tick)");
+    await userEvent.clear(end);
+    await userEvent.type(end, "99");
+    await act(async () => answer());
+    expect(end).toHaveValue("99");
+  });
+
+  it("saves the scene's own ticks if Save comes before its dates are read", async () => {
+    const api = datedApi();
+    api.formatTicks = () => new Promise(() => {});
+    renderWorkspace("#/ember-pact/~scenes", api);
+    await userEvent.click(await screen.findByRole("button", { name: "List" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Edit “Aldric Departs”" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Edit “Aldric Departs”" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save scene" }));
+    await waitFor(() => expect(api.callsTo("updateEvent")).toHaveLength(1));
+    expect(api.callsTo("updateEvent")[0]?.[2]).toMatchObject({
+      start_tick: 24,
+      end_tick: 48,
+    });
+  });
+
   it("offers only ticks to a book whose calendar cannot be written in", async () => {
     const dialog = await openNewScene(fakeApi());
     expect(within(dialog).queryByRole("radio", { name: "Date" })).not.toBeInTheDocument();
@@ -177,6 +217,18 @@ describe("editing a scene", () => {
       end_tick: 48,
       location: { id: "highkeep" },
     });
+  });
+
+  it("names whoever a remove button takes off the scene", async () => {
+    renderWorkspace("#/ember-pact/~scenes");
+    await userEvent.click(await screen.findByRole("button", { name: "List" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Edit “Aldric Departs”" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Edit “Aldric Departs”" });
+    expect(
+      await within(dialog).findByRole("button", { name: "Remove Sir Aldric" }),
+    ).toBeInTheDocument();
   });
 
   it("opens from the scene's panel too", async () => {
