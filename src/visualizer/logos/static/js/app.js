@@ -13,6 +13,7 @@ import {
   sectionLabel,
   sectionName,
   sectionNeighbours,
+  sectionTarget,
 } from "./navigation.js";
 import {
   defaultOpenVolume,
@@ -876,13 +877,11 @@ function readerDraftPicker() {
       "aria-label": "Reader draft",
       onchange: (event) => {
         const chosen = open.drafts.find((draft) => draft.id === event.target.value);
-        window.location.href = readerUrl(
-          open.manuscript.book,
-          open.volume.id,
-          open.section.id,
-          null,
-          chosen && !chosen.primary ? chosen.id : null,
-        );
+        goToSection({
+          volume: open.volume.id,
+          section: open.section.id,
+          draft: chosen && !chosen.primary ? chosen.id : null,
+        }).catch(showFailure);
       },
     }, open.drafts.map((draft) => el("option", {
       value: draft.id,
@@ -2072,14 +2071,10 @@ function navigateBoundary(direction) {
     paintBoundary(edgeGesture.reset());
     return;
   }
-  open.navigating = true;
-  savePosition();
-  document.body.classList.add(`navigating-${direction}`);
-  const url = readerUrl(
-    open.manuscript.book, adjacent.volume.id, adjacent.section.id,
-  );
-  const delay = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 140;
-  window.setTimeout(() => window.location.assign(url), delay);
+  goToSection(
+    { volume: adjacent.volume.id, section: adjacent.section.id },
+    { direction },
+  ).catch(showFailure);
 }
 
 // -- preferences and entry ---------------------------------------------------
@@ -2196,6 +2191,8 @@ function wire() {
   }, { passive: true });
   window.addEventListener("touchend", () => { touchY = null; }, { passive: true });
   window.addEventListener("resize", () => scheduleMeasure(false));
+  document.addEventListener("click", followInPlace);
+  window.addEventListener("popstate", revisit);
   window.addEventListener("pagehide", leaving);
   // A phone that backgrounds the tab and kills it later may never fire
   // `pagehide`, and "closes their browser" is the whole point of the mark.
@@ -2228,24 +2225,30 @@ function asked(request) {
   return request;
 }
 
-async function openSection(manuscript, entry) {
+/**
+ * What a section needs before it is drawn: the section, its drafts and the one
+ * being read, and -- not waited for -- its scenes and the reader's own notes
+ * when they are not in hand already. Asked for at once, so it costs one round
+ * trip; nothing is drawn meanwhile, so a section on screen stays there.
+ * `requested` is the paragraph and draft a link asked for.
+ */
+async function fetchSection(manuscript, entry, requested = {}) {
   const { book } = manuscript;
   const volumeId = entry.volume.id;
   const sectionId = entry.section.id;
-  // Everything the section needs that waits on nothing else, asked for at
-  // once: one round trip to the server instead of one after another.
   const sectionCall = asked(api.section(book, volumeId, sectionId));
   const draftsCall = asked(
     manuscript.permissions.write ? api.drafts(book, volumeId, sectionId) : null,
   );
-  const itemsCall = asked(api.readerItems(book));
+  // The notes are the whole book's: read once, then kept as the reader moves.
+  const keepItems = readerItemsLoaded && pageManuscript === manuscript;
+  const itemsCall = asked(keepItems ? null : api.readerItems(book));
   const scenesCall = asked(
     showsChronos(preferences) ? api.scenes(book, volumeId, sectionId) : null,
   );
   let section = await sectionCall;
   // `?mode=write` never reaches here: the server answers it with the writing
   // page's own shell (`writer_page.py`).
-  const query = new URLSearchParams(window.location.search);
   let draft = {
     id: section.primary_draft_id,
     name: "Primary draft",
@@ -2256,12 +2259,12 @@ async function openSection(manuscript, entry) {
   if (manuscript.permissions.write) {
     const listing = await draftsCall;
     availableDrafts = listing.drafts;
-    const requested = query.get("draft");
-    const found = availableDrafts.find((row) => row.id === requested);
+    const wanted = requested.draft || null;
+    const found = availableDrafts.find((row) => row.id === wanted);
     // A link to a draft that has since been deleted falls back to the primary,
     // but says so: silently showing different prose than the link promised is
     // how a writer edits the wrong draft.
-    draftMissing = Boolean(requested && !found);
+    draftMissing = Boolean(wanted && !found);
     draft = found || availableDrafts.find((row) => row.primary) || draft;
     if (!draft.primary) {
       const alternate = await api.draft(
@@ -2270,6 +2273,12 @@ async function openSection(manuscript, entry) {
       section = { ...section, document: alternate.document, word_count: alternate.word_count };
     }
   }
+  return { section, draft, drafts: availableDrafts, draftMissing, itemsCall, scenesCall };
+}
+
+/** Draw a fetched section where the page's content is, and put the reader in it. */
+async function showSection(manuscript, entry, fetched, requested = {}) {
+  const { section, draft, drafts, draftMissing, itemsCall, scenesCall } = fetched;
   open = {
     manuscript,
     volume: entry.volume,
@@ -2280,15 +2289,18 @@ async function openSection(manuscript, entry) {
     restoring: true,
     navigating: false,
     draft,
-    drafts: availableDrafts,
+    drafts,
     draftMissing,
   };
-  readerItems = [];
-  readerItemsLoaded = false;
+  if (itemsCall) {
+    readerItems = [];
+    readerItemsLoaded = false;
+  }
   renderReader(manuscript, entry, section);
   if (showsChronos(preferences)) await loadScenes(scenesCall);
   try {
-    await loadReaderData(itemsCall);
+    if (itemsCall) await loadReaderData(itemsCall);
+    else refreshReaderData();
   } catch (error) {
     showTransientError(error.message || "Private reader data could not be loaded.");
   }
@@ -2297,8 +2309,110 @@ async function openSection(manuscript, entry) {
   const spot = (readPosition(storage, readerUser, manuscript.book) || {}).last;
   const here = spot && spot.volume === entry.volume.id
     && spot.section === section.id ? spot : null;
-  const requestedBlock = new URLSearchParams(window.location.search).get("block");
-  await restorePosition(here, requestedBlock);
+  await restorePosition(here, requested.block || null);
+}
+
+async function openSection(manuscript, entry, requested = {}) {
+  await showSection(manuscript, entry, await fetchSection(manuscript, entry, requested), requested);
+}
+
+// -- moving between sections in place ----------------------------------------
+//
+// Another section of the same book opens without loading the page again: the
+// manuscript, the modules and the reader's notes are already here, so only
+// the section is asked for, and the one on screen stays until it arrives.
+// The address moves with it, so Back, a reload and a copied link all mean the
+// section in view. Anything that goes wrong falls back to loading the page.
+
+const turnDelay = () =>
+  (window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 140);
+const pause = (ms) => new Promise((resume) => window.setTimeout(resume, ms));
+
+/**
+ * The section a link opens in place: one of this book's, from a section on
+ * screen. The contents, a review and the shelf keep loading the page, so
+ * nothing of theirs is left behind under a section.
+ */
+function inPlaceTarget(href) {
+  if (!open || !pageManuscript) return null;
+  return sectionTarget(href, {
+    origin: window.location.origin,
+    home: new URL(home(), window.location.origin).pathname,
+    book: pageManuscript.book,
+  });
+}
+
+async function goToSection(target, { push = true, direction = null } = {}) {
+  const manuscript = pageManuscript;
+  const entry = findSection(manuscript, target.volume, target.section);
+  const url = readerUrl(
+    manuscript.book, target.volume, target.section, target.block, target.draft,
+  );
+  if (!entry) {
+    window.location.assign(url);
+    return;
+  }
+  for (const dialog of document.querySelectorAll("dialog[open]")) dialog.close();
+  const draftId = (open && open.draft && !open.draft.primary) ? open.draft.id : null;
+  const same = open && open.volume.id === entry.volume.id
+    && open.section.id === entry.section.id && (target.draft || null) === draftId;
+  if (same) {
+    // Already here: a paragraph link scrolls to it, anything else stays put.
+    if (push && url !== `${window.location.pathname}${window.location.search}`) {
+      window.history.pushState(null, "", url);
+    }
+    if (target.block) await restorePosition(null, target.block);
+    return;
+  }
+  if (open) {
+    if (open.navigating) return;
+    open.navigating = true;
+    savePosition();
+  }
+  if (direction) document.body.classList.add(`navigating-${direction}`);
+  let fetched;
+  try {
+    [fetched] = await Promise.all([
+      fetchSection(manuscript, entry, target),
+      pause(direction ? turnDelay() : 0),
+    ]);
+  } catch (_error) {
+    window.location.assign(url);
+    return;
+  }
+  if (push) window.history.pushState(null, "", url);
+  document.body.classList.remove("navigating-next", "navigating-previous");
+  paintBoundary(edgeGesture.reset());
+  // At the top straight away: the next frames are the new section's, not the
+  // old one's scroll offset.
+  window.scrollTo({ top: 0, behavior: "auto" });
+  await showSection(manuscript, entry, fetched, target);
+  if (!target.block) {
+    // Where a keyboard or screen reader is: on the section just opened.
+    const heading = open.article.querySelector("h1");
+    heading.setAttribute("tabindex", "-1");
+    heading.focus({ preventScroll: true });
+  }
+}
+
+function followInPlace(event) {
+  if (event.defaultPrevented || event.button !== 0) return;
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
+  if (!anchor || anchor.hasAttribute("download")) return;
+  if (anchor.target && anchor.target !== "_self") return;
+  const target = inPlaceTarget(anchor.href);
+  if (!target) return;
+  event.preventDefault();
+  // A click opens the section straight away; only the edge gesture turns the page.
+  goToSection(target).catch(showFailure);
+}
+
+/** Back and Forward between sections opened in place; anything else loads afresh. */
+function revisit() {
+  const target = inPlaceTarget(window.location.href);
+  if (target) goToSection(target, { push: false }).catch(showFailure);
+  else window.location.reload();
 }
 
 async function start() {
@@ -2353,7 +2467,7 @@ async function start() {
     );
     window.history.replaceState(null, "", moved);
   }
-  await openSection(manuscript, entry);
+  await openSection(manuscript, entry, { draft: query.get("draft"), block: query.get("block") });
 }
 
 start().catch(showFailure);

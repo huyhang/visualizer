@@ -37,7 +37,7 @@ import {
 } from "./preferences.js";
 import {
   findSection, neighbours, readingOrder, sectionAhead, sectionLabel, sectionName,
-  sectionNeighbours,
+  sectionNeighbours, sectionTarget,
 } from "./navigation.js";
 import {
   advance, blockAnchor, forgetPosition, parsePositions, prunePositions,
@@ -717,6 +717,33 @@ def test_the_pager_stops_at_both_ends(run_js):
         {"previous": None, "next": None},
         {"previous": None, "next": None},
     ]
+
+
+_HERE = {"origin": "https://nas.example", "home": "/logos/", "book": "ember-pact"}
+
+
+@pytest.mark.parametrize("href, expected", [
+    (
+        "/logos/?book=ember-pact&volume=v1&section=s2",
+        {"volume": "v1", "section": "s2", "block": None, "draft": None},
+    ),
+    (
+        "https://nas.example/logos/?book=ember-pact&volume=v1&section=s2&block=b9&draft=d1",
+        {"volume": "v1", "section": "s2", "block": "b9", "draft": "d1"},
+    ),
+    # Another book, a review, the writing page, the contents: a page of their own.
+    ("/logos/?book=salt-road&volume=v1&section=s2", None),
+    ("/logos/?book=ember-pact&review=notes", None),
+    ("/logos/?book=ember-pact&volume=v1&section=s2&mode=write", None),
+    ("/logos/?book=ember-pact", None),
+    ("/logos/?book=ember-pact&volume=v1", None),
+    # Not the reader at all.
+    ("https://elsewhere.example/logos/?book=ember-pact&volume=v1&section=s2", None),
+    ("/timeline/?book=ember-pact&volume=v1&section=s2", None),
+    ("http://[bad", None),
+])
+def test_a_link_opens_in_place_only_when_it_is_a_section_of_this_book(run_js, href, expected):
+    assert run_js(f"emit(sectionTarget({json.dumps(href)}, {json.dumps(_HERE)}));") == expected
 
 
 def test_a_lone_section_has_no_neighbours_either_way(run_js):

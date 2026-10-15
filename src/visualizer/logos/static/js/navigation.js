@@ -97,3 +97,31 @@ export function sectionLabel(section) {
 export function sectionName(section) {
   return section.title || sectionLabel(section);
 }
+
+// What a link to a section may say: anything more (a review, the writing page)
+// asks for a page of its own.
+const SECTION_LINK_KEYS = new Set(["book", "volume", "section", "block", "draft"]);
+
+/**
+ * Where a link goes when it is another section of the book on screen, so the
+ * reader can open it in place rather than load the whole page again: the
+ * reader's own address (`home` on `origin`), naming `book`, a volume and a
+ * section, and optionally a paragraph and a draft. Null for anything else,
+ * which is the browser's to follow.
+ */
+export function sectionTarget(href, { origin, home, book }) {
+  let url;
+  try {
+    url = new URL(href, origin);
+  } catch {
+    return null;
+  }
+  if (url.origin !== origin || url.pathname !== home) return null;
+  const query = url.searchParams;
+  if (!book || query.get("book") !== book) return null;
+  const volume = query.get("volume");
+  const section = query.get("section");
+  if (!volume || !section) return null;
+  for (const key of query.keys()) if (!SECTION_LINK_KEYS.has(key)) return null;
+  return { volume, section, block: query.get("block"), draft: query.get("draft") };
+}
