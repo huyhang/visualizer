@@ -4,6 +4,7 @@ and each reader's own settings, notes and place in the book."""
 from flask import jsonify, render_template, request
 from flask_login import current_user, login_required
 
+from .reader_modules import reader_modules
 from .routing import (
     BOOK,
     RouteDeps,
@@ -30,7 +31,7 @@ def register_reader_routes(app, csrf, deps: RouteDeps):
         Manuscript data itself arrives as JSON."""
         if is_writer_request():
             return render_writer(deps.writer_assets())
-        return render_template("reader.html")
+        return render_template("reader.html", reader_modules=reader_modules())
 
     @app.get("/health")
     @csrf.exempt

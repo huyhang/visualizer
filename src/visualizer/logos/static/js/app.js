@@ -983,11 +983,13 @@ function sceneLoadFailed(error) {
   fill(scenePanelNode, [el("p", { class: "scenes-status", text: detail })]);
 }
 
-async function loadScenes() {
+// `pending` is the same request already on its way, asked for with the section.
+async function loadScenes(pending = null) {
   if (!open || open.scenesLoaded || !scenePanelNode) return;
   open.scenesLoaded = true;
   try {
-    fillScenes(await api.scenes(open.manuscript.book, open.volume.id, open.section.id));
+    fillScenes(await (pending
+      || api.scenes(open.manuscript.book, open.volume.id, open.section.id)));
   } catch (error) {
     open.scenesLoaded = false;
     sceneLoadFailed(error);
@@ -996,9 +998,10 @@ async function loadScenes() {
 
 // -- private notes, checklists and bookmarks --------------------------------
 
-async function loadReaderData() {
+// `pending` is the same request already on its way, asked for with the section.
+async function loadReaderData(pending = null) {
   if (!pageManuscript || readerItemsLoaded) return;
-  const payload = await api.readerItems(pageManuscript.book);
+  const payload = await (pending || api.readerItems(pageManuscript.book));
   readerItems = payload.items;
   readerItemsLoaded = true;
   refreshReaderData();
@@ -2218,10 +2221,28 @@ function showFailure(error) {
   ]);
 }
 
+// A request whose failure is reported where it is awaited, later: marked handled
+// now so the browser does not call it unhandled in the meantime.
+function asked(request) {
+  if (request) request.catch(() => {});
+  return request;
+}
+
 async function openSection(manuscript, entry) {
-  let section = await api.section(
-    manuscript.book, entry.volume.id, entry.section.id,
+  const { book } = manuscript;
+  const volumeId = entry.volume.id;
+  const sectionId = entry.section.id;
+  // Everything the section needs that waits on nothing else, asked for at
+  // once: one round trip to the server instead of one after another.
+  const sectionCall = asked(api.section(book, volumeId, sectionId));
+  const draftsCall = asked(
+    manuscript.permissions.write ? api.drafts(book, volumeId, sectionId) : null,
   );
+  const itemsCall = asked(api.readerItems(book));
+  const scenesCall = asked(
+    showsChronos(preferences) ? api.scenes(book, volumeId, sectionId) : null,
+  );
+  let section = await sectionCall;
   // `?mode=write` never reaches here: the server answers it with the writing
   // page's own shell (`writer_page.py`).
   const query = new URLSearchParams(window.location.search);
@@ -2233,7 +2254,7 @@ async function openSection(manuscript, entry) {
   let availableDrafts = [draft];
   let draftMissing = false;
   if (manuscript.permissions.write) {
-    const listing = await api.drafts(manuscript.book, entry.volume.id, entry.section.id);
+    const listing = await draftsCall;
     availableDrafts = listing.drafts;
     const requested = query.get("draft");
     const found = availableDrafts.find((row) => row.id === requested);
@@ -2265,9 +2286,9 @@ async function openSection(manuscript, entry) {
   readerItems = [];
   readerItemsLoaded = false;
   renderReader(manuscript, entry, section);
-  if (showsChronos(preferences)) await loadScenes();
+  if (showsChronos(preferences)) await loadScenes(scenesCall);
   try {
-    await loadReaderData();
+    await loadReaderData(itemsCall);
   } catch (error) {
     showTransientError(error.message || "Private reader data could not be loaded.");
   }
@@ -2284,14 +2305,14 @@ async function start() {
   if ("scrollRestoration" in window.history) window.history.scrollRestoration = "manual";
   wire();
   applyPreferences();
-  try {
-    readerSettings = await api.readerSettings();
-  } catch (_error) {
-    readerSettings = { sync_reading_position: false };
-  }
-  syncControl.checked = readerSettings.sync_reading_position;
   const query = new URLSearchParams(window.location.search);
   const book = query.get("book");
+  // The settings and the manuscript are asked for together: neither waits on the other.
+  const settingsCall = api.readerSettings()
+    .catch(() => ({ sync_reading_position: false }));
+  const manuscriptCall = asked(book ? api.manuscript(book) : null);
+  readerSettings = await settingsCall;
+  syncControl.checked = readerSettings.sync_reading_position;
   if (!book) {
     const books = (await api.books()).books;
     if (readerSettings.sync_reading_position) {
@@ -2302,8 +2323,8 @@ async function start() {
     return;
   }
 
-  const manuscript = await api.manuscript(book);
-  await syncStoredPosition(book);
+  // The stored position syncs (when the reader asked for that) while the manuscript arrives.
+  const [manuscript] = await Promise.all([manuscriptCall, syncStoredPosition(book)]);
   if (query.get("review")) {
     await renderReview(manuscript, query.get("review"));
     return;

@@ -10,6 +10,7 @@ name.
 import re
 from pathlib import Path
 
+import pytest
 from werkzeug.security import generate_password_hash
 
 from visualizer.auth import ALL_PERMS
@@ -645,3 +646,43 @@ def test_a_read_only_collaborator_may_open_the_reader_and_its_scenes(reader, sec
     assert reader.get(f"{VOLUME_URL}/manuscript").status_code == 200
     assert reader.get(SCENES_URL).status_code == 200
     assert reader.get(SECTION_SCENES_URL).status_code == 200
+
+
+# -- preloading the module graph -------------------------------------------
+
+
+def test_the_shell_preloads_every_module_the_entrypoint_reaches(client):
+    """The browser would otherwise find the modules a layer at a time, one
+    round trip each, before the reader can run."""
+    from visualizer.logos.reader_modules import reader_modules
+
+    html = client.get("/").get_data(as_text=True)
+    preloaded = re.findall(r'<link rel="modulepreload" href="[^"]*/js/([^"]+)">', html)
+    js = _LOGOS / "static" / "js"
+    assert set(preloaded) == {p.name for p in js.glob("*.js")}
+    assert set(reader_modules()) == {p.name for p in js.glob("*.js")} - {"app.js"}
+    # Asked for in the head, well before the script that imports them.
+    assert html.index("modulepreload") < html.index('<script type="module"')
+
+
+@pytest.mark.parametrize("files, reached", [
+    ({"app.js": 'import { a } from "./a.js";', "a.js": "export const a = 1;"}, ["a.js"]),
+    ({"app.js": 'import "./side.js";', "side.js": ""}, ["side.js"]),
+    (
+        {
+            "app.js": 'import { a } from "./a.js";\nimport { b } from "./b.js";',
+            "a.js": 'import { c } from "./c.js";',
+            "b.js": 'import { a } from "./a.js";',
+            "c.js": 'import { a } from "./a.js";',
+        },
+        ["a.js", "b.js", "c.js"],
+    ),
+    ({"app.js": 'import { gone } from "./gone.js";'}, ["gone.js"]),
+    ({"app.js": 'const url = "https://example.com/x.js";'}, []),
+])
+def test_the_module_graph_follows_each_import_once(tmp_path, files, reached):
+    from visualizer.logos.reader_modules import module_graph
+
+    for name, text in files.items():
+        (tmp_path / name).write_text(text)
+    assert module_graph(tmp_path) == reached

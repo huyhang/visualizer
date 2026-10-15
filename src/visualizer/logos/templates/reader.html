@@ -20,6 +20,12 @@
     window.__AKASHA_URL__ = {{ service_links.akasha | tojson }};
   </script>
   <script src="{{ url_for('shared_js', filename='prefs.js') }}"></script>
+  {# Every module app.js reaches, asked for now rather than a layer at a time as
+     each import is read (reader_modules.py works the list out from them). #}
+  <link rel="modulepreload" href="{{ url_for('static', filename='js/app.js') }}">
+  {% for module in reader_modules %}
+  <link rel="modulepreload" href="{{ url_for('static', filename='js/' + module) }}">
+  {% endfor %}
 </head>
 <body>
   <div class="app-shell">
