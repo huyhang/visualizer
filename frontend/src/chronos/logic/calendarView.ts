@@ -23,14 +23,18 @@ function stored(store: KeyValueStore): Record<string, string> {
 /**
  * The remembered choice, validated against what the book has now: a calendar
  * detached since would otherwise make every read on the page a refusal.
+ * Before the book has been read (`calendars` undefined) it is trusted, so the
+ * first reads already ask for it -- not a round in the primary calendar, read
+ * again a moment later.
  */
 export function chosenCalendar(
   store: KeyValueStore,
   book: string,
-  calendars: CalendarAttachment[] = [],
+  calendars: CalendarAttachment[] | undefined,
 ): string | null {
   const chosen = stored(store)[book];
   if (!chosen) return null;
+  if (!calendars) return chosen;
   return calendars.some((c) => c.id === chosen) ? chosen : null;
 }
 

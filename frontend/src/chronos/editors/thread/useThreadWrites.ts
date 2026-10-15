@@ -6,7 +6,8 @@
 import { useState } from "react";
 import { codeOf, evidenceIds, messageOf } from "../../api/errors";
 import { useApi } from "../../deps";
-import { useRefreshBook } from "../../hooks/mutations";
+import { useForget, useRefreshBook } from "../../hooks/mutations";
+import { keys } from "../../hooks/queries";
 import { bodyOf, type ThreadDraft } from "../../logic/plotline/draft";
 import { useNotify } from "../../../components/ui/Toaster";
 
@@ -27,16 +28,21 @@ export function refusalOf(error: unknown, fallback: string): Refusal {
 export function useThreadWrites(book: string, creating: boolean, rev: number | null) {
   const api = useApi();
   const refresh = useRefreshBook();
+  const forget = useForget();
   const notify = useNotify();
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
 
-  async function attempt<T>(work: () => Promise<T>, fallback: string): Promise<T | null> {
+  async function attempt<T>(
+    work: () => Promise<T>,
+    fallback: string,
+    reread = true,
+  ): Promise<T | null> {
     setBusy(true);
     setRefusal(null);
     try {
       const result = await work();
-      await refresh(book);
+      if (reread) await refresh(book);
       return result;
     } catch (e) {
       setRefusal(refusalOf(e, fallback));
@@ -58,11 +64,20 @@ export function useThreadWrites(book: string, creating: boolean, rev: number | n
     return saved;
   };
 
+  /**
+   * Delete the thread and forget it. The book is not re-read here: the caller
+   * leaves the thread's screen first, then refreshes (see EditorBody).
+   */
   const remove = async (id: string, inline = false) => {
-    const done = await attempt(async () => {
-      await api.deletePlotline(book, id, rev ?? 0, inline);
-      return true;
-    }, "Could not delete the thread.");
+    const done = await attempt(
+      async () => {
+        await api.deletePlotline(book, id, rev ?? 0, inline);
+        forget([...keys.inBook(book), "plotline", id]);
+        return true;
+      },
+      "Could not delete the thread.",
+      false,
+    );
     if (done) notify({ title: inline ? "Thread absorbed and deleted" : "Thread deleted" });
     return Boolean(done);
   };

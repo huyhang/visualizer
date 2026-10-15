@@ -21,9 +21,13 @@ export interface Harness {
   deps: ChronosDeps;
 }
 
-export function harness(hash = "#/", api: FakeApi = fakeApi()): Harness {
+export function harness(
+  hash = "#/",
+  api: FakeApi = fakeApi(),
+  remembered: Record<string, string> = {},
+): Harness {
   const location = memoryLocation(hash);
-  const store = memoryStore();
+  const store = memoryStore(remembered);
   const deps: ChronosDeps = {
     api,
     location,
@@ -36,9 +40,13 @@ export function harness(hash = "#/", api: FakeApi = fakeApi()): Harness {
   return { api, location, store, deps };
 }
 
-/** The whole workspace at `hash`. */
-export function renderWorkspace(hash = "#/", api?: FakeApi) {
-  const h = harness(hash, api);
+/** The whole workspace at `hash`, with what the browser already remembers. */
+export function renderWorkspace(
+  hash = "#/",
+  api?: FakeApi,
+  remembered?: Record<string, string>,
+) {
+  const h = harness(hash, api, remembered);
   const client = testQueryClient();
   return { ...h, client, ...render(<ChronosApp deps={h.deps} client={client} />) };
 }

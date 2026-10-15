@@ -20,6 +20,15 @@ describe("chosenCalendar", () => {
     const store = memoryStore(raw === undefined ? {} : { [CALENDAR_KEY]: raw });
     expect(chosenCalendar(store, "b", CALENDARS)).toBe(expected);
   });
+
+  it.each<[string, string | undefined, string | null]>([
+    ["nothing remembered", undefined, null],
+    ["a remembered calendar", JSON.stringify({ b: "earth" }), "earth"],
+    ["one the book may since have dropped", JSON.stringify({ b: "elvish" }), "elvish"],
+  ])("trusts %s before the book is read", (_, raw, expected) => {
+    const store = memoryStore(raw === undefined ? {} : { [CALENDAR_KEY]: raw });
+    expect(chosenCalendar(store, "b", undefined)).toBe(expected);
+  });
 });
 
 describe("chooseCalendar", () => {

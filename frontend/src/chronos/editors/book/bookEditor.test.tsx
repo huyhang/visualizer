@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { fakeApi } from "../../test/fakeApi";
 import { renderWorkspace } from "../../test/renderChronos";
@@ -85,9 +85,29 @@ describe("the book editor", () => {
     await userEvent.click(screen.getByRole("button", { name: "Delete this book" }));
     expect(api.callsTo("deleteBook")).toHaveLength(0);
     await userEvent.type(screen.getByLabelText("Book id"), "ember-pact");
+    const before = api.calls.length;
     await userEvent.click(screen.getByRole("button", { name: "Delete this book" }));
     await waitFor(() => expect(api.callsTo("deleteBook")).toEqual([["ember-pact", 2]]));
     await waitFor(() => expect(location.current()).toBe("#/"));
+    await screen.findByRole("heading", { name: "Your books" });
+    // Nothing asks about the book once it has gone.
+    const after = api.calls.slice(before).filter((c) => c.method !== "deleteBook");
+    expect(after.filter((c) => c.args[0] === "ember-pact")).toEqual([]);
+  });
+
+  it("drops the editing controls once the reader's access is withdrawn", async () => {
+    const { api, client } = renderWorkspace("#/ember-pact");
+    expect(
+      await screen.findByRole("button", { name: "Book settings" }),
+    ).toBeInTheDocument();
+    api.refuse("getBook", 403, "FORBIDDEN");
+    await act(() => client.invalidateQueries());
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Book settings" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByRole("button", { name: "New thread" })).not.toBeInTheDocument();
   });
 
   it("offers no settings to a reader without write access", async () => {

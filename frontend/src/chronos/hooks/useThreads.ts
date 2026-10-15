@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import type { Graph } from "../api/types";
 import { threadPaints, type ThreadPaint } from "../logic/threadColors";
 import { useGraph } from "./queries";
+import { useOptionalBookScope } from "../components/shell/BookScope";
 
 export interface ThreadInfo extends ThreadPaint {
   id: string;
@@ -27,8 +28,16 @@ export function threadsOf(graph: Graph | undefined): ThreadInfo[] {
   }));
 }
 
-export function useThreads(book: string | null, calendar: string | null = null): Threads {
-  const { data: graph } = useGraph(book, calendar);
+/**
+ * The book's threads. Read through the calendar the book is being read in
+ * unless told otherwise, so this shares the graph the screens date things by
+ * rather than asking for a second copy in the primary calendar.
+ */
+export function useThreads(book: string | null, calendar?: string | null): Threads {
+  const scope = useOptionalBookScope();
+  const reading =
+    calendar !== undefined ? calendar : scope?.id === book ? scope.calendar : null;
+  const { data: graph } = useGraph(book, reading);
   return useMemo(() => {
     const list = threadsOf(graph);
     const byId = new Map(list.map((t) => [t.id, t]));

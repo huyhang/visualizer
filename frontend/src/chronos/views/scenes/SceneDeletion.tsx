@@ -10,7 +10,8 @@ import { useCallback, useState } from "react";
 import type { SceneEvent } from "../../api/types";
 import { ChronosApiError, codeOf, evidenceIds, messageOf } from "../../api/errors";
 import { useApi } from "../../deps";
-import { useRefreshBook } from "../../hooks/mutations";
+import { useForget, useRefreshBook } from "../../hooks/mutations";
+import { keys } from "../../hooks/queries";
 import {
   afterInUse,
   firstStep,
@@ -139,6 +140,7 @@ export function useSceneDeletion(): {
   const { id: book, book: record } = useBookScope();
   const terminus = record?.terminus;
   const refresh = useRefreshBook();
+  const forget = useForget();
   const notify = useNotify();
   const inspector = useInspector();
   const [step, setStep] = useState<DeleteStep>({ kind: "idle" });
@@ -190,9 +192,10 @@ export function useSceneDeletion(): {
       try {
         await api.deleteEvent(book, event.id, event.rev, detach);
         notify({ title: `Deleted “${sceneName(event)}”.` });
-        // A panel left open on a scene that no longer exists is a confident, wrong answer.
-        if (inspector.target?.kind === "scene" && inspector.target.id === event.id)
-          inspector.close();
+        // A panel left open on a scene that no longer exists is a confident, wrong
+        // answer -- on top of the trail or anywhere back along it.
+        inspector.forget({ kind: "scene", id: event.id });
+        forget([...keys.inBook(book), "event", event.id]);
         reset();
         void refresh(book);
       } catch (e) {
@@ -201,14 +204,19 @@ export function useSceneDeletion(): {
         if (code === "EVENT_IN_USE")
           setStep(afterInUse(event, await threadsInWay(evidenceIds(e, "plotlines"))));
         else if (code === "TERMINUS_IN_USE") setStep({ kind: "terminus", event });
-        else if (e instanceof ChronosApiError && e.isConflict)
+        // Written from in Logos: a retry cannot help until the section lets go of it.
+        else if (code === "EVENT_IN_MANUSCRIPT")
+          setError(
+            `${messageOf(e, "A Logos manuscript is written from this scene.")} Unlink it there first.`,
+          );
+        else if (e instanceof ChronosApiError && e.isStale)
           setError(
             "Something changed while deleting — close this, let the list refresh and try again.",
           );
         else setError(messageOf(e, "Could not delete the scene."));
       }
     },
-    [api, book, notify, inspector, reset, refresh, threadsInWay],
+    [api, book, notify, inspector, reset, refresh, forget, threadsInWay],
   );
 
   return {

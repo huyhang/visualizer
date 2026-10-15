@@ -13,6 +13,8 @@ export interface InspectorControls {
   push: (target: InspectorTarget) => void;
   back: () => void;
   close: () => void;
+  /** Take a deleted record out of the trail, wherever it is. */
+  forget: (target: InspectorTarget) => void;
 }
 
 const InspectorContext = createContext<InspectorControls | null>(null);
@@ -33,6 +35,7 @@ export function InspectorProvider({
       push: (target: InspectorTarget) => dispatch({ type: "push", target }),
       back: () => dispatch({ type: "back" }),
       close: () => dispatch({ type: "close" }),
+      forget: (target: InspectorTarget) => dispatch({ type: "forget", target }),
     }),
     [],
   );

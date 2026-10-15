@@ -9,7 +9,7 @@ import {
 } from "@tanstack/react-query";
 import { Tooltip } from "radix-ui";
 import { useState } from "react";
-import { ChronosApiError } from "./api/errors";
+import { ChronosApiError, isFinal } from "./api/errors";
 import { ChronosDepsProvider, type ChronosDeps } from "./deps";
 import { Workspace } from "./components/shell/Workspace";
 import { RouteProvider } from "./hooks/useRoute";
@@ -37,7 +37,8 @@ export function defaultQueryClient(onSignedOut: () => void = () => {}): QueryCli
       queries: {
         staleTime: 30_000,
         refetchOnWindowFocus: true,
-        retry: (count, error) => !signedOut(error) && count < 1,
+        // Once, for a dropped connection or a server error; a refusal stands.
+        retry: (count, error) => !isFinal(error) && count < 1,
       },
     },
   });

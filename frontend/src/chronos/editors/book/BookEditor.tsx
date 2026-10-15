@@ -11,7 +11,9 @@ import type { Book, LibraryCalendar, World } from "../../api/types";
 import { ChronosApiError, codeOf, messageOf } from "../../api/errors";
 import { useApi } from "../../deps";
 import { useCalendars, useWorlds } from "../../hooks/queries";
-import { useRefreshBook } from "../../hooks/mutations";
+import { useForget, useRefreshBook } from "../../hooks/mutations";
+import { keys } from "../../hooks/queries";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRoute } from "../../hooks/useRoute";
 import { to } from "../../logic/route";
 import {
@@ -92,6 +94,8 @@ function BookForm({
 }) {
   const api = useApi();
   const refreshBook = useRefreshBook();
+  const forget = useForget();
+  const client = useQueryClient();
   const notify = useNotify();
   const { go } = useRoute();
   // The record the draft was made from, kept while the form is open: Save sends
@@ -139,9 +143,11 @@ function BookForm({
     setDeleting(false);
     onClose();
     notify({ title: `Deleted “${draft.title.trim() || draft.id}”.` });
-    // Away first: the screens about this book would otherwise re-read a book that is gone.
+    // Away first, and forget the book rather than re-read it: its screens are still
+    // mounted for a moment, and would otherwise ask for a book that is gone.
     go(to.books());
-    await refreshBook(draft.id);
+    forget([...keys.inBook(draft.id)], [...keys.book(draft.id)]);
+    await client.invalidateQueries({ queryKey: keys.books() });
   };
 
   return (

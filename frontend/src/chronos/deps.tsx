@@ -61,8 +61,11 @@ export function useApi(): ChronosApi {
 export function windowLocation(win: Window): HashLocation {
   return {
     current: () => win.location.hash,
+    // The browser says a hash changed only later, so both tell the router at
+    // once: what happens next (a refetch after a delete, say) sees the new place.
     push: (hash) => {
       win.location.hash = hash;
+      win.dispatchEvent(new HashChangeEvent("hashchange"));
     },
     replace: (hash) => {
       const { pathname, search } = win.location;

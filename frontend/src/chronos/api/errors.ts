@@ -38,6 +38,19 @@ export class ChronosApiError extends Error {
   }
 }
 
+/**
+ * A refusal that will not change if asked again: the record is gone or is not
+ * this reader's to see. Worth neither a retry nor showing what was cached.
+ */
+export function isFinal(error: unknown): boolean {
+  return error instanceof ChronosApiError && error.status >= 400 && error.status < 500;
+}
+
+/** The record has gone, or the reader's access to it has: whatever was cached is no answer. */
+export function isGone(error: unknown): boolean {
+  return error instanceof ChronosApiError && (error.isForbidden || error.isNotFound);
+}
+
 /** A sentence for the writer, whatever was thrown. */
 export function messageOf(error: unknown, fallback = "Something went wrong."): string {
   return error instanceof Error && error.message ? error.message : fallback;

@@ -5,6 +5,8 @@ import type { CalendarAttachment } from "../api/types";
 import { useDeps } from "../deps";
 import { chooseCalendar, chosenCalendar } from "../logic/calendarView";
 
+const NONE: CalendarAttachment[] = [];
+
 export interface CalendarChoice {
   /** The chosen calendar's id, or null for the book's primary one. */
   calendar: string | null;
@@ -14,12 +16,14 @@ export interface CalendarChoice {
 
 export function useCalendarChoice(
   book: string | null,
-  calendars: CalendarAttachment[] = [],
+  /** The book's calendars; undefined until the book has been read. */
+  known: CalendarAttachment[] | undefined,
 ): CalendarChoice {
+  const calendars = known ?? NONE;
   const { store } = useDeps();
   // Bumped on every choice: the store is the truth, this only asks React to read it again.
   const [, setVersion] = useState(0);
-  const calendar = book ? chosenCalendar(store, book, calendars) : null;
+  const calendar = book ? chosenCalendar(store, book, known) : null;
   const choose = useCallback(
     (id: string) => {
       if (!book) return;

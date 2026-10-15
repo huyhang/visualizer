@@ -27,6 +27,18 @@ describe("inspectorReducer", () => {
     ["back unwinds one step", [scene, aldric], { type: "back" }, [scene]],
     ["back from nothing is nothing", [], { type: "back" }, []],
     ["close clears the trail", [scene, goal], { type: "close" }, []],
+    [
+      "forget takes a deleted record out, wherever it is",
+      [scene, aldric, goal],
+      { type: "forget", target: aldric },
+      [scene, goal],
+    ],
+    [
+      "forget of the one showing shows the one before",
+      [scene, goal],
+      { type: "forget", target: goal },
+      [scene],
+    ],
   ])("%s", (_, before, action, after) => {
     expect(inspectorReducer(before, action)).toEqual(after);
   });
@@ -38,6 +50,11 @@ describe("inspectorReducer", () => {
       expect(inspectorReducer(empty, action)).toBe(empty);
     },
   );
+
+  it("answers forgetting what is not in the trail with the same trail", () => {
+    const trail = [scene, goal];
+    expect(inspectorReducer(trail, { type: "forget", target: aldric })).toBe(trail);
+  });
 });
 
 describe("sameTarget", () => {

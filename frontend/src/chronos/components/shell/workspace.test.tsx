@@ -1,8 +1,24 @@
 import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWorkspace } from "../../test/renderChronos";
+import { CALENDAR_KEY } from "../../logic/calendarView";
 
 describe("the workspace", () => {
+  it("reads a book in the calendar remembered for it from the very first request", async () => {
+    const { api } = renderWorkspace("#/ember-pact/~scenes", undefined, {
+      [CALENDAR_KEY]: JSON.stringify({ "ember-pact": "earth" }),
+    });
+    await screen.findByRole("heading", { level: 1, name: "Scenes" });
+    await vi.waitFor(() => expect(api.callsTo("getGraph").length).toBeGreaterThan(0));
+    const asked = [
+      ...api.callsTo("timelineEvents"),
+      ...api.callsTo("getGraph"),
+      ...api.callsTo("bookIssues"),
+    ].map((args) => (args[1] as { calendar?: string | null } | undefined)?.calendar);
+    expect(asked.length).toBeGreaterThan(0);
+    expect(asked.filter((c) => c !== "earth")).toEqual([]);
+  });
+
   it("opens on the shelf and goes into a book", async () => {
     const { location } = renderWorkspace("#/");
     expect(await screen.findByRole("heading", { name: "Your books" })).toBeInTheDocument();

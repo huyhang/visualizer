@@ -8,8 +8,8 @@
 
 import { useState } from "react";
 import type { Goal } from "../../api/types";
-import { useGoals } from "../../hooks/queries";
-import { useRefreshBook } from "../../hooks/mutations";
+import { keys, useGoals } from "../../hooks/queries";
+import { useForget, useRefreshBook } from "../../hooks/mutations";
 import { useThreads } from "../../hooks/useThreads";
 import { useApi } from "../../deps";
 import { messageOf } from "../../api/errors";
@@ -21,6 +21,7 @@ import {
 } from "../../logic/goals/draft";
 import { ConfirmDialog } from "../../components/form/ConfirmDialog";
 import { useBookScope } from "../../components/shell/BookScope";
+import { useInspector } from "../../components/shell/InspectorContext";
 import { useNotify } from "../../../components/ui/Toaster";
 
 function BlockerList({ blockers }: { blockers: Blockers }) {
@@ -61,6 +62,8 @@ export function DeleteGoalDialog({
 }) {
   const api = useApi();
   const refresh = useRefreshBook();
+  const forget = useForget();
+  const inspector = useInspector();
   const notify = useNotify();
   const { calendar } = useBookScope();
   const { get } = useThreads(book);
@@ -84,6 +87,8 @@ export function DeleteGoalDialog({
     setError(null);
     try {
       await api.deleteGoal(book, goal.id, goal.rev, detach);
+      inspector.forget({ kind: "goal", id: goal.id });
+      forget([...keys.inBook(book), "goal", goal.id]);
       await refresh(book);
       notify({ title: `Deleted “${goal.title}”.` });
       close(false);

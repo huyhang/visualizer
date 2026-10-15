@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { act, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChronosApiError } from "../../api/errors";
 import { fakeApi } from "../../test/fakeApi";
@@ -45,6 +45,28 @@ describe("the inspector", () => {
       await within(panel).findByRole("heading", { name: "Aldric Departs" }),
     ).toBeInTheDocument();
   });
+
+  it.each([
+    [404, "NOT_FOUND", "says so", true],
+    [403, "FORBIDDEN", "says so", true],
+    [500, "INTERNAL", "keeps what it showed", false],
+  ] as const)(
+    "when reading its scene again answers %s, %s",
+    async (status, code, _, gone) => {
+      const { api, client, panel } = await openFromIssues();
+      await within(panel).findByRole("heading", { name: "Aldric Departs" });
+      api.refuse("getEvent", status, code);
+      await act(() => client.invalidateQueries());
+      if (gone)
+        expect(await within(panel).findByText("This did not load")).toBeInTheDocument();
+      else {
+        await vi.waitFor(() => expect(api.callsTo("getEvent").length).toBeGreaterThan(1));
+        expect(
+          within(panel).getByRole("heading", { name: "Aldric Departs" }),
+        ).toBeInTheDocument();
+      }
+    },
+  );
 
   it("closes on Escape", async () => {
     await openFromIssues();

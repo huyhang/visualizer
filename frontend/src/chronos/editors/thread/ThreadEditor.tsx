@@ -16,6 +16,7 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import type { EventSummary, Plotline } from "../../api/types";
 import { useRoute } from "../../hooks/useRoute";
+import { useRefreshBook } from "../../hooks/mutations";
 import { usePlotline } from "../../hooks/queries";
 import { useThreads } from "../../hooks/useThreads";
 import { followTitle } from "../../logic/ids";
@@ -149,6 +150,7 @@ function EditorBody({
   const { id: book, book: record, calendar } = useBookScope();
   const { list: threads } = useThreads(book);
   const { go } = useRoute();
+  const refresh = useRefreshBook();
   const { editScene, newScene } = useActions();
   // The thread as it was opened, kept for the whole session: Save sends its
   // revision, so a refetch while the draft is open -- the tab regaining focus,
@@ -220,6 +222,7 @@ function EditorBody({
     if (await writes.remove(draft.id, inline)) {
       onClose();
       go(to.threads(book));
+      void refresh(book);
     } else setConfirm(null);
   };
   const makeEnding = async (row: OrderRow) => {

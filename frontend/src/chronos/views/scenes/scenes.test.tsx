@@ -115,6 +115,19 @@ describe("deleting a scene", () => {
     expect(api.callsTo("deleteEvent")).toEqual([]);
   });
 
+  it("explains a scene a Logos manuscript is written from, and how to free it", async () => {
+    const api = fakeApi();
+    api.refuse("deleteEvent", 409, "EVENT_IN_MANUSCRIPT");
+    const { list } = await listMode(api);
+    await userEvent.click(
+      within(rowOf(list, "Lyra Infiltrates")).getByRole("button", { name: /Delete/ }),
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Unlink it there first.");
+    expect(alert).not.toHaveTextContent("Something changed");
+  });
+
   it("explains a scene that changed since the page was drawn", async () => {
     const api = fakeApi();
     api.refuse("deleteEvent", 409, "REVISION_CONFLICT");

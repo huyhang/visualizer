@@ -11,6 +11,24 @@ describe("signedOut", () => {
   });
 });
 
+describe("the page's retry rule", () => {
+  const retry = defaultQueryClient().getDefaultOptions().queries?.retry as (
+    count: number,
+    error: unknown,
+  ) => boolean;
+
+  it.each<[string, number, unknown, boolean]>([
+    ["a dropped connection, once", 0, new TypeError("Failed to fetch"), true],
+    ["a server error, once", 0, new ChronosApiError(500, "Boom."), true],
+    ["nothing twice", 1, new ChronosApiError(500, "Boom."), false],
+    ["no refusal", 0, new ChronosApiError(403, "Not yours."), false],
+    ["no record that has gone", 0, new ChronosApiError(404, "No such scene."), false],
+    ["no lapsed session", 0, new ChronosApiError(401, "Sign in."), false],
+  ])("asks again for %s", (_, count, error, expected) => {
+    expect(retry(count, error)).toBe(expected);
+  });
+});
+
 describe("defaultQueryClient", () => {
   it("sends the writer to sign in when a read finds the session gone", async () => {
     const signIn = vi.fn();

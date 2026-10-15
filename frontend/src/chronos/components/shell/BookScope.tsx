@@ -6,6 +6,7 @@ import { createContext, useContext, type ReactNode } from "react";
 import type { Book } from "../../api/types";
 import { useCalendarChoice, type CalendarChoice } from "../../hooks/useCalendarChoice";
 import { useBook } from "../../hooks/queries";
+import { isGone } from "../../api/errors";
 
 export interface BookScopeValue extends CalendarChoice {
   /** The book's id: known from the address before the record arrives. */
@@ -17,7 +18,9 @@ export interface BookScopeValue extends CalendarChoice {
 const BookScopeContext = createContext<BookScopeValue | null>(null);
 
 export function BookScope({ id, children }: { id: string; children: ReactNode }) {
-  const { data: book } = useBook(id);
+  const { data, error } = useBook(id);
+  // A book deleted, or no longer shared with this reader, offers nothing to write to.
+  const book = isGone(error) ? undefined : data;
   const choice = useCalendarChoice(id, book?.calendars);
   const canWrite = book?.permissions?.write ?? false;
   return (

@@ -153,6 +153,8 @@ export function useEntity(
       api.getEntity(book, ref?.database ?? "", ref?.collection ?? "", ref?.id ?? ""),
     enabled: ref !== null,
     staleTime: 5 * 60_000,
+    // An article this reader may not see stays unseen: not asked again on every screen.
+    retryOnMount: false,
   });
 }
 

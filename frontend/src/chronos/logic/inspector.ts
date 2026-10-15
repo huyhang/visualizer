@@ -17,7 +17,9 @@ export type InspectorAction =
   | { type: "open"; target: InspectorTarget }
   | { type: "push"; target: InspectorTarget }
   | { type: "back" }
-  | { type: "close" };
+  | { type: "close" }
+  /** Something was deleted: it leaves the trail wherever it is in it. */
+  | { type: "forget"; target: InspectorTarget };
 
 export function sameTarget(a: InspectorTarget, b: InspectorTarget): boolean {
   if (a.kind !== b.kind) return false;
@@ -47,6 +49,10 @@ export function inspectorReducer(
       return stack.length ? stack.slice(0, -1) : stack;
     case "close":
       return stack.length ? [] : stack;
+    case "forget": {
+      const kept = stack.filter((t) => !sameTarget(t, action.target));
+      return kept.length === stack.length ? stack : kept;
+    }
   }
 }
 

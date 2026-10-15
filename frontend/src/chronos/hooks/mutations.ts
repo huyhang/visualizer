@@ -21,6 +21,20 @@ export function useRefreshBook() {
   );
 }
 
+/**
+ * Forget what was read about records that have gone, so the refresh after a
+ * delete does not ask for them again from a screen about to close.
+ */
+export function useForget() {
+  const client = useQueryClient();
+  return useCallback(
+    (...prefixes: readonly unknown[][]) => {
+      for (const queryKey of prefixes) client.removeQueries({ queryKey });
+    },
+    [client],
+  );
+}
+
 export function useRefreshCalendars() {
   const client = useQueryClient();
   return useCallback(
