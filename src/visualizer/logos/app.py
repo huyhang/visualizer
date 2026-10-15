@@ -26,6 +26,7 @@ from visualizer.auth import (
 )
 from visualizer.observability import Observability
 from visualizer.shared_assets import register_shared_assets
+from visualizer.static_versions import install_versioned_static
 from visualizer.vite_assets import BundleAssets
 
 from .draft_routes import register_draft_routes
@@ -97,6 +98,7 @@ def create_app(
         logos_url=logos_url,
     )
     register_shared_assets(app)
+    install_versioned_static(app)
 
     manuscripts = ManuscriptService(store, chronos, articles)
     volumes = VolumeService(store, chronos, articles)

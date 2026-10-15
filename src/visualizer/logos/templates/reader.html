@@ -4,12 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Logos — manuscripts</title>
-  <link rel="icon" href="{{ url_for('static', filename='logos-icon.svg') }}">
+  <link rel="icon" href="{{ versioned('static', 'logos-icon.svg') }}">
   {# Palette first: the shared nav and this sheet are both drawn in it. #}
-  <link rel="stylesheet" href="{{ url_for('shared_static', filename='tokens.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='reader.css') }}">
+  <link rel="stylesheet" href="{{ versioned('shared_static', 'tokens.css') }}">
+  <link rel="stylesheet" href="{{ versioned('static', 'reader.css') }}">
   {# After the app's own sheet: the shared nav owns the geometry it introduces. #}
-  <link rel="stylesheet" href="{{ url_for('shared_static', filename='service-nav.css') }}">
+  <link rel="stylesheet" href="{{ versioned('shared_static', 'service-nav.css') }}">
   <script>
     // The mount point, so `api.js` works at `/logos` behind the gateway and
     // at `/` when logos runs on its own port.
@@ -19,12 +19,16 @@
     window.__READER_USER__ = {{ current_user.username | tojson }};
     window.__AKASHA_URL__ = {{ service_links.akasha | tojson }};
   </script>
-  <script src="{{ url_for('shared_js', filename='prefs.js') }}"></script>
+  <script src="{{ versioned('shared_js', 'prefs.js') }}"></script>
+  {# Every file is named with its content's version, so the browser keeps it for
+     a year and asks again only after a deploy changes it (static_versions.py).
+     The modules' relative imports carry no version: the import map gives them
+     theirs, and must come before any module is asked for. #}
+  <script type="importmap">{{ import_map | tojson }}</script>
   {# Every module app.js reaches, asked for now rather than a layer at a time as
      each import is read (reader_modules.py works the list out from them). #}
-  <link rel="modulepreload" href="{{ url_for('static', filename='js/app.js') }}">
   {% for module in reader_modules %}
-  <link rel="modulepreload" href="{{ url_for('static', filename='js/' + module) }}">
+  <link rel="modulepreload" href="{{ versioned('static', module) }}">
   {% endfor %}
 </head>
 <body>
@@ -328,6 +332,6 @@
     <span id="boundary-cue-label"></span><progress id="boundary-cue-meter" max="100" value="0"></progress>
   </div>
 
-  <script type="module" src="{{ url_for('static', filename='js/app.js') }}"></script>
+  <script type="module" src="{{ versioned('static', 'js/app.js') }}"></script>
 </body>
 </html>

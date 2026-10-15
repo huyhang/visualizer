@@ -7,6 +7,7 @@ parameter through which a browser could ask about a scene this volume does not
 name.
 """
 
+import json
 import re
 from pathlib import Path
 
@@ -657,12 +658,29 @@ def test_the_shell_preloads_every_module_the_entrypoint_reaches(client):
     from visualizer.logos.reader_modules import reader_modules
 
     html = client.get("/").get_data(as_text=True)
-    preloaded = re.findall(r'<link rel="modulepreload" href="[^"]*/js/([^"]+)">', html)
+    preloaded = re.findall(r'<link rel="modulepreload" href="[^"]*/js/([^"?]+)\?v=\w+">', html)
     js = _LOGOS / "static" / "js"
     assert set(preloaded) == {p.name for p in js.glob("*.js")}
     assert set(reader_modules()) == {p.name for p in js.glob("*.js")} - {"app.js"}
     # Asked for in the head, well before the script that imports them.
     assert html.index("modulepreload") < html.index('<script type="module"')
+
+
+def test_every_module_is_named_by_its_version_and_imports_find_theirs(client):
+    """The modules import each other by plain relative paths; the import map
+    is how those imports reach the versioned, cacheable files -- so it maps
+    every module, and comes before the first one is asked for."""
+    html = client.get("/").get_data(as_text=True)
+    raw = re.search(r'<script type="importmap">(.*?)</script>', html, re.DOTALL).group(1)
+    mapped = json.loads(raw)["imports"]
+    preloads = re.findall(r'<link rel="modulepreload" href="([^"]+)">', html)
+    assert sorted(mapped.values()) == sorted(preloads)
+    for plain, versioned in mapped.items():
+        assert versioned.startswith(plain + "?v=")
+    assert html.index('type="importmap"') < html.index("modulepreload")
+    assert re.search(r'<script type="module" src="[^"]*/js/app\.js\?v=\w+">', html)
+    for sheet in ("tokens.css", "reader.css", "service-nav.css"):
+        assert re.search(rf'href="[^"]*{re.escape(sheet)}\?v=\w+"', html)
 
 
 @pytest.mark.parametrize("files, reached", [

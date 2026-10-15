@@ -4,19 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
   <title>Logos — writing</title>
-  <link rel="icon" href="{{ url_for('static', filename='logos-icon.svg') }}">
+  <link rel="icon" href="{{ versioned('static', 'logos-icon.svg') }}">
   {# Palette first; then the reader's sheet, which owns the header and the
      manuscript's typography, so prose looks the same written as read; then
      the writing page's own bundle; the shared nav last, as everywhere. #}
-  <link rel="stylesheet" href="{{ url_for('shared_static', filename='tokens.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='reader.css') }}">
+  <link rel="stylesheet" href="{{ versioned('shared_static', 'tokens.css') }}">
+  <link rel="stylesheet" href="{{ versioned('static', 'reader.css') }}">
   {% if assets %}
   {% for sheet in assets.styles %}
-  <link rel="stylesheet" href="{{ url_for('static', filename='writer/' + sheet) }}">
+  <link rel="stylesheet" href="{{ versioned('static', 'writer/' + sheet) }}">
   {% endfor %}
   {% endif %}
-  <link rel="stylesheet" href="{{ url_for('shared_static', filename='service-nav.css') }}">
-  <script src="{{ url_for('shared_js', filename='prefs.js') }}"></script>
+  <link rel="stylesheet" href="{{ versioned('shared_static', 'service-nav.css') }}">
+  <script src="{{ versioned('shared_js', 'prefs.js') }}"></script>
 </head>
 <body class="lw-body">
   <div class="app-shell">
@@ -40,7 +40,7 @@
     </div>
   </div>
   {% if assets %}
-  <script type="module" src="{{ url_for('static', filename='writer/' + assets.script) }}"></script>
+  <script type="module" src="{{ versioned('static', 'writer/' + assets.script) }}"></script>
   {% endif %}
 </body>
 </html>

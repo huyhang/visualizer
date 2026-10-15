@@ -6,7 +6,7 @@
 #}
 <header class="app-header">
   <a class="brand" href="{{ request.script_root or '/' }}">
-    <span class="mark"><img src="{{ url_for('static', filename='logos-glyph.svg') }}"
+    <span class="mark"><img src="{{ versioned('static', 'logos-glyph.svg') }}"
       alt="" width="26" height="26"></span><span class="brand-name">Logos</span>
   </a>
   <div class="header-actions">
