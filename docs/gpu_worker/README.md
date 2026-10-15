@@ -454,7 +454,7 @@ draft is the caller's decision.
 | Rule | Detail |
 |---|---|
 | `quote` | Must appear verbatim in the cited block — the worker drops issues whose quote it can't find |
-| `replacement` | The exact words to put in place of `quote` to make the fix, so the writer can accept it in one step; `null` when the fix is advice rather than a rewording of those words. Cleaned as the quote is, and never equal to it. `suggestion` explains the fix either way |
+| `replacement` | The exact words to put in place of `quote` to make the fix, so the writer can accept it in one step; `null` when the fix is advice rather than a rewording of those words. It loses only what would not belong in the prose -- the wrapping it shares with the model's quote, quote marks around the whole of it, a stop the prose just after the quote already has or cannot take -- and keeps its own punctuation, which is the fix. It is `null` when its final stop clashes with the prose's, when it equals `quote`, and when it is over 1,000 characters: it is never cut short. `suggestion` explains the fix either way |
 | Second check | When the verifier runs, each issue is re-judged against its block and reference: confirmed issues get `verified: true`; issues judged not real are **removed** (counted in `verification.removed`). When skipped or off, `verified` is `null` |
 | `verification` | Same shape as for research. Logos can show "second-checked" vs. "first pass only" in its review panel |
 | `reference` | The `ref` the issue is based on; `null` for `prose` issues |
@@ -517,7 +517,7 @@ issue answers for it.
 |---|---|
 | `stance` | Where the editor now stands: `maintains` (the issue holds), `revises` (it holds, but a different fix would serve better), `withdraws` (the writer has shown it is wrong, or deliberate). The writer still decides the issue's status |
 | `suggestion` | A new minimal fix, only with `revises`; otherwise `null` |
-| `replacement` | With `revises`, the exact words to put in place of the issue's `quote` for the new fix, when it is a rewording of them; otherwise `null` |
+| `replacement` | With `revises`, the exact words to put in place of the issue's `quote` for the new fix, when it is a rewording of them, fitted to the passage as it reads now the way a review's is; otherwise `null` |
 | `reply` | At most 2,000 characters. An empty one fails the job (`internal`) |
 | No second check | A reply is conversation, not a finding: the verifier is not asked |
 

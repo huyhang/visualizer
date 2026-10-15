@@ -5,11 +5,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import type { SectionAddress } from "../../api/LogosApi";
-import { useLogosApi } from "../../api/context";
 import { messageOf } from "../../api/errors";
 import type { Check, Dialect, Entity, VerifyMode } from "../../api/types";
 import { Icon } from "../../../components/ui/Icon";
 import { Spinner } from "../../../components/ui/Spinner";
+import { useDeps } from "../../deps";
 import { CHECK_HINTS, CHECK_LABELS, CHECKS } from "../../logic/review";
 
 export interface Included {
@@ -52,7 +52,7 @@ function IncludePicker({
   include: Included[];
   onChange: (include: Included[]) => void;
 }) {
-  const api = useLogosApi();
+  const { api } = useDeps();
   const [query, setQuery] = useState("");
   const wanted = query.trim();
   const found = useQuery({
@@ -131,13 +131,14 @@ function WhatItReads({
   include: Included[];
   settled: () => Promise<boolean>;
 }) {
-  const api = useLogosApi();
+  const { api } = useDeps();
   const refs = include.map((item) => item.ref);
   const preview = useQuery({
     queryKey: ["llm-review-references", at.book, at.volume, at.section, draft, refs],
     queryFn: async () => {
-      await settled(); // the server reads the saved draft
-      return api.reviewReferences(at, draft, refs);
+      // The server reads the saved draft: words that could not be saved are not in it.
+      const saved = await settled();
+      return { ...(await api.reviewReferences(at, draft, refs)), saved };
     },
   });
   if (preview.isLoading) {
@@ -151,6 +152,11 @@ function WhatItReads({
   const data = preview.data!;
   return (
     <div className="lw-reads">
+      {data.saved ? null : (
+        <p className="lw-small lw-muted">
+          Your latest words are not saved yet, so this is what the saved draft mentions.
+        </p>
+      )}
       <p className="lw-small">
         The chapter, and {data.references.length}{" "}
         {data.references.length === 1 ? "article" : "articles"}:

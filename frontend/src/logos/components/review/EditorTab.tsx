@@ -1,6 +1,7 @@
 // The Editor tab: ask the editor on the GPU box to read this draft, watch it
 // work, then go through what it found -- in a list beside the page, or one
-// issue at a time with its discussion.
+// issue at a time with its discussion. A review of another draft can be looked
+// at too, but only looked at: its words are that draft's.
 
 import { Popover } from "radix-ui";
 import { useState, type KeyboardEvent } from "react";
@@ -22,6 +23,7 @@ import {
   editorAnnotationId,
   isActive,
   issueCounts,
+  issueShortcut,
   listedIssues,
   stageLabel,
   stepIssue,
@@ -35,6 +37,13 @@ import { IssueRow } from "./IssueRow";
 import { NoteCard } from "./NoteCard";
 import { ReviewHistory } from "./ReviewHistory";
 
+/** Whether a key went to something the writer types or chooses in. */
+const typingIn = (target: EventTarget) =>
+  target instanceof HTMLInputElement ||
+  target instanceof HTMLTextAreaElement ||
+  target instanceof HTMLSelectElement ||
+  (target instanceof HTMLElement && target.isContentEditable);
+
 function askError(error: unknown): string {
   if (error instanceof LogosApiError && error.isBusy) {
     return `The editor has as many reviews as it can take.${error.retryAfter ? ` Try again in ${error.retryAfter} seconds.` : ""}`;
@@ -46,6 +55,7 @@ export function EditorTab({
   review,
   at,
   draftId,
+  draftNames,
   settled,
   settings,
   onSettings,
@@ -60,6 +70,8 @@ export function EditorTab({
   review: EditorReview;
   at: SectionAddress;
   draftId: string;
+  /** Each of the section's drafts by id, to say which one a review read. */
+  draftNames: Record<string, string>;
   settled: () => Promise<boolean>;
   settings: AskSettings;
   onSettings: (settings: AskSettings) => void;
@@ -79,7 +91,11 @@ export function EditorTab({
   const issues = current?.issues ?? [];
   const listed = listedIssues(issues, filter, checks, blockOrder, placement);
   const detail = issues.find((issue) => issue.id === selected) ?? null;
-  const placed = (issue: ReviewIssue) => placement[editorAnnotationId(issue)] != null;
+  /** Whether this review read the draft being written; another draft's is read-only. */
+  const ours = !current || current.draft === draftId;
+  /** Whether an issue's words are in this draft now; null for another draft's issue. */
+  const placed = (issue: ReviewIssue) =>
+    ours ? placement[editorAnnotationId(issue)] != null : null;
 
   const ask = () =>
     review.ask.mutate({
@@ -89,27 +105,24 @@ export function EditorTab({
       include: settings.include.map((item) => item.ref),
     });
 
-  const onListKey = (event: KeyboardEvent) => {
-    if (
-      event.target instanceof HTMLTextAreaElement ||
-      event.target instanceof HTMLInputElement
-    )
+  const onListKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    // React bubbles keys from portals -- the settings popover -- through here
+    // too: only keys pressed in the tab itself, outside its fields, count.
+    if (!event.currentTarget.contains(event.target as Node) || typingIn(event.target))
       return;
-    const key = event.key.toLowerCase();
-    const step =
-      key === "j" || key === "arrowdown" ? 1 : key === "k" || key === "arrowup" ? -1 : 0;
-    if (step) {
+    const shortcut = issueShortcut(event);
+    if (shortcut === "next" || shortcut === "previous") {
       event.preventDefault();
-      const next = stepIssue(listed, selected, step);
+      const next = stepIssue(listed, selected, shortcut === "next" ? 1 : -1);
       if (next) onSelect(next.id, true);
       return;
     }
-    const target = detail && current ? editorNote(detail, current.id) : null;
-    if (!target) return;
-    if (key === "a" && noteReplacement(target) && placed(detail!)) {
+    if (!ours || !current || detail?.status !== "open") return;
+    const target = editorNote(detail, current.id);
+    if (shortcut === "accept" && noteReplacement(target) && placed(detail)) {
       event.preventDefault();
       actions.accept(target);
-    } else if (key === "d") {
+    } else if (shortcut === "dismiss") {
       event.preventDefault();
       actions.dismiss(target);
     }
@@ -188,13 +201,13 @@ export function EditorTab({
             busy={review.ask.isPending}
             onClick={ask}
           >
-            {current ? "Ask for a fresh review" : "Ask the editor"}
+            {current && ours ? "Ask for a fresh review" : "Ask the editor"}
           </Button>
         )}
         {review.ask.error ? (
           <p className="st-error-text">{askError(review.ask.error)}</p>
         ) : null}
-        {issues.length ? (
+        {issues.length && ours ? (
           <LayerToggle
             label="Underline in the manuscript"
             checked={marked}
@@ -202,6 +215,16 @@ export function EditorTab({
           />
         ) : null}
       </div>
+
+      {current && !ours ? (
+        <div className="lw-callout">
+          <Icon name="clock" />
+          <span>
+            This review read “{draftNames[current.draft] ?? "another draft"}”. Its issues
+            are not drawn on this draft; open that draft to work through them.
+          </span>
+        </div>
+      ) : null}
 
       {current?.state === "failed" ? (
         <div className="lw-callout is-danger">
@@ -218,18 +241,21 @@ export function EditorTab({
           <NoteCard
             note={editorNote(detail, current.id)}
             actions={actions}
-            placed={placed(detail)}
+            placed={placed(detail) ?? false}
+            readOnly={!ours}
             references={current.references}
             variant="detail"
           >
             <Discussion
               key={detail.id}
               issue={detail}
-              sending={review.discuss.isPending}
-              error={review.discuss.error ? messageOf(review.discuss.error) : null}
-              onSend={(text) =>
-                review.discuss.mutate({ reviewId: current.id, issue: detail, text })
-              }
+              onSend={async (text) => {
+                await review.discuss.mutateAsync({
+                  reviewId: current.id,
+                  issue: detail,
+                  text,
+                });
+              }}
             />
           </NoteCard>
         </div>
@@ -245,6 +271,7 @@ export function EditorTab({
           outdated={current.outdated}
           selected={selected}
           placed={placed}
+          shortcuts={ours}
           onChoose={(issue) => onSelect(issue.id, true)}
         />
       ) : !current && !review.loading ? (
@@ -264,6 +291,7 @@ export function EditorTab({
       <ReviewHistory
         reviews={review.reviews}
         viewing={review.viewing}
+        draftNames={draftNames}
         onChoose={(id) => {
           onSelect(null);
           review.choose(id);
@@ -284,6 +312,7 @@ function IssueList({
   outdated,
   selected,
   placed,
+  shortcuts,
   onChoose,
 }: {
   issues: ReviewIssue[];
@@ -295,7 +324,9 @@ function IssueList({
   verification: string;
   outdated: boolean;
   selected: string | null;
-  placed: (issue: ReviewIssue) => boolean;
+  placed: (issue: ReviewIssue) => boolean | null;
+  /** Whether A and D work here: not on another draft's review. */
+  shortcuts: boolean;
   onChoose: (issue: ReviewIssue) => void;
 }) {
   const counts = issueCounts(issues);
@@ -384,7 +415,13 @@ function IssueList({
         </p>
       )}
       <p className="lw-hint">
-        <kbd>J</kbd> <kbd>K</kbd> move · <kbd>A</kbd> accept · <kbd>D</kbd> dismiss
+        <kbd>J</kbd> <kbd>K</kbd> move
+        {shortcuts ? (
+          <>
+            {" "}
+            · <kbd>A</kbd> accept · <kbd>D</kbd> dismiss
+          </>
+        ) : null}
       </p>
     </div>
   );

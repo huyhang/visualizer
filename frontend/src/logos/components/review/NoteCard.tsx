@@ -20,6 +20,8 @@ export interface NoteCardProps {
   actions: NoteActions;
   /** Whether the quoted words are still in the draft. */
   placed: boolean;
+  /** Shown, not acted on: an issue from a review of another draft. */
+  readOnly?: boolean;
   references?: ReviewReference[];
   variant: "popover" | "detail";
   /** Shown under the actions -- the discussion, in the Editor tab. */
@@ -248,6 +250,7 @@ export function NoteCard({
   note,
   actions,
   placed,
+  readOnly = false,
   references,
   variant,
   children,
@@ -260,8 +263,8 @@ export function NoteCard({
     >
       <header className="lw-note-head">
         <Kind note={note} />
-        <Badges note={note} placed={placed} />
-        {variant === "detail" && placed ? (
+        <Badges note={note} placed={placed || readOnly} />
+        {variant === "detail" && placed && !readOnly ? (
           <ShowButton onShow={() => actions.show(note)} />
         ) : null}
       </header>
@@ -269,8 +272,10 @@ export function NoteCard({
       <p className="lw-note-message">{note.issue.message}</p>
       <Fix note={note} placed={placed} />
       <Reference note={note} references={references} onOpen={actions.openReference} />
-      <Actions note={note} actions={actions} placed={placed} variant={variant} />
-      {children}
+      {readOnly ? null : (
+        <Actions note={note} actions={actions} placed={placed} variant={variant} />
+      )}
+      {readOnly ? null : children}
     </article>
   );
 }

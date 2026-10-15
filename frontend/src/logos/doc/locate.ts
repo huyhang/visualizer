@@ -40,6 +40,19 @@ const trimEllipsis = (quote: string) =>
     .replace(/^\s*(?:…|\.\.\.)/u, "")
     .trim();
 
+/** Every place `quote` is in `text`, first to last. */
+export function locateAll(text: string, quote: string): Span[] {
+  const found: Span[] = [];
+  let from = 0;
+  let span = locateQuote(text, quote);
+  while (span) {
+    found.push({ start: from + span.start, end: from + span.end });
+    from += span.start + 1;
+    span = from < text.length ? locateQuote(text.slice(from), quote) : null;
+  }
+  return found;
+}
+
 /** Where `quote` is in `text`, or null if it is not there any more. */
 export function locateQuote(text: string, quote: string): Span | null {
   if (!quote) return null;

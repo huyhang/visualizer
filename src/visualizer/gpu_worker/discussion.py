@@ -68,7 +68,8 @@ class DiscussionPipeline:
             {"role": "system",
              "content": _PROMPT.format(dialect=request.get("dialect", "en-US"))},
             {"role": "user", "content": _context(request)}], _SCHEMA, temperature=0.3)
-        return {**_shaped(reply, request["issue"]["quote"]), "model": self.model,
+        return {**_shaped(reply, request["issue"]["quote"], request["passage"]),
+                "model": self.model,
                 "generated_at": self._clock().strftime("%Y-%m-%dT%H:%M:%SZ")}
 
 
@@ -88,7 +89,7 @@ def _context(request: dict) -> str:
             f"Conversation so far:\n{conversation}")
 
 
-def _shaped(reply: dict, quote: str) -> dict:
+def _shaped(reply: dict, quote: str, passage: str) -> dict:
     """The model's answer as the contract shapes it; ``ModelOutputError`` if empty."""
     text = str(reply.get("reply") or "").strip()[:MAX_REPLY_CHARS]
     if not text:
@@ -98,5 +99,12 @@ def _shaped(reply: dict, quote: str) -> dict:
     revises = stance == "revises"
     return {"reply": text, "stance": stance,
             "suggestion": suggestion if revises and suggestion else None,
-            "replacement": clean_replacement(reply.get("replacement"), quote)
+            "replacement": clean_replacement(reply.get("replacement"), quote,
+                                             _following(passage, quote))
             if revises else None}
+
+
+def _following(passage: str, quote: str) -> str:
+    """The prose just after ``quote`` in the passage; "" when it is gone."""
+    at = passage.find(quote)
+    return passage[at + len(quote):] if at >= 0 else ""

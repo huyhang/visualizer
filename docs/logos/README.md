@@ -61,12 +61,18 @@ underlined on the exact words it is about -- a quiet dotted line for the Coach,
 a wavy one in its check's colour for the Editor, stronger for a warning -- with
 a mark in the margin beside each paragraph that has one. Underlines are
 decorations, not content: they follow every edit, never reach the saved
-document, and let go when the words they quote are rewritten. Clicking one
-opens its note: what is wrong, and, when the note offers exact words, a
-before/after preview with **Accept**, which rewrites the quoted words as one
-undoable edit (and offers Undo). Advice without exact words offers **Edit
-here**, which selects the words for the writer to rewrite. Each panel's
-*Underline in the manuscript* switch turns its layer off.
+document, and let go when the words they quote are rewritten -- rather than
+jump to the same words elsewhere in the paragraph -- coming back only where an
+undo puts those words back. Clicking one opens its note: what is wrong, and,
+when the note offers exact words, a before/after preview with **Accept**, which
+rewrites the underlined words as one undoable edit. Its Undo puts back exactly
+what was there, even where the same words come again. A fix that changes part
+of a linked name rewrites the whole name and unlinks it, since it no longer
+names what the link points at; Undo brings the link back too. Advice without
+exact words offers **Edit here**, which selects the words for the writer to
+rewrite. Each panel's *Underline in the manuscript* switch hides its layer's
+underlines without changing anything else: every note keeps its fix, and the
+one chosen in the panel is still shown in the prose.
 
 The Writing Coach uses only local deterministic rules; it sends no prose to an
 external service. It reads the draft when the page opens and again whenever
@@ -81,15 +87,25 @@ reports the mismatch rather than deciding.
 box is configured, **Ask the editor** has a model there read the saved draft
 for continuity against canon, anachronism against verified research, and
 prose; the tab shows whether the box is ready, warming up, busy or asleep, and
-what stage a review has reached. Its issues are listed in reading order with
-filters, and each can be accepted, dismissed, resolved or **discussed**: the
-writer answers -- "that's deliberate", "why?", "what would you do instead?" --
-and the editor replies, maintaining, revising (with a new fix to accept) or
-withdrawing its note. `J`/`K` move through the list, `A` accepts and `D`
-dismisses. The settings popover chooses the checks, the dialect, the second
-check and extra articles to send, and shows exactly what the editor will read
-and what it will be left without. See [`llm-review.md`](llm-review.md) for what
-is sent, what is kept, and the routes.
+what stage a review has reached; a review on its way can be cancelled. Its
+issues are listed in reading order with filters, and each can be accepted,
+dismissed, resolved or **discussed**: the writer answers -- "that's
+deliberate", "why?", "what would you do instead?" -- and the editor replies,
+maintaining, revising (with a new fix to accept) or withdrawing its note. A
+message that cannot be sent stays in the box to send again. While the Editor
+tab has focus, `J`/`K` move through the list, `A` accepts and `D` dismisses;
+keys typed into a field, or held with Ctrl, Cmd or Alt, are left alone. The
+settings popover chooses the checks, the dialect, the second check and extra
+articles to send, and shows exactly what the editor will read and what it will
+be left without -- saying so when the latest words are not saved yet, since the
+editor reads the saved draft.
+
+The tab opens on the newest review of the draft being written. **Other
+reviews** lists the rest of the section's kept reviews, each with the draft it
+read when there is more than one; a review of another draft is shown
+read-only, its issues neither drawn on this draft nor acted on, because they
+quote that draft's words. See [`llm-review.md`](llm-review.md) for what is
+sent, what is kept, and the routes.
 
 Each section has one or more named drafts and exactly one primary draft. Authors
 can preview any named draft in the reader without changing that primary. New

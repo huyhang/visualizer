@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 import { LogosApiError, saveFailure } from "../api/errors";
-import type { Draft, Manuscript, ReviewIssue, Turn } from "../api/types";
+import type { Draft, Manuscript, ReviewIssue, ReviewSummary, Turn } from "../api/types";
 import { doc, para, text } from "../test/docs";
 import { createAutosave, type Timer } from "./autosave";
 import { compareDocuments, draftStats } from "./comparison";
@@ -31,6 +31,8 @@ import {
   currentFix,
   editorAnnotations,
   issueCounts,
+  issueShortcut,
+  latestReview,
   listedIssues,
   pollDelay,
   stageLabel,
@@ -66,6 +68,7 @@ describe("autosave", () => {
       saveLocal: vi.fn(),
       saveRemote: (snapshot) => {
         remote.push(snapshot);
+        if (remote.length > 1) return Promise.resolve();
         return new Promise((_, reject) => {
           release = () => reject(new LogosApiError(503, "down"));
         });
@@ -81,6 +84,9 @@ describe("autosave", () => {
     expect(remote).toEqual(["first"]);
     expect(states.at(-1)).toBe("offline");
     expect(autosave.hasPending()).toBe(true);
+    // The next try sends the newer words, never the ones that failed.
+    await autosave.flush();
+    expect(remote).toEqual(["first", "second"]);
   });
 
   it.each<[number, string]>([
@@ -403,28 +409,40 @@ const issue = (id: string, patch: Partial<ReviewIssue> = {}): ReviewIssue => ({
 });
 
 describe("review", () => {
-  it("draws only open issues", () => {
-    const drawn = editorAnnotations([
-      issue("1"),
-      issue("2", { status: "dismissed" }),
-      issue("3", { status: "resolved" }),
-    ]);
-    expect(drawn.map((a) => a.id)).toEqual(["editor:1"]);
-  });
+  it.each<[boolean, Record<string, boolean>]>([
+    [true, { "editor:1": false, "editor:2": true, "editor:3": true }],
+    [false, { "editor:1": true, "editor:2": true, "editor:3": true }],
+  ])(
+    "places every issue, underlining only open ones while underlines are on (%s)",
+    (drawn, hidden) => {
+      const annotations = editorAnnotations(
+        [
+          issue("1"),
+          issue("2", { status: "dismissed" }),
+          issue("3", { status: "resolved" }),
+        ],
+        drawn,
+      );
+      expect(Object.fromEntries(annotations.map((a) => [a.id, a.hidden]))).toEqual(hidden);
+    },
+  );
 
-  it("draws coach findings by their excerpt", () => {
+  it.each([true, false])("places coach findings by their excerpt, drawn=%s", (drawn) => {
     expect(
-      coachAnnotations([
-        {
-          id: "x",
-          block: "b",
-          category: "flow",
-          title: "Adverb",
-          message: "",
-          excerpt: "very",
-          replacement: null,
-        },
-      ]),
+      coachAnnotations(
+        [
+          {
+            id: "x",
+            block: "b",
+            category: "flow",
+            title: "Adverb",
+            message: "",
+            excerpt: "very",
+            replacement: null,
+          },
+        ],
+        drawn,
+      ),
     ).toEqual([
       {
         id: "coach:x",
@@ -433,8 +451,40 @@ describe("review", () => {
         severity: "info",
         blockId: "b",
         quote: "very",
+        hidden: !drawn,
       },
     ]);
+  });
+
+  it.each<[string, string | null]>([
+    ["draft-1", "r3"],
+    ["draft-2", "r2"],
+    ["draft-3", null],
+  ])("a draft opens on its own newest review: %s on %j", (draft, expected) => {
+    const reviews = [
+      { id: "r3", draft: "draft-1" },
+      { id: "r2", draft: "draft-2" },
+      { id: "r1", draft: "draft-1" },
+    ] as ReviewSummary[];
+    expect(latestReview(reviews, draft)?.id ?? null).toBe(expected);
+  });
+
+  it.each<[Partial<Parameters<typeof issueShortcut>[0]>, string | null]>([
+    [{ key: "j" }, "next"],
+    [{ key: "J" }, "next"],
+    [{ key: "ArrowDown" }, "next"],
+    [{ key: "k" }, "previous"],
+    [{ key: "ArrowUp" }, "previous"],
+    [{ key: "a" }, "accept"],
+    [{ key: "d" }, "dismiss"],
+    [{ key: "x" }, null],
+    // Select all, a bookmark, a menu: the browser's, not the list's.
+    [{ key: "a", ctrlKey: true }, null],
+    [{ key: "a", metaKey: true }, null],
+    [{ key: "d", altKey: true }, null],
+  ])("the key %j means %j", (event, expected) => {
+    const base = { key: "", ctrlKey: false, metaKey: false, altKey: false };
+    expect(issueShortcut({ ...base, ...event })).toBe(expected);
   });
 
   it.each<[string, Turn[], object, string | null]>([
@@ -462,6 +512,16 @@ describe("review", () => {
       ],
       { suggestion: "Try this.", replacement: null, revised: true },
       "maintains",
+    ],
+    [
+      "two revisions, the later the one that stands",
+      [
+        turn("editor", "revises", { suggestion: "First.", replacement: "first words" }),
+        turn("writer"),
+        turn("editor", "revises", { suggestion: "Second.", replacement: "second words" }),
+      ],
+      { suggestion: "Second.", replacement: "second words", revised: true },
+      "revises",
     ],
     [
       "a withdrawal",

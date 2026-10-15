@@ -5,7 +5,7 @@
 // UTF-16 unit of text, one per leaf, one at each node boundary).
 
 import type { Node as PmNode } from "@tiptap/pm/model";
-import { locateQuote } from "../doc/locate";
+import { locateAll, locateQuote, type Span } from "../doc/locate";
 
 export interface FoundBlock {
   node: PmNode;
@@ -73,6 +73,41 @@ export function textMap(block: PmNode, pos: number): TextMap {
     appendTextblock(item, pos + 1 + offset, map);
   });
   return map;
+}
+
+/** Every place `quote` sits in the block `blockId` now. */
+export function quoteRanges(doc: PmNode, blockId: string, quote: string): Range[] {
+  const block = findBlock(doc, blockId);
+  if (!block || !quote) return [];
+  const map = textMap(block.node, block.pos);
+  return locateAll(map.text, quote).map((span) => ({
+    from: map.at[span.start] as number,
+    to: (map.at[span.end - 1] as number) + 1,
+  }));
+}
+
+/** Which of `map`'s characters `range` covers, when they still read as `quote`. */
+export function spanAt(map: TextMap, quote: string, range: Range): Span | null {
+  const start = map.at.indexOf(range.from);
+  const last = map.at.lastIndexOf(range.to - 1);
+  if (start < 0 || last < start) return null;
+  const words = map.text.slice(start, last + 1);
+  const found = locateQuote(words, quote);
+  return found && found.start === 0 && found.end === words.length
+    ? { start, end: last + 1 }
+    : null;
+}
+
+/** `range`, if it still holds `quote` in the block `blockId`; null if not. */
+export function quoteStillAt(
+  doc: PmNode,
+  blockId: string,
+  quote: string,
+  range: Range,
+): Range | null {
+  const block = findBlock(doc, blockId);
+  if (!block) return null;
+  return spanAt(textMap(block.node, block.pos), quote, range) ? range : null;
 }
 
 /** Where `quote` sits in the block `blockId` now, or null if it is gone. */

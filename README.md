@@ -223,8 +223,9 @@ Docker images compile them in a Node build stage, so the NAS image still has
 no Node at run time and no page loads anything from a CDN. The same
 conventions hold there: each API is one injected interface (`ResearchApi`,
 `LogosApi`), the rules are pure modules (`frontend/src/logic/`,
-`frontend/src/logos/logic/`), and components only take props. Other surfaces
-can move here one at a time.
+`frontend/src/logos/logic/`), and components get what they need as props or,
+for the page's own dependencies, from the one injected context that carries
+them (`WriterDeps`). Other surfaces can move here one at a time.
 
 Every service follows the same conventions: **inversion of control** (every
 database or network boundary is a seam injected into an app factory) and **pure,

@@ -3,11 +3,11 @@
 
 import { useState } from "react";
 import type { SectionAddress } from "../../api/LogosApi";
-import { useLogosApi } from "../../api/context";
 import { messageOf } from "../../api/errors";
 import type { DraftRow } from "../../api/types";
 import { Button } from "../../../components/ui/Button";
 import { Modal } from "../../../components/ui/Modal";
+import { useDeps } from "../../deps";
 import { compareDocuments, type DraftStats } from "../../logic/comparison";
 
 type Compared = {
@@ -30,7 +30,7 @@ export function CompareDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const api = useLogosApi();
+  const { api } = useDeps();
   const [left, setLeft] = useState(rows[0]?.id ?? "");
   const [right, setRight] = useState(rows[1]?.id ?? rows[0]?.id ?? "");
   const [compared, setCompared] = useState<Compared | null>(null);

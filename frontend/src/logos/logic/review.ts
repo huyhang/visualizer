@@ -33,22 +33,24 @@ export const CHECK_HINTS: Record<Check, string> = {
 export const editorAnnotationId = (issue: Pick<ReviewIssue, "id">) => `editor:${issue.id}`;
 export const coachAnnotationId = (issue: Pick<CoachIssue, "id">) => `coach:${issue.id}`;
 
-/** Open issues, drawn in the prose; dismissed and resolved ones are not. */
-export function editorAnnotations(issues: ReviewIssue[]): Annotation[] {
-  return issues
-    .filter((issue) => issue.status === "open")
-    .map((issue) => ({
-      id: editorAnnotationId(issue),
-      source: "editor" as const,
-      kind: issue.check,
-      severity: issue.severity,
-      blockId: issue.block,
-      quote: issue.quote,
-    }));
+/**
+ * Every issue, placed in the prose so the panels know whether its words are
+ * still there; only open ones are underlined, and only while `drawn`.
+ */
+export function editorAnnotations(issues: ReviewIssue[], drawn: boolean): Annotation[] {
+  return issues.map((issue) => ({
+    id: editorAnnotationId(issue),
+    source: "editor" as const,
+    kind: issue.check,
+    severity: issue.severity,
+    blockId: issue.block,
+    quote: issue.quote,
+    hidden: !drawn || issue.status !== "open",
+  }));
 }
 
-/** Coach findings the writer has not set aside, drawn in the prose. */
-export function coachAnnotations(issues: CoachIssue[]): Annotation[] {
+/** Coach findings the writer has not set aside, placed in the prose; underlined while `drawn`. */
+export function coachAnnotations(issues: CoachIssue[], drawn: boolean): Annotation[] {
   return issues.map((issue) => ({
     id: coachAnnotationId(issue),
     source: "coach" as const,
@@ -56,6 +58,7 @@ export function coachAnnotations(issues: CoachIssue[]): Annotation[] {
     severity: "info" as const,
     blockId: issue.block,
     quote: issue.excerpt,
+    hidden: !drawn,
   }));
 }
 
@@ -103,8 +106,36 @@ export function pollDelay(active: boolean, visible: boolean): number | false {
   return visible ? 3000 : 30_000;
 }
 
-/** The review to show when the tab opens: the newest. */
-export const latestReview = (reviews: ReviewSummary[]) => reviews[0] ?? null;
+/** The review to show when the tab opens: the newest of the draft being written. */
+export const latestReview = (reviews: ReviewSummary[], draft: string) =>
+  reviews.find((review) => review.draft === draft) ?? null;
+
+export type IssueShortcut = "next" | "previous" | "accept" | "dismiss";
+
+/** What a key pressed in the issue list asks for. A key held with Ctrl, Cmd or
+    Alt is the browser's (select all, a bookmark), never the list's. */
+export function issueShortcut(event: {
+  key: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+}): IssueShortcut | null {
+  if (event.ctrlKey || event.metaKey || event.altKey) return null;
+  switch (event.key.toLowerCase()) {
+    case "j":
+    case "arrowdown":
+      return "next";
+    case "k":
+    case "arrowup":
+      return "previous";
+    case "a":
+      return "accept";
+    case "d":
+      return "dismiss";
+    default:
+      return null;
+  }
+}
 
 export type IssueFilter = "open" | "done" | "all";
 

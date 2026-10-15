@@ -270,6 +270,10 @@ describe("fixes", () => {
     ["Sir Aldric rode", "Then Sir Aldric rode", { start: 0, end: 15, insert: "Then " }],
     ["very very old", "very old", { start: 5, end: 3, insert: "" }],
     ["same", "same", { start: 4, end: 0, insert: "" }],
+    // Repeated letters: the two ends never claim the same character.
+    ["aa", "aaa", { start: 2, end: 0, insert: "a" }],
+    ["aaa", "aa", { start: 2, end: 0, insert: "" }],
+    ["abab", "ab", { start: 2, end: 0, insert: "" }],
   ])("the smallest edit from %j to %j", (before, after, expected) => {
     expect(minimalEdit(before, after)).toEqual(expected);
   });
@@ -310,6 +314,104 @@ describe("fixes", () => {
     editor.commands.selectQuote("a", "the teapot");
     const { from, to } = editor.state.selection;
     expect(editor.state.doc.textBetween(from, to)).toBe("the teapot");
+  });
+
+  it.each<[string, unknown[]]>([
+    // The fix renames the linked name: the link no longer names it.
+    ["Then Lyra|So Mira", [text("So Mira left.")]],
+    ["Lyra|Mira", [text("Then Mira left.")]],
+    // The linked name comes through untouched: so does its link.
+    ["Then Lyra|So Lyra", [text("So "), mention("Lyra"), text(" left.")]],
+    ["Then Lyra|Then Lyra Song", [text("Then "), mention("Lyra"), text(" Song left.")]],
+    ["Lyra left|Lyra stayed", [text("Then "), mention("Lyra"), text(" stayed.")]],
+  ])("never leaves part of a linked name linked: %s", (fix, content) => {
+    const [quote, replacement] = fix.split("|") as [string, string];
+    const { editor, logos } = makeEditor(
+      doc(para("a", text("Then "), mention("Lyra"), text(" left."))),
+    );
+    expect(editor.commands.applyFix({ blockId: "a", quote, replacement })).toBe(true);
+    expect(logos().content[0]).toMatchObject({ content });
+  });
+
+  it("makes the fix where the words are underlined, not where they first appear", () => {
+    const { editor, logos } = makeEditor(doc(para("a", text("very well. very well."))));
+    const second = { from: 12, to: 21 };
+    expect(editor.state.doc.textBetween(second.from, second.to)).toBe("very well");
+    editor.commands.applyFix({
+      blockId: "a",
+      quote: "very well",
+      replacement: "quite well",
+      at: second,
+    });
+    expect(logos().content[0]).toMatchObject({
+      content: [text("very well. quite well.")],
+    });
+  });
+
+  it("finds the words afresh when the place it was given no longer holds them", () => {
+    const { editor, logos } = makeEditor(doc(para("a", text("She lifted the teapot."))));
+    editor.commands.applyFix({
+      blockId: "a",
+      quote: "lifted",
+      replacement: "raised",
+      at: { from: 1, to: 4 },
+    });
+    expect(logos().content[0]).toMatchObject({ content: [text("She raised the teapot.")] });
+  });
+
+  it.each<[string, string, string, string, string]>([
+    // The words the fix put in come again earlier in the paragraph.
+    ["It was red. It was very red.", "very red", "red", "It was red. It was red.", ""],
+    // A word typed elsewhere since the fix moves everything along.
+    [
+      "It was red. It was very red.",
+      "very red",
+      "red",
+      "Oh. It was red. It was red.",
+      "Oh. ",
+    ],
+    // A fix that only took words out.
+    ["The gate was very very old.", "very very", "very", "The gate was very old.", ""],
+  ])(
+    "takes a fix back exactly where it was made: %j",
+    (before, quote, replacement, accepted, typed) => {
+      const { editor, logos } = makeEditor(doc(para("a", text(before))));
+      editor.commands.applyFix({ blockId: "a", quote, replacement, track: "n1" });
+      if (typed) editor.commands.insertContentAt(1, typed);
+      expect(logos().content[0]).toMatchObject({ content: [text(accepted)] });
+      expect(editor.commands.revertFix("n1")).toBe(true);
+      expect(logos().content[0]).toMatchObject({ content: [text(typed + before)] });
+    },
+  );
+
+  it("puts a linked name back, link and all, when a fix is taken back", () => {
+    const original = doc(para("a", text("Then "), mention("Lyra"), text(" left.")));
+    const { editor, logos } = makeEditor(original);
+    editor.commands.applyFix({
+      blockId: "a",
+      quote: "Then Lyra",
+      replacement: "So Mira",
+      track: "n1",
+    });
+    editor.commands.revertFix("n1");
+    expect(logos()).toEqual(makeEditor(original).logos());
+  });
+
+  it.each<[string, (editor: ReturnType<typeof makeEditor>["editor"]) => void]>([
+    ["rewritten since", (editor) => void editor.commands.insertContentAt(7, "X")],
+    ["undone already", (editor) => void editor.commands.undo()],
+  ])("leaves the words alone when a fix's words were %s", (_why, change) => {
+    const { editor, logos } = makeEditor(doc(para("a", text("She lifted the teapot."))));
+    editor.commands.applyFix({
+      blockId: "a",
+      quote: "lifted the teapot",
+      replacement: "whisked the tea",
+      track: "n1",
+    });
+    change(editor);
+    const now = logos();
+    expect(editor.commands.revertFix("n1")).toBe(false);
+    expect(logos()).toEqual(now);
   });
 });
 
@@ -352,6 +454,54 @@ describe("annotations", () => {
     editor.commands.applyFix({ blockId: "a", quote: "teapot", replacement: "bowl" });
     expect(annotationState(editor.state)?.placement["1"]).toBeNull();
     expect(bridge.onPlacement).toHaveBeenLastCalledWith({ "1": null });
+  });
+
+  it("places an annotation it does not draw, and draws it while it is the active one", () => {
+    const { editor } = makeEditor(doc(para("a", text("She lifted the teapot."))));
+    editor.commands.setAnnotations([{ ...issue("1", "a", "the teapot"), hidden: true }]);
+    expect(annotationState(editor.state)?.placement["1"]).toEqual({ from: 12, to: 22 });
+    expect(annotationState(editor.state)?.decorations.find()).toHaveLength(0);
+    editor.commands.setActiveAnnotation("1");
+    expect(annotationState(editor.state)?.decorations.find().length).toBeGreaterThan(0);
+  });
+
+  it("stays on its own words when the same words come again, and lets go of them when they change", () => {
+    const { editor } = makeEditor(doc(para("a", text("very well. very well."))));
+    editor.commands.setAnnotations([issue("1", "a", "very well")]);
+    expect(annotationState(editor.state)?.placement["1"]).toEqual({ from: 1, to: 10 });
+    // Rewriting the first "very well" does not move the issue onto the second...
+    editor.commands.insertContentAt({ from: 1, to: 5 }, "quite");
+    expect(annotationState(editor.state)?.placement["1"]).toBeNull();
+    // ...not on the next keystroke, nor when the annotations come again.
+    editor.commands.insertContentAt(editor.state.doc.content.size - 1, "!");
+    editor.commands.setAnnotations([issue("1", "a", "very well")]);
+    expect(annotationState(editor.state)?.placement["1"]).toBeNull();
+    // Undo brings the words back, and the issue with them.
+    editor.commands.undo();
+    editor.commands.undo();
+    expect(annotationState(editor.state)?.placement["1"]).toEqual({ from: 1, to: 10 });
+  });
+
+  it("keeps an annotation on the words it was on as more of the same are typed before them", () => {
+    const { editor } = makeEditor(doc(para("a", text("very well."))));
+    editor.commands.setAnnotations([issue("1", "a", "very well")]);
+    editor.commands.insertContentAt(1, "very well, ");
+    editor.commands.setAnnotations([issue("1", "a", "very well")]);
+    expect(annotationState(editor.state)?.placement["1"]).toEqual({ from: 12, to: 21 });
+  });
+
+  it("finds a fix's words again when the fix is taken back", () => {
+    const { editor } = makeEditor(doc(para("a", text("She lifted the teapot."))));
+    editor.commands.setAnnotations([issue("1", "a", "lifted the teapot")]);
+    editor.commands.applyFix({
+      blockId: "a",
+      quote: "lifted the teapot",
+      replacement: "whisked the tea",
+      track: "n1",
+    });
+    expect(annotationState(editor.state)?.placement["1"]).toBeNull();
+    editor.commands.revertFix("n1");
+    expect(annotationState(editor.state)?.placement["1"]).toEqual({ from: 5, to: 22 });
   });
 
   it("never puts an annotation into the saved document or the undo history", () => {

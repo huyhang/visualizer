@@ -1,13 +1,16 @@
 // What each note action means, for either kind of note. Accepting rewrites the
-// quoted words as one undoable edit and marks the issue resolved; dismissing
-// sets it aside; both offer Undo. An editor's issue is triaged on the server;
-// a Coach finding only for this visit, as the Coach always worked.
+// quoted words -- the ones underlined, where the same words come twice -- as
+// one undoable edit and marks the issue resolved; dismissing sets it aside;
+// both offer Undo, which puts back exactly what was there. An editor's issue is
+// triaged on the server; a Coach finding only for this visit, as the Coach
+// always worked.
 
 import type { Editor } from "@tiptap/core";
 import { useMemo } from "react";
 import type { IssueStatus, ReviewIssue } from "../api/types";
 import { useNotify } from "../../components/ui/Toaster";
 import { useDeps } from "../deps";
+import { annotationState } from "../editor/annotations";
 import { parseRef } from "../logic/refs";
 import { noteAnchor, noteReplacement, type Note, type NoteActions } from "../logic/notes";
 import type { Coach } from "./useCoach";
@@ -60,12 +63,17 @@ export function useNoteActions(host: NoteHost): NoteActions {
       else status(note, "open");
     };
 
+    /** Where the note's words are underlined now, if they are. */
+    const underlined = (note: Note) =>
+      annotationState(host.editor.state)?.placement[note.id] ?? null;
+
     return {
       accept: (note) => {
         const { blockId, quote } = noteAnchor(note);
         const replacement = noteReplacement(note);
         if (!replacement) return;
-        if (!host.editor.commands.applyFix({ blockId, quote, replacement })) {
+        const fix = { blockId, quote, replacement, at: underlined(note), track: note.id };
+        if (!host.editor.commands.applyFix(fix)) {
           notify({
             title: "Those words have changed",
             description: "Edit the passage yourself, or mark the note resolved.",
@@ -81,11 +89,12 @@ export function useNoteActions(host: NoteHost): NoteActions {
           action: {
             label: "Undo",
             onClick: () => {
-              host.editor.commands.applyFix({
-                blockId,
-                quote: replacement,
-                replacement: quote,
-              });
+              if (!host.editor.commands.revertFix(note.id)) {
+                notify({
+                  title: "The words were left as they are",
+                  description: "They have changed since the fix. The note is open again.",
+                });
+              }
               putBack(note);
             },
           },
@@ -95,7 +104,7 @@ export function useNoteActions(host: NoteHost): NoteActions {
         const { blockId, quote } = noteAnchor(note);
         host.closeNote();
         host.toProse();
-        host.editor.chain().focus().selectQuote(blockId, quote).run();
+        host.editor.chain().focus().selectQuote(blockId, quote, underlined(note)).run();
       },
       dismiss: (note) => {
         host.closeNote();

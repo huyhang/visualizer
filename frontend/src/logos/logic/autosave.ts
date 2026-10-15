@@ -53,6 +53,8 @@ export function createAutosave<T>({
 
   const schedule = (snapshot: T) => {
     pending = snapshot;
+    // The device copy is a backstop: when it cannot be written (private
+    // browsing, a full disk) the server save still runs and reports its own failure.
     Promise.resolve(saveLocal(snapshot)).catch(() => {});
     onState("local");
     later();

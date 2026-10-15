@@ -5,7 +5,6 @@
 
 import { createContext, useContext, type ReactNode } from "react";
 import type { LogosApi } from "./api/LogosApi";
-import { LogosApiProvider } from "./api/context";
 import type { IdFactory } from "./doc/ids";
 import type { Timer } from "./logic/autosave";
 import type { Preferences } from "./logic/preferences";
@@ -39,11 +38,7 @@ export function WriterDepsProvider({
   deps: WriterDeps;
   children: ReactNode;
 }) {
-  return (
-    <DepsContext.Provider value={deps}>
-      <LogosApiProvider api={deps.api}>{children}</LogosApiProvider>
-    </DepsContext.Provider>
-  );
+  return <DepsContext.Provider value={deps}>{children}</DepsContext.Provider>;
 }
 
 export function useDeps(): WriterDeps {

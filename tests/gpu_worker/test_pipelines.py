@@ -12,6 +12,7 @@ import copy
 import pytest
 
 from tests.gpubox.spec import validator
+from visualizer.gpu_worker.common import clean_replacement
 from visualizer.gpu_worker.discussion import DiscussionPipeline
 from visualizer.gpu_worker.models import SearchHit
 from visualizer.gpu_worker.pipelines import (
@@ -389,6 +390,59 @@ def test_a_replacement_is_kept_only_when_it_rewords_the_quote(given, kept):
     assert result["issues"][0]["replacement"] == kept
 
 
+@pytest.mark.parametrize("quote,given,kept", [
+    # The full stop after the quote is in the prose: it is not put there twice.
+    ("lifted the teapot and poured", "whisked the tea and poured.",
+     "whisked the tea and poured"),
+    # ...and one that clashes with it cannot be accepted as words for the quote.
+    ("lifted the teapot and poured", "whisked the tea and poured!", None),
+    # A quote the model ended with that stop: the replacement shares it.
+    ("lifted the teapot and poured.", "whisked the tea and poured.",
+     "whisked the tea and poured"),
+])
+def test_a_replacement_fits_the_punctuation_around_its_quote(quote, given, kept):
+    result, _, _ = run_review(issues=[
+        issue("anachronism", "b1", quote, "song/research/tea", replacement=given)])
+    validator("ReviewResult").validate(result)
+    assert result["issues"][0]["replacement"] == kept
+
+
+@pytest.mark.parametrize("given,raw_quote,following,kept", [
+    ("whisked the tea", "lifted the teapot", " and poured.", "whisked the tea"),
+    # Quote marks around the whole answer are presentation, not prose.
+    ('"whisked the tea."', "lifted the teapot", " and poured.", "whisked the tea"),
+    ('"whisked the tea".', "lifted the teapot", " and poured.", "whisked the tea"),
+    ("“whisked the tea”", "lifted the teapot", " and poured.", "whisked the tea"),
+    # Wrapping the model gave the quote too comes off both alike.
+    ('"whisked the tea."', '"lifted the teapot."', "", "whisked the tea"),
+    ("…whisked the tea", "…lifted the teapot", "", "whisked the tea"),
+    ("she said, “Go home.”", "she said, “go home”", "” and left.",
+     "she said, “Go home."),
+    # Otherwise its punctuation is the fix, and is kept.
+    ("He left.", "He left", " Then he ran.", "He left."),
+    ('"Stop," she said.', "Stop she said", " Then", '"Stop," she said.'),
+    ("whispered,", "said", " and left", "whispered,"),
+    # A full stop cannot end words the sentence goes on after.
+    ("whisked the tea.", "lifted the teapot", " and poured.", "whisked the tea"),
+    # A stop already in the prose after the quote is not doubled...
+    ("she whispered.", "she said", ". Then", "she whispered"),
+    # ...and one that clashes with it, or with the stop the quote left out,
+    # cannot be said as words for the quote.
+    ("she cried!", "she said", ". Then", None),
+    ("He left!", "He left.", "", None),
+    # No fix at all.
+    ("lifted the teapot", "lifted the teapot", "", None),
+    ('"lifted the teapot."', "lifted the teapot", "", None),
+    ("  ", "lifted the teapot", "", None),
+    (None, "lifted the teapot", "", None),
+    # Too long to keep whole is not kept cut short.
+    pytest.param("x" * 1001, "lifted the teapot", "", None, id="too-long"),
+    pytest.param("x" * 1000, "lifted the teapot", "", "x" * 1000, id="longest"),
+])
+def test_clean_replacement(given, raw_quote, following, kept):
+    assert clean_replacement(given, raw_quote, following) == kept
+
+
 def test_the_model_is_asked_for_the_exact_replacement():
     _, model, _ = run_review()
     assert '"replacement" (the exact words to put in place of the quote' \
@@ -483,6 +537,10 @@ def run_discussion(answer, request=None, model=None):
     ({"reply": "Ewer works.", "stance": "revises",
       "suggestion": "Call it a ewer.", "replacement": "lifted the teapot"},
      "revises", "Call it a ewer.", None),
+    # The passage goes on " and poured.", so a full stop cannot end the words.
+    ({"reply": "Ewer works.", "stance": "revises",
+      "suggestion": "Call it a ewer.", "replacement": "lifted the ewer."},
+     "revises", "Call it a ewer.", "lifted the ewer"),
     ({"reply": "Ewer works.", "stance": "revises", "suggestion": "Call it a ewer."},
      "revises", "Call it a ewer.", None),
     ({"reply": "It still reads as steeping.", "stance": "maintains",

@@ -95,7 +95,8 @@ issues are stored once, however many tabs are polling. Each issue has:
 - `message` and `suggestion`;
 - `replacement`: the exact words to put in place of the quote, when the fix
   is a rewording of them, so it can be accepted in one step; `null` when the
-  suggestion is advice;
+  suggestion is advice. It is kept whole or not at all: one longer than 1,000
+  characters is `null` rather than cut short;
 - `reference`: the article the issue is based on, `null` for prose issues;
 - `verified`: `true` when a second machine confirmed it, `null` when there
   was no second check;

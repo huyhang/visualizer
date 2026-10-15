@@ -1,5 +1,5 @@
 import { lookupText } from "../hooks/useAkasha";
-import { usesDrawers } from "./layout";
+import { keyboardCover, usesDrawers } from "./layout";
 import { memoryStore } from "./preferences";
 import {
   applyReadingSettings,
@@ -95,5 +95,28 @@ describe("usesDrawers", () => {
     [1000, 0, false], // no measurement yet
   ])("%ipx at %ipx a rem: drawers=%s", (width, rem, expected) => {
     expect(usesDrawers(width, rem)).toBe(expected);
+  });
+});
+
+describe("keyboardCover", () => {
+  const phone = {
+    innerWidth: 390,
+    innerHeight: 844,
+    width: 390,
+    height: 844,
+    offsetTop: 0,
+    scale: 1,
+  };
+  it.each<[string, Partial<typeof phone>, number]>([
+    ["no keyboard", {}, 0],
+    ["a keyboard over the lower part", { height: 500 }, 344],
+    ["a keyboard, the page scrolled up under it", { height: 500, offsetTop: 100 }, 244],
+    // Pinching in shrinks the visual viewport too; that is no keyboard.
+    ["pinched in", { width: 195, height: 422, offsetTop: 200, scale: 2 }, 0],
+    // A first layout wider than the screen (before the panels become drawers)
+    // stretches the window's own size for a moment.
+    ["a layout still wider than the screen", { innerWidth: 599, innerHeight: 1297 }, 0],
+  ])("%s", (_name, patch, expected) => {
+    expect(keyboardCover({ ...phone, ...patch })).toBe(expected);
   });
 });

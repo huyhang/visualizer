@@ -94,6 +94,10 @@ export function Workspace({ workspace, route }: { workspace: Loaded; route: Rout
   const session = useDraftSession(workspace, reader);
   const coach = useCoach(at.book, reader.document);
   const review = useEditorReview(at, session.drafts.current.id, session.actions.settled);
+  const draftNames = useMemo(
+    () => Object.fromEntries(session.drafts.rows.map((row) => [row.id, row.name])),
+    [session.drafts.rows],
+  );
   const akasha = useAkasha(at.book);
   const [askName, nameDialog] = useNameDialog();
 
@@ -167,7 +171,13 @@ export function Workspace({ workspace, route }: { workspace: Loaded; route: Rout
 
   // -- notes: what is drawn, and what is open ------------------------------------
 
-  const issues = useMemo(() => review.review?.issues ?? [], [review.review]);
+  // A review of another draft is listed in the Editor tab, but its issues are
+  // not this draft's to draw or act on.
+  const draftId = session.drafts.current.id;
+  const issues = useMemo(
+    () => (review.review?.draft === draftId ? (review.review.issues ?? []) : []),
+    [review.review, draftId],
+  );
   const issuesRef = useLatest(issues);
   const notes = useMemo(() => {
     const all = new Map<string, Note>();
@@ -178,10 +188,12 @@ export function Workspace({ workspace, route }: { workspace: Loaded; route: Rout
     return all;
   }, [issues, review.review, coach.issues]);
 
+  // Every note is placed, so the panels can tell whose words are still there;
+  // the layer switches say only which are underlined.
   const annotations = useMemo(
     () => [
-      ...(layers.editor ? editorAnnotations(issues) : []),
-      ...(layers.coach ? coachAnnotations(coach.issues) : []),
+      ...editorAnnotations(issues, layers.editor),
+      ...coachAnnotations(coach.issues, layers.coach),
     ],
     [layers, issues, coach.issues],
   );
@@ -449,6 +461,7 @@ export function Workspace({ workspace, route }: { workspace: Loaded; route: Rout
               review={review}
               at={at}
               draftId={session.drafts.current.id}
+              draftNames={draftNames}
               settled={session.actions.settled}
               settings={{ ...ask, dialect: coach.dialect }}
               onSettings={({ checks, verify, include, dialect }) => {

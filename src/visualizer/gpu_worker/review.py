@@ -190,6 +190,8 @@ def admit(issue: dict, part: list[dict], checks: list[str], by_ref: dict) -> dic
     if not message:
         return None
     suggestion = str(issue.get("suggestion") or "").strip() or None
+    text = texts[block]
+    following = text[text.find(quote) + len(quote):]
     return {
         "check": check,
         "severity": issue.get("severity") if issue.get("severity") in ("info", "warning")
@@ -200,7 +202,8 @@ def admit(issue: dict, part: list[dict], checks: list[str], by_ref: dict) -> dic
         "quote": quote,
         "message": message[:1000],
         "suggestion": suggestion[:1000] if suggestion else None,
-        "replacement": clean_replacement(issue.get("replacement"), quote),
+        "replacement": clean_replacement(issue.get("replacement"), issue.get("quote"),
+                                         following),
         "reference": ref,
         "verified": None,
     }

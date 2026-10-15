@@ -444,6 +444,8 @@ def test_a_revised_replacement_goes_back_to_the_box_next_turn(client, fake):
     (42, None),
     ("QUOTE", None),                              # the quote itself is no fix
     ("Lyra looked up, grey-eyed", "Lyra looked up, grey-eyed"),
+    ("x" * 1000, "x" * 1000),
+    ("x" * 1001, None),                           # never kept cut short
 ])
 def test_a_replacement_from_the_box_is_checked(make, given, kept):
     class Rewording(FakeWorker):

@@ -165,6 +165,8 @@ export function createDraftSession(input: SessionInput, deps: SessionDeps) {
         { name: created.name, document: held.document },
         created.rev,
       );
+      // The words are safe in the new draft. A device copy left behind only
+      // offers itself again on the next visit, and the next save clears it.
       await recovery.remove(key).catch(() => {});
       navigate(api.writerUrl(at, kept.id));
     },

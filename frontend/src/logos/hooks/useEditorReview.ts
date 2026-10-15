@@ -2,9 +2,10 @@
 //
 //   availability  whether the GPU box can take a review now (asked every 30 s)
 //   reviews       this section's kept reviews, newest first
-//   review        the one being looked at -- the newest unless the writer chose
-//                 another -- polled every few seconds while it runs
-//   replies       issues the editor is replying to, polled until the reply lands
+//   review        the one being looked at -- the newest of this draft unless the
+//                 writer chose another -- polled every few seconds while it runs
+//   replies       issues the editor is replying to, asked after round by round
+//                 until the reply lands, whether or not the last round got through
 //
 // Asking saves the draft first: the server reviews the draft it has, so words
 // still on their way would be left out. Triage shows at once and is put back
@@ -36,7 +37,12 @@ export function useEditorReview(
   const client = useQueryClient();
   const visible = useVisible(visibility);
   const keys = useMemo(() => reviewKeys(at), [at]);
-  const [chosen, setChosen] = useState<string | null>(null);
+  // A choice belongs to the draft it was made on; another draft opens on its own.
+  const [chosen, setChosen] = useState<{ draft: string; id: string } | null>(null);
+  const choose = useCallback(
+    (id: string | null) => setChosen(id === null ? null : { draft: draftId, id }),
+    [draftId],
+  );
 
   const availability = useQuery({
     queryKey: keys.availability,
@@ -46,7 +52,10 @@ export function useEditorReview(
   });
 
   const list = useQuery({ queryKey: keys.list, queryFn: () => api.reviews(at) });
-  const viewing = chosen ?? latestReview(list.data ?? [])?.id ?? null;
+  const viewing =
+    (chosen?.draft === draftId ? chosen.id : null) ??
+    latestReview(list.data ?? [], draftId)?.id ??
+    null;
 
   const review = useQuery({
     queryKey: keys.review(viewing),
@@ -71,23 +80,31 @@ export function useEditorReview(
     [client, keys],
   );
 
-  // Replies are asked after one issue at a time, not with the review.
+  // Replies are asked after one issue at a time, not with the review. Each
+  // round ends by counting itself, which arms the next even when nothing came
+  // back: a failed ask changes no issue, so nothing else would.
   const replying = (review.data?.issues ?? []).filter(isReplying);
   const replyingIds = replying.map((issue) => issue.id).join(",");
+  const [rounds, setRounds] = useState(0);
   useEffect(() => {
     const reviewId = review.data?.id;
     const delay = pollDelay(replyingIds !== "", visible);
     if (!reviewId || delay === false) return;
+    let live = true;
     const handle = timer.set(async () => {
       for (const id of replyingIds.split(",")) {
         try {
           patchIssue(reviewId, await api.issue(at, reviewId, id));
         } catch {
-          // The next round asks again.
+          // Nothing to show for this round; the next one asks again.
         }
       }
+      if (live) setRounds((n) => n + 1);
     }, delay);
-    return () => timer.clear(handle);
+    return () => {
+      live = false;
+      timer.clear(handle);
+    };
   }, [
     api,
     at,
@@ -95,6 +112,7 @@ export function useEditorReview(
     replyingIds,
     review.data?.id,
     review.dataUpdatedAt,
+    rounds,
     timer,
     visible,
   ]);
@@ -109,7 +127,7 @@ export function useEditorReview(
     },
     onSuccess: (started) => {
       client.setQueryData(keys.review(started.id), started);
-      setChosen(started.id);
+      choose(started.id);
       // Ask straight away how it is going: a box with the model loaded is
       // already reading, and a fake one may be done.
       void client.invalidateQueries({ queryKey: keys.review(started.id) });
@@ -161,7 +179,7 @@ export function useEditorReview(
     loading: list.isLoading || (viewing !== null && review.isLoading),
     error: review.error ?? list.error ?? null,
     viewing,
-    choose: setChosen,
+    choose,
     ask,
     cancel,
     setStatus,

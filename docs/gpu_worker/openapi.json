@@ -2085,7 +2085,7 @@
               "null"
             ],
             "maxLength": 1000,
-            "description": "The exact text to put in place of quote to make the fix, so the writer can accept it in one step; null when the fix is not a direct rewording of the quoted words. Never equal to quote."
+            "description": "The exact text to put in place of quote to make the fix, so the writer can accept it in one step; null when the fix is not a direct rewording of the quoted words. Never equal to quote, and never cut short: null rather than longer than maxLength."
           },
           "reference": {
             "oneOf": [
@@ -2146,7 +2146,7 @@
               "null"
             ],
             "maxLength": 1000,
-            "description": "The exact text to put in place of the issue's quote for the new fix; only with stance revises, and only when the fix is a direct rewording of the quoted words. Otherwise null."
+            "description": "The exact text to put in place of the issue's quote for the new fix; only with stance revises, and only when the fix is a direct rewording of the quoted words. Otherwise null. Never cut short: null rather than longer than maxLength."
           },
           "model": {
             "type": "string"

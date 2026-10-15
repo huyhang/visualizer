@@ -4,6 +4,7 @@
 // A reply never changes the issue's status: the writer decides.
 
 import { useState } from "react";
+import { messageOf } from "../../api/errors";
 import type { ReviewIssue, Turn } from "../../api/types";
 import { Button } from "../../../components/ui/Button";
 import { Spinner } from "../../../components/ui/Spinner";
@@ -43,24 +44,32 @@ function TurnView({ turn, quote }: { turn: Turn; quote: string }) {
 export function Discussion({
   issue,
   onSend,
-  sending,
-  error,
 }: {
   issue: ReviewIssue;
-  onSend: (text: string) => void;
-  sending: boolean;
-  error: string | null;
+  /** Post a message; rejects, with the reason, if it was not taken. */
+  onSend: (text: string) => Promise<void>;
 }) {
   const [text, setText] = useState("");
+  // This issue's own: a message that failed on one issue says nothing on another.
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const replying = isReplying(issue);
   const used = issue.discussion.filter((turn) => turn.role === "writer").length;
   const full = used >= MAX_MESSAGES;
   const busy = replying || sending;
-  const send = (message: string) => {
+  const send = async (message: string) => {
     const trimmed = message.trim();
     if (!trimmed || busy || full) return;
-    onSend(trimmed);
-    setText("");
+    setSending(true);
+    setError(null);
+    try {
+      await onSend(trimmed);
+      setText(""); // only once it is taken: a refused message stays to send again
+    } catch (failure) {
+      setError(messageOf(failure, "The message could not be sent."));
+    } finally {
+      setSending(false);
+    }
   };
   return (
     <section className="lw-discussion" aria-label="Discussion with the editor">
@@ -103,7 +112,7 @@ export function Discussion({
                   type="button"
                   className="lw-prompt"
                   disabled={busy}
-                  onClick={() => send(prompt)}
+                  onClick={() => void send(prompt)}
                 >
                   {prompt}
                 </button>
@@ -114,7 +123,7 @@ export function Discussion({
             className="lw-composer"
             onSubmit={(event) => {
               event.preventDefault();
-              send(text);
+              void send(text);
             }}
           >
             <textarea
@@ -129,7 +138,7 @@ export function Discussion({
               onKeyDown={(event) => {
                 if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
                   event.preventDefault();
-                  send(text);
+                  void send(text);
                 }
               }}
             />

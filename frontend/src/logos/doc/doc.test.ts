@@ -1,7 +1,7 @@
 import { compactInline, logosToPm, MAX_TEXT, pmToLogos } from "./convert";
 import { safeHref } from "./href";
 import { uniqueIds } from "./ids";
-import { locateQuote } from "./locate";
+import { locateAll, locateQuote } from "./locate";
 import { blockText, wordCount } from "./text";
 import { curlDocument, curlText, curlTypedMark, fixElisions } from "./typography";
 import type { LogosDocument } from "./types";
@@ -214,6 +214,42 @@ describe("locateQuote", () => {
   ])("%s", (_name, haystack, quote, expected) => {
     const span = locateQuote(haystack, quote);
     expect(span ? haystack.slice(span.start, span.end) : null).toBe(expected);
+  });
+});
+
+describe("locateAll", () => {
+  it.each<[string, string, string, [number, number][]]>([
+    [
+      "every time it comes",
+      "very well. very well.",
+      "very well",
+      [
+        [0, 9],
+        [11, 20],
+      ],
+    ],
+    [
+      "overlapping places",
+      "aaa",
+      "aa",
+      [
+        [0, 2],
+        [1, 3],
+      ],
+    ],
+    [
+      "loosely, as locateQuote does",
+      "“No,” he said. “No,” she said.",
+      `"No,"`,
+      [
+        [0, 5],
+        [15, 20],
+      ],
+    ],
+    ["nowhere", "She lifted the kettle.", "teapot", []],
+    ["an empty quote", "anything", "", []],
+  ])("%s", (_name, haystack, quote, expected) => {
+    expect(locateAll(haystack, quote).map((s) => [s.start, s.end])).toEqual(expected);
   });
 });
 

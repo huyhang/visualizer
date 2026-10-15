@@ -390,13 +390,20 @@ def _editor_turn(result) -> dict:
     return {"role": "editor", "text": result["reply"].strip()[:2000],
             "stance": result["stance"],
             "suggestion": _optional_text(result.get("suggestion"), 1000),
-            "replacement": _optional_text(result.get("replacement"), 1000),
+            "replacement": _whole_text(result.get("replacement"), 1000),
             "model": str(result.get("model") or "")[:100] or None}
 
 
 def _optional_text(value, limit: int) -> str | None:
     """A string the box may leave out or null, cut to ``limit``; None if blank."""
     return value[:limit] if isinstance(value, str) and value.strip() else None
+
+
+def _whole_text(value, limit: int) -> str | None:
+    """Exact words the box may leave out or null: None if blank, or if longer
+    than ``limit`` -- a replacement cut short would put half a fix in the prose."""
+    text = _optional_text(value, limit + 1)
+    return text if text is not None and len(text) <= limit else None
 
 
 def _turn_view(turn: dict) -> dict:
@@ -447,7 +454,7 @@ def _issues(result) -> list[dict]:
         if not all(isinstance(value, str) and value for value in text.values()):
             raise MalformedResult("malformed issue")
         suggestion, reference = raw.get("suggestion"), raw.get("reference")
-        replacement = _optional_text(raw.get("replacement"), 1000)
+        replacement = _whole_text(raw.get("replacement"), 1000)
         issues.append({
             "id": f"i{n}", "check": raw["check"],
             "severity": raw.get("severity") if raw.get("severity") in (

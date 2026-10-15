@@ -48,6 +48,45 @@ export function reviewIssue(id: string, patch: Partial<ReviewIssue> = {}): Revie
   };
 }
 
+/** A finished review of `draft` that found `issues`. */
+export function doneReview(id: string, draft: string, issues: ReviewIssue[]): Review {
+  return {
+    id,
+    draft,
+    draft_rev: 3,
+    state: "done",
+    progress: null,
+    error: null,
+    created_at: "2026-10-14T09:00:00Z",
+    updated_at: "2026-10-14T09:01:00Z",
+    checks: ["continuity", "anachronism", "prose"],
+    dialect: "en-US",
+    verify: "auto",
+    verification: {
+      status: "checked",
+      model: "gemma3",
+      checked: issues.length,
+      removed: 0,
+    },
+    model: "qwen3:30b",
+    generated_at: "2026-10-14T09:01:00Z",
+    references: [],
+    skipped: [],
+    outdated: false,
+    issues,
+  };
+}
+
+/** A draft of the section, with its own words. */
+export function draftOf(
+  id: string,
+  name: string,
+  document: LogosDocument = CHAPTER,
+  primary = id === "draft-1",
+): Draft {
+  return { id, name, primary, rev: 3, document };
+}
+
 export interface FakeState {
   manuscript: Manuscript;
   section: Section;

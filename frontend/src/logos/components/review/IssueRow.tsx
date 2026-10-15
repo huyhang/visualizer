@@ -18,13 +18,14 @@ export function IssueRow({
   onChoose,
 }: {
   issue: ReviewIssue;
-  placed: boolean;
+  /** Whether its words are in the draft now; null when the issue is another draft's. */
+  placed: boolean | null;
   active: boolean;
   onChoose: () => void;
 }) {
   const stance = stanceOf(issue);
-  const fixable =
-    Boolean(currentFix(issue).replacement) && placed && issue.status === "open";
+  const open = issue.status === "open";
+  const fixable = Boolean(currentFix(issue).replacement) && placed === true && open;
   return (
     <li>
       <button
@@ -42,7 +43,9 @@ export function IssueRow({
               <span className="lw-issue-flag">Warning</span>
             ) : null}
             {fixable ? <span className="lw-issue-flag is-fix">Fix ready</span> : null}
-            {!placed ? <span className="lw-issue-flag">Changed</span> : null}
+            {placed === false && open ? (
+              <span className="lw-issue-flag">Changed</span>
+            ) : null}
             {isReplying(issue) ? (
               <span className="lw-issue-flag is-busy">Replying…</span>
             ) : null}
