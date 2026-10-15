@@ -67,13 +67,17 @@ and date still comes from the server:
 - **The inspector.** A scene, goal, thread or Akasha article opens in a panel
   beside whatever you are reading, replacing the classic peek card and most of
   its modals; following a link inside it stacks, and Back unwinds.
-- **⌘K** (Ctrl+K) jumps to any thread, scene, goal, book or member of the cast
-  (open their article, or follow them), or starts something new.
+- **⌘K** (Ctrl+K) jumps to any thread, scene (on a thread or not), goal, book
+  or member of the cast (open their article, or follow them), or starts
+  something new.
 - **Triage** on the Issues screen walks the report one issue at a time
   (`J`/`K`), each opened beside the list. A save anywhere marks the book stale,
   so the report re-checks as soon as a fix lands and triage moves on to the next.
 - **Follow** a character, place or thing from the sidebar and every screen that
   shows scenes fades the ones they are not in.
+- **On a phone** the sidebar becomes five tabs above the screen; "Dates in",
+  Follow, the library and the way back to the classic page are in the **View**
+  sheet (⚙), which is marked while one of them changes what the screens show.
 - The thread editor gains **undo/redo** and **compare an alternative order**:
   fork the order, edit both, see each previewed by the server side by side, and
   keep the one that holds together. Nothing is saved until Save.

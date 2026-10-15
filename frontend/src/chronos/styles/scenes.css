@@ -485,8 +485,11 @@
   width: 1.45rem;
 }
 .cw-tl-stage.is-narrow .cw-tl-label {
-  left: 1.25rem;
-  transform: translate(-18%, -50%);
+  /* Starts inside the stage, beside the rail, however long the date it says:
+     a share of its own width to the left of the rail ran off a phone's edge. */
+  left: 0.35rem;
+  transform: translate(0, -50%);
+  max-width: calc(100% - 3rem);
 }
 .cw-tl-stage.is-narrow .cw-tl-overview {
   right: 0.25rem;

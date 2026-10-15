@@ -6,6 +6,7 @@
 // calendar library.
 
 import { DropdownMenu } from "radix-ui";
+import { useState } from "react";
 import type { Route } from "../../logic/route";
 import { bookOf, to } from "../../logic/route";
 import { useBooks, useReport } from "../../hooks/queries";
@@ -14,13 +15,17 @@ import { useDeps } from "../../deps";
 import { CalendarSwitcher } from "../common/Fields";
 import { Link } from "../common/Link";
 import { useOptionalBookScope } from "./BookScope";
-import { LensPicker } from "./Lens";
+import { LensChip, LensPicker, useLens } from "./Lens";
+import { ViewSheet } from "./ViewSheet";
+import { useNarrow } from "../../hooks/useNarrow";
 import { Icon, type IconName } from "../../../components/ui/Icon";
 import { plural } from "../../logic/text";
 import { shortcutLabel } from "../common/keys";
 
 interface Section {
   label: string;
+  /** What a phone's tab says, where the label would not fit. */
+  short?: string;
   icon: IconName;
   route: Route;
   active: boolean;
@@ -40,7 +45,13 @@ export function bookSections(route: Route, book: string, problems: number): Sect
     },
     { label: "Scenes", icon: "scenes", route: to.scenes(book), active: view === "scenes" },
     { label: "Goals", icon: "target", route: to.goals(book), active: view === "goals" },
-    { label: "Story map", icon: "map", route: to.map(book), active: view === "map" },
+    {
+      label: "Story map",
+      short: "Map",
+      icon: "map",
+      route: to.map(book),
+      active: view === "map",
+    },
     {
       label: "Issues",
       icon: "alert",
@@ -60,7 +71,14 @@ function NavLink({ section }: { section: Section }) {
       aria-current={section.active ? "page" : undefined}
     >
       <Icon name={section.icon} size={17} />
-      <span className="cw-nav-label">{section.label}</span>
+      <span className={`cw-nav-label${section.short ? " has-short" : ""}`}>
+        {section.label}
+      </span>
+      {section.short ? (
+        <span className="cw-nav-label-short" aria-hidden="true">
+          {section.short}
+        </span>
+      ) : null}
       {section.badge ? (
         <span
           className={`cw-nav-badge is-${section.tone ?? "muted"}`}
@@ -119,7 +137,7 @@ function BookNav({ book }: { book: string }) {
   const { data: report } = useReport(book, scope?.calendar ?? null);
   const sections = bookSections(route, book, report?.summary.problems ?? 0);
   return (
-    <nav className="cw-nav" aria-label="This book">
+    <nav className="cw-nav cw-nav-book" aria-label="This book">
       {sections.map((s) => (
         <NavLink key={s.label} section={s} />
       ))}
@@ -127,11 +145,10 @@ function BookNav({ book }: { book: string }) {
   );
 }
 
-export function Sidebar({ onSearch }: { onSearch: () => void }) {
+/** The library and the way back to the classic page: the sidebar's foot, or the sheet's. */
+function Elsewhere({ onGo }: { onGo?: () => void }) {
   const { route } = useRoute();
   const { classicUrl, location } = useDeps();
-  const scope = useOptionalBookScope();
-  const book = bookOf(route);
   const library: Section[] = [
     { label: "Books", icon: "home", route: to.books(), active: route.view === "books" },
     {
@@ -142,26 +159,8 @@ export function Sidebar({ onSearch }: { onSearch: () => void }) {
     },
   ];
   return (
-    <aside className="cw-sidebar">
-      <BookSwitcher book={book} />
-      <button type="button" className="cw-search-trigger" onClick={onSearch}>
-        <Icon name="search" size={15} />
-        <span>Search or jump to…</span>
-        <kbd className="cw-kbd">{shortcutLabel("K")}</kbd>
-      </button>
-      {book ? <BookNav book={book} /> : null}
-      {scope ? (
-        <div className="cw-sidebar-block">
-          <CalendarSwitcher
-            calendars={scope.calendars}
-            value={scope.calendar}
-            onChange={scope.choose}
-          />
-          <LensPicker />
-        </div>
-      ) : null}
-      <div className="cw-sidebar-spacer" />
-      <nav className="cw-nav cw-nav-library" aria-label="Library">
+    <>
+      <nav className="cw-nav cw-nav-library" aria-label="Library" onClick={onGo}>
         <div className="cw-nav-heading">Library</div>
         {library.map((s) => (
           <NavLink key={s.label} section={s} />
@@ -170,6 +169,81 @@ export function Sidebar({ onSearch }: { onSearch: () => void }) {
       <a className="cw-classic-link" href={classicUrl(location.current())}>
         <Icon name="arrowLeft" size={13} /> Classic view
       </a>
+    </>
+  );
+}
+
+/** The calendar the book is read in, and who is followed. */
+function ReadingControls() {
+  const scope = useOptionalBookScope();
+  if (!scope) return null;
+  return (
+    <div className="cw-sidebar-block">
+      <CalendarSwitcher
+        calendars={scope.calendars}
+        value={scope.calendar}
+        onChange={scope.choose}
+      />
+      <LensPicker />
+    </div>
+  );
+}
+
+/**
+ * On a phone: the View button, marked while something in it changes what the
+ * screens show (another calendar, someone followed), and its sheet.
+ */
+function ViewButton() {
+  const scope = useOptionalBookScope();
+  const lens = useLens();
+  const [open, setOpen] = useState(false);
+  const shaping = Boolean(scope?.calendar) || lens.subject !== null;
+  return (
+    <>
+      <button
+        type="button"
+        className={`cw-view-trigger${shaping ? " is-shaping" : ""}`}
+        aria-label={shaping ? "View options (some are set)" : "View options"}
+        onClick={() => setOpen(true)}
+      >
+        <Icon name="settings" size={17} />
+      </button>
+      <ViewSheet open={open} onOpenChange={setOpen}>
+        <ReadingControls />
+        <Elsewhere onGo={() => setOpen(false)} />
+      </ViewSheet>
+    </>
+  );
+}
+
+export function Sidebar({ onSearch }: { onSearch: () => void }) {
+  const { route } = useRoute();
+  const book = bookOf(route);
+  const narrow = useNarrow();
+  return (
+    <aside className="cw-sidebar">
+      <BookSwitcher book={book} />
+      <button
+        type="button"
+        className="cw-search-trigger"
+        aria-label="Search or jump to"
+        onClick={onSearch}
+      >
+        <Icon name="search" size={15} />
+        <span className="cw-search-trigger-text">Search or jump…</span>
+        <kbd className="cw-kbd">{shortcutLabel("K")}</kbd>
+      </button>
+      {narrow ? <ViewButton /> : null}
+      {book ? <BookNav book={book} /> : null}
+      {narrow ? (
+        <LensChip />
+      ) : (
+        <>
+          <ReadingControls />
+          <div className="cw-sidebar-spacer" />
+          <Elsewhere />
+        </>
+      )}
     </aside>
   );
 }

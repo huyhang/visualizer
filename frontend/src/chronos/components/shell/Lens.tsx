@@ -137,3 +137,24 @@ function CastOption({ book, member }: { book: string; member: CastMember }) {
     >{`${name} · ${plural(member.scenes, "scene")}`}</option>
   );
 }
+
+/**
+ * Who is being followed, said where the screens begin, with the way to stop:
+ * on a phone the picker is tucked into the View sheet, and faded scenes need
+ * a reason in sight.
+ */
+export function LensChip() {
+  const scope = useOptionalBookScope();
+  const lens = useLens();
+  if (!scope || !lens.subject) return null;
+  return (
+    <div className="cw-lens-chip" role="status">
+      <Icon name="lens" size={14} />
+      <span className="cw-lens-chip-text">
+        Following <EntityName book={scope.id} entity={lens.subject} /> ·{" "}
+        {plural(lens.featured?.size ?? 0, "scene")}
+      </span>
+      <IconButton icon="x" label="Stop following" onClick={() => lens.follow(null)} />
+    </div>
+  );
+}
