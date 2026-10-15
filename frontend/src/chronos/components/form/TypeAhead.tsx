@@ -37,6 +37,8 @@ export function TypeAhead<T>({
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [options, setOptions] = useState<Option<T>[]>([]);
+  // A search that failed says so: "nothing matches" would be a wrong answer.
+  const [failed, setFailed] = useState(false);
   const [active, setActive] = useState(0);
   const settled = useDebounced(query, 150);
 
@@ -47,9 +49,14 @@ export function TypeAhead<T>({
       .then((found) => {
         if (!live) return;
         setOptions(found);
+        setFailed(false);
         setActive(0);
       })
-      .catch(() => live && setOptions([]));
+      .catch(() => {
+        if (!live) return;
+        setOptions([]);
+        setFailed(true);
+      });
     return () => {
       live = false;
     };
@@ -126,7 +133,9 @@ export function TypeAhead<T>({
             </li>
           ))}
           {options.length === 0 ? (
-            <li className="cw-typeahead-empty">{emptyText}</li>
+            <li className="cw-typeahead-empty" role={failed ? "alert" : undefined}>
+              {failed ? "Could not search — try again in a moment." : emptyText}
+            </li>
           ) : null}
         </ul>
       ) : null}

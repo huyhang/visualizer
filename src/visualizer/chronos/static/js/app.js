@@ -79,9 +79,20 @@ const mapHash = (book, ids) =>
   `#/${enc(book)}/${MAP}` + (ids && ids.length ? `/${ids.map(enc).join(",")}` : "");
 const toMap = (book) => go(mapHash(book, []));
 
+// The hash's segments as written; a malformed escape is kept as typed rather
+// than stopping the page.
+function rawHashParts() {
+  return window.location.hash.replace(/^#\/?/, "").split("/").filter((s) => s.length);
+}
+function decodePart(part) {
+  try {
+    return decodeURIComponent(part);
+  } catch (e) {
+    return part;
+  }
+}
 function parseHash() {
-  const raw = window.location.hash.replace(/^#\/?/, "");
-  return raw.split("/").filter((s) => s.length).map(decodeURIComponent);
+  return rawHashParts().map(decodePart);
 }
 
 // -- the peek slot -----------------------------------------------------------
@@ -154,7 +165,8 @@ function route() {
     });
   } else if (parts[1] === MAP) {
     mountStoryMap(content, parts[0], {
-      selection: parts[2] ? parts[2].split(",").filter(Boolean) : [],
+      // Split as written, then decode: an id holding a comma is written %2C.
+      selection: parts[2] ? rawHashParts()[2].split(",").filter(Boolean).map(decodePart) : [],
       connectedFrom: null,
       focusEvent: null,
       hashFor: (ids) => mapHash(parts[0], ids),

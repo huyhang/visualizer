@@ -48,6 +48,9 @@ describe("hashFor", () => {
     to.threads("the book"),
     to.goals("b", "g/1"),
     to.map("b", ["a", "b"]),
+    // An id holding a comma stays one thread, not two.
+    to.map("b", ["a,b", "c"]),
+    to.map("b", ["50%", "c"]),
     to.connected("b", "p"),
     to.plotline("b", "p", "s"),
   ])("round-trips %j", (route) => {

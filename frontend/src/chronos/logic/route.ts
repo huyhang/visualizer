@@ -40,29 +40,37 @@ const ISSUES = "~issues";
 const MAP = "~map";
 const CALENDARS = "~calendars";
 
-/** The hash's segments, decoded. A malformed escape is kept as typed. */
-export function segments(hash: string): string[] {
+/** One segment, decoded. A malformed escape is kept as typed. */
+function decode(segment: string): string {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
+
+/** The hash's segments as written, before decoding. */
+function rawSegments(hash: string): string[] {
   return hash
     .replace(/^#\/?/, "")
     .split("/")
-    .filter((s) => s.length > 0)
-    .map((s) => {
-      try {
-        return decodeURIComponent(s);
-      } catch {
-        return s;
-      }
-    });
+    .filter((s) => s.length > 0);
 }
 
-function bookRoute(book: string, rest: string[]): Route {
+/** The hash's segments, decoded. */
+export function segments(hash: string): string[] {
+  return rawSegments(hash).map(decode);
+}
+
+function bookRoute(book: string, rest: string[], raw: string[]): Route {
   const [first, second, third] = rest;
   if (first === undefined) return { view: "threads", book };
   if (first === SCENES) return { view: "scenes", book };
   if (first === ISSUES) return { view: "issues", book };
   if (first === GOALS) return { view: "goals", book, goal: second ?? null };
   if (first === MAP) {
-    const selection = (second ?? "").split(",").filter(Boolean);
+    // Split as written, then decode: an id holding a comma is written %2C.
+    const selection = (raw[1] ?? "").split(",").filter(Boolean).map(decode);
     return { view: "map", book, selection, connectedFrom: null, focusEvent: null };
   }
   if (second === "connected") {
@@ -79,10 +87,11 @@ function bookRoute(book: string, rest: string[]): Route {
 }
 
 export function parseRoute(hash: string): Route {
-  const [book, ...rest] = segments(hash);
+  const raw = rawSegments(hash);
+  const [book, ...rest] = raw.map(decode);
   if (book === undefined) return { view: "books" };
   if (book === CALENDARS) return { view: "calendars" };
-  return bookRoute(book, rest);
+  return bookRoute(book, rest, raw.slice(1));
 }
 
 const enc = encodeURIComponent;
