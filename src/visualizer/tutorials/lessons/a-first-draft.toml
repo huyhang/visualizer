@@ -1,0 +1,19 @@
+title = "A first draft"
+summary = "See the whole manuscript, and turn it into a book."
+lede = "Look at what you've made: a world, a book that holds together, and the first chapters of its manuscript. From here, it's writing."
+needs = "read-it-back"
+
+[[steps]]
+title = "See the whole manuscript"
+text = "Choose **Manuscripts** in the tabs and press your book. Its contents list every volume and chapter, with how many words each one has."
+shot = "a-first-draft/contents"
+alt = "The Last Lamp's contents: Volume One, with its two chapters and their word counts"
+
+[[steps]]
+title = "Make it a book"
+text = "When you're ready, press `Publish` and fill in the title page; `Save details` keeps it. Then `Download EPUB` gives you an e-book, and `Download PDF` a printable copy."
+shot = "a-first-draft/publish"
+alt = "Publish series, with the title page details and the two download buttons highlighted"
+
+[made]
+text = "A first draft, begun. Keep going a chapter at a time, and come back to any lesson whenever you need it."

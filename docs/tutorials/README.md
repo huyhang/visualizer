@@ -11,6 +11,25 @@ how it works before they have an account. The login page links to them as
   one picture, and "What you made" at the end.
 - `/tutorials/glossary` is the words the lessons use, each in a sentence or two.
 
+## The course
+
+Fourteen lessons and an unnumbered start, about 47 minutes in all. One story
+grows through them: the world *Lantern Coast*, its lighthouse keeper Ysolde
+Marr, the book *The Last Lamp*.
+
+| | Lessons |
+| --- | --- |
+| Before you start | make an account, sign in, find your way around |
+| Part 1 · Your world (Articles) | A home for your story · Your first article · Places and people |
+| Part 2 · Your story's shape (Timeline, Maps) | Start a book · Your first scene · Threads through the story · Consistent, or conflicted · Draw the world *(optional, with a sample map to download)* |
+| Part 3 · Your draft (Manuscripts) | Start writing · The writing page · Your world beside you · Chapter after chapter · Read it back · A first draft |
+
+Two lessons teach what walking the app showed. A `[[name]]` link looks only
+in its own category, so "Places and people" links with the editor's
+`🔗 Insert link`. A book followed exactly comes out CONFLICTED (no ending is
+marked), so "Consistent, or conflicted" reads the Report and marks the
+ending with ✦.
+
 ## How a lesson is written
 
 Each lesson is a TOML file in `src/visualizer/tutorials/lessons/`.
@@ -91,11 +110,21 @@ pictures in place, with a screenshot of the moment in
 
 - `docker/tutorial_recipes.py` has one function per lesson, in reading order.
 - `docker/tutorial_camera.py` has `Camera` (both widths, both themes, the
-  crop, the rings, the labels seen, handed to a store it's given), the frames
-  that say what to crop, and `Ui`, which does what a lesson describes by the
-  labels a writer sees.
+  crop, the rings, the labels seen, handed to a store it's given) and `Ui`,
+  which does what a lesson describes by the labels a writer sees. Frames say
+  what to crop: `element`, `around(*targets, within=dialog)` (a clean,
+  full-width slice of a dialog), `window_top` and `window`, and `per_size`
+  for a different crop on a phone. `shoot(..., prepare=)` re-creates a state
+  at each width, for a popup placed where it opened or a phone drawer.
 - `docker/tutorial_shots.py` is the entry point: the dev server, the
   administrator, the recipes, and the WebP files and manifest.
+
+To iterate on a recipe without rebuilding, run the image with this
+checkout's `src/` and `docker/` mounted read-only and the pictures going to a
+scratch folder: mount `src` at `/app/src`, `docker` at `/app/docker`, a
+scratch folder at `/out` and another at `/debug`, then run
+`python /app/docker/tutorial_shots.py` in `visualizer-shots-tutorial-shots`
+with `--network none --shm-size 1g`.
 
 ### Adding a lesson
 

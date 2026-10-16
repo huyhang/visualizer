@@ -1,0 +1,27 @@
+title = "The writing page"
+summary = "Write, shape the text, and know it's kept."
+lede = "Writing here is like any editor, with one difference worth knowing: it saves as you go, so there's no Save button to remember."
+needs = "start-writing"
+
+[[steps]]
+title = "Just write"
+text = "Click the page and start typing. Press Enter for a new paragraph."
+shot = "the-writing-page/write"
+alt = "The page with two paragraphs written"
+
+[[steps]]
+title = "Watch for Saved"
+text = "At the top, the word count grows as you type. **Saved** beside it means everything you've written is kept."
+shot = "the-writing-page/saved"
+alt = "The top of the writing page: 31 words, Saved, and the Done button"
+
+[[steps]]
+title = "Shape the text"
+text = "The bar above the page makes text `B` bold or `I` italic, or makes a list. Its `Paragraph` menu turns a line into a heading."
+shot = "the-writing-page/format"
+alt = "The formatting bar, with bold, italic, strikethrough, lists and the Paragraph menu"
+
+[made]
+text = "A chapter with words in it, all of them kept."
+shot = "the-writing-page/made"
+alt = "The writing page with the first chapter's two paragraphs"

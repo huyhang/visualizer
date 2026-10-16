@@ -1,0 +1,29 @@
+title = "Chapter after chapter"
+summary = "Add chapters, and try a passage two ways."
+lede = "A manuscript grows a chapter at a time. Chapters are numbered for you, and each can keep more than one {draft}."
+needs = "your-world-beside-you"
+cover = "chapter-after-chapter/outline"
+
+[[steps]]
+title = "Add a chapter"
+text = "In the outline on the left, press `New chapter`. Name it, like **The ship that didn't come**, and press `Continue`."
+shot = "chapter-after-chapter/new"
+alt = "The Name the new chapter dialog, with The ship that didn't come typed in"
+
+[[steps]]
+title = "Move between chapters"
+text = "Both chapters are in the outline now, numbered in order. Press one to open it."
+shot = "chapter-after-chapter/outline"
+alt = "The outline with Chapter 1, The lamp goes out, and Chapter 2, The ship that didn't come"
+
+[[steps]]
+title = "Try another version"
+text = [
+  "Press `New draft` and name it: you're now writing in a copy, and the original is kept.",
+  "The picker at the top switches between drafts, and the star button (**Make primary**) chooses the one readers see.",
+]
+shot = "chapter-after-chapter/draft"
+alt = "The top of the writing page, with the draft picker showing Second thoughts and the star button for Make primary"
+
+[made]
+text = "Two chapters, and a second draft to try things in. That's the whole rhythm of writing a book here."

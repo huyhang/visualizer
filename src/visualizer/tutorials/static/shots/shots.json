@@ -9,6 +9,163 @@
   "dark"
  ],
  "shots": {
+  "a-first-draft/contents": {
+   "1280": {
+    "width": 1064,
+    "height": 560,
+    "rings": []
+   },
+   "labels": [
+    "+ New section",
+    "A",
+    "Access",
+    "Articles",
+    "Bookmarks",
+    "CHAPTER 1 The lamp goes out 31 words",
+    "CHAPTER 2 The ship that didn\u2019t come 0 words Continue here \u00b7 100%",
+    "Edit",
+    "Edit The lamp goes out",
+    "Edit The ship that didn\u2019t come",
+    "Find a section",
+    "Justified",
+    "Left",
+    "Log out",
+    "Logos",
+    "Manage contents",
+    "Manuscripts",
+    "Maps",
+    "Medium",
+    "Narrow",
+    "New section",
+    "New volume",
+    "Normal",
+    "Publish",
+    "Relaxed",
+    "Review",
+    "Sans serif",
+    "Search",
+    "Serif",
+    "Text size: Normal",
+    "The Last Lamp",
+    "Timeline",
+    "Toggle theme",
+    "Tutorials",
+    "VOLUME 1 Volume One 2 sections \u00b7 31 words",
+    "Wide",
+    "\u2190 Manuscripts",
+    "\u2195 Manage contents",
+    "\u21e9 Publish",
+    "\u2315 Search",
+    "\u25a4 New volume",
+    "\u25b6 Continue reading Volume One \u00b7 The ship that didn\u2019t come 100%",
+    "\u25c6 Bookmarks",
+    "\u25ce Review",
+    "\u25d0"
+   ],
+   "390": {
+    "width": 390,
+    "height": 700,
+    "rings": []
+   }
+  },
+  "a-first-draft/publish": {
+   "1280": {
+    "width": 608,
+    "height": 696,
+    "rings": [
+     {
+      "left": 24.96,
+      "top": 90.81,
+      "width": 26.52,
+      "height": 7.12
+     },
+     {
+      "left": 51.41,
+      "top": 90.81,
+      "width": 24.71,
+      "height": 7.12
+     }
+    ]
+   },
+   "labels": [
+    "+ New section",
+    "A",
+    "Access",
+    "Articles",
+    "Author",
+    "Bookmarks",
+    "CHAPTER 1 The lamp goes out 31 words",
+    "CHAPTER 2 The ship that didn\u2019t come 0 words Continue here \u00b7 100%",
+    "Close publication settings",
+    "Copyright",
+    "Cover image PNG or JPEG, up to 5 MiB",
+    "Download EPUB",
+    "Download PDF",
+    "Edit",
+    "Edit The lamp goes out",
+    "Edit The ship that didn\u2019t come",
+    "Find a section",
+    "Justified",
+    "Language",
+    "Left",
+    "Log out",
+    "Logos",
+    "Manage contents",
+    "Manuscripts",
+    "Maps",
+    "Medium",
+    "Narrow",
+    "New section",
+    "New volume",
+    "Normal",
+    "Publish",
+    "Publish series",
+    "Publisher",
+    "Relaxed",
+    "Review",
+    "Sans serif",
+    "Save details",
+    "Search",
+    "Serif",
+    "Subtitle",
+    "Text size: Normal",
+    "The Last Lamp",
+    "Timeline",
+    "Title",
+    "Toggle theme",
+    "Tutorials",
+    "VOLUME 1 Volume One 2 sections \u00b7 31 words",
+    "Wide",
+    "\u00d7",
+    "\u2190 Manuscripts",
+    "\u2195 Manage contents",
+    "\u21e9 Publish",
+    "\u2315 Search",
+    "\u25a4 New volume",
+    "\u25b6 Continue reading Volume One \u00b7 The ship that didn\u2019t come 100%",
+    "\u25c6 Bookmarks",
+    "\u25ce Review",
+    "\u25d0"
+   ],
+   "390": {
+    "width": 390,
+    "height": 832,
+    "rings": [
+     {
+      "left": 2.82,
+      "top": 80.89,
+      "width": 94.36,
+      "height": 6.49
+     },
+     {
+      "left": 2.82,
+      "top": 87.33,
+      "width": 94.36,
+      "height": 6.49
+     }
+    ]
+   }
+  },
   "a-home-for-your-story/created": {
    "1280": {
     "width": 1064,
@@ -365,6 +522,261 @@
       "top": 92.77,
       "width": 102.56,
       "height": 7.82
+     }
+    ]
+   }
+  },
+  "chapter-after-chapter/draft": {
+   "1280": {
+    "width": 1064,
+    "height": 52,
+    "rings": [
+     {
+      "left": 22.76,
+      "top": 8.65,
+      "width": 14.62,
+      "height": 80.77
+     },
+     {
+      "left": 44.19,
+      "top": 8.65,
+      "width": 4.14,
+      "height": 80.77
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Articles",
+    "B",
+    "Block style Paragraph Heading 1 Heading 2 Heading 3",
+    "Block style Paragraph Heading 1 Heading 2 Heading 3 P",
+    "Bold",
+    "Bullets",
+    "Close open writing panel",
+    "Close outline",
+    "Close writing tools",
+    "Coach",
+    "Compare",
+    "Done",
+    "Draft 1 (Primary)",
+    "Editor",
+    "Heading 1",
+    "Heading 2",
+    "Heading 3",
+    "I",
+    "Italic",
+    "Log out",
+    "Logos",
+    "Make primary",
+    "Manuscripts",
+    "Maps",
+    "New chapter",
+    "New draft",
+    "Numbered",
+    "Open outline",
+    "Open writing tools",
+    "Paragraph",
+    "Redo",
+    "Rename",
+    "S",
+    "Second thoughts",
+    "Strikethrough",
+    "Text size: Normal",
+    "The lamp goes out Chapter 1",
+    "The ship that didn\u2019t come Chapter 2",
+    "Timeline",
+    "Toggle theme",
+    "Tutorials",
+    "Undo",
+    "VOLUME ONE",
+    "Volume One / The ship that didn\u2019t come",
+    "\u25d0",
+    "\u2630",
+    "\u2726"
+   ],
+   "390": {
+    "width": 390,
+    "height": 91,
+    "rings": [
+     {
+      "left": 12.25,
+      "top": 1.52,
+      "width": 52.11,
+      "height": 50.34
+     },
+     {
+      "left": 20.87,
+      "top": 47.91,
+      "width": 11.79,
+      "height": 50.34
+     }
+    ]
+   }
+  },
+  "chapter-after-chapter/new": {
+   "1280": {
+    "width": 512,
+    "height": 196,
+    "rings": [
+     {
+      "left": 3.12,
+      "top": 32.02,
+      "width": 93.75,
+      "height": 26.92
+     },
+     {
+      "left": 76.5,
+      "top": 69.44,
+      "width": 20.37,
+      "height": 25.67
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Articles",
+    "B",
+    "Block style Paragraph Heading 1 Heading 2 Heading 3",
+    "Block style Paragraph Heading 1 Heading 2 Heading 3 P",
+    "Bold",
+    "Bullets",
+    "Cancel",
+    "Close",
+    "Close open writing panel",
+    "Close outline",
+    "Close writing tools",
+    "Coach",
+    "Continue",
+    "Done",
+    "Editor",
+    "Heading 1",
+    "Heading 2",
+    "Heading 3",
+    "I",
+    "Italic",
+    "Log out",
+    "Logos",
+    "Manuscripts",
+    "Maps",
+    "Name the new chapter",
+    "New chapter",
+    "New draft",
+    "Numbered",
+    "Open article",
+    "Open outline",
+    "Open writing tools",
+    "Paragraph",
+    "Redo",
+    "Rename",
+    "S",
+    "Strikethrough",
+    "Text size: Normal",
+    "The lamp goes out Chapter 1",
+    "Timeline",
+    "Toggle theme",
+    "Tutorials",
+    "Undo",
+    "Unlink",
+    "VOLUME ONE",
+    "Volume One / The lamp goes out",
+    "\u25d0",
+    "\u2630",
+    "\u2726"
+   ],
+   "390": {
+    "width": 390,
+    "height": 195,
+    "rings": [
+     {
+      "left": 3.85,
+      "top": 32.18,
+      "width": 92.31,
+      "height": 27.06
+     },
+     {
+      "left": 69.41,
+      "top": 69.8,
+      "width": 26.74,
+      "height": 25.8
+     }
+    ]
+   }
+  },
+  "chapter-after-chapter/outline": {
+   "1280": {
+    "width": 240,
+    "height": 234,
+    "rings": [
+     {
+      "left": 3.91,
+      "top": 70.45,
+      "width": 91.76,
+      "height": 23.15
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Articles",
+    "B",
+    "Block style Paragraph Heading 1 Heading 2 Heading 3",
+    "Block style Paragraph Heading 1 Heading 2 Heading 3 P",
+    "Bold",
+    "Bullets",
+    "Close open writing panel",
+    "Close outline",
+    "Close writing tools",
+    "Coach",
+    "Done",
+    "Editor",
+    "Heading 1",
+    "Heading 2",
+    "Heading 3",
+    "I",
+    "Italic",
+    "Log out",
+    "Logos",
+    "Manuscripts",
+    "Maps",
+    "New chapter",
+    "New draft",
+    "Numbered",
+    "Open outline",
+    "Open writing tools",
+    "Paragraph",
+    "Redo",
+    "Rename",
+    "S",
+    "Strikethrough",
+    "Text size: Normal",
+    "The lamp goes out Chapter 1",
+    "The ship that didn\u2019t come Chapter 2",
+    "Timeline",
+    "Toggle theme",
+    "Tutorials",
+    "Undo",
+    "VOLUME ONE",
+    "Volume One / The ship that didn\u2019t come",
+    "\u25d0",
+    "\u2630",
+    "\u2726"
+   ],
+   "390": {
+    "width": 390,
+    "height": 844,
+    "rings": [
+     {
+      "left": 2.41,
+      "top": 21.94,
+      "width": 87.18,
+      "height": 6.42
      }
     ]
    }
@@ -1163,6 +1575,217 @@
     ]
    }
   },
+  "read-it-back/contents": {
+   "1280": {
+    "width": 544,
+    "height": 285,
+    "rings": []
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Articles",
+    "Bookmarks",
+    "Close section list",
+    "Contents",
+    "Draft 1 (Primary)",
+    "Edit",
+    "Find a section",
+    "Focused",
+    "Jump to section",
+    "Justified",
+    "Left",
+    "Log out",
+    "Logos",
+    "Manuscripts",
+    "Maps",
+    "Medium",
+    "Narrow",
+    "Normal",
+    "Previewing alternate draft Draft 1 (Primary) Second thoughts",
+    "Previous: The lamp goes out",
+    "Reading settings",
+    "Relaxed",
+    "Review",
+    "Sans serif",
+    "Search",
+    "Second thoughts",
+    "Serif",
+    "Text size: Normal",
+    "The lamp goes out Chapter 1",
+    "The ship that didn\u2019t come",
+    "The ship that didn\u2019t come Chapter 2",
+    "Timeline",
+    "Toggle theme",
+    "Tutorials",
+    "Volume 1 \u00b7 Volume One",
+    "Wide",
+    "\u00d7",
+    "\u2190 Contents for The Last Lamp",
+    "\u2190 Previous The lamp goes out Volume One",
+    "\u2315 Search",
+    "\u25af Focused",
+    "\u25c6 Bookmarks",
+    "\u25ce Review",
+    "\u25d0",
+    "\u2637 Contents",
+    "\u2699 Reading settings",
+    "\u270e Edit"
+   ],
+   "390": {
+    "width": 390,
+    "height": 291,
+    "rings": []
+   }
+  },
+  "read-it-back/done": {
+   "1280": {
+    "width": 1064,
+    "height": 52,
+    "rings": [
+     {
+      "left": 90.35,
+      "top": 8.65,
+      "width": 8.84,
+      "height": 80.77
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Articles",
+    "B",
+    "Block style Paragraph Heading 1 Heading 2 Heading 3",
+    "Block style Paragraph Heading 1 Heading 2 Heading 3 P",
+    "Bold",
+    "Bullets",
+    "Close open writing panel",
+    "Close outline",
+    "Close writing tools",
+    "Coach",
+    "Compare",
+    "Done",
+    "Draft 1 (Primary)",
+    "Editor",
+    "Heading 1",
+    "Heading 2",
+    "Heading 3",
+    "I",
+    "Italic",
+    "Log out",
+    "Logos",
+    "Make primary",
+    "Manuscripts",
+    "Maps",
+    "New chapter",
+    "New draft",
+    "Numbered",
+    "Open outline",
+    "Open writing tools",
+    "Paragraph",
+    "Redo",
+    "Rename",
+    "S",
+    "Second thoughts",
+    "Strikethrough",
+    "Text size: Normal",
+    "The lamp goes out Chapter 1",
+    "The ship that didn\u2019t come Chapter 2",
+    "Timeline",
+    "Toggle theme",
+    "Tutorials",
+    "Undo",
+    "VOLUME ONE",
+    "Volume One / The ship that didn\u2019t come",
+    "\u25d0",
+    "\u2630",
+    "\u2726"
+   ],
+   "390": {
+    "width": 390,
+    "height": 91,
+    "rings": [
+     {
+      "left": 74.71,
+      "top": 1.52,
+      "width": 24.11,
+      "height": 50.34
+     }
+    ]
+   }
+  },
+  "read-it-back/reader": {
+   "1280": {
+    "width": 1064,
+    "height": 420,
+    "rings": [
+     {
+      "left": 15.44,
+      "top": 1.34,
+      "width": 12.65,
+      "height": 9.86
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Articles",
+    "Bookmarks",
+    "Contents",
+    "Draft 1 (Primary)",
+    "Edit",
+    "Focused",
+    "Justified",
+    "Left",
+    "Log out",
+    "Logos",
+    "Manuscripts",
+    "Maps",
+    "Medium",
+    "Narrow",
+    "Normal",
+    "Previewing alternate draft Draft 1 (Primary) Second thoughts",
+    "Previous: The lamp goes out",
+    "Reading settings",
+    "Relaxed",
+    "Review",
+    "Sans serif",
+    "Search",
+    "Second thoughts",
+    "Serif",
+    "Text size: Normal",
+    "The ship that didn\u2019t come",
+    "Timeline",
+    "Toggle theme",
+    "Tutorials",
+    "Wide",
+    "\u2190 Contents for The Last Lamp",
+    "\u2190 Previous The lamp goes out Volume One",
+    "\u2315 Search",
+    "\u25af Focused",
+    "\u25c6 Bookmarks",
+    "\u25ce Review",
+    "\u25d0",
+    "\u2637 Contents",
+    "\u2699 Reading settings",
+    "\u270e Edit"
+   ],
+   "390": {
+    "width": 390,
+    "height": 560,
+    "rings": [
+     {
+      "left": 44.77,
+      "top": 1.64,
+      "width": 11.79,
+      "height": 8.21
+     }
+    ]
+   }
+  },
   "start-a-book/books": {
    "1280": {
     "width": 1064,
@@ -1382,6 +2005,447 @@
       "height": 8.11
      }
     ]
+   }
+  },
+  "start-writing/library": {
+   "1280": {
+    "width": 1064,
+    "height": 300,
+    "rings": [
+     {
+      "left": 6.77,
+      "top": 73.28,
+      "width": 18.91,
+      "height": 13.81
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Articles",
+    "Justified",
+    "Left",
+    "Log out",
+    "Logos",
+    "Manuscripts",
+    "Maps",
+    "Medium",
+    "Narrow",
+    "Normal",
+    "Relaxed",
+    "Sans serif",
+    "Serif",
+    "Start writing",
+    "Text size: Normal",
+    "The Last Lamp",
+    "Timeline",
+    "Toggle theme",
+    "Tutorials",
+    "Wide",
+    "\u25d0"
+   ],
+   "390": {
+    "width": 390,
+    "height": 400,
+    "rings": [
+     {
+      "left": 6.77,
+      "top": 60.91,
+      "width": 86.47,
+      "height": 13.5
+     }
+    ]
+   }
+  },
+  "start-writing/name-it": {
+   "1280": {
+    "width": 416,
+    "height": 176,
+    "rings": [
+     {
+      "left": 3.46,
+      "top": 29.32,
+      "width": 93.08,
+      "height": 30.91
+     },
+     {
+      "left": 70.53,
+      "top": 63.64,
+      "width": 26.01,
+      "height": 28.18
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Articles",
+    "Cancel",
+    "Continue",
+    "Justified",
+    "Left",
+    "Log out",
+    "Logos",
+    "Manuscripts",
+    "Maps",
+    "Medium",
+    "Name the new chapter",
+    "Narrow",
+    "Normal",
+    "Relaxed",
+    "Sans serif",
+    "Serif",
+    "Start writing",
+    "Text size: Normal",
+    "The Last Lamp",
+    "Timeline",
+    "Toggle theme",
+    "Tutorials",
+    "Wide",
+    "x",
+    "\u25d0"
+   ],
+   "390": {
+    "width": 390,
+    "height": 239,
+    "rings": [
+     {
+      "left": 2.82,
+      "top": 25.1,
+      "width": 94.36,
+      "height": 22.76
+     },
+     {
+      "left": 2.82,
+      "top": 72.8,
+      "width": 94.36,
+      "height": 22.6
+     }
+    ]
+   }
+  },
+  "start-writing/writer": {
+   "1280": {
+    "width": 1064,
+    "height": 560,
+    "rings": []
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Articles",
+    "B",
+    "Block style Paragraph Heading 1 Heading 2 Heading 3",
+    "Block style Paragraph Heading 1 Heading 2 Heading 3 P",
+    "Bold",
+    "Bullets",
+    "Close open writing panel",
+    "Close outline",
+    "Close writing tools",
+    "Coach",
+    "Done",
+    "Editor",
+    "Heading 1",
+    "Heading 2",
+    "Heading 3",
+    "I",
+    "Italic",
+    "Log out",
+    "Logos",
+    "Manuscripts",
+    "Maps",
+    "New chapter",
+    "New draft",
+    "Numbered",
+    "Open outline",
+    "Open writing tools",
+    "Paragraph",
+    "Redo",
+    "Rename",
+    "S",
+    "Strikethrough",
+    "Text size: Normal",
+    "The lamp goes out Chapter 1",
+    "Timeline",
+    "Toggle theme",
+    "Tutorials",
+    "Undo",
+    "VOLUME ONE",
+    "Volume One / The lamp goes out",
+    "\u25d0",
+    "\u2630",
+    "\u2726"
+   ],
+   "390": {
+    "width": 390,
+    "height": 844,
+    "rings": []
+   }
+  },
+  "the-writing-page/format": {
+   "1280": {
+    "width": 438,
+    "height": 66,
+    "rings": [
+     {
+      "left": 1.14,
+      "top": 7.62,
+      "width": 97.72,
+      "height": 84.75
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Articles",
+    "B",
+    "Block style Paragraph Heading 1 Heading 2 Heading 3",
+    "Block style Paragraph Heading 1 Heading 2 Heading 3 P",
+    "Bold",
+    "Bullets",
+    "Close open writing panel",
+    "Close outline",
+    "Close writing tools",
+    "Coach",
+    "Done",
+    "Editor",
+    "Heading 1",
+    "Heading 2",
+    "Heading 3",
+    "I",
+    "Italic",
+    "Log out",
+    "Logos",
+    "Manuscripts",
+    "Maps",
+    "New chapter",
+    "New draft",
+    "Numbered",
+    "Open outline",
+    "Open writing tools",
+    "Paragraph",
+    "Redo",
+    "Rename",
+    "S",
+    "Strikethrough",
+    "Text size: Normal",
+    "The lamp goes out Chapter 1",
+    "Timeline",
+    "Toggle theme",
+    "Tutorials",
+    "Undo",
+    "VOLUME ONE",
+    "Volume One / The lamp goes out",
+    "\u25d0",
+    "\u2630",
+    "\u2726"
+   ],
+   "390": {
+    "width": 390,
+    "height": 65,
+    "rings": [
+     {
+      "left": -1.28,
+      "top": 7.65,
+      "width": 102.56,
+      "height": 100.0
+     }
+    ]
+   }
+  },
+  "the-writing-page/made": {
+   "1280": {
+    "width": 1064,
+    "height": 560,
+    "rings": []
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Articles",
+    "B",
+    "Block style Paragraph Heading 1 Heading 2 Heading 3",
+    "Block style Paragraph Heading 1 Heading 2 Heading 3 P",
+    "Bold",
+    "Bullets",
+    "Close open writing panel",
+    "Close outline",
+    "Close writing tools",
+    "Coach",
+    "Done",
+    "Editor",
+    "Heading 1",
+    "Heading 2",
+    "Heading 3",
+    "I",
+    "Italic",
+    "Log out",
+    "Logos",
+    "Manuscripts",
+    "Maps",
+    "New chapter",
+    "New draft",
+    "Numbered",
+    "Open outline",
+    "Open writing tools",
+    "Paragraph",
+    "Redo",
+    "Rename",
+    "S",
+    "Strikethrough",
+    "Text size: Normal",
+    "The lamp goes out Chapter 1",
+    "Timeline",
+    "Toggle theme",
+    "Tutorials",
+    "Undo",
+    "VOLUME ONE",
+    "Volume One / The lamp goes out",
+    "\u25d0",
+    "\u2630",
+    "\u2726"
+   ],
+   "390": {
+    "width": 390,
+    "height": 844,
+    "rings": []
+   }
+  },
+  "the-writing-page/saved": {
+   "1280": {
+    "width": 1064,
+    "height": 52,
+    "rings": [
+     {
+      "left": 84.86,
+      "top": 21.3,
+      "width": 5.54,
+      "height": 55.44
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Articles",
+    "B",
+    "Block style Paragraph Heading 1 Heading 2 Heading 3",
+    "Block style Paragraph Heading 1 Heading 2 Heading 3 P",
+    "Bold",
+    "Bullets",
+    "Close open writing panel",
+    "Close outline",
+    "Close writing tools",
+    "Coach",
+    "Done",
+    "Editor",
+    "Heading 1",
+    "Heading 2",
+    "Heading 3",
+    "I",
+    "Italic",
+    "Log out",
+    "Logos",
+    "Manuscripts",
+    "Maps",
+    "New chapter",
+    "New draft",
+    "Numbered",
+    "Open outline",
+    "Open writing tools",
+    "Paragraph",
+    "Redo",
+    "Rename",
+    "S",
+    "Strikethrough",
+    "Text size: Normal",
+    "The lamp goes out Chapter 1",
+    "Timeline",
+    "Toggle theme",
+    "Tutorials",
+    "Undo",
+    "VOLUME ONE",
+    "Volume One / The lamp goes out",
+    "\u25d0",
+    "\u2630",
+    "\u2726"
+   ],
+   "390": {
+    "width": 390,
+    "height": 91,
+    "rings": [
+     {
+      "left": 84.19,
+      "top": 57.85,
+      "width": 14.63,
+      "height": 30.47
+     }
+    ]
+   }
+  },
+  "the-writing-page/write": {
+   "1280": {
+    "width": 472,
+    "height": 314,
+    "rings": []
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Articles",
+    "B",
+    "Block style Paragraph Heading 1 Heading 2 Heading 3",
+    "Block style Paragraph Heading 1 Heading 2 Heading 3 P",
+    "Bold",
+    "Bullets",
+    "Close open writing panel",
+    "Close outline",
+    "Close writing tools",
+    "Coach",
+    "Done",
+    "Editor",
+    "Heading 1",
+    "Heading 2",
+    "Heading 3",
+    "I",
+    "Italic",
+    "Log out",
+    "Logos",
+    "Manuscripts",
+    "Maps",
+    "New chapter",
+    "New draft",
+    "Numbered",
+    "Open outline",
+    "Open writing tools",
+    "Paragraph",
+    "Redo",
+    "Rename",
+    "S",
+    "Strikethrough",
+    "Text size: Normal",
+    "The lamp goes out Chapter 1",
+    "Timeline",
+    "Toggle theme",
+    "Tutorials",
+    "Undo",
+    "VOLUME ONE",
+    "Volume One / The lamp goes out",
+    "\u25d0",
+    "\u2630",
+    "\u2726"
+   ],
+   "390": {
+    "width": 390,
+    "height": 228,
+    "rings": []
    }
   },
   "threads-through-the-story/add-scene": {
@@ -2126,6 +3190,230 @@
       "top": 92.48,
       "width": 36.64,
       "height": 5.93
+     }
+    ]
+   }
+  },
+  "your-world-beside-you/linked": {
+   "1280": {
+    "width": 472,
+    "height": 105,
+    "rings": [
+     {
+      "left": 4.03,
+      "top": 46.49,
+      "width": 23.17,
+      "height": 32.74
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Articles",
+    "B",
+    "Block style Paragraph Heading 1 Heading 2 Heading 3",
+    "Block style Paragraph Heading 1 Heading 2 Heading 3 P",
+    "Bold",
+    "Bullets",
+    "Close open writing panel",
+    "Close outline",
+    "Close writing tools",
+    "Coach",
+    "Done",
+    "Editor",
+    "Heading 1",
+    "Heading 2",
+    "Heading 3",
+    "I",
+    "Italic",
+    "Log out",
+    "Logos",
+    "Manuscripts",
+    "Maps",
+    "New chapter",
+    "New draft",
+    "Numbered",
+    "Open article",
+    "Open outline",
+    "Open writing tools",
+    "Paragraph",
+    "Redo",
+    "Rename",
+    "S",
+    "Strikethrough",
+    "Text size: Normal",
+    "The lamp goes out Chapter 1",
+    "Timeline",
+    "Toggle theme",
+    "Tutorials",
+    "Undo",
+    "Unlink",
+    "VOLUME ONE",
+    "Volume One / The lamp goes out",
+    "\u25d0",
+    "\u2630",
+    "\u2726"
+   ],
+   "390": {
+    "width": 390,
+    "height": 103,
+    "rings": [
+     {
+      "left": 12.4,
+      "top": 46.45,
+      "width": 27.33,
+      "height": 33.21
+     }
+    ]
+   }
+  },
+  "your-world-beside-you/look-up": {
+   "1280": {
+    "width": 456,
+    "height": 114,
+    "rings": [
+     {
+      "left": 14.43,
+      "top": 51.22,
+      "width": 51.49,
+      "height": 39.15
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Articles",
+    "B",
+    "Block style Paragraph Heading 1 Heading 2 Heading 3",
+    "Block style Paragraph Heading 1 Heading 2 Heading 3 P",
+    "Bold",
+    "Bullets",
+    "Close open writing panel",
+    "Close outline",
+    "Close writing tools",
+    "Coach",
+    "Done",
+    "Editor",
+    "Heading 1",
+    "Heading 2",
+    "Heading 3",
+    "I",
+    "Italic",
+    "Log out",
+    "Logos",
+    "Look up \u201cYsolde Marr\u201d in Akasha",
+    "Manuscripts",
+    "Maps",
+    "New chapter",
+    "New draft",
+    "Numbered",
+    "Open outline",
+    "Open writing tools",
+    "Paragraph",
+    "Redo",
+    "Rename",
+    "S",
+    "Strikethrough",
+    "Text size: Normal",
+    "The lamp goes out Chapter 1",
+    "Timeline",
+    "Toggle theme",
+    "Tutorials",
+    "Undo",
+    "VOLUME ONE",
+    "Volume One / The lamp goes out",
+    "\u25d0",
+    "\u2630",
+    "\u2726"
+   ],
+   "390": {
+    "width": 385,
+    "height": 114,
+    "rings": [
+     {
+      "left": 25.81,
+      "top": 50.98,
+      "width": 60.95,
+      "height": 39.34
+     }
+    ]
+   }
+  },
+  "your-world-beside-you/panel": {
+   "1280": {
+    "width": 344,
+    "height": 748,
+    "rings": [
+     {
+      "left": 44.88,
+      "top": 33.8,
+      "width": 38.03,
+      "height": 5.69
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Articles",
+    "B",
+    "Block style Paragraph Heading 1 Heading 2 Heading 3",
+    "Block style Paragraph Heading 1 Heading 2 Heading 3 P",
+    "Bold",
+    "Bullets",
+    "Close open writing panel",
+    "Close outline",
+    "Close writing tools",
+    "Coach",
+    "Done",
+    "Editor",
+    "Heading 1",
+    "Heading 2",
+    "Heading 3",
+    "I",
+    "Italic",
+    "Link mention",
+    "Log out",
+    "Logos",
+    "Manuscripts",
+    "Maps",
+    "New chapter",
+    "New draft",
+    "Numbered",
+    "Open article",
+    "Open outline",
+    "Open writing tools",
+    "Paragraph",
+    "Redo",
+    "Rename",
+    "S",
+    "Strikethrough",
+    "Text size: Normal",
+    "The lamp goes out Chapter 1",
+    "Timeline",
+    "Toggle theme",
+    "Tutorials",
+    "Undo",
+    "VOLUME ONE",
+    "Volume One / The lamp goes out",
+    "\u25d0",
+    "\u2630",
+    "\u2726"
+   ],
+   "390": {
+    "width": 390,
+    "height": 844,
+    "rings": [
+     {
+      "left": 47.33,
+      "top": 30.43,
+      "width": 33.54,
+      "height": 5.04
      }
     ]
    }

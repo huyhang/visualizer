@@ -1,0 +1,26 @@
+title = "Start writing"
+summary = "Open a manuscript for your book."
+lede = "In **Manuscripts**, your book's prose lives in a {manuscript}: chapters, inside volumes. Every book you start in Timeline has room for one."
+needs = "start-a-book"
+
+[[steps]]
+title = "Open Manuscripts"
+text = "Choose **Manuscripts** in the tabs. Your book is there already, so press `Start writing`."
+shot = "start-writing/library"
+alt = "Manuscripts, with The Last Lamp and its Start writing button highlighted"
+
+[[steps]]
+title = "Name the first chapter"
+text = "Type a title for your first {chapter}, like **The lamp goes out**, and press `Continue`."
+shot = "start-writing/name-it"
+alt = "The Name the new chapter dialog, with The lamp goes out typed in"
+
+[[steps]]
+title = "Find your way around"
+text = "This is the writing page: your chapters on the left, the page in the middle, and your world on the right."
+shot = "start-writing/writer"
+alt = "The writing page: the outline with one chapter, an empty page, and the Akasha panel"
+note = { kind = "if", text = "On a phone, the chapters and your world are behind the buttons at the top, so the page gets the whole screen." }
+
+[made]
+text = "A manuscript, with its first chapter open and ready. Next, writing in it."

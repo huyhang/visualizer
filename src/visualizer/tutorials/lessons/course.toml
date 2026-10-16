@@ -22,3 +22,11 @@ title = "Your story's shape"
 blurb = "What happens, where, and in what order."
 mark = "chronos"
 lessons = ["start-a-book", "your-first-scene", "threads-through-the-story", "consistent-or-conflicted", "draw-the-world"]
+
+[[parts]]
+slug = "your-draft"
+kicker = "Part 3 · in Manuscripts"
+title = "Your draft"
+blurb = "Turn the plan into prose, a chapter at a time."
+mark = "logos"
+lessons = ["start-writing", "the-writing-page", "your-world-beside-you", "chapter-after-chapter", "read-it-back", "a-first-draft"]

@@ -1,0 +1,27 @@
+title = "Your world beside you"
+summary = "Look up any name without leaving the page."
+lede = "Everything you wrote in Articles is a click away while you write, so checking a detail never means leaving the page."
+needs = "the-writing-page"
+cover = "your-world-beside-you/panel"
+
+[[steps]]
+title = "Look a name up"
+text = "Select a name in your prose, like **Ysolde Marr**, and right-click it. Choose `Look up “Ysolde Marr” in Akasha`."
+shot = "your-world-beside-you/look-up"
+alt = "Ysolde Marr selected in the prose, with the Look up in Akasha menu"
+note = { kind = "good-to-know", text = "**Akasha** is what the app calls the Articles tab. On a keyboard, select a name and press ⌘K (Ctrl K on Windows) to look it up straight away." }
+
+[[steps]]
+title = "Read it without leaving"
+text = "The panel on the right shows the article, facts and all. `Open article` takes you to it in Articles, if you need more."
+shot = "your-world-beside-you/panel"
+alt = "The Akasha panel showing Ysolde Marr's article and her Home fact"
+
+[[steps]]
+title = "Link the name"
+text = "Press `Link mention` to tie this name in your prose to its article. It's marked in the text from then on."
+shot = "your-world-beside-you/linked"
+alt = "Ysolde Marr marked as a mention in the prose"
+
+[made]
+text = "Your world and your prose, side by side and joined up."

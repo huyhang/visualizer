@@ -369,9 +369,195 @@ def draw_the_world(ui: Ui, cam: Camera) -> None:
               element(lambda page: page.locator("svg").filter(has=page.locator("title")).first))
 
 
+FIRST_CHAPTER, SECOND_CHAPTER = "The lamp goes out", "The ship that didn't come"
+PROSE = (
+    "The lamp went out at a quarter past three, and Ysolde Marr was already on the stairs.",
+    "She had kept the light for eleven years. It had never once gone dark.",
+)
+
+_FIND_JS = """name => {
+  const root = document.querySelector('.ProseMirror');
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const at = node.textContent.indexOf(name);
+    if (at < 0) continue;
+    const range = document.createRange();
+    range.setStart(node, at);
+    range.setEnd(node, at + name.length);
+    const rects = [...range.getClientRects()];
+    const first = rects[0], last = rects[rects.length - 1];
+    return [first.left + 1, first.top + first.height / 2,
+            last.right - 1, last.top + last.height / 2];
+  }
+  return null;
+}"""
+
+
+def _select(page, name: str) -> tuple[float, float]:
+    """Select ``name`` in the prose as a writer does: click before it, shift-click after.
+
+    The editor keeps its own selection, which follows real input; one set from
+    script does not always reach it. Returns the middle of the selection.
+    """
+    x1, y1, x2, y2 = page.evaluate(_FIND_JS, name)
+    page.mouse.click(x1, y1)
+    page.keyboard.down("Shift")
+    page.mouse.click(x2, y2)
+    page.keyboard.up("Shift")
+    page.wait_for_timeout(200)
+    return (x1 + x2) / 2, (y1 + y2) / 2
+
+
+def _phone(page) -> bool:
+    return page.viewport_size["width"] <= 390
+
+
+def _drawer(page, opener: str | None) -> None:
+    """On a phone, close the writer's open drawer, then open ``opener``'s."""
+    if not _phone(page):
+        return
+    # A closed drawer is slid off the screen, not hidden, so ask the shell
+    # which one is open rather than looking for a close button.
+    shell = page.locator(".lw-shell")
+    for open_class, panel in (("has-outline", ".lw-outline"), ("has-tools", ".lw-tools")):
+        if shell.evaluate(f"node => node.classList.contains('{open_class}')"):
+            page.locator(f"{panel} .lw-panel-close").click()
+            page.wait_for_timeout(350)
+    if opener:
+        page.get_by_role("button", name=opener, exact=True).click()
+        page.wait_for_timeout(450)
+
+
+def _writer_page(ui: Ui):
+    return per_size(window_top(560, left=216, top=54), window())
+
+
+def start_writing(ui: Ui, cam: Camera) -> None:
+    _tab(ui, "Manuscripts")
+    cam.shoot("start-writing/library",
+              per_size(window_top(300, left=216, top=54), window_top(400, top=54)),
+              rings=[lambda page: ui.button("Start writing")])
+    ui.press("Start writing")
+    ui.quiet_dialog_backdrop()
+    name = lambda page: ui.dialog().locator("input").first
+    name(ui.page).fill(FIRST_CHAPTER)
+    cam.shoot("start-writing/name-it", element(lambda page: ui.dialog()),
+              rings=[name, lambda page: ui.dialog().get_by_role("button", name="Continue")])
+    ui.dialog().get_by_role("button", name="Continue").click()
+    ui.settle(1500)
+    cam.shoot("start-writing/writer", _writer_page(ui))
+
+
+def the_writing_page(ui: Ui, cam: Camera) -> None:
+    editor = ui.page.locator(".ProseMirror").first
+    editor.click()
+    ui.page.keyboard.type(PROSE[0])
+    ui.page.keyboard.press("Enter")
+    ui.page.keyboard.type(PROSE[1])
+    ui.page.wait_for_timeout(2500)
+    title = lambda page: page.locator(".lw-title")
+    last = lambda page: page.locator(".ProseMirror p").last
+    cam.shoot("the-writing-page/write", around(title, last, pad=24))
+    topbar = lambda page: page.locator(".lw-topbar")
+    cam.shoot("the-writing-page/saved", element(topbar),
+              rings=[lambda page: page.locator(".lw-save")])
+    bar = lambda page: page.locator(".lw-format")
+    cam.shoot("the-writing-page/format", element(bar, pad=10), rings=[bar])
+    cam.shoot("the-writing-page/made", _writer_page(ui))
+
+
+def your_world_beside_you(ui: Ui, cam: Camera) -> None:
+    # A menu item, not a button, to the accessibility tree.
+    look_up = lambda page: page.get_by_role("menuitem", name=re.compile(r"^Look up")).first
+
+    def right_click_the_name(page) -> None:
+        page.keyboard.press("Escape")
+        _drawer(page, None)
+        x, y = _select(page, CHARACTER)
+        page.mouse.click(x, y, button="right")
+        look_up(page).wait_for()
+
+    paragraph = lambda page: page.locator(".ProseMirror p").first
+    cam.shoot("your-world-beside-you/look-up", around(paragraph, look_up, pad=16),
+              rings=[look_up], prepare=right_click_the_name)
+    right_click_the_name(ui.page)
+    look_up(ui.page).click()
+    ui.page.wait_for_timeout(1200)
+    panel = lambda page: page.locator(".lw-tools")
+    cam.shoot("your-world-beside-you/panel", per_size(element(panel), window()),
+              rings=[lambda page: ui.button("Open article")],
+              prepare=lambda page: _drawer(page, "Open writing tools"))
+    _drawer(ui.page, None)
+    ui.press("Link mention")
+    ui.page.wait_for_timeout(1200)
+    cam.shoot("your-world-beside-you/linked", around(paragraph, pad=24),
+              rings=[lambda page: page.locator(".ProseMirror .entity-mention").first],
+              prepare=lambda page: _drawer(page, None))
+
+
+def chapter_after_chapter(ui: Ui, cam: Camera) -> None:
+    _drawer(ui.page, None)
+    ui.page.get_by_role("button", name="New chapter").first.click()
+    ui.settle()
+    ui.quiet_dialog_backdrop()
+    name = lambda page: ui.dialog().locator("input").first
+    name(ui.page).fill(SECOND_CHAPTER)
+    cam.shoot("chapter-after-chapter/new", element(lambda page: ui.dialog()),
+              rings=[name, lambda page: ui.dialog().get_by_role("button", name="Continue")])
+    ui.dialog().get_by_role("button", name="Continue").click()
+    ui.settle(1500)
+    outline = lambda page: page.locator(".lw-outline")
+    second = lambda page: page.locator(".lw-volume a").nth(1)
+    cam.shoot("chapter-after-chapter/outline",
+              per_size(around(lambda page: page.locator(".lw-outline h2, .lw-panel-head").first,
+                              second, pad=20, within=outline),
+                       window()),
+              rings=[second], prepare=lambda page: _drawer(page, "Open outline"))
+    _drawer(ui.page, None)
+    ui.press("New draft")
+    ui.quiet_dialog_backdrop()
+    ui.dialog().locator("input").first.fill("Second thoughts")
+    ui.dialog().get_by_role("button", name="Continue").click()
+    ui.settle(1500)
+    cam.shoot("chapter-after-chapter/draft", element(lambda page: page.locator(".lw-topbar")),
+              rings=[lambda page: page.locator(".lw-draft-select"),
+                     lambda page: ui.button("Make primary")])
+
+
+def read_it_back(ui: Ui, cam: Camera) -> None:
+    cam.shoot("read-it-back/done", element(lambda page: page.locator(".lw-topbar")),
+              rings=[lambda page: ui.button("Done")])
+    ui.press("Done")
+    ui.settle(1200)
+    cam.shoot("read-it-back/reader",
+              per_size(window_top(420, left=216, top=54), window_top(560, top=54)),
+              rings=[lambda page: ui.button("Reading settings")])
+    ui.press("Contents")
+    ui.page.wait_for_timeout(700)
+    cam.shoot("read-it-back/contents",
+              element(lambda page: page.locator("[role=dialog], dialog[open]").filter(visible=True).last))
+    ui.page.keyboard.press("Escape")
+    ui.page.wait_for_timeout(300)
+
+
+def a_first_draft(ui: Ui, cam: Camera) -> None:
+    _tab(ui, "Manuscripts")
+    ui.page.get_by_text(BOOK, exact=True).first.click()
+    ui.settle(1000)
+    cam.shoot("a-first-draft/contents",
+              per_size(window_top(560, left=216, top=54), window_top(700, top=54)))
+    ui.press("Publish")
+    ui.page.wait_for_timeout(700)
+    publish = lambda page: page.locator("[role=dialog], dialog[open]").filter(visible=True).last
+    cam.shoot("a-first-draft/publish", element(publish),
+              rings=[lambda page: ui.button("Download EPUB"), lambda page: ui.button("Download PDF")])
+
+
 # In the course's reading order.
 RECIPES = (
     before_you_start, a_home_for_your_story, your_first_article, places_and_people,
     start_a_book, your_first_scene, threads_through_the_story, consistent_or_conflicted,
     draw_the_world,
+    start_writing, the_writing_page, your_world_beside_you, chapter_after_chapter,
+    read_it_back, a_first_draft,
 )

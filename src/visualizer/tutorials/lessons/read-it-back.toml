@@ -1,0 +1,26 @@
+title = "Read it back"
+summary = "Read your book the way a reader will."
+lede = "Sometimes you need to read what you wrote as a reader would. The reader shows a chapter at a time, set for reading rather than writing."
+needs = "chapter-after-chapter"
+cover = "read-it-back/reader"
+
+[[steps]]
+title = "Press Done"
+text = "On the writing page, press `Done`. You land in the reader, on the chapter you were writing."
+shot = "read-it-back/done"
+alt = "The top of the writing page, with the Done button highlighted"
+
+[[steps]]
+title = "Make it comfortable"
+text = "`Reading settings` changes the size and spacing of the text, just for reading. `Edit` takes you back to writing."
+shot = "read-it-back/reader"
+alt = "The reader, with the Reading settings button highlighted"
+
+[[steps]]
+title = "Jump to any chapter"
+text = "`Contents` lists every chapter of the book. Press one to read it."
+shot = "read-it-back/contents"
+alt = "The Jump to section list, with both chapters of Volume One"
+
+[made]
+text = "Your book, readable from beginning to end."
