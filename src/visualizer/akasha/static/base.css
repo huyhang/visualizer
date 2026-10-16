@@ -99,10 +99,13 @@ input:focus, select:focus {
 @media (max-width: 560px) { .form-grid { grid-template-columns: 1fr; } }
 
 /* buttons */
+/* `line-height` as a number, not the button's own `normal`: `normal` counts
+   every font on the line, and the fullwidth "＋" of "＋ New world" comes from a
+   fallback face with taller metrics. 1.2 is the UI face's own `normal`. */
 button, .btn {
   cursor: pointer; display: inline-flex; align-items: center; gap: .4rem; justify-content: center;
   border: 1px solid transparent; border-radius: 9px; padding: .5rem .95rem;
-  font-size: .9rem; font-weight: 600; font-family: inherit; color: #fff;
+  font-size: .9rem; font-weight: 600; font-family: inherit; line-height: 1.2; color: #fff;
   background: linear-gradient(135deg, var(--accent), var(--accent-strong));
   transition: filter .15s, background .15s, transform .05s, box-shadow .15s;
 }

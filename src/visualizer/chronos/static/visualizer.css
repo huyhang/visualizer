@@ -76,26 +76,34 @@ button { font-family: inherit; cursor: pointer; }
 
 /* Narrow screens: one row again, now that the three service links live in the
    shared nav. Nothing left in the header is wide enough to need wrapping. */
-/* The way into the new workspace: one line always, and its short name on a
-   phone, where "Try the new workspace" pushed the header off the screen. */
-.workspace-link { white-space: nowrap; }
-.workspace-link-short { display: none; }
-@media (max-width: 560px) {
-  .workspace-link-long { display: none; }
-  .workspace-link-short { display: inline; }
-}
-/* The narrowest phones: a little less air, so Log out stays on the screen. */
-@media (max-width: 380px) {
-  .header-actions { gap: .25rem; }
-  .header-link { padding: .3rem .3rem; }
-}
-
 @media (max-width: 820px) {
   .app-header { flex-wrap: nowrap; padding: .5rem .75rem; }
   .header-actions { flex-wrap: nowrap; gap: .4rem; min-width: 0; }
   .username { display: none; }
   /* The avatar says nothing the Account link does not, and it costs a column. */
   .userchip { display: none; }
+}
+
+/* The way into the new workspace: one line always. On a phone it is its mark
+   in an icon button like its neighbours: even the short name "Workspace" was
+   121px at the largest text size, and pushed Log out 65px off a 320px screen. */
+.workspace-link { white-space: nowrap; }
+.workspace-link-mark { display: none; }
+@media (max-width: 560px) {
+  .workspace-link {
+    display: grid; place-items: center; flex: none;
+    width: 34px; height: 34px; padding: 0;
+    border: 1px solid var(--border); border-radius: 9px; background: var(--surface-2);
+  }
+  .workspace-link:hover { border-color: var(--accent); background: var(--surface-2); }
+  .workspace-link-long { display: none; }
+  .workspace-link-mark { display: block; }
+}
+/* The narrowest phones: a little less air, so Log out stays on the screen.
+   After the 820px block, whose gap would otherwise win. */
+@media (max-width: 380px) {
+  .header-actions { gap: .25rem; }
+  .header-link { padding: .3rem .3rem; }
 }
 
 /* layout */
@@ -109,10 +117,14 @@ button { font-family: inherit; cursor: pointer; }
 .crumbs .sep { opacity: .5; margin: 0 .4rem; }
 
 /* buttons + chips */
+/* A button's own line-height is `normal`, which counts every font on the line:
+   the fullwidth "＋" of "＋ New book" comes from a fallback face with taller
+   metrics, and made that button 2-3px taller than "Calendars" beside it. A
+   number is the same for every face; 1.2 is the UI face's own `normal`. */
 .btn {
   display: inline-flex; align-items: center; gap: .4rem; justify-content: center;
   border: 1px solid transparent; border-radius: 9px; padding: .5rem .9rem;
-  font-size: .88rem; font-weight: 600; color: #fff;
+  font-size: .88rem; font-weight: 600; line-height: 1.2; color: #fff;
   background: linear-gradient(135deg, var(--accent), var(--accent-strong));
 }
 .btn:hover { filter: brightness(1.06); }
