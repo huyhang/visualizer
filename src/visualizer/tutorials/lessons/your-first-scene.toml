@@ -1,0 +1,33 @@
+title = "Your first scene"
+summary = "Who is where, and when."
+lede = "A {scene} is something that happens in your story: somewhere, to someone. Every scene needs a place from your world, which is why you made one."
+needs = "start-a-book"
+
+[[steps]]
+title = "Open the book's scenes"
+text = "On your book's page, press `Scenes`. Then press `+ New scene`."
+shot = "your-first-scene/scenes"
+alt = "The book's Scenes page, empty, with the New scene button highlighted"
+
+[[steps]]
+title = "Name it, and say where"
+text = "Give the scene a **Title**. Under **Place**, type a few letters of your place's name and choose it."
+shot = "your-first-scene/place"
+alt = "The New scene dialog, with The Last Lighthouse offered as the place"
+
+[[steps]]
+title = "Say who's there"
+text = "Under **Characters**, type a few letters of your character's name and choose them. A scene can have as many as you like."
+shot = "your-first-scene/characters"
+alt = "The New scene dialog, with Ysolde Marr chosen as a character"
+
+[[steps]]
+title = "Say when, if you know"
+text = "**Starts at** and **Ends at** are plain numbers, like 1 and 2. Leave them empty and the scene waits until you decide, then press `Create scene`."
+shot = "your-first-scene/when"
+alt = "The timing boxes filled with 1 and 2, and the Create scene button highlighted"
+
+[made]
+text = "Your first scene, on the book's timeline. Add a few more the same way; the next lesson strings them together."
+shot = "your-first-scene/made"
+alt = "The book's timeline, with the scene The lamp goes out at 1 to 2"

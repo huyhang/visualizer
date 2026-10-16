@@ -1,0 +1,35 @@
+title = "Draw the world"
+summary = "Optional: a map of your world, with your places pinned on it."
+lede = "In **Maps**, a world can have maps: pictures of its land, with your places pinned where they are. A map is an SVG file; if you don't have one yet, use the sample below."
+needs = "places-and-people"
+optional = true
+downloads = [{ file = "lantern-coast-map.svg", label = "A sample map of the Lantern Coast (SVG)" }]
+
+[[steps]]
+title = "Open your world's maps"
+text = "Choose **Maps** in the tabs, then press your world, **Lantern Coast**."
+shot = "draw-the-world/worlds"
+alt = "Maps, listing the Lantern Coast world"
+
+[[steps]]
+title = "Upload a map"
+text = "Under **Upload a map**, choose your SVG file; the **Map name** fills itself in. Then press `Upload SVG`."
+shot = "draw-the-world/upload"
+alt = "The Upload a map form, with lantern-coast-map.svg chosen and the Upload SVG button highlighted"
+
+[[steps]]
+title = "Pin a place"
+text = "Under **Add a pin**, press your place, **The Last Lighthouse**. Then click the map where it stands."
+shot = "draw-the-world/pick"
+alt = "The map, with The Last Lighthouse picked in the Add a pin list"
+
+[[steps]]
+title = "Save it"
+text = "Press `Save`. From now on, pressing a pin shows its article beside the map."
+shot = "draw-the-world/save"
+alt = "The map with its pin placed, and the Save button highlighted"
+
+[made]
+text = "A map of your world, with your first place on it."
+shot = "draw-the-world/made"
+alt = "The Lantern Coast map, with The Last Lighthouse pinned on the headland"

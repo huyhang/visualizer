@@ -1,0 +1,28 @@
+title = "Start a book"
+summary = "A book ties your story to its world."
+lede = "In **Timeline**, a {book} is one story told in scenes. It's set in one of your worlds, so its scenes can use the people and places you've made."
+needs = "places-and-people"
+
+[[steps]]
+title = "Open Timeline"
+text = "Choose **Timeline** in the tabs. It opens on **Your books**, so press `＋ New book`."
+shot = "start-a-book/books"
+alt = "Your books, empty, with the New book button highlighted"
+
+[[steps]]
+title = "Name it, and choose its world"
+text = "Type the book's title, like **The Last Lamp**. Under **World**, choose the world you made, **lantern-coast**."
+shot = "start-a-book/name-it"
+alt = "The New book dialog, with The Last Lamp typed as the title and lantern-coast chosen as the world"
+
+[[steps]]
+title = "Keep time simple"
+text = "Under **How it counts**, leave `No calendar` chosen: scenes are placed at plain numbers, in whatever unit you like. Then press `Create book`."
+shot = "start-a-book/create"
+alt = "The foot of the New book dialog, with No calendar chosen and the Create book button highlighted"
+note = { kind = "good-to-know", text = "When your story needs real dates, a calendar can be added later from **Calendars** on the Your books page." }
+
+[made]
+text = "A book, set in your world and ready for scenes. Next, you'll write the first one."
+shot = "start-a-book/made"
+alt = "The Last Lamp's page in Timeline, with no plotlines yet"

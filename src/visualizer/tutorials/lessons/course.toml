@@ -14,3 +14,11 @@ title = "Your world"
 blurb = "The people, places and things your story is about."
 mark = "akasha"
 lessons = ["a-home-for-your-story", "your-first-article", "places-and-people"]
+
+[[parts]]
+slug = "your-story"
+kicker = "Part 2 · in Timeline and Maps"
+title = "Your story's shape"
+blurb = "What happens, where, and in what order."
+mark = "chronos"
+lessons = ["start-a-book", "your-first-scene", "threads-through-the-story", "consistent-or-conflicted", "draw-the-world"]

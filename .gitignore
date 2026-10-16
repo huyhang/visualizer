@@ -13,6 +13,8 @@ build/
 develop-eggs/
 dist/
 downloads/
+# ...but not the files the tutorials offer to download, such as the sample map.
+!src/visualizer/tutorials/static/downloads/
 eggs/
 .eggs/
 lib/

@@ -369,6 +369,455 @@
     ]
    }
   },
+  "consistent-or-conflicted/conflicted": {
+   "1280": {
+    "width": 1064,
+    "height": 260,
+    "rings": [
+     {
+      "left": 23.5,
+      "top": 50.36,
+      "width": 9.31,
+      "height": 10.46
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Articles",
+    "CONFLICTED",
+    "Calendars",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Text size: Normal",
+    "The Last Lamp",
+    "Timeline",
+    "Toggle theme",
+    "Try the new workspace",
+    "Tutorials",
+    "Workspace",
+    "Your books",
+    "\u25d0",
+    "\uff0b New book"
+   ],
+   "390": {
+    "width": 390,
+    "height": 360,
+    "rings": [
+     {
+      "left": 64.97,
+      "top": 34.22,
+      "width": 25.39,
+      "height": 7.55
+     }
+    ]
+   }
+  },
+  "consistent-or-conflicted/consistent": {
+   "1280": {
+    "width": 1064,
+    "height": 260,
+    "rings": [
+     {
+      "left": 23.42,
+      "top": 49.82,
+      "width": 9.39,
+      "height": 11.55
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Articles",
+    "Calendars",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Text size: Normal",
+    "The Last Lamp",
+    "Timeline",
+    "Toggle theme",
+    "Try the new workspace",
+    "Tutorials",
+    "Workspace",
+    "Your books",
+    "\u25d0",
+    "\uff0b New book"
+   ],
+   "390": {
+    "width": 390,
+    "height": 360,
+    "rings": [
+     {
+      "left": 64.75,
+      "top": 33.83,
+      "width": 25.61,
+      "height": 8.34
+     }
+    ]
+   }
+  },
+  "consistent-or-conflicted/ending": {
+   "1280": {
+    "width": 760,
+    "height": 209,
+    "rings": [
+     {
+      "left": 88.13,
+      "top": 9.1,
+      "width": 4.74,
+      "height": 17.25
+     },
+     {
+      "left": 1.58,
+      "top": 69.34,
+      "width": 17.86,
+      "height": 21.56
+     }
+    ]
+   },
+   "labels": [
+    "+ Add scene",
+    "+ New goal",
+    "A",
+    "Access",
+    "Articles",
+    "Books",
+    "CONTINUES INTO",
+    "Cancel",
+    "Choose",
+    "Delete plotline",
+    "Edit plotline",
+    "GOALS",
+    "ID",
+    "Keeping the light",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "NAME",
+    "OVERVIEW",
+    "Save changes",
+    "Scenes",
+    "Sort by time",
+    "Text size: Normal",
+    "The Last Lamp",
+    "The lamp goes out",
+    "The ship that didn't come",
+    "Timeline",
+    "Toggle theme",
+    "Try the new workspace",
+    "Tutorials",
+    "Workspace",
+    "\u2191",
+    "\u2193",
+    "\u21a5",
+    "\u21a7",
+    "\u25d0",
+    "\u270e",
+    "\u2715",
+    "\u2726"
+   ],
+   "390": {
+    "width": 370,
+    "height": 336,
+    "rings": [
+     {
+      "left": 75.6,
+      "top": 5.65,
+      "width": 9.74,
+      "height": 10.7
+     },
+     {
+      "left": 3.25,
+      "top": 80.97,
+      "width": 36.73,
+      "height": 13.38
+     }
+    ]
+   }
+  },
+  "consistent-or-conflicted/report": {
+   "1280": {
+    "width": 1064,
+    "height": 380,
+    "rings": []
+   },
+   "labels": [
+    "A",
+    "Access",
+    "All plotlines",
+    "Articles",
+    "Books",
+    "Keeping the light",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "No ending designated 1",
+    "Report",
+    "Text size: Normal",
+    "The Last Lamp",
+    "Timeline",
+    "Toggle theme",
+    "Try the new workspace",
+    "Tutorials",
+    "Workspace",
+    "\u25d0"
+   ],
+   "390": {
+    "width": 390,
+    "height": 560,
+    "rings": []
+   }
+  },
+  "draw-the-world/made": {
+   "1280": {
+    "width": 470,
+    "height": 298,
+    "rings": []
+   },
+   "labels": [
+    "+",
+    "100%",
+    "A",
+    "Access",
+    "Add a pin",
+    "Articles",
+    "Delete map",
+    "Discard",
+    "FIND AN ARTICLE",
+    "Lantern Coast",
+    "Lantern Coast Map",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Pin details",
+    "Prithvi",
+    "Save",
+    "Text size: Normal",
+    "The Last Lighthouse",
+    "The Last LighthouseThe Last Lighthouse",
+    "Timeline",
+    "Toggle theme",
+    "Tutorials",
+    "Worlds",
+    "Ysolde Marr Characters \u00b7 ysolde-marr",
+    "Zoom in",
+    "Zoom out",
+    "\u2212",
+    "\u25d0"
+   ],
+   "390": {
+    "width": 356,
+    "height": 225,
+    "rings": []
+   }
+  },
+  "draw-the-world/pick": {
+   "1280": {
+    "width": 1064,
+    "height": 640,
+    "rings": [
+     {
+      "left": 77.63,
+      "top": 50.2,
+      "width": 21.33,
+      "height": 11.44
+     }
+    ]
+   },
+   "labels": [
+    "+",
+    "100%",
+    "A",
+    "Access",
+    "Add a pin",
+    "Articles",
+    "Cancel",
+    "Delete map",
+    "Discard",
+    "FIND AN ARTICLE",
+    "Lantern Coast",
+    "Lantern Coast Map",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Pin details",
+    "Prithvi",
+    "Save",
+    "Text size: Normal",
+    "The Last Lighthouse Locations \u00b7 the-last-lighthouse",
+    "Timeline",
+    "Toggle theme",
+    "Tutorials",
+    "Worlds",
+    "Ysolde Marr Characters \u00b7 ysolde-marr",
+    "Zoom in",
+    "Zoom out",
+    "\u2212",
+    "\u25d0"
+   ],
+   "390": {
+    "width": 390,
+    "height": 844,
+    "rings": [
+     {
+      "left": 2.82,
+      "top": 130.21,
+      "width": 94.36,
+      "height": 8.68
+     }
+    ]
+   }
+  },
+  "draw-the-world/save": {
+   "1280": {
+    "width": 1064,
+    "height": 640,
+    "rings": [
+     {
+      "left": 70.01,
+      "top": 1.42,
+      "width": 5.7,
+      "height": 6.47
+     }
+    ]
+   },
+   "labels": [
+    "+",
+    "100%",
+    "A",
+    "Access",
+    "Add a pin",
+    "Articles",
+    "Delete map",
+    "Discard",
+    "FIND AN ARTICLE",
+    "Lantern Coast",
+    "Lantern Coast Map",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Open in Articles",
+    "Prithvi",
+    "Remove pin",
+    "Save",
+    "Text size: Normal",
+    "The Last Lighthouse",
+    "The Last LighthouseThe Last Lighthouse",
+    "Timeline",
+    "Toggle theme",
+    "Tutorials",
+    "Worlds",
+    "Ysolde Marr Characters \u00b7 ysolde-marr",
+    "Zoom in",
+    "Zoom out",
+    "\u2212",
+    "\u25d0"
+   ],
+   "390": {
+    "width": 390,
+    "height": 844,
+    "rings": [
+     {
+      "left": 81.22,
+      "top": 7.75,
+      "width": 15.55,
+      "height": 4.91
+     }
+    ]
+   }
+  },
+  "draw-the-world/upload": {
+   "1280": {
+    "width": 660,
+    "height": 279,
+    "rings": [
+     {
+      "left": 3.33,
+      "top": 73.2,
+      "width": 19.92,
+      "height": 18.92
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Articles",
+    "Lantern Coast",
+    "Log out",
+    "MAP NAME",
+    "Manuscripts",
+    "Maps",
+    "Prithvi",
+    "SVG FILE",
+    "Text size: Normal",
+    "Timeline",
+    "Toggle theme",
+    "Tutorials",
+    "Upload SVG",
+    "Upload a map",
+    "Worlds",
+    "\u25d0"
+   ],
+   "390": {
+    "width": 362,
+    "height": 358,
+    "rings": [
+     {
+      "left": 6.08,
+      "top": 79.13,
+      "width": 36.33,
+      "height": 14.73
+     }
+    ]
+   }
+  },
+  "draw-the-world/worlds": {
+   "1280": {
+    "width": 1064,
+    "height": 260,
+    "rings": [
+     {
+      "left": 6.67,
+      "top": 45.36,
+      "width": 21.35,
+      "height": 44.62
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Articles",
+    "Lantern Coast lantern-coast 0 maps",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Prithvi",
+    "Text size: Normal",
+    "Timeline",
+    "Toggle theme",
+    "Tutorials",
+    "Worlds",
+    "\u25d0"
+   ],
+   "390": {
+    "width": 390,
+    "height": 360,
+    "rings": [
+     {
+      "left": 4.87,
+      "top": 32.76,
+      "width": 90.26,
+      "height": 32.22
+     }
+    ]
+   }
+  },
   "places-and-people/fact": {
    "1280": {
     "width": 732,
@@ -714,6 +1163,435 @@
     ]
    }
   },
+  "start-a-book/books": {
+   "1280": {
+    "width": 1064,
+    "height": 220,
+    "rings": [
+     {
+      "left": 84.94,
+      "top": 12.17,
+      "width": 10.26,
+      "height": 18.27
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Articles",
+    "Calendars",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Text size: Normal",
+    "Timeline",
+    "Toggle theme",
+    "Try the new workspace",
+    "Tutorials",
+    "Workspace",
+    "Your books",
+    "\u25d0",
+    "\uff0b New book"
+   ],
+   "390": {
+    "width": 390,
+    "height": 320,
+    "rings": [
+     {
+      "left": 83.33,
+      "top": 6.0,
+      "width": 11.79,
+      "height": 14.37
+     }
+    ]
+   }
+  },
+  "start-a-book/create": {
+   "1280": {
+    "width": 760,
+    "height": 231,
+    "rings": [
+     {
+      "left": 3.6,
+      "top": 6.49,
+      "width": 14.8,
+      "height": 19.03
+     },
+     {
+      "left": 1.58,
+      "top": 74.06,
+      "width": 16.32,
+      "height": 19.46
+     }
+    ]
+   },
+   "labels": [
+    "+ Add another calendar",
+    "A",
+    "Access",
+    "Articles",
+    "Calendars",
+    "Cancel",
+    "Create book",
+    "From your library",
+    "ID",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "NAME (OPTIONAL)",
+    "No calendar",
+    "OVERVIEW",
+    "TIME",
+    "TITLE",
+    "Text size: Normal",
+    "Timeline",
+    "Toggle theme",
+    "Try the new workspace",
+    "Tutorials",
+    "WORLD",
+    "Workspace",
+    "Your books",
+    "lantern-coast",
+    "\u2014 none yet \u2014",
+    "\u25d0",
+    "\u2715",
+    "\uff0b New book"
+   ],
+   "390": {
+    "width": 358,
+    "height": 231,
+    "rings": [
+     {
+      "left": 7.65,
+      "top": 6.49,
+      "width": 31.42,
+      "height": 19.05
+     },
+     {
+      "left": 3.35,
+      "top": 82.48,
+      "width": 34.65,
+      "height": 19.47
+     }
+    ]
+   }
+  },
+  "start-a-book/made": {
+   "1280": {
+    "width": 1064,
+    "height": 320,
+    "rings": []
+   },
+   "labels": [
+    "+ New plotline",
+    "A",
+    "Access",
+    "Articles",
+    "Books",
+    "Goals",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Next \u203a",
+    "Report",
+    "Scenes",
+    "Story Map",
+    "Text size: Normal",
+    "The Last Lamp",
+    "Timeline",
+    "Toggle theme",
+    "Try the new workspace",
+    "Tutorials",
+    "Workspace",
+    "\u2039 Prev",
+    "\u25d0",
+    "\u270e"
+   ],
+   "390": {
+    "width": 390,
+    "height": 460,
+    "rings": []
+   }
+  },
+  "start-a-book/name-it": {
+   "1280": {
+    "width": 760,
+    "height": 489,
+    "rings": [
+     {
+      "left": 1.58,
+      "top": 6.34,
+      "width": 96.84,
+      "height": 9.73
+     },
+     {
+      "left": 1.58,
+      "top": 84.59,
+      "width": 18.29,
+      "height": 9.07
+     }
+    ]
+   },
+   "labels": [
+    "+ Add another calendar",
+    "A",
+    "Access",
+    "Articles",
+    "Calendars",
+    "Cancel",
+    "Create book",
+    "From your library",
+    "ID",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "NAME (OPTIONAL)",
+    "No calendar",
+    "OVERVIEW",
+    "TIME",
+    "TITLE",
+    "Text size: Normal",
+    "Timeline",
+    "Toggle theme",
+    "Try the new workspace",
+    "Tutorials",
+    "WORLD",
+    "Workspace",
+    "Your books",
+    "lantern-coast",
+    "\u2014 none yet \u2014",
+    "\u25d0",
+    "\u2715",
+    "\uff0b New book"
+   ],
+   "390": {
+    "width": 358,
+    "height": 547,
+    "rings": [
+     {
+      "left": 3.35,
+      "top": 5.66,
+      "width": 93.3,
+      "height": 8.7
+     },
+     {
+      "left": 3.35,
+      "top": 86.23,
+      "width": 38.83,
+      "height": 8.11
+     }
+    ]
+   }
+  },
+  "threads-through-the-story/add-scene": {
+   "1280": {
+    "width": 560,
+    "height": 141,
+    "rings": [
+     {
+      "left": 2.14,
+      "top": 50.17,
+      "width": 95.71,
+      "height": 32.06
+     }
+    ]
+   },
+   "labels": [
+    "+ Add scene",
+    "+ New goal",
+    "+ New plotline",
+    "A",
+    "Access",
+    "An existing scene",
+    "Articles",
+    "Books",
+    "CONTINUES INTO",
+    "Cancel",
+    "Choose",
+    "Create plotline",
+    "GOALS",
+    "Goals",
+    "ID",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "NAME",
+    "Next \u203a",
+    "OVERVIEW",
+    "Report",
+    "Scenes",
+    "Story Map",
+    "Text size: Normal",
+    "The Last Lamp",
+    "The lamp goes out 1 \u2192 2 \u00b7 the-last-lighthouse",
+    "The ship that didn't come 3 \u2192 4 \u00b7 the-last-lighthouse",
+    "Timeline",
+    "Toggle theme",
+    "Try the new workspace",
+    "Tutorials",
+    "Workspace",
+    "Write a new scene",
+    "\u2039 Prev",
+    "\u25d0",
+    "\u270e",
+    "\u2715"
+   ],
+   "390": {
+    "width": 358,
+    "height": 141,
+    "rings": [
+     {
+      "left": 3.35,
+      "top": 50.17,
+      "width": 93.3,
+      "height": 32.06
+     }
+    ]
+   }
+  },
+  "threads-through-the-story/created": {
+   "1280": {
+    "width": 1064,
+    "height": 420,
+    "rings": []
+   },
+   "labels": [
+    "+ New plotline",
+    "A",
+    "Access",
+    "Articles",
+    "Books",
+    "Goals",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Next \u203a",
+    "Report",
+    "Scenes",
+    "Story Map",
+    "Text size: Normal",
+    "The Last Lamp",
+    "Timeline",
+    "Toggle theme",
+    "Try the new workspace",
+    "Tutorials",
+    "Workspace",
+    "\u2039 Prev",
+    "\u25d0",
+    "\u270e"
+   ],
+   "390": {
+    "width": 390,
+    "height": 560,
+    "rings": []
+   }
+  },
+  "threads-through-the-story/name-it": {
+   "1280": {
+    "width": 760,
+    "height": 118,
+    "rings": [
+     {
+      "left": 1.58,
+      "top": 29.76,
+      "width": 96.84,
+      "height": 40.47
+     }
+    ]
+   },
+   "labels": [
+    "+ Add scene",
+    "+ New goal",
+    "+ New plotline",
+    "A",
+    "Access",
+    "Articles",
+    "Books",
+    "CONTINUES INTO",
+    "Cancel",
+    "Choose",
+    "Create plotline",
+    "GOALS",
+    "Goals",
+    "ID",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "NAME",
+    "Next \u203a",
+    "OVERVIEW",
+    "Report",
+    "Scenes",
+    "Story Map",
+    "Text size: Normal",
+    "The Last Lamp",
+    "Timeline",
+    "Toggle theme",
+    "Try the new workspace",
+    "Tutorials",
+    "Workspace",
+    "\u2039 Prev",
+    "\u25d0",
+    "\u270e",
+    "\u2715"
+   ],
+   "390": {
+    "width": 358,
+    "height": 118,
+    "rings": [
+     {
+      "left": 3.35,
+      "top": 29.76,
+      "width": 93.3,
+      "height": 40.47
+     }
+    ]
+   }
+  },
+  "threads-through-the-story/two-scenes": {
+   "1280": {
+    "width": 1064,
+    "height": 560,
+    "rings": []
+   },
+   "labels": [
+    "+",
+    "+ New scene",
+    "A",
+    "Access",
+    "Articles",
+    "Beginning",
+    "Books",
+    "End",
+    "List",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Scenes",
+    "Text size: Normal",
+    "The Last Lamp",
+    "The lamp goes out",
+    "The ship that didn't come",
+    "Timeline",
+    "Toggle theme",
+    "Try the new workspace",
+    "Tutorials",
+    "Workspace",
+    "Zoom timeline in",
+    "Zoom timeline out",
+    "\u2212",
+    "\u25d0",
+    "\u270e",
+    "\u2715",
+    "\u2922"
+   ],
+   "390": {
+    "width": 390,
+    "height": 640,
+    "rings": []
+   }
+  },
   "your-first-article/made": {
    "1280": {
     "width": 1064,
@@ -972,6 +1850,282 @@
       "top": 41.55,
       "width": 90.26,
       "height": 58.93
+     }
+    ]
+   }
+  },
+  "your-first-scene/characters": {
+   "1280": {
+    "width": 560,
+    "height": 111,
+    "rings": [
+     {
+      "left": 14.8,
+      "top": 63.85,
+      "width": 83.06,
+      "height": 40.8
+     }
+    ]
+   },
+   "labels": [
+    "+ New scene",
+    "A",
+    "Access",
+    "Articles",
+    "Books",
+    "CHARACTERS",
+    "Cancel",
+    "Create scene",
+    "ENDS AT (TICK)",
+    "ID",
+    "ITEMS",
+    "List",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "PLACE",
+    "STARTS AT (TICK)",
+    "Scenes",
+    "TITLE",
+    "Text size: Normal",
+    "The Last Lamp",
+    "The Last Lighthouse locations / the-last-lighthouse",
+    "Timeline",
+    "Toggle theme",
+    "Try the new workspace",
+    "Tutorials",
+    "WHAT HAPPENS",
+    "Workspace",
+    "Ysolde Marr characters / ysolde-marr",
+    "\u25d0",
+    "\u2715"
+   ],
+   "390": {
+    "width": 358,
+    "height": 163,
+    "rings": [
+     {
+      "left": 23.15,
+      "top": 43.3,
+      "width": 73.5,
+      "height": 41.36
+     }
+    ]
+   }
+  },
+  "your-first-scene/made": {
+   "1280": {
+    "width": 1064,
+    "height": 560,
+    "rings": []
+   },
+   "labels": [
+    "+",
+    "+ New scene",
+    "A",
+    "Access",
+    "Articles",
+    "Beginning",
+    "Books",
+    "End",
+    "List",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Scenes",
+    "Text size: Normal",
+    "The Last Lamp",
+    "The lamp goes out",
+    "Timeline",
+    "Toggle theme",
+    "Try the new workspace",
+    "Tutorials",
+    "Workspace",
+    "Zoom timeline in",
+    "Zoom timeline out",
+    "\u2212",
+    "\u25d0",
+    "\u270e",
+    "\u2715",
+    "\u2922"
+   ],
+   "390": {
+    "width": 390,
+    "height": 640,
+    "rings": []
+   }
+  },
+  "your-first-scene/place": {
+   "1280": {
+    "width": 560,
+    "height": 395,
+    "rings": [
+     {
+      "left": 13.06,
+      "top": 82.25,
+      "width": 84.8,
+      "height": 11.42
+     }
+    ]
+   },
+   "labels": [
+    "+ New scene",
+    "A",
+    "Access",
+    "Articles",
+    "Books",
+    "CHARACTERS",
+    "Cancel",
+    "Create scene",
+    "ENDS AT (TICK)",
+    "ID",
+    "ITEMS",
+    "List",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "PLACE",
+    "STARTS AT (TICK)",
+    "Scenes",
+    "TITLE",
+    "Text size: Normal",
+    "The Last Lamp",
+    "The Last Lighthouse locations / the-last-lighthouse",
+    "Timeline",
+    "Toggle theme",
+    "Try the new workspace",
+    "Tutorials",
+    "WHAT HAPPENS",
+    "Workspace",
+    "\u25d0",
+    "\u2715"
+   ],
+   "390": {
+    "width": 358,
+    "height": 437,
+    "rings": [
+     {
+      "left": 20.43,
+      "top": 78.83,
+      "width": 76.22,
+      "height": 15.45
+     }
+    ]
+   }
+  },
+  "your-first-scene/scenes": {
+   "1280": {
+    "width": 1064,
+    "height": 260,
+    "rings": [
+     {
+      "left": 42.16,
+      "top": 56.27,
+      "width": 10.46,
+      "height": 14.69
+     }
+    ]
+   },
+   "labels": [
+    "+ New scene",
+    "A",
+    "Access",
+    "Articles",
+    "Books",
+    "List",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Scenes",
+    "Text size: Normal",
+    "The Last Lamp",
+    "Timeline",
+    "Toggle theme",
+    "Try the new workspace",
+    "Tutorials",
+    "Workspace",
+    "\u25d0"
+   ],
+   "390": {
+    "width": 390,
+    "height": 420,
+    "rings": [
+     {
+      "left": 75.07,
+      "top": 45.14,
+      "width": 23.13,
+      "height": 12.66
+     }
+    ]
+   }
+  },
+  "your-first-scene/when": {
+   "1280": {
+    "width": 560,
+    "height": 640,
+    "rings": [
+     {
+      "left": 2.14,
+      "top": 2.97,
+      "width": 47.61,
+      "height": 7.43
+     },
+     {
+      "left": 2.14,
+      "top": 91.1,
+      "width": 23.43,
+      "height": 7.03
+     }
+    ]
+   },
+   "labels": [
+    "+ New scene",
+    "A",
+    "Access",
+    "Articles",
+    "Books",
+    "CHARACTERS",
+    "Cancel",
+    "Create scene",
+    "ENDS AT (TICK)",
+    "ID",
+    "ITEMS",
+    "List",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "PLACE",
+    "STARTS AT (TICK)",
+    "Scenes",
+    "TITLE",
+    "Text size: Normal",
+    "The Last Lamp",
+    "The Last Lighthouse locations / the-last-lighthouse",
+    "Timeline",
+    "Toggle theme",
+    "Try the new workspace",
+    "Tutorials",
+    "WHAT HAPPENS",
+    "Workspace",
+    "Ysolde Marr characters / ysolde-marr",
+    "\u25d0",
+    "\u2715"
+   ],
+   "390": {
+    "width": 358,
+    "height": 758,
+    "rings": [
+     {
+      "left": 3.35,
+      "top": 2.51,
+      "width": 93.3,
+      "height": 6.28
+     },
+     {
+      "left": 3.35,
+      "top": 92.48,
+      "width": 36.64,
+      "height": 5.93
      }
     ]
    }

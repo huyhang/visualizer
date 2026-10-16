@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" width="1200" height="760">
+  <title>The Lantern Coast</title>
+  <!-- A sample map for the tutorials: upload it in Maps and pin your places
+       on it. Plain shapes only, so nothing is lost to the upload's sanitiser. -->
+  <rect width="1200" height="760" fill="#cfe3ea"/>
+  <g fill="none" stroke="#b5d2dc" stroke-width="2">
+    <path d="M40 640 C 200 610, 340 660, 520 630"/>
+    <path d="M60 700 C 260 676, 420 720, 640 690"/>
+    <path d="M760 690 C 900 664, 1040 700, 1170 676"/>
+  </g>
+  <path fill="#efe6cf" stroke="#8a7a5c" stroke-width="3" stroke-linejoin="round"
+        d="M0 0 H1200 V250 C 1130 268, 1092 318, 1040 330 C 984 343, 960 300, 904 318
+           C 846 337, 860 400, 800 420 C 742 440, 700 398, 640 412 C 586 425, 600 486, 546 500
+           C 498 512, 470 470, 420 476 C 352 484, 362 548, 296 560 C 240 570, 226 528, 172 536
+           C 118 544, 92 596, 0 604 Z"/>
+  <path fill="#e3d6b6" d="M0 0 H1200 V120 C 1000 150, 820 110, 640 150 C 460 190, 260 140, 0 180 Z"/>
+  <g fill="none" stroke="#8a7a5c" stroke-width="2" stroke-linecap="round" opacity="0.6">
+    <path d="M820 380 l 16 -10 M846 372 l 14 -12 M780 418 l 14 -12"/>
+    <path d="M560 472 l 14 -12 M586 462 l 14 -10 M300 540 l 14 -12"/>
+  </g>
+  <path fill="#efe6cf" stroke="#8a7a5c" stroke-width="3" stroke-linejoin="round"
+        d="M296 560 C 300 600, 268 632, 236 640 C 214 646, 206 626, 224 612 C 244 596, 262 580, 296 560 Z"/>
+  <g fill="#6e8f6a" opacity="0.55">
+    <circle cx="180" cy="90" r="26"/><circle cx="220" cy="70" r="22"/><circle cx="250" cy="100" r="24"/>
+    <circle cx="960" cy="80" r="24"/><circle cx="1000" cy="104" r="20"/>
+  </g>
+  <g font-family="Georgia, serif" fill="#5a4c34" text-anchor="middle">
+    <text x="600" y="300" font-size="34" letter-spacing="6">THE LANTERN COAST</text>
+    <text x="760" y="640" font-size="22" font-style="italic" fill="#5f7f8a">The Grey Sea</text>
+  </g>
+</svg>

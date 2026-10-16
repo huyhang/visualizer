@@ -1,0 +1,31 @@
+title = "Threads through the story"
+summary = "String your scenes on a plotline."
+lede = "A {plotline} is a thread through your book: the scenes one character or storyline passes through, in order. Most books have several; yours will start with one."
+needs = "your-first-scene"
+
+[[steps]]
+title = "Add a second scene"
+text = "Make one more scene the same way, a little later: **The ship that didn't come**, at the lighthouse, from 3 to 4."
+shot = "threads-through-the-story/two-scenes"
+alt = "The book's timeline with two scenes, The lamp goes out and The ship that didn't come"
+
+[[steps]]
+title = "Start a plotline"
+text = "Go back to the book's page and press `+ New plotline`. Give it a **Name**, like **Keeping the light**."
+shot = "threads-through-the-story/name-it"
+alt = "The New plotline dialog, with Keeping the light typed as its name"
+
+[[steps]]
+title = "Add its scenes, in order"
+text = "Under **Scenes**, press `+ Add scene` and choose a scene. Do the same for the next one."
+shot = "threads-through-the-story/add-scene"
+alt = "The scene chooser in the New plotline dialog, with The lamp goes out offered"
+
+[[steps]]
+title = "Create it"
+text = "Press `Create plotline`. The thread is listed on the book's page; open it to see its scenes in order."
+shot = "threads-through-the-story/created"
+alt = "The book's page, with the plotline Keeping the light listed"
+
+[made]
+text = "Your scenes, in order, on one thread. Next, the app checks it for you."

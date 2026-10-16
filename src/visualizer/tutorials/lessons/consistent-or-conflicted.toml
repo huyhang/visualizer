@@ -1,0 +1,32 @@
+title = "Consistent, or conflicted"
+summary = "Let the app check your story, and fix what it finds."
+lede = "Timeline checks your book as you go: nobody in two places at once, scenes in an order that can happen, every thread reaching the end. One word on each book says how it's doing."
+needs = "threads-through-the-story"
+
+[[steps]]
+title = "Read the word on your book"
+text = "On **Your books**, your book says **CONFLICTED**: one of the rules doesn't hold yet. Open the book and press **Report**, which counts the problems it found."
+shot = "consistent-or-conflicted/conflicted"
+alt = "Your books, with The Last Lamp marked Conflicted"
+
+[[steps]]
+title = "See what's wrong, and how to fix it"
+text = "This report says no scene is marked as the book's ending, so no thread can be checked against one. Every problem it lists comes with what to do about it."
+shot = "consistent-or-conflicted/report"
+alt = "The Report: one problem, No ending designated, with how to fix it"
+
+[[steps]]
+title = "Mark the ending"
+text = "Open your plotline and press `Edit plotline`. On its last scene, press `✦` to make that the book's ending, then press `Save changes`."
+shot = "consistent-or-conflicted/ending"
+alt = "The plotline editor, with the star on the last scene and the Save changes button highlighted"
+
+[[steps]]
+title = "Check again"
+text = "Back on **Your books**, the book now says **CONSISTENT**: every rule holds."
+shot = "consistent-or-conflicted/consistent"
+alt = "Your books, with The Last Lamp now marked Consistent"
+note = { kind = "good-to-know", text = "Change your story later and the word changes with it. Conflicted is the app's way of saying \"have a look\", not something broken." }
+
+[made]
+text = "A story the app has checked from end to end. Next comes an optional map, or skip ahead and start writing."

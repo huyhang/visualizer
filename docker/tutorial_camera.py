@@ -70,6 +70,33 @@ def element(target: Target, pad: float = 0) -> Frame:
     return frame
 
 
+def around(*targets: Target, pad: float = 12, within: Target | None = None) -> Frame:
+    """The smallest box holding every target, with ``pad`` around it.
+
+    ``within`` -- a dialog, say -- widens the box to the container's full
+    width and keeps it inside, so the picture is a clean slice of the dialog
+    rather than a sliver with the page showing at its edges. The last target is
+    scrolled into view first; the others should be near it.
+    """
+
+    def frame(page: Page) -> Box:
+        found = [target(page) for target in targets]
+        found[-1].scroll_into_view_if_needed()
+        boxes = [_box_of(each) for each in found]
+        x, y = min(b.x for b in boxes), min(b.y for b in boxes)
+        right = max(b.x + b.width for b in boxes)
+        bottom = max(b.y + b.height for b in boxes)
+        box = padded(Box(x, y, right - x, bottom - y), pad, page)
+        if within is None:
+            return box
+        outer = _box_of(within(page))
+        top = max(box.y, outer.y)
+        low = min(box.y + box.height, outer.y + outer.height)
+        return Box(outer.x, top, outer.width, low - top)
+
+    return frame
+
+
 def region(x: float, y: float, width: float, height: float) -> Frame:
     """A fixed part of the window, as wide as it is when narrower."""
 
