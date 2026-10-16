@@ -201,6 +201,13 @@ def build(args):
         app.config["SESSION_COOKIE_NAME"] = SESSION_COOKIE
         # Exceptions reach the debugger, and templates reload when edited.
         app.debug = True
+        if not args.rate_limit:
+            # Every client here is 127.0.0.1, so a run of smoke scripts shares
+            # one allowance and the sixth login in a minute is turned away.
+            # The limiter read RATELIMIT_ENABLED when it was attached, so it is
+            # each one's own switch that has to be thrown now.
+            for limiter in app.extensions.get("limiter", ()):
+                limiter.enabled = False
     if AuthStore(client).count_users() == 0:
         _register_dev_user(application)
     return application
@@ -227,18 +234,27 @@ def _wait_for_port(host: str, port: int, timeout: float = 30.0) -> bool:
     return False
 
 
-def _seed(base: str, host: str, port: int) -> None:
-    """Run the demo seeds against this server, over HTTP like any client."""
-    if not _wait_for_port(host, port):
-        _say("server never came up; not seeding")
-        return
-    env = {
+def seed_env(base: str) -> dict:
+    """The environment the ``SEEDS`` scripts read to find a stack at ``base``.
+
+    Public because ``docker/shots.py`` seeds a dev server of its own and must
+    point the scripts where this does.
+    """
+    return {
         **os.environ,
         "AKASHA_BASE": base,
         "CHRONOS_BASE": f"{base}/timeline",
         "PRITHVI_BASE": f"{base}/prithvi",
         "LOGOS_BASE": f"{base}/logos",
     }
+
+
+def _seed(base: str, host: str, port: int) -> None:
+    """Run the demo seeds against this server, over HTTP like any client."""
+    if not _wait_for_port(host, port):
+        _say("server never came up; not seeding")
+        return
+    env = seed_env(base)
     for script in SEEDS:
         _say(f"running docker/{script}")
         result = subprocess.run(
@@ -280,6 +296,9 @@ def parse_args(argv=None):
                              f"({', '.join(FAKE_GPUBOX_MODES)}; default ready)")
     parser.add_argument("--no-reload", dest="reload", action="store_false",
                         help="do not restart when a Python file changes")
+    parser.add_argument("--no-rate-limit", dest="rate_limit", action="store_false",
+                        help="lift the login rate limit (5 a minute), for scripts "
+                             "that log in again and again")
     return parser.parse_args(argv)
 
 

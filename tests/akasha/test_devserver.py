@@ -117,6 +117,17 @@ def test_the_fake_box_flag(tmp_path, exit_hooks):
     assert research_state(client) == "busy"
 
 
+def test_only_a_flag_lifts_the_login_rate_limit(tmp_path, exit_hooks):
+    """A run of smoke scripts logs in from one address over and over; it may
+    ask for the limit to go, but the dev server keeps production's by default."""
+    def seven_logins(client):
+        return [login(client).status_code for _ in range(7)]
+
+    assert 429 in seven_logins(run(tmp_path / "limited.json"))
+    lifted = run(tmp_path / "lifted.json", "--no-rate-limit")
+    assert set(seven_logins(lifted)) == {200}
+
+
 def test_empty_database_gets_the_docker_admin(tmp_path, exit_hooks):
     client = run(tmp_path / "db.json")
     response = login(client)
