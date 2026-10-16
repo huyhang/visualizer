@@ -327,13 +327,14 @@ _FORM_PREAMBLE = (
     ' eraBoxes, fire, inputs } from "./harness.js";\n'
     'import { sceneTiming } from "./scenetiming.js";\n'
     'import { calendarField, inlineCalendarEditor } from "./calendarfield.js";\n'
+    'import { calendarList } from "./calendarlist.js";\n'
     'import { dateFields } from "./datefields.js";\n'
     "const emit = (value) => console.log(JSON.stringify(value));\n"
 )
 
 _FORM_MODULES = (
-    "scenetiming.js", "calendarfield.js", "datefields.js", "calendars.js",
-    "dom.js", "api.js",
+    "scenetiming.js", "calendarfield.js", "calendarlist.js", "datefields.js",
+    "calendars.js", "dom.js", "api.js",
 )
 
 
@@ -347,6 +348,9 @@ def run_form(tmp_path_factory):
     (workspace / "harness.js").write_text(_FAKE_DOM)
     for name in _FORM_MODULES:
         shutil.copy(_JS_DIR / name, workspace / name)
+    # calendarlist.js imports the package-wide slug rule as ./shared/slug.js.
+    (workspace / "shared").mkdir()
+    shutil.copy(_JS_DIR.parents[2] / "static" / "js" / "slug.js", workspace / "shared" / "slug.js")
 
     def run(body: str):
         script = workspace / "driver.js"
@@ -470,6 +474,30 @@ def test_the_book_form_gives_back_the_origin_it_was_opened_with(run_form):
       emit({{origin: field.origin(), problems: field.problems()}});
     """)
     assert got == {"origin": "2024-02-27T06:00-08:00", "problems": []}
+
+
+def test_a_book_left_on_no_calendar_sends_no_calendar(run_form):
+    """"No calendar" is the form's default, and it sent an attachment naming
+    nothing -- which the server refuses, so a new book on plain ticks could
+    not be created at all."""
+    got = run_form("""
+      const list = calendarList({library: []});
+      emit({value: list.value(), problems: list.problems()});
+    """)
+    assert got == {"value": [], "problems": []}
+
+
+def test_a_book_still_names_the_library_calendar_it_keeps(run_form):
+    got = run_form(f"""
+      {_LIBRARY}
+      const list = calendarList({{
+        initial: [{{id: "default", label: "", source, descriptor: {_EARTH},
+                    origin: "2024-01-01"}}],
+        library: entry({_EARTH}),
+      }});
+      emit(list.value().map((attachment) => attachment.source));
+    """)
+    assert got == [{"owner": "mara", "calendar": "earth", "rev": 2}]
 
 
 def test_an_invented_calendar_is_never_asked_for_an_origin(run_form):

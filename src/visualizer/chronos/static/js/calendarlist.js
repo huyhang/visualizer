@@ -156,14 +156,21 @@ export function calendarList({
     // copy in the browser to fall out of step. ``source.rev`` is the lever
     // described in ``_resolve_attachments``: present means "keep the copy this
     // book already holds", absent means "take it as it stands today".
-    value: () => rows.map((entry, index) => ({
-      id: idFor(entry, index),
-      label: entry.state.label.trim(),
-      source: entry.field.source(),
-      from_tick: toTick(entry.state.from),
-      until_tick: toTick(entry.state.until),
-      origin: entry.field.origin(),
-    })),
+    //
+    // A row left on "No calendar" is no attachment at all, not one naming
+    // nothing: the server refuses an attachment without a source, so a new
+    // book kept on plain ticks -- the form's default -- could not be created.
+    value: () => rows
+      .map((entry, index) => ({ entry, index, source: entry.field.source() }))
+      .filter(({ source }) => source !== null)
+      .map(({ entry, index, source }) => ({
+        id: idFor(entry, index),
+        label: entry.state.label.trim(),
+        source,
+        from_tick: toTick(entry.state.from),
+        until_tick: toTick(entry.state.until),
+        origin: entry.field.origin(),
+      })),
     problems: () => problems(rows, idFor),
   };
 }
