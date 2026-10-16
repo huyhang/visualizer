@@ -80,8 +80,8 @@ What happens, and what doesn't:
 - **Only the app container is replaced.** Compose rebuilds `visualizer-app`,
   recreates that container, and leaves `visualizer-mongo-1` running with its
   volume attached. Downtime is the few seconds the app takes to restart.
-- **Your data is untouched.** It lives in the `visualizer_mongo-data` volume,
-  which compose neither rebuilds nor recreates.
+- **Your data is untouched.** It lives in the `visualizer_mongo-data` volume (or
+  the folder `MONGO_DATA` names), which compose neither rebuilds nor recreates.
 - **Your secret is untouched.** `docker/.env` is git-ignored, so `git pull` never
   overwrites `SECRET_KEY`. (Replacing it would not lose data, but it would
   invalidate every existing session and log everyone out.)
@@ -165,12 +165,15 @@ and is reclaimed like any other (`sudo docker image prune`).
 Every service shares one MongoDB, so one dump covers everything — articles,
 uploaded images, books, plotlines, events, maps, pins, accounts and grants.
 
-It lives in a Docker **named volume**, `visualizer_mongo-data`, which on DSM sits
-under `/volume1/@docker/volumes/…` — a hidden system folder that File Station and
-Hyper Backup cannot see. (`sudo docker volume inspect visualizer_mongo-data`
-prints the exact path; the `/volume1` part changes if Container Manager was
-installed on another volume.) Don't back it up by copying those files: under a
-running `mongod` you get a torn snapshot that may not restore.
+By default it lives in a Docker **named volume**, `visualizer_mongo-data`, which
+on DSM sits under `/volume1/@docker/volumes/…` — a hidden system folder that File
+Station and Hyper Backup cannot see. (`sudo docker volume inspect
+visualizer_mongo-data` prints the exact path; the `/volume1` part changes if
+Container Manager was installed on another volume.) To keep it in an ordinary
+shared folder instead, see [Keeping the data in a folder you can
+see](#keeping-the-data-in-a-folder-you-can-see). Either way, don't back it up by
+copying the files while the stack runs: under a running `mongod` you get a torn
+copy that may not restore.
 
 Use [`docker/backup.sh`](../docker/backup.sh) instead. It runs `mongodump` —
 consistent while the database is live — into an ordinary shared folder that Hyper
@@ -196,6 +199,65 @@ touching live data, are both documented in the script's header comments. Rehears
 occasionally: it is what separates a backup from a folder of files you hope are
 backups.
 
+### Keeping the data in a folder you can see
+
+Set `MONGO_DATA` in `docker/.env` to a folder on the NAS, and MongoDB keeps its
+files there instead of in the hidden volume. File Station can then see them,
+and Snapshot Replication can snapshot them. Both containers follow it: the
+database writes there, and the app reads free space from the same place for
+[Observability](#observability).
+
+```sh
+MONGO_DATA=/volume1/visualizer-data/mongo
+```
+
+- **An absolute path.** A bare name is read as a Docker volume name, not a
+  folder.
+- **Outside the repo.** A folder inside the clone would be sent to Docker with
+  every build and show up in `git status`. A shared folder of its own, such as
+  `visualizer-data`, is best: it can then have its own snapshot schedule.
+- **Nothing to prepare.** A new, empty folder is enough. MongoDB's container
+  makes it its own on first start, and Docker creates it if it doesn't exist.
+  If `visualizer-mongo-1` stops with "Permission denied" on `/data/db`, the
+  shared folder's permissions are refusing it; `sudo chown -R 999:999
+  /volume1/visualizer-data/mongo` gives it to the container's `mongodb` user.
+
+**On a new install,** set it before the first `up` and that's all.
+
+**On a stack that already has data,** the volume's files have to be moved into
+the folder once, with the database stopped:
+
+```sh
+cd /volume1/docker/visualizer
+sudo docker compose -f docker/docker-compose.nas.yml down        # stops; keeps the volume
+sudo mkdir -p /volume1/visualizer-data/mongo
+sudo docker run --rm -v visualizer_mongo-data:/from:ro \
+  -v /volume1/visualizer-data/mongo:/to --entrypoint cp mongo:7 -a /from/. /to/
+echo 'MONGO_DATA=/volume1/visualizer-data/mongo' | sudo tee -a docker/.env
+sudo docker compose -f docker/docker-compose.nas.yml up -d
+```
+
+Check that your articles and books are all there before anything else. The
+old volume is left as it was, so going back is only a matter of taking the line
+out of `docker/.env` and running `up -d` again. Once you're sure, `sudo docker
+volume rm visualizer_mongo-data` frees its space. Take a dump with
+`docker/backup.sh` first if the data matters, and don't use `down -v` here:
+it would delete the old volume before you've checked the new folder.
+
+**What counts as a backup of the folder.** Seeing the files doesn't make every
+copy of them safe:
+
+- **Snapshot Replication** snapshots the shared folder in one instant. MongoDB
+  journals its writes, so a snapshot restores the way the database recovers
+  from a power cut. That makes it a good, fast rollback, provided the whole
+  folder is in one snapshot, which it is when the folder is its own shared
+  folder.
+- **Hyper Backup, or any file copy, of the folder while the stack runs** reads
+  the files one after another while the database keeps writing. It can produce
+  a backup that won't restore. Either stop the stack for the copy (`down`,
+  copy, `up -d`), or keep `docker/backup.sh` as the nightly backup and let Hyper
+  Backup copy its dumps. The dump remains the backup to rely on.
+
 ---
 
 ## Observability
@@ -207,8 +269,8 @@ hour. No extra containers: the data sits in a reserved `_ops` database in the
 MongoDB you already run, and expires on its own.
 
 Free space is read from `MONITORING_DATA_PATH`, which the compose file points at
-`/data/mongo` — the `mongo-data` volume, mounted read-only into the app
-container purely so it can be measured. Pointing it anywhere else measures the
+`/data/mongo` — the `mongo-data` volume, or the `MONGO_DATA` folder when that is
+set, mounted read-only into the app container purely so it can be measured. Pointing it anywhere else measures the
 wrong disk.
 
 Expect it to cost a few tens of megabytes a year. Requests are not measured
@@ -233,7 +295,7 @@ does not exist. On the NAS it does.
 | --- | --- |
 | Repo + compose file | wherever you cloned it, e.g. `/volume1/docker/visualizer` |
 | `SECRET_KEY` and other config | `docker/.env` (git-ignored) |
-| MongoDB data | Docker volume `visualizer_mongo-data`, under `/volume1/@docker/volumes/…` |
+| MongoDB data | Docker volume `visualizer_mongo-data`, under `/volume1/@docker/volumes/…`, or the folder `MONGO_DATA` names in `docker/.env` |
 | Backups | wherever `VISUALIZER_BACKUP_DIR` points, default `/volume1/backups/visualizer` |
 | Containers | `visualizer-app-1`, `visualizer-mongo-1` |
 | Published port | `5002` → every service (akasha at `/`, chronos at `/timeline`, prithvi at `/prithvi`) |

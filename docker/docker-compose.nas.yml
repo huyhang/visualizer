@@ -21,6 +21,13 @@
 # Point one Synology reverse-proxy rule (one hostname) at this port, enable
 # HTTPS, then set SESSION_COOKIE_SECURE=true in docker/.env.
 #
+# MongoDB's files live in the named volume `visualizer_mongo-data` unless
+# MONGO_DATA in docker/.env names a folder on the host instead, e.g.
+#   MONGO_DATA=/volume1/visualizer-data/mongo
+# so File Station can see it and Snapshot Replication can snapshot it. An
+# absolute path, outside the repo. Read "Keeping the data in a folder you can
+# see" in docs/synology-deployment.md before switching an existing stack.
+#
 # To run the services on separate ports instead (development), build
 # Dockerfile.akasha / Dockerfile.chronos / Dockerfile.prithvi / Dockerfile.logos
 # (visualizer.{akasha,chronos,prithvi,logos}.wsgi).
@@ -85,8 +92,9 @@ services:
       GPU_WORKER_URL: ${GPU_WORKER_URL:-}
       GPU_WORKER_TOKEN: ${GPU_WORKER_TOKEN:-}
     volumes:
-      # Read-only, and only so the capacity sampler can call statvfs on it.
-      - mongo-data:/data/mongo:ro
+      # Read-only, and only so the capacity sampler can call statvfs on it --
+      # the same place mongo writes to, wherever MONGO_DATA puts it.
+      - ${MONGO_DATA:-mongo-data}:/data/mongo:ro
     depends_on:
       mongo:
         condition: service_healthy
@@ -109,7 +117,11 @@ services:
     command: ["mongod", "--wiredTigerCacheSizeGB", "${MONGO_CACHE_GB:-2}"]
     mem_limit: ${MONGO_MEM_LIMIT:-4g}
     volumes:
-      - mongo-data:/data/db
+      # The database's files. MONGO_DATA unset: the named volume below.
+      # MONGO_DATA=/an/absolute/path: that host folder, bind-mounted. mongo's
+      # own entrypoint makes it its user's on first start, so a new empty
+      # folder is all it needs.
+      - ${MONGO_DATA:-mongo-data}:/data/db
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
       interval: 10s
@@ -121,5 +133,6 @@ services:
 volumes:
   # Project-owned volume: compose names it `visualizer_mongo-data` and manages it
   # (create on first `up`, auto-used thereafter). Existing data was migrated here
-  # from the pre-rename `document-server_mongo-data` volume.
+  # from the pre-rename `document-server_mongo-data` volume. Unused, and left
+  # alone, while MONGO_DATA points the database at a host folder.
   mongo-data: {}

@@ -147,7 +147,9 @@ docker image prune -f      # removes the previous build's leftover image
 ## Back up and restore
 
 All your work lives in one MongoDB database, in a Docker volume named
-`visualizer_mongo-data`. Copy it with a dump, not by copying files:
+`visualizer_mongo-data` (or in a folder of your choosing, if `MONGO_DATA` in
+`docker/.env` names one; see the Synology guide's "Keeping the data in a folder
+you can see"). Copy it with a dump, not by copying files:
 
 ```bash
 VISUALIZER_BACKUP_DIR=~/visualizer-backups sh docker/backup.sh
