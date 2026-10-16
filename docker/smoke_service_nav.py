@@ -41,6 +41,9 @@ from playwright.sync_api import sync_playwright
 BASE = os.environ.get("BASE", "http://app:5000").rstrip("/")
 USER = os.environ.get("SEED_USER", "admin")
 PASSWORD = os.environ.get("SEED_PASSWORD", "admin-pass")
+# A deep path for the toolbar check: three levels of trail. The default is the
+# demo seed's (docker/seed_demo.py), where Lyra Vane's id is plain `lyra`.
+ARTICLE = os.environ.get("ARTICLE", "ember-pact/characters/lyra")
 
 # Every authenticated shell, so "always available" is measured rather than
 # asserted. The last three are the utility pages that used to highlight
@@ -288,7 +291,7 @@ def check_article_toolbar(page, check, stacked):
     had set the text. Below the breakpoint the two take a row each, so the path
     stops deciding the shape.
     """
-    page.goto(f"{BASE}/#/ember-pact/characters/lyra-vane")
+    page.goto(f"{BASE}/#/{ARTICLE}")
     page.wait_for_selector(".pane-actions .btn")
     page.wait_for_timeout(250)
     m = page.evaluate(

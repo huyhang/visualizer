@@ -226,18 +226,27 @@ def main():
         check("and it names the goal", "Establish who was where" in row.inner_text(),
               row.inner_text().replace("\n", " ")[:90])
         page.screenshot(path=f"{SHOTS}/04-report-goals.png", full_page=True)
+        # Beside the list rather than in place of it (report.js's goalLink): the
+        # goal opens in the peek panel and the report stays where it was.
+        report_url = page.url
         row.locator(".issue-goal").click()
-        page.wait_for_timeout(500)
-        check("clicking it opens that goal", page.url.endswith("~goals/who-was-where"), page.url)
+        page.wait_for_selector("#peek .goal-peek .goal-facts", timeout=10000)
+        check("clicking it opens that goal beside the report",
+              "Establish who was where" in page.locator("#peek .peek-title").inner_text(),
+              page.locator("#peek .peek-title").inner_text())
+        check("and the report stays put", page.url == report_url, page.url)
 
         step("a goal chip on a thread leads to it")
         page.goto(f"{BASE}/timeline/#/{BOOK}", wait_until="domcontentloaded")
         page.wait_for_selector(".pl-row", timeout=15000)
         chip = page.locator(".pl-table .chip.link").first
         check("the table draws goal chips", chip.count() > 0)
+        # The same panel, as smoke_goals_ui.py holds the table's chips to.
+        table_url = page.url
         chip.click()
-        page.wait_for_timeout(500)
-        check("it opens the goals view", "~goals/" in page.url, page.url)
+        page.wait_for_selector("#peek .goal-peek .goal-facts", timeout=10000)
+        check("it opens the goal in the panel", page.locator("#peek .goal-peek").count() == 1)
+        check("not the goals view", page.url == table_url, page.url)
 
         browser.close()
 
