@@ -53,6 +53,7 @@ services:
       CHRONOS_URL: ${CHRONOS_URL:-/timeline}
       PRITHVI_URL: ${PRITHVI_URL:-/prithvi}
       LOGOS_URL: ${LOGOS_URL:-/logos}
+      TUTORIALS_URL: ${TUTORIALS_URL:-/tutorials}
       # Prithvi's three numbers. The upload cap bounds one request; the two
       # retention limits bound how much history a map or pin keeps. Map
       # revisions are whole drawings, which is why they are kept fewer.

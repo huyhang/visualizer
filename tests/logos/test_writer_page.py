@@ -8,12 +8,14 @@ untouched.
 """
 
 import json
+from dataclasses import replace
 
 import pytest
 
 from visualizer import vite_assets
 from visualizer.logos.app import create_app
 from visualizer.logos.writer_page import ENTRY, manifest_assets
+from visualizer.service_links import STANDALONE_LINKS
 
 from .conftest import BOOK, login
 
@@ -27,7 +29,8 @@ def writer(logos_store, chronos_gateway, article_gateway, auth_store):
 
     def make(assets, user="mara"):
         app = create_app(logos_store, chronos_gateway, article_gateway, auth_store,
-                         secret_key="test-secret", akasha_url="/akasha/",
+                         secret_key="test-secret",
+                         links=replace(STANDALONE_LINKS, akasha="/akasha/"),
                          writer_assets=lambda: assets)
         app.config.update(TESTING=True, WTF_CSRF_ENABLED=False, RATELIMIT_ENABLED=False)
         client = app.test_client()

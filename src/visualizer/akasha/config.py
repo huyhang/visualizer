@@ -8,6 +8,8 @@ import os
 
 from pymongo import MongoClient
 
+from visualizer.service_links import ServiceLinks, tutorials_beside
+
 from .gltf import GlbLimits
 from .image_processing import ImageProcessor
 
@@ -146,6 +148,23 @@ def get_prithvi_url() -> str:
 def get_logos_url() -> str:
     """Browser-facing base URL of the logos service (for the service nav)."""
     return os.environ.get("LOGOS_URL", DEFAULT_LOGOS_URL)
+
+
+def get_tutorials_url(akasha_url: str) -> str:
+    """Browser-facing base URL of the tutorials: beside akasha unless set."""
+    return os.environ.get("TUTORIALS_URL") or tutorials_beside(akasha_url)
+
+
+def get_service_links() -> ServiceLinks:
+    """Every service's browser-facing URL, from the environment, as one value."""
+    akasha = get_akasha_url()
+    return ServiceLinks(
+        akasha=akasha,
+        chronos=get_chronos_url(),
+        prithvi=get_prithvi_url(),
+        logos=get_logos_url(),
+        tutorials=get_tutorials_url(akasha),
+    )
 
 
 def get_secure_cookies() -> bool:

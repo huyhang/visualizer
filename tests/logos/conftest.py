@@ -1,5 +1,6 @@
 """Shared in-memory fixtures for Logos: no real Mongo, no network, fixed clock."""
 
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import mongomock
@@ -10,6 +11,7 @@ from visualizer.auth import ALL_PERMS, AuthStore
 from visualizer.logos.app import BOOK_RESOURCE, create_app
 from visualizer.logos.gateways import FakeArticleGateway, FakeChronosGateway
 from visualizer.logos.store import LogosStore
+from visualizer.service_links import STANDALONE_LINKS
 
 BOOK = "ember-pact"
 VOLUME = "the-ember-pact"
@@ -113,7 +115,7 @@ def app(logos_store, chronos_gateway, article_gateway, auth_store):
         article_gateway,
         auth_store,
         secret_key="test-secret",
-        akasha_url="/",
+        links=replace(STANDALONE_LINKS, akasha="/"),
     )
     application.config.update(
         TESTING=True, WTF_CSRF_ENABLED=False, RATELIMIT_ENABLED=False

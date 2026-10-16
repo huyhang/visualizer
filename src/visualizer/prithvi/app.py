@@ -34,6 +34,7 @@ from visualizer.auth import (
     register_service_links,
 )
 from visualizer.observability import Observability
+from visualizer.service_links import STANDALONE_LINKS, ServiceLinks
 from visualizer.shared_assets import register_shared_assets
 
 from .articles import ArticleGateway
@@ -71,10 +72,7 @@ def create_app(
     max_svg_bytes: int = 5 * 1024 * 1024,
     secure_cookies: bool = False,
     rate_limit_storage_uri: str = "memory://",
-    akasha_url: str = "http://localhost:5002",
-    chronos_url: str = "http://localhost:5003",
-    prithvi_url: str = "http://localhost:5004",
-    logos_url: str = "http://localhost:5005",
+    links: ServiceLinks = STANDALONE_LINKS,
     observability: Observability | None = None,
 ) -> Flask:
     if not secret_key:
@@ -95,23 +93,16 @@ def create_app(
     init_login(app, auth_store)
     # The map browser is this app's own HTML, so a browser login lands there.
     register_auth_routes(app, auth_store, csrf, limiter, home_endpoint="index")
-    register_service_links(
-        app,
-        akasha_url,
-        chronos_url,
-        current="prithvi",
-        prithvi_url=prithvi_url,
-        logos_url=logos_url,
-    )
+    register_service_links(app, links, current="prithvi")
     register_shared_assets(app)
 
     service = PrithviService(
         store,
         articles,
         lambda upload: sanitize_svg(upload, max_svg_bytes),
-        akasha_url,
+        links.akasha,
     )
-    _register_ui_routes(app, auth_store, articles, service, akasha_url)
+    _register_ui_routes(app, auth_store, articles, service, links.akasha)
     _register_map_routes(app, csrf, auth_store, service)
     _register_pin_routes(app, csrf, auth_store, service)
 

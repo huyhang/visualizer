@@ -7,14 +7,11 @@ run and watched without the others in the way.
 """
 
 from visualizer.akasha.config import (
-    get_akasha_url,
-    get_chronos_url,
-    get_logos_url,
     get_mongo_client,
-    get_prithvi_url,
     get_rate_limit_storage_uri,
     get_secret_key,
     get_secure_cookies,
+    get_service_links,
 )
 from visualizer.akasha.store import DocumentStore
 from visualizer.auth import AuthStore
@@ -45,10 +42,7 @@ app = create_app(
     max_svg_bytes=get_max_svg_bytes(),
     secure_cookies=get_secure_cookies(),
     rate_limit_storage_uri=get_rate_limit_storage_uri(),
-    akasha_url=get_akasha_url(),
-    chronos_url=get_chronos_url(),
-    prithvi_url=get_prithvi_url(),
-    logos_url=get_logos_url(),
+    links=get_service_links(),
     observability=_observability,
 )
 

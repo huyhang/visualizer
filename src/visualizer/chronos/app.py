@@ -25,6 +25,7 @@ from visualizer.auth import (
 from visualizer.auth.authz import ALL_PERMS, is_allowed, perm_for_method
 from visualizer.auth.errors import AuthError
 from visualizer.observability import Observability
+from visualizer.service_links import STANDALONE_LINKS, ServiceLinks
 from visualizer.shared_assets import register_shared_assets
 from visualizer.vite_assets import BundleAssets
 
@@ -77,10 +78,7 @@ def create_app(
     manuscript_gate: ManuscriptGate | None = None,
     secure_cookies: bool = False,
     rate_limit_storage_uri: str = "memory://",
-    akasha_url: str = "http://localhost:5002",
-    chronos_url: str = "http://localhost:5003",
-    prithvi_url: str = "http://localhost:5004",
-    logos_url: str = "http://localhost:5005",
+    links: ServiceLinks = STANDALONE_LINKS,
     observability: Observability | None = None,
     # Where the workspace bundle is. Defaulted to the build's own manifest; tests
     # pass a lookup that answers whatever they need, built or not.
@@ -100,14 +98,7 @@ def create_app(
     init_login(app, auth_store)
     # The read-only visualiser (below) is the HTML home a browser login lands on.
     register_auth_routes(app, auth_store, csrf, limiter, home_endpoint="index")
-    register_service_links(
-        app,
-        akasha_url,
-        chronos_url,
-        current="chronos",
-        prithvi_url=prithvi_url,
-        logos_url=logos_url,
-    )
+    register_service_links(app, links, current="chronos")
     register_shared_assets(app)
 
     manuscripts = manuscript_gate or NullManuscriptGate()

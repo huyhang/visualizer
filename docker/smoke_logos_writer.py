@@ -28,6 +28,7 @@ from visualizer.auth import ALL_PERMS, AuthStore
 from visualizer.logos.app import BOOK_RESOURCE, create_app
 from visualizer.logos.gateways import FakeArticleGateway, FakeChronosGateway
 from visualizer.logos.store import LogosStore
+from visualizer.service_links import ServiceLinks
 
 WRITE = "/?book=ember-pact&volume=one&section=gate&mode=write"
 
@@ -62,10 +63,13 @@ def application():
         FakeArticleGateway([("ember", "characters", "lyra")]),
         auth,
         secret_key="writer-smoke",
-        akasha_url="/",
-        chronos_url="/timeline",
-        prithvi_url="/prithvi",
-        logos_url="/",
+        links=ServiceLinks(
+            akasha="/",
+            chronos="/timeline",
+            prithvi="/prithvi",
+            logos="/",
+            tutorials="/tutorials",
+        ),
     )
     app.config.update(TESTING=True, WTF_CSRF_ENABLED=False, RATELIMIT_ENABLED=False)
     seeded = app.test_client()

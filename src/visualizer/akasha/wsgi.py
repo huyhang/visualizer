@@ -15,16 +15,13 @@ from visualizer.observability import runtime as observability_runtime
 
 from .app import create_app
 from .config import (
-    get_akasha_url,
-    get_chronos_url,
     get_glb_limits,
     get_image_processor,
-    get_logos_url,
     get_mongo_client,
-    get_prithvi_url,
     get_rate_limit_storage_uri,
     get_secret_key,
     get_secure_cookies,
+    get_service_links,
     get_versions_keep,
 )
 from .media_service import build_media_service
@@ -60,10 +57,7 @@ app = create_app(
     book_world=_book_world,
     secure_cookies=get_secure_cookies(),
     rate_limit_storage_uri=get_rate_limit_storage_uri(),
-    akasha_url=get_akasha_url(),
-    chronos_url=get_chronos_url(),
-    prithvi_url=get_prithvi_url(),
-    logos_url=get_logos_url(),
+    links=get_service_links(),
     observability=_observability,
     media_service=build_media_service(
         _client, get_image_processor(), get_glb_limits()

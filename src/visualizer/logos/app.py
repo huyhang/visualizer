@@ -25,6 +25,7 @@ from visualizer.auth import (
     register_service_links,
 )
 from visualizer.observability import Observability
+from visualizer.service_links import STANDALONE_LINKS, ServiceLinks
 from visualizer.shared_assets import register_shared_assets
 from visualizer.static_versions import install_versioned_static
 from visualizer.vite_assets import BundleAssets
@@ -63,10 +64,7 @@ def create_app(
     *,
     secure_cookies: bool = False,
     rate_limit_storage_uri: str = "memory://",
-    akasha_url: str = "http://localhost:5002",
-    chronos_url: str = "http://localhost:5003",
-    prithvi_url: str = "http://localhost:5004",
-    logos_url: str = "http://localhost:5005",
+    links: ServiceLinks = STANDALONE_LINKS,
     observability: Observability | None = None,
     pdf_renderer=None,
     export_runner=None,
@@ -89,14 +87,7 @@ def create_app(
     init_login(app, auth_store)
     # The reader is this app's own HTML, so a browser login lands there.
     register_auth_routes(app, auth_store, csrf, limiter, home_endpoint="index")
-    register_service_links(
-        app,
-        akasha_url,
-        chronos_url,
-        current="logos",
-        prithvi_url=prithvi_url,
-        logos_url=logos_url,
-    )
+    register_service_links(app, links, current="logos")
     register_shared_assets(app)
     install_versioned_static(app)
 

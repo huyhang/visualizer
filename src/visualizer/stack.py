@@ -53,6 +53,7 @@ from visualizer.prithvi.config import (
     get_pin_revisions_keep,
 )
 from visualizer.prithvi.store import PrithviStore
+from visualizer.service_links import ServiceLinks, tutorials_beside
 
 from .gateway import (
     DEFAULT_CHRONOS_PREFIX,
@@ -82,9 +83,13 @@ def build_application(client, gpu_worker=None):
     # Behind one origin the service nav's links are relative paths, not
     # cross-origin URLs. Overridable, but these are the right defaults here.
     akasha_url = os.environ.get("AKASHA_URL", "/")
-    chronos_url = os.environ.get("CHRONOS_URL", DEFAULT_CHRONOS_PREFIX)
-    prithvi_url = os.environ.get("PRITHVI_URL", DEFAULT_PRITHVI_PREFIX)
-    logos_url = os.environ.get("LOGOS_URL", DEFAULT_LOGOS_PREFIX)
+    links = ServiceLinks(
+        akasha=akasha_url,
+        chronos=os.environ.get("CHRONOS_URL", DEFAULT_CHRONOS_PREFIX),
+        prithvi=os.environ.get("PRITHVI_URL", DEFAULT_PRITHVI_PREFIX),
+        logos=os.environ.get("LOGOS_URL", DEFAULT_LOGOS_PREFIX),
+        tutorials=os.environ.get("TUTORIALS_URL") or tutorials_beside(akasha_url),
+    )
 
     story_store = StoryStore(client)
     logos_store = LogosStore(
@@ -111,10 +116,7 @@ def build_application(client, gpu_worker=None):
         user_cleanup=logos_store.purge_user,
         secure_cookies=secure,
         rate_limit_storage_uri=ratelimit,
-        akasha_url=akasha_url,
-        chronos_url=chronos_url,
-        prithvi_url=prithvi_url,
-        logos_url=logos_url,
+        links=links,
         observability=observability,
         media_service=build_media_service(
             client, get_image_processor(), get_glb_limits()
@@ -131,10 +133,7 @@ def build_application(client, gpu_worker=None):
         secret_key=secret,
         secure_cookies=secure,
         rate_limit_storage_uri=ratelimit,
-        akasha_url=akasha_url,
-        chronos_url=chronos_url,
-        prithvi_url=prithvi_url,
-        logos_url=logos_url,
+        links=links,
         observability=observability,
     )
     logos_app = create_logos_app(
@@ -145,10 +144,7 @@ def build_application(client, gpu_worker=None):
         secret_key=secret,
         secure_cookies=secure,
         rate_limit_storage_uri=ratelimit,
-        akasha_url=akasha_url,
-        chronos_url=chronos_url,
-        prithvi_url=prithvi_url,
-        logos_url=logos_url,
+        links=links,
         observability=observability,
         reviewer=RemoteReviewer(worker) if worker is not None else None,
         llm_reviews=LlmReviewStore(client) if worker is not None else None,
@@ -165,10 +161,7 @@ def build_application(client, gpu_worker=None):
         max_svg_bytes=get_max_svg_bytes(),
         secure_cookies=secure,
         rate_limit_storage_uri=ratelimit,
-        akasha_url=akasha_url,
-        chronos_url=chronos_url,
-        prithvi_url=prithvi_url,
-        logos_url=logos_url,
+        links=links,
         observability=observability,
     )
 

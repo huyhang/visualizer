@@ -25,15 +25,19 @@ from visualizer.logos.gateways import (
     LogosReferenceGate,
 )
 from visualizer.logos.store import LogosStore
+from visualizer.service_links import ServiceLinks
 
 from .conftest import BOOK, section_payload
 
 SHARED = {
     "secret_key": "test-secret",
-    "akasha_url": "/",
-    "chronos_url": "/timeline",
-    "prithvi_url": "/prithvi",
-    "logos_url": "/logos",
+    "links": ServiceLinks(
+        akasha="/",
+        chronos="/timeline",
+        prithvi="/prithvi",
+        logos="/logos",
+        tutorials="/tutorials",
+    ),
 }
 
 

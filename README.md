@@ -60,9 +60,10 @@ what the Synology reverse-proxy deployment wants.
 It's a *front door*, not a merge: each app keeps its own factory and test suite,
 and the per-service entrypoints (`visualizer.akasha.wsgi` and its siblings) still
 run a single service on its own port for development. The service nav's
-`AKASHA_URL`, `CHRONOS_URL`, `PRITHVI_URL` and `LOGOS_URL` default to the
-relative paths `/`, `/timeline`, `/prithvi` and `/logos`; set them if a proxy
-serves the services on different hosts.
+`AKASHA_URL`, `CHRONOS_URL`, `PRITHVI_URL`, `LOGOS_URL` and `TUTORIALS_URL`
+default to the relative paths `/`, `/timeline`, `/prithvi`, `/logos` and
+`/tutorials`; set them if a proxy serves the services on different hosts. The
+apps take them as one `ServiceLinks` value (`src/visualizer/service_links.py`).
 
 ---
 

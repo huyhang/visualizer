@@ -21,6 +21,7 @@ from werkzeug.security import generate_password_hash
 from visualizer.akasha.app import create_app
 from visualizer.akasha.store import DocumentStore
 from visualizer.auth import AuthStore
+from visualizer.service_links import ServiceLinks
 
 _SRC = Path(__file__).resolve().parents[2] / "src" / "visualizer"
 
@@ -137,10 +138,13 @@ def test_the_service_nav_urls_are_configurable():
     auth.create_user("mara", generate_password_hash("pw"), role="user")
     app = create_app(
         DocumentStore(client_db), auth, secret_key="s",
-        akasha_url="https://world.example/akasha",
-        chronos_url="https://world.example/chronos",
-        prithvi_url="https://world.example/maps",
-        logos_url="https://world.example/manuscripts",
+        links=ServiceLinks(
+            akasha="https://world.example/akasha",
+            chronos="https://world.example/chronos",
+            prithvi="https://world.example/maps",
+            logos="https://world.example/manuscripts",
+            tutorials="https://world.example/tutorials",
+        ),
     )
     app.config.update(TESTING=True, WTF_CSRF_ENABLED=False, RATELIMIT_ENABLED=False)
     c = app.test_client()

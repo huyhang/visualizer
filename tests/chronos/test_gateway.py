@@ -6,6 +6,7 @@ they share the cookie and the auth store.
 """
 
 import json
+from dataclasses import replace
 
 import pytest
 from werkzeug.test import Client
@@ -13,11 +14,13 @@ from werkzeug.test import Client
 from visualizer.akasha.app import create_app as create_akasha_app
 from visualizer.chronos.app import create_app as create_chronos_app
 from visualizer.gateway import combine
+from visualizer.service_links import STANDALONE_LINKS
 
 
 @pytest.fixture
 def gateway(doc_store, story_store, fake_gate, auth_store, calendar_store):
-    kw = {"secret_key": "test-secret", "akasha_url": "/", "chronos_url": "/timeline"}
+    links = replace(STANDALONE_LINKS, akasha="/", chronos="/timeline")
+    kw = {"secret_key": "test-secret", "links": links}
     akasha_app = create_akasha_app(doc_store, auth_store, **kw)
     chronos_app = create_chronos_app(
         story_store, fake_gate, auth_store, calendar_store=calendar_store, **kw

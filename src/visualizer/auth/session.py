@@ -13,6 +13,7 @@ password change, and per-IP rate limiting are enforced identically wherever the
 one login is used.
 """
 
+from collections.abc import Callable
 from functools import wraps
 
 from flask import (
@@ -35,6 +36,7 @@ from flask_login import (
 )
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from ..service_links import ServiceLinks
 from .errors import (
     EmailAlreadyExists,
     Forbidden,
@@ -107,60 +109,65 @@ SERVICE_NAMES = {
     "chronos": "Chronos",
     "prithvi": "Prithvi",
     "logos": "Logos",
+    "tutorials": "Tutorials",
 }
 
 
-def _active_service(current: str, home_endpoint: str) -> str | None:
+def is_index(endpoint: str | None) -> bool:
+    """Whether ``endpoint`` is a service's own surface, as four of them say it.
+
+    An allowlist of one rather than a denylist of the rest: a service's own
+    surface is its ``index``, and anything else it grows later is a utility
+    page that correctly highlights nothing without being registered here.
+    """
+    return endpoint == "index"
+
+
+def _active_service(current: str, is_home: Callable[[str | None], bool]) -> str | None:
     """Which service the *current page* is, or ``None`` on a utility page.
 
     ``current`` says which app is serving the request, which is not the same
     question. Access, Admin, Observability and change-password are all served
     by akasha, so a navigation keyed on ``current`` highlighted Articles while
     you stood on Access -- and told a screen reader ``aria-current="page"``
-    about a page you were not on.
-
-    An allowlist of one rather than a denylist of the rest: a service's own
-    surface is its ``index``, and anything else it grows later is a utility
-    page that correctly highlights nothing without being registered here.
+    about a page you were not on. ``is_home`` answers for this app.
     """
     if not has_request_context():
         return None
-    return current if request.endpoint == home_endpoint else None
+    return current if is_home(request.endpoint) else None
 
 
 def register_service_links(
     app,
-    akasha_url: str,
-    chronos_url: str,
+    links: ServiceLinks,
     current: str,
-    prithvi_url: str,
-    logos_url: str,
-    home_endpoint: str = "index",
+    is_home: Callable[[str | None], bool] = is_index,
 ) -> None:
     """Expose cross-service nav links to every template (the service nav).
 
-    The four services share one login (one cookie across ports/origins), so
-    these are plain links between the apps. The URLs are injected here rather
-    than hard-coded in templates, so a reverse-proxy deployment can point them
-    wherever it serves each service. ``current`` (``"akasha"``/``"chronos"``/
-    ``"prithvi"``/``"logos"``) says which app this is; ``active`` says which
-    service the page belongs to, and is ``None`` on the shared utility pages.
+    The services share one login (one cookie across ports/origins), so these
+    are plain links between the apps. The URLs are injected here rather than
+    hard-coded in templates, so a reverse-proxy deployment can point them
+    wherever it serves each service. ``current`` (``"akasha"``, ``"chronos"``,
+    ``"prithvi"``, ``"logos"``, ``"tutorials"``) says which app this is;
+    ``active`` says which service the page belongs to, and is ``None`` on the
+    shared utility pages.
 
-    Every service URL is required rather than defaulted: a nav whose links
-    depend on which caller remembered to pass an argument is a nav that
-    silently points somewhere wrong. ``home_endpoint`` may default, because all
-    four services name their own surface ``index`` and a wrong value highlights
-    nothing at all -- loud rather than silent, and asserted per service.
+    ``links`` is complete by construction (see ``service_links.py``).
+    ``is_home`` may default, because a wrong one highlights nothing at all --
+    loud rather than silent, and asserted per service. The tutorials pass
+    their own: every page they serve is theirs.
     """
-    links = {
-        "akasha": akasha_url,
-        "chronos": chronos_url,
-        "prithvi": prithvi_url,
-        "logos": logos_url,
+    nav = {
+        "akasha": links.akasha,
+        "chronos": links.chronos,
+        "prithvi": links.prithvi,
+        "logos": links.logos,
+        "tutorials": links.tutorials,
         # Account and Admin are akasha-owned pages; expose them so either service's
         # header can link to them under the shared origin.
-        "account": akasha_url.rstrip("/") + "/account",
-        "admin": akasha_url.rstrip("/") + "/admin",
+        "account": links.account,
+        "admin": links.admin,
         "current": current,
         # The same service, spelled for a human. The shared auth pages are served
         # by *both* apps, so their titles cannot name one of them: a page reached
@@ -175,9 +182,7 @@ def register_service_links(
     def _inject_service_links():
         # Recomputed per request, because ``active`` is about the page rather
         # than the app. Everything else in here is constant.
-        return {
-            "service_links": {**links, "active": _active_service(current, home_endpoint)}
-        }
+        return {"service_links": {**nav, "active": _active_service(current, is_home)}}
 
 
 def _wants_json() -> bool:

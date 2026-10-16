@@ -44,6 +44,7 @@ from visualizer.auth import (
 )
 from visualizer.observability import Observability
 from visualizer.observability.page import register_observability_page
+from visualizer.service_links import STANDALONE_LINKS, ServiceLinks
 from visualizer.shared_assets import register_shared_assets
 
 from .account_routes import register_account_routes
@@ -72,10 +73,7 @@ def create_app(
     secret_key: str,
     secure_cookies: bool = False,
     rate_limit_storage_uri: str = "memory://",
-    akasha_url: str = "http://localhost:5002",
-    chronos_url: str = "http://localhost:5003",
-    prithvi_url: str = "http://localhost:5004",
-    logos_url: str = "http://localhost:5005",
+    links: ServiceLinks = STANDALONE_LINKS,
     observability: Observability | None = None,
     # Resolves a Chronos book id to the world it is set in. Injected, because
     # sharing a book also shares its world and *this* app serves one of the two
@@ -111,14 +109,7 @@ def create_app(
     limiter = build_limiter(app, rate_limit_storage_uri)
     init_login(app, auth_store)
     register_auth_routes(app, auth_store, csrf, limiter)
-    register_service_links(
-        app,
-        akasha_url,
-        chronos_url,
-        current="akasha",
-        prithvi_url=prithvi_url,
-        logos_url=logos_url,
-    )
+    register_service_links(app, links, current="akasha")
     register_shared_assets(app)
 
     # Every template can say "world"/"category" without hard-coding it; see

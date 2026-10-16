@@ -1,6 +1,7 @@
 """Prithvi behind the shared origin: one login, three services, no CORS."""
 
 import json
+from dataclasses import replace
 
 from werkzeug.test import Client
 
@@ -10,6 +11,7 @@ from visualizer.chronos.entity_gate import FakeEntityGate
 from visualizer.chronos.store import CalendarStore, StoryStore
 from visualizer.gateway import DEFAULT_PRITHVI_PREFIX, combine
 from visualizer.prithvi.app import create_app as create_prithvi_app
+from visualizer.service_links import STANDALONE_LINKS
 
 from .conftest import SVG, WORLD
 
@@ -17,9 +19,12 @@ from .conftest import SVG, WORLD
 def _stack(mongo_client, document_store, prithvi_store, article_gateway, auth_store):
     shared = {
         "secret_key": "test-secret",
-        "akasha_url": "/",
-        "chronos_url": "/timeline",
-        "prithvi_url": DEFAULT_PRITHVI_PREFIX,
+        "links": replace(
+            STANDALONE_LINKS,
+            akasha="/",
+            chronos="/timeline",
+            prithvi=DEFAULT_PRITHVI_PREFIX,
+        ),
     }
     apps = (
         create_akasha_app(document_store, auth_store, **shared),

@@ -1,8 +1,11 @@
 """Integration tests for the read-only visualiser endpoints (mongomock)."""
 
+from dataclasses import replace
+
 import pytest
 
 from tests.chronos.conftest import WRITER, ref
+from visualizer.service_links import STANDALONE_LINKS
 
 BOOK = "ember-pact"
 
@@ -113,7 +116,7 @@ def test_chronos_marks_timeline_current_on_its_own_surface(seeded, client):
 
 
 def test_header_has_account_link(seeded, client):
-    # akasha_url defaults to http://localhost:5002 in the test app, so the link
+    # The links default to STANDALONE_LINKS (akasha at http://localhost:5002), so the link
     # is that base + /account (relative "/account" under the single-origin gateway).
     html = client.get("/").get_data(as_text=True)
     assert ">Access<" in html and "/account" in html
@@ -137,9 +140,12 @@ def test_switcher_urls_are_configurable(story_store, fake_gate, auth_store, cale
 
     app = create_app(
         story_store, fake_gate, auth_store, calendar_store=calendar_store, secret_key="s",
-        akasha_url="https://world.example/akasha",
-        chronos_url="https://world.example/chronos",
-        prithvi_url="https://world.example/maps",
+        links=replace(
+            STANDALONE_LINKS,
+            akasha="https://world.example/akasha",
+            chronos="https://world.example/chronos",
+            prithvi="https://world.example/maps",
+        ),
     )
     app.config.update(TESTING=True, WTF_CSRF_ENABLED=False, RATELIMIT_ENABLED=False)
     c = app.test_client()

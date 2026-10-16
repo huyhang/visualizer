@@ -9,6 +9,7 @@ service is who may see what:
   perfectly ordinary reader who happens to be shut out of one article.
 """
 
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import mongomock
@@ -22,6 +23,7 @@ from visualizer.prithvi.articles import InProcessArticleGateway
 from visualizer.prithvi.errors import ArticleNotFound, WorldNotFound
 from visualizer.prithvi.models import ArticleRef
 from visualizer.prithvi.store import PrithviStore
+from visualizer.service_links import STANDALONE_LINKS
 
 FIXED_TIME = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -150,7 +152,7 @@ def app(prithvi_store, article_gateway, auth_store):
         auth_store,
         secret_key="test-secret",
         max_svg_bytes=10_000,
-        akasha_url="/",
+        links=replace(STANDALONE_LINKS, akasha="/"),
     )
     application.config.update(
         TESTING=True, WTF_CSRF_ENABLED=False, RATELIMIT_ENABLED=False
