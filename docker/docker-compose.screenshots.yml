@@ -1,0 +1,42 @@
+# The screenshot job: every screen the browser smoke scripts walk, photographed
+# in a throwaway copy of the stack -- on a laptop, in CI, or on the NAS.
+#
+#   docker compose -f docker/docker-compose.screenshots.yml run --rm --build shots
+#
+# Each run writes one folder under screenshots/ at the repo root, with an
+# index.html contact sheet (see docker/shots.py). SHOTS_ONLY=<script>,<script>
+# runs a subset; SHOTS_DIR puts the output elsewhere.
+#
+# From Container Manager: Project -> Create, named visualizer-shots, pointing at
+# this file. It runs once and stops; Action -> Build runs it again on new code.
+#
+# It cannot touch the real stack, by construction rather than by care:
+#   - its own project name. docker-compose.nas.yml pins `visualizer`, and a run
+#     sharing that name would recreate the live app container;
+#   - no network at all. The dev server, the fake GPU box and the browser talk
+#     over the container's own loopback, so neither the real MongoDB nor the
+#     internet can be reached from a run;
+#   - two mounts only: the output folder, and the repo's .git, read-only, so a
+#     run can say which commit it shows. Never docker/, which holds .env.
+name: visualizer-shots
+
+services:
+  shots:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.shots
+    network_mode: none
+    # Reaps the browsers a timed-out script leaves behind.
+    init: true
+    # Chromium keeps pages in /dev/shm; Docker's 64 MB default crashes tabs on
+    # the larger ones.
+    shm_size: 1gb
+    mem_limit: ${SHOTS_MEM_LIMIT:-3g}
+    environment:
+      SHOTS_ONLY: ${SHOTS_ONLY:-}
+    volumes:
+      - ${SHOTS_DIR:-../screenshots}:/shots
+      - type: bind
+        source: ../.git
+        target: /repo.git
+        read_only: true

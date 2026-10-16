@@ -116,6 +116,50 @@ as well.
 
 ---
 
+## Screenshots of every screen
+
+After an update, one command photographs every screen the browser smoke scripts
+walk — the story map, goals, maps, the research studio, the writing page and its
+editor, on desktop and phone widths — in a throwaway copy of the stack:
+
+```bash
+cd /volume1/docker/visualizer
+sudo docker compose -f docker/docker-compose.screenshots.yml run --rm --build shots
+```
+
+Then open `screenshots/<run>/index.html` — from File Station, or from the shared
+folder on your computer — for a contact sheet of every screen, with each
+script's verdict and log. `screenshots/index.html` lists every run.
+
+- **It cannot touch your data.** It is its own compose project
+  (`visualizer-shots`), it runs with no network at all, and it brings its own
+  in-memory database and a fake GPU box. The live app keeps serving throughout;
+  the two share only the CPU.
+- **It shows what is checked out**, uncommitted edits included, and each run is
+  named for its commit.
+- **A failed check still leaves pictures**: the screens it reached, a log saying
+  why, and a non-zero exit, so Container Manager shows the run red.
+- **The first build is the slow one**: it downloads a browser and builds the
+  frontend. Later builds reuse that, and only code changes rebuild.
+
+**From Container Manager.** **Project → Create**, named **`visualizer-shots`**
+(not `visualizer` — that name is the live stack's), pointing at
+`docker/docker-compose.screenshots.yml`. It runs once and stops. **Action →
+Build** runs it again on new code.
+
+**Every night.** In **Control Panel → Task Scheduler**, a user-defined script
+run as root:
+
+```bash
+docker compose -f /volume1/docker/visualizer/docker/docker-compose.screenshots.yml run --rm --build shots
+```
+
+**Tidying up.** Runs accumulate under `screenshots/`; delete old run folders
+from File Station whenever you like. The job's image stays cached between runs
+and is reclaimed like any other (`sudo docker image prune`).
+
+---
+
 ## Backups
 
 Every service shares one MongoDB, so one dump covers everything — articles,

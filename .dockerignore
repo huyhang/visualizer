@@ -36,6 +36,10 @@ src/visualizer/akasha/static/studio/
 src/visualizer/logos/static/writer/
 src/visualizer/chronos/static/workspace/
 
+# What the screenshot job writes (docker/docker-compose.screenshots.yml): left
+# in, every later build would ship the previous runs' pictures into its context.
+screenshots/
+
 # Virtualenvs
 .venv/
 venv/

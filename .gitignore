@@ -231,6 +231,8 @@ src/visualizer/akasha/static/studio/
 src/visualizer/logos/static/writer/
 # ...and the Chronos workspace's bundle, compiled the same way.
 src/visualizer/chronos/static/workspace/
+# The screenshot job's runs (docker/docker-compose.screenshots.yml).
+screenshots/
 # A machine's own compose overrides (a different port, say); see
 # docs/simple-docker-local-deployment-guide.md.
 docker/compose.local.yml
