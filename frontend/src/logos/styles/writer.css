@@ -406,10 +406,15 @@ kbd {
 
 /* ---- the page ---------------------------------------------------------------- */
 
+/* The margins come out of the page's column, not the window: the prose keeps
+   26.5rem, the formatting bar's width, and the rest is margin, up to 4.5rem a
+   side. (A grid item's percentage padding is of its column.) Sized by `5vw`, a
+   1280px window beside both panels left the prose 22rem and cut off the title
+   and the bar. */
 .lw-page {
   width: min(48rem, 100%);
   margin: 0 auto;
-  padding: 2.25rem clamp(1.5rem, 5vw, 4.5rem) 8rem;
+  padding: 2.25rem clamp(1.5rem, (100% - 26.5rem) / 2, 4.5rem) 8rem;
 }
 .lw-eyebrow {
   margin: 0 0 0.35rem;
@@ -419,29 +424,60 @@ kbd {
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-.lw-title {
-  width: 100%;
-  margin: 0 0 1.1rem;
-  padding: 0;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--text);
+/* A title as long as it likes: the textarea sits in one grid cell with a
+   hidden copy of its text (the field's `data-value`), so it is always as tall
+   as its wrapped lines, with nothing measured in script. Both take their type
+   from the field, or they would disagree about where a line breaks. The 0.1em
+   above and below is room for a face whose glyphs stand taller than the 1.2
+   line: a textarea counts them, and would scroll its text by the difference. */
+.lw-title-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  margin: -0.1em 0 calc(1.1rem - 0.1em);
   font-family: var(--prose-font);
   font-size: 2.15rem;
   font-weight: 600;
   letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+.lw-title-field::after {
+  content: attr(data-value) " ";
+  visibility: hidden;
+}
+.lw-title-field::after,
+.lw-title {
+  grid-area: 1 / 1;
+  margin: 0;
+  padding: 0.1em 0;
+  border: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.lw-title {
+  width: 100%;
+  overflow: hidden;
+  resize: none;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
 }
 .lw-title::placeholder {
   color: var(--muted);
   opacity: 0.6;
 }
 
+/* Short of room, the floating bar wraps onto a second row rather than
+   scrolling its last controls out of sight -- which only the narrowest
+   three-column widths ask of it. The docked bar (drawers, phones) keeps one
+   scrolling row. */
 .lw-format {
   position: sticky;
   top: calc(var(--lw-bar-h) + 0.6rem);
   z-index: 20;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.25rem;
   width: max-content;
@@ -455,8 +491,6 @@ kbd {
   box-shadow:
     0 1px 2px rgb(16 24 40 / 0.04),
     0 8px 24px rgb(16 24 40 / 0.07);
-  overflow-x: auto;
-  scrollbar-width: none;
 }
 .lw-format-group {
   display: flex;
@@ -1881,6 +1915,7 @@ kbd {
   bottom: var(--lw-keyboard);
   left: var(--service-nav-w);
   z-index: 40;
+  flex-wrap: nowrap;
   justify-content: center;
   width: auto;
   margin: 0;
@@ -1889,6 +1924,8 @@ kbd {
   border-width: 1px 0 0;
   border-radius: 0;
   box-shadow: 0 -6px 20px rgb(16 24 40 / 0.06);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 :where(.lw-shell.is-drawers) .lw-editor {
   min-height: 65vh;
@@ -1991,9 +2028,9 @@ body.lw-drawer-open {
     padding: 1.1rem max(1.15rem, env(safe-area-inset-right)) 6.5rem
       max(1.15rem, env(safe-area-inset-left));
   }
-  .lw-title {
+  .lw-title-field {
     font-size: 1.7rem;
-    margin-bottom: 0.8rem;
+    margin-bottom: calc(0.8rem - 0.1em);
   }
   .lw-editor {
     font-size: 1.05rem;

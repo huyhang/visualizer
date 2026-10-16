@@ -22,6 +22,7 @@ import {
   findSection,
   sectionLabel,
   sectionName,
+  singleLine,
 } from "./outline";
 import { memoryStore, storedPreferences } from "./preferences";
 import { memoryRecovery, recoveryKey } from "./recovery";
@@ -341,6 +342,15 @@ describe("outline", () => {
       "Chapter 1",
       "The Gate",
     ]);
+  });
+
+  it.each<[string, string]>([
+    ["The Gate", "The Gate"],
+    ["The Night\nthe Lights Went Out", "The Night the Lights Went Out"],
+    ["Two  \r\n\n  lines", "Two lines"],
+    ["  spaced  out  ", "  spaced  out  "],
+  ])("keeps the title %j on one line", (pasted, kept) => {
+    expect(singleLine(pasted)).toBe(kept);
   });
 
   it.each<[string, string[]]>([

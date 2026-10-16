@@ -16,6 +16,11 @@ export function sectionName(
   return section.title || sectionLabel(section);
 }
 
+/** A title as one line: the box wraps it, but a pasted line break becomes a space. */
+export function singleLine(title: string): string {
+  return title.replace(/[^\S\r\n]*[\r\n]+[^\S\r\n]*/g, " ");
+}
+
 const terms = (query: string) =>
   query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
 

@@ -42,7 +42,7 @@ import { useNoteActions } from "../../hooks/useNoteActions";
 import { useWriterEditor } from "../../hooks/useWriterEditor";
 import type { Workspace as Loaded } from "../../hooks/useWorkspace";
 import { coachNote, editorNote, type Note } from "../../logic/notes";
-import { sectionLabel, sectionName } from "../../logic/outline";
+import { sectionLabel, sectionName, singleLine } from "../../logic/outline";
 import type { Layers } from "../../logic/preferences";
 import {
   coachAnnotations,
@@ -414,20 +414,28 @@ export function Workspace({ workspace, route }: { workspace: Loaded; route: Rout
           <p className="lw-eyebrow">
             Volume {volume?.number} · {sectionLabel(section)}
           </p>
-          <input
-            className="lw-title"
-            value={session.title}
-            maxLength={300}
-            placeholder={sectionLabel(section)}
-            aria-label="Section title"
-            onChange={(event) => session.setTitle(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                editor.commands.focus("start");
-              }
-            }}
-          />
+          {/* A textarea so a long title wraps rather than running out of sight;
+              `data-value` is the hidden copy that sizes it (see writer.css). */}
+          <div
+            className="lw-title-field"
+            data-value={session.title || sectionLabel(section)}
+          >
+            <textarea
+              className="lw-title"
+              rows={1}
+              value={session.title}
+              maxLength={300}
+              placeholder={sectionLabel(section)}
+              aria-label="Section title"
+              onChange={(event) => session.setTitle(singleLine(event.target.value))}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  editor.commands.focus("start");
+                }
+              }}
+            />
+          </div>
           <FormatBar editor={editor} />
           <div className="lw-prose-frame" onContextMenu={contextMenu} onClick={clickProse}>
             <EditorContent editor={editor} />

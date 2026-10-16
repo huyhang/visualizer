@@ -56,6 +56,29 @@ describe("opening a draft", () => {
   });
 });
 
+describe("the title", () => {
+  it("keeps a pasted title on one line, with the copy that sizes it in step", async () => {
+    await opened();
+    const user = userEvent.setup();
+    const title = screen.getByRole("textbox", { name: "Section title" });
+    const field = title.closest(".lw-title-field");
+    await user.clear(title);
+    expect(field).toHaveAttribute("data-value", title.getAttribute("placeholder"));
+    await user.click(title);
+    await user.paste("The Night\nthe Lights Went Out");
+    expect(title).toHaveValue("The Night the Lights Went Out");
+    expect(field).toHaveAttribute("data-value", "The Night the Lights Went Out");
+  });
+
+  it("never starts a second line on Enter", async () => {
+    await opened();
+    const user = userEvent.setup();
+    const title = screen.getByRole("textbox", { name: "Section title" });
+    await user.type(title, "{Enter}");
+    expect(title).toHaveValue("The Gate");
+  });
+});
+
 describe("saving", () => {
   it("saves a new title once typing pauses, draft first and then the section", async () => {
     const { api, clock } = await opened();
