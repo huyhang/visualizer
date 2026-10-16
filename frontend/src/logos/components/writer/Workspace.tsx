@@ -333,6 +333,9 @@ export function Workspace({ workspace, route }: { workspace: Loaded; route: Rout
         .focus(undefined, { scrollIntoView: false })
         .run();
       window.requestAnimationFrame(() => {
+        // Gone by the next frame -- the page left, or a test ended -- and its
+        // view with it: there is nothing to scroll, and asking throws.
+        if (editor.isDestroyed) return;
         const { node } = editor.view.domAtPos(pos);
         (node instanceof Element ? node : node.parentElement)?.scrollIntoView({
           block: "center",
