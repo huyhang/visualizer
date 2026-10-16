@@ -11,7 +11,16 @@ export function attachLinkPicker(textarea, scope, { onCreateRequest }) {
   let caret = 0;       // insertion point for the completed token
   let debounce = null;
 
+  // A click anywhere else closes the picker. Listened for only once it is
+  // open, and from the next turn: the click that opens it -- the toolbar's
+  // "Insert link" -- is still on its way up to `document`, and closed it the
+  // instant it appeared, so the button did nothing at all.
+  function closeOnOutsideClick(e) {
+    if (picker && !picker.contains(e.target) && e.target !== textarea) close();
+  }
+
   function close() {
+    document.removeEventListener("click", closeOnOutsideClick);
     if (picker) { picker.remove(); picker = null; }
   }
 
@@ -74,7 +83,10 @@ export function attachLinkPicker(textarea, scope, { onCreateRequest }) {
     });
     input.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
     renderResults(results, initialQuery);
-    setTimeout(() => input.focus(), 0);
+    setTimeout(() => {
+      input.focus();
+      if (picker) document.addEventListener("click", closeOnOutsideClick);
+    }, 0);
   }
 
   // "[[" trigger: drop the brackets and open the picker.
@@ -85,10 +97,6 @@ export function attachLinkPicker(textarea, scope, { onCreateRequest }) {
       textarea.setSelectionRange(pos - 2, pos - 2);
       open("");
     }
-  });
-
-  document.addEventListener("click", (e) => {
-    if (picker && !picker.contains(e.target) && e.target !== textarea) close();
   });
 
   return { open };
