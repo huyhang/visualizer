@@ -1,0 +1,34 @@
+title = "Before you start"
+summary = "Make an account, sign in, and find your way around."
+lede = "The app is five tabs that work together. This page gets you signed in and shows you where everything is."
+
+[[steps]]
+title = "Make an account"
+text = "Open the app and choose `Register`. Pick a username, add your email, and choose a password of at least 12 characters."
+shot = "before-you-start/register"
+alt = "The Create an account page, with a username, email and password filled in"
+note = { kind = "if", text = "If it says registration is invite-only, the person who runs the app makes accounts. Ask them for one." }
+
+[[steps]]
+title = "Sign in"
+text = "Making an account doesn't sign you in, so the next page asks you to `Log in`. Use the username and password you just chose."
+shot = "before-you-start/log-in"
+alt = "The Log in page, with the username filled in"
+
+[[steps]]
+title = "Find your way around"
+text = [
+  "Down the left side (along the bottom, on a phone) are five tabs.",
+  "**Articles**, **Timeline**, **Maps** and **Manuscripts** are where you'll work, roughly in that order. **Tutorials** brings you back here.",
+]
+shot = "before-you-start/tabs"
+alt = "The app after signing in: the five tabs, with Articles open and no worlds yet"
+
+[[steps]]
+title = "Make it comfortable"
+text = "`A` at the top makes the text bigger, everywhere at once, and `◐` switches between light and dark. The app remembers both."
+shot = "before-you-start/comfort"
+alt = "The top of the page, with the text size and theme buttons highlighted"
+
+[made]
+text = "An account, and a sense of where everything is. Next, you'll make a home for your story."

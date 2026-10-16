@@ -53,6 +53,9 @@ PAGES = (
     ("Timeline", "/timeline/", "Timeline"),
     ("Maps", "/prithvi/", "Maps"),
     ("Manuscripts", "/logos/", "Manuscripts"),
+    # Every page the tutorials serve is theirs, the hub and a lesson alike.
+    ("Tutorials", "/tutorials/", "Tutorials"),
+    ("Tutorials lesson", "/tutorials/before-you-start", "Tutorials"),
     ("Access", "/account", None),
     ("Admin", "/admin", None),
     ("Change password", "/change-password", None),
@@ -157,7 +160,7 @@ def check_page(page, check, name, path, expect_current, rail_w, labels, side):
     tag = f"{name}"
 
     check(f"{tag}: loads", response.ok, str(response.status))
-    check(f"{tag}: all four services are present", m["linkCount"] == 4, str(m))
+    check(f"{tag}: all five tabs are present", m["linkCount"] == 5, str(m))
     # The user-visible criterion, and the strict one: the page itself must
     # never slide sideways. This is what the wrapping header used to cause.
     check(f"{tag}: the page does not scroll sideways",

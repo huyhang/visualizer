@@ -1,0 +1,39 @@
+{#
+  The tutorials' shell. Under `tutorials/` rather than at the top of the
+  template folder: an app-level base.html would also become the shell of the
+  shared sign-in pages this app serves (as Akasha's deliberately is).
+
+  Signed in, it is the stack's shell -- the service nav and the header every
+  service has. Signed out, the same header offers to sign in instead, and
+  there is no nav: nothing behind it would open.
+#}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Tutorials{% endblock %}</title>
+  <link rel="icon" href="{{ versioned('static', 'tutorials-icon.svg') }}">
+  <script src="{{ versioned('shared_js', 'prefs.js') }}"></script>
+  {# Palette first, this app's own rules next, the shared nav last. #}
+  <link rel="stylesheet" href="{{ versioned('shared_static', 'tokens.css') }}">
+  <link rel="stylesheet" href="{{ versioned('static', 'tutorials.css') }}">
+  <link rel="stylesheet" href="{{ versioned('shared_static', 'service-nav.css') }}">
+</head>
+<body>
+  {% if current_user.is_authenticated %}
+  <div class="app-shell">
+    {% include "_service_nav.html" %}
+    <div class="app-shell-main">
+  {% else %}
+  <div class="public-shell">
+  {% endif %}
+      {% include "tutorials/_header.html" %}
+      {% block main %}{% endblock %}
+  {% if current_user.is_authenticated %}
+    </div>
+  </div>
+  {% else %}
+  </div>
+  {% endif %}
+</body>
+</html>

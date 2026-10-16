@@ -34,6 +34,16 @@ class ServiceLinks:
         """The admin page, which akasha serves for every service."""
         return self._under_akasha("admin")
 
+    @property
+    def login(self) -> str:
+        """Signing in, for a page anyone may read: akasha's, which lands in Articles."""
+        return self._under_akasha("login")
+
+    @property
+    def register(self) -> str:
+        """Making an account, beside signing in."""
+        return self._under_akasha("register")
+
     def _under_akasha(self, page: str) -> str:
         return self.akasha.rstrip("/") + "/" + page
 

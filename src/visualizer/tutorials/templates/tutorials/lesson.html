@@ -1,0 +1,93 @@
+{% extends "tutorials/base.html" %}
+{% from "tutorials/_figure.html" import picture with context %}
+{% set lesson = view.lesson %}
+{% block title %}{{ lesson.title }} — Tutorials{% endblock %}
+
+{% block main %}
+<main class="tut tut-lesson">
+  <nav class="tut-crumbs" aria-label="Breadcrumb">
+    <a href="{{ url_for('index') }}">Tutorials</a><span aria-hidden="true">›</span>
+    {{- view.part.kicker if view.part else "Before you start" -}}
+  </nav>
+
+  <header class="tut-lesson-head">
+    <p class="tut-eyebrow">
+      {%- if view.number %}Lesson {{ view.number }} of {{ view.of }}{% else %}Before you start{% endif -%}
+      {%- if lesson.optional %} · optional{% endif -%}
+    </p>
+    <h1>{{ lesson.title }}</h1>
+    <p class="tut-lede">{{ marks(lesson.lede) }}</p>
+    <ul class="tut-facts">
+      <li><span aria-hidden="true">◷</span> {{ view.minutes }} minute{{ "s" if view.minutes != 1 }}</li>
+      <li><span aria-hidden="true">☰</span> {{ view.steps | length }} step{{ "s" if view.steps | length != 1 }}</li>
+      {% if view.needs %}
+      <li><span aria-hidden="true">↳</span> You'll need
+        <a href="{{ url_for('lesson', slug=view.needs.slug) }}">{{ view.needs.title | lower }}</a></li>
+      {% endif %}
+    </ul>
+  </header>
+
+  <ol class="tut-steps">
+    {% for item in view.steps %}
+    <li class="tut-step">
+      <span class="tut-step-num" aria-hidden="true">{{ item.number }}</span>
+      <div class="tut-step-body">
+        <h2><span class="tut-sr">Step {{ item.number }}: </span>{{ marks(item.step.title) }}</h2>
+        {% for passage in item.step.text %}<p>{{ marks(passage) }}</p>{% endfor %}
+        {% if item.figure %}<figure class="tut-shot">{{ picture(item.figure) }}</figure>{% endif %}
+        {% if item.step.note %}
+        {% set note = item.step.note %}
+        <aside class="tut-note tut-note-{{ note.kind }}">
+          <span class="tut-note-icon" aria-hidden="true">{{ {"tip": "✦", "good-to-know": "i", "if": "?"}[note.kind] }}</span>
+          <div>
+            <strong class="tut-note-title">{{ {"tip": "Tip", "good-to-know": "Good to know", "if": "If something looks different"}[note.kind] }}</strong>
+            <p>{{ marks(note.text) }}</p>
+          </div>
+        </aside>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+
+  {% if lesson.downloads %}
+  <section class="tut-downloads">
+    <h2>To download</h2>
+    <ul>
+      {% for download in lesson.downloads %}
+      <li><a href="{{ versioned('static', 'downloads/' ~ download.file) }}" download>{{ download.label }}</a></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if lesson.made %}
+  <section class="tut-made">
+    <h2 class="tut-made-kicker"><span aria-hidden="true">✓</span> What you made</h2>
+    <p>{{ marks(lesson.made.text) }}</p>
+    {% if view.made %}<figure class="tut-shot">{{ picture(view.made) }}</figure>{% endif %}
+  </section>
+  {% endif %}
+
+  <nav class="tut-pager" aria-label="Lessons">
+    {% if view.previous %}
+    <a class="tut-pager-prev" href="{{ url_for('lesson', slug=view.previous.slug) }}">
+      <span>Previous</span>{{ view.previous.title }}</a>
+    {% else %}
+    <a class="tut-pager-prev" href="{{ url_for('index') }}"><span>Back to</span>All the lessons</a>
+    {% endif %}
+    {% if view.next %}
+    <a class="tut-pager-next" href="{{ url_for('lesson', slug=view.next.slug) }}">
+      <span>Next{% if view.next.number %} · Lesson {{ view.next.number }}{% endif %}</span>
+      <strong>{{ view.next.title }}</strong>
+      <em>{{ marks(view.next.summary) }}</em>
+      <b aria-hidden="true">→</b></a>
+    {% else %}
+    <a class="tut-pager-next" href="{{ url_for('index') }}">
+      <span>That's every lesson</span>
+      <strong>Back to the tutorials</strong>
+      <b aria-hidden="true">→</b></a>
+    {% endif %}
+  </nav>
+</main>
+{% endblock %}

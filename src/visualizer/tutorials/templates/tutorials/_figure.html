@@ -1,0 +1,37 @@
+{#
+  One picture, as the reader's screen and theme want it.
+
+  Each was taken at two widths and in both themes. <picture> picks the width
+  by the window; the theme is the page's `data-theme`, which no media query
+  can see, so both themes are in the page and the stylesheet hides one. The
+  hidden one is never fetched: a lazy image that is not displayed is not
+  loaded.
+
+  The rings are the page's, not the picture's: percentages of it, one set per
+  width, drawn in the theme's accent.
+#}
+{% macro picture(figure, cover=False) -%}
+{%- set shot = figure.shot -%}
+<div class="tut-shot-frame{% if cover %} is-cover{% endif %}">
+  {%- for theme in ("light", "dark") %}
+  <picture class="tut-theme-{{ theme }}">
+    {%- if not cover %}
+    <source media="(max-width: {{ phone_below - 1 }}px)"
+            srcset="{{ versioned('static', shot_path(shot.id, shot.phone.size, theme)) }}"
+            width="{{ shot.phone.width }}" height="{{ shot.phone.height }}">
+    {%- endif %}
+    <img src="{{ versioned('static', shot_path(shot.id, shot.desktop.size, theme)) }}"
+         width="{{ shot.desktop.width }}" height="{{ shot.desktop.height }}"
+         alt="{{ figure.alt }}" loading="lazy" decoding="async">
+  </picture>
+  {%- endfor %}
+  {%- if not cover %}
+  {%- for ring in shot.desktop.rings %}
+  <span class="tut-ring tut-ring-desktop" style="left:{{ ring.left }}%;top:{{ ring.top }}%;width:{{ ring.width }}%;height:{{ ring.height }}%" aria-hidden="true"></span>
+  {%- endfor %}
+  {%- for ring in shot.phone.rings %}
+  <span class="tut-ring tut-ring-phone" style="left:{{ ring.left }}%;top:{{ ring.top }}%;width:{{ ring.width }}%;height:{{ ring.height }}%" aria-hidden="true"></span>
+  {%- endfor %}
+  {%- endif %}
+</div>
+{%- endmacro %}

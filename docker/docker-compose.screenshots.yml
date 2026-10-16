@@ -40,3 +40,24 @@ services:
         source: ../.git
         target: /repo.git
         read_only: true
+
+  # The tutorials' pictures (docker/tutorial_shots.py): every lesson's screens,
+  # walked as a new writer in an empty stack, written into the package so they
+  # are committed with the lessons that show them.
+  #
+  #   docker compose -f docker/docker-compose.screenshots.yml run --rm --build tutorial-shots
+  #
+  # The same image and the same isolation as `shots`; the writable mounts are
+  # the tutorials' own pictures folder, and a folder for a failed run's evidence.
+  tutorial-shots:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.shots
+    network_mode: none
+    init: true
+    shm_size: 1gb
+    mem_limit: ${SHOTS_MEM_LIMIT:-3g}
+    command: ["python", "/app/docker/tutorial_shots.py"]
+    volumes:
+      - ../src/visualizer/tutorials/static/shots:/out
+      - ${TUTORIAL_SHOTS_DEBUG:-../screenshots/tutorial-debug}:/debug

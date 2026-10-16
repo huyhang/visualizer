@@ -25,5 +25,8 @@
     Registration is invite-only — ask an administrator for an account.
     {% endif %}
   </p>
+  {% if service_links and service_links.tutorials %}
+  <p class="muted">New here? <a href="{{ service_links.tutorials }}">See how it works</a>.</p>
+  {% endif %}
 </div>
 {% endblock %}

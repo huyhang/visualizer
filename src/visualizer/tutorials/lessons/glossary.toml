@@ -1,0 +1,53 @@
+# The words the lessons use. A lesson links one as {word}, or {words|word}.
+
+[[terms]]
+word = "world"
+meaning = "Everything you know about one story: its people, places, objects and history. Most writers keep one world per story, or per series."
+
+[[terms]]
+word = "category"
+meaning = "A shelf inside a world that keeps similar articles together, such as characters, locations or lore. You name them yourself."
+
+[[terms]]
+word = "article"
+meaning = "One page about one thing in your story: a person, a place, an object, an event. Articles can link to each other."
+
+[[terms]]
+word = "slug"
+meaning = "An article's permanent address, made from its title: \"Ysolde Marr\" becomes ysolde-marr. Links point at the slug, so it never changes, even when the title does."
+
+[[terms]]
+word = "link"
+meaning = "A way from one article to another. In the editor, `🔗 Insert link` finds the article you mean and writes the link for you."
+
+[[terms]]
+word = "infobox"
+meaning = "The short list of facts that goes with an article, such as a character's home or a place's region, kept apart from the prose so they are quick to find."
+
+[[terms]]
+word = "book"
+meaning = "In Timeline, one story told in scenes, set in one of your worlds. Your manuscript is written for a book."
+
+[[terms]]
+word = "scene"
+meaning = "Something that happens in your story, somewhere, to someone: a place, the people there, and optionally when."
+
+[[terms]]
+word = "plotline"
+meaning = "A thread through your book: the scenes one character or storyline passes through, in order."
+
+[[terms]]
+word = "manuscript"
+meaning = "The prose of your book, in Manuscripts: its volumes and chapters, each with the words you've written."
+
+[[terms]]
+word = "chapter"
+meaning = "One section of your manuscript. Chapters are numbered for you, inside their volume."
+
+[[terms]]
+word = "volume"
+meaning = "A group of chapters, like one book of a series or one part of a long novel. A new manuscript starts with one."
+
+[[terms]]
+word = "draft"
+meaning = "One version of a chapter. You can keep alternatives and choose which one is the chapter readers see."

@@ -1,0 +1,66 @@
+{% extends "tutorials/base.html" %}
+{% from "tutorials/_figure.html" import picture with context %}
+{% from "_service_glyph.html" import service_glyph %}
+{% block title %}Tutorials{% endblock %}
+
+{% macro lesson_card(card) -%}
+<li>
+  <a class="tut-card{% if card.optional %} is-optional{% endif %}" href="{{ url_for('lesson', slug=card.link.slug) }}">
+    <div class="tut-card-thumb">
+      {%- if card.cover %}{{ picture(card.cover, cover=True) }}{% endif -%}
+    </div>
+    <div class="tut-card-body">
+      <span class="tut-card-num">
+        {%- if card.link.number %}Lesson {{ card.link.number }}{% else %}Start here{% endif -%}
+        {%- if card.optional %} · optional{% endif -%}
+      </span>
+      <h3>{{ card.link.title }}</h3>
+      <p>{{ marks(card.link.summary) }}</p>
+      <span class="tut-card-time"><span aria-hidden="true">◷</span> {{ card.minutes }} min</span>
+    </div>
+  </a>
+</li>
+{%- endmacro %}
+
+{% block main %}
+<main class="tut tut-hub">
+  <section class="tut-hero">
+    <p class="tut-eyebrow">Tutorials</p>
+    <h1>{{ hub.course.title }}</h1>
+    <p class="tut-lede">{{ marks(hub.course.lede) }}</p>
+    <div class="tut-hero-row">
+      {% if hub.first %}
+      <a class="tut-start" href="{{ url_for('lesson', slug=hub.first.slug) }}">Start here
+        <span aria-hidden="true">→</span></a>
+      {% endif %}
+      <span class="tut-hero-meta">{{ hub.count }} short lessons · about {{ hub.minutes }} minutes in all</span>
+    </div>
+  </section>
+
+  {% if hub.prelude %}
+  <section class="tut-prelude" aria-label="Before you start">
+    <ul class="tut-cards">{{ lesson_card(hub.prelude) }}</ul>
+  </section>
+  {% endif %}
+
+  <ol class="tut-path">
+    {% for view in hub.parts %}
+    <li class="tut-part">
+      <header class="tut-part-head">
+        <span class="tut-part-mark" aria-hidden="true">{{ service_glyph(view.part.mark) }}</span>
+        <div>
+          <p class="tut-eyebrow">{{ view.part.kicker }}</p>
+          <h2>{{ view.part.title }}</h2>
+          <p>{{ marks(view.part.blurb) }}</p>
+        </div>
+      </header>
+      <ul class="tut-cards">
+        {% for card in view.cards %}{{ lesson_card(card) }}{% endfor %}
+      </ul>
+    </li>
+    {% endfor %}
+  </ol>
+
+  <p class="tut-foot"><a href="{{ url_for('glossary') }}">The words the lessons use</a>, in one place.</p>
+</main>
+{% endblock %}

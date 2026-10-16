@@ -1,0 +1,43 @@
+title = "Places and people"
+summary = "Add a place, and link your character to it."
+lede = "Scenes need somewhere to happen, so your world needs places as well as people. In this lesson you'll add one, and {link} your character to it."
+needs = "your-first-article"
+
+[[steps]]
+title = "Add a shelf for places"
+text = "Press **Lantern Coast** in the trail at the top of the page to open your world. Then press `＋ New category`."
+shot = "places-and-people/world"
+alt = "The Lantern Coast world page, with the New category button highlighted"
+
+[[steps]]
+title = "Call it locations"
+text = "Type **locations** and press `Create`. Your world now has two {categories|category}, and the new one is open."
+shot = "places-and-people/locations"
+alt = "The New category dialog, with locations typed in"
+
+[[steps]]
+title = "Write about a place"
+text = "Make an article for it, just as in the last lesson, and call it **The Last Lighthouse**. Write a line about it, then press `Create`."
+shot = "places-and-people/place"
+alt = "The editor for The Last Lighthouse, with a line about it typed"
+
+[[steps]]
+title = "Link your character to it"
+text = [
+  "Open your character again and press `Edit`. Put the cursor where the link should go, then press `🔗 Insert link`.",
+  "Type a few letters of the place's name and choose it.",
+]
+shot = "places-and-people/link"
+alt = "The link finder under the editor, with The Last Lighthouse found"
+note = { kind = "good-to-know", text = "If the place doesn't exist yet, the finder offers to create it, so a link never has to wait." }
+
+[[steps]]
+title = "Add a fact, and save"
+text = "Under **Article details (infobox)**, press `＋ Add a fact`. Type **Home** as the field and **The Last Lighthouse** as the value, then press `Save`."
+shot = "places-and-people/fact"
+alt = "A new fact in the infobox: Home, The Last Lighthouse"
+
+[made]
+text = "A place for things to happen, and a character linked to it. Pressing the link takes you there."
+shot = "places-and-people/made"
+alt = "Ysolde Marr's article, with The Last Lighthouse as a link and Home in its facts"

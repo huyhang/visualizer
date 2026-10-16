@@ -7,7 +7,8 @@ injected gateway rather than over HTTP -- chronos and prithvi read akasha's
 asks logos whether prose depends on what it is about to delete. This mounts them
 behind one WSGI callable so a single port/origin serves all of them (akasha at
 ``/``, the others under prefixes): one reverse-proxy entry, one cookie, no CORS
--- the natural shape for the Synology reverse-proxy deployment.
+-- the natural shape for the Synology reverse-proxy deployment. The tutorials
+mount the same way, at ``/tutorials``.
 
 The composition is a plain function taking already-built apps, so it is
 trivially unit-testable; ``visualizer.wsgi`` does the real wiring. Prithvi and
@@ -24,6 +25,7 @@ from werkzeug.middleware.dispatcher import DispatcherMiddleware
 DEFAULT_CHRONOS_PREFIX = "/timeline"
 DEFAULT_PRITHVI_PREFIX = "/prithvi"
 DEFAULT_LOGOS_PREFIX = "/logos"
+DEFAULT_TUTORIALS_PREFIX = "/tutorials"
 
 
 def combine(
@@ -35,6 +37,8 @@ def combine(
     prithvi_prefix: str = DEFAULT_PRITHVI_PREFIX,
     logos_app=None,
     logos_prefix: str = DEFAULT_LOGOS_PREFIX,
+    tutorials_app=None,
+    tutorials_prefix: str = DEFAULT_TUTORIALS_PREFIX,
 ):
     """Serve ``akasha_app`` at ``/`` and each other app under its prefix."""
     mounts = {chronos_prefix: chronos_app}
@@ -42,4 +46,6 @@ def combine(
         mounts[prithvi_prefix] = prithvi_app
     if logos_app is not None:
         mounts[logos_prefix] = logos_app
+    if tutorials_app is not None:
+        mounts[tutorials_prefix] = tutorials_app
     return DispatcherMiddleware(akasha_app, mounts)

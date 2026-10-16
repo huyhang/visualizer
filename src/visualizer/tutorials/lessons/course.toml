@@ -1,0 +1,16 @@
+# The course: what the hub shows, and the order the lessons are read in.
+#
+# Each lesson named here is <slug>.toml beside this file. The prelude is read
+# first and has no number; the parts' lessons are numbered in order.
+
+title = "From first article to first draft"
+lede = "Short lessons, in order. Each one takes a few minutes and leaves you with something real in your own story."
+prelude = "before-you-start"
+
+[[parts]]
+slug = "your-world"
+kicker = "Part 1 · in Articles"
+title = "Your world"
+blurb = "The people, places and things your story is about."
+mark = "akasha"
+lessons = ["a-home-for-your-story", "your-first-article", "places-and-people"]

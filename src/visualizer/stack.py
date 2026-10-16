@@ -54,6 +54,9 @@ from visualizer.prithvi.config import (
 )
 from visualizer.prithvi.store import PrithviStore
 from visualizer.service_links import ServiceLinks, tutorials_beside
+from visualizer.tutorials.app import create_app as create_tutorials_app
+from visualizer.tutorials.catalog import load_catalog
+from visualizer.tutorials.shots import load_shots
 
 from .gateway import (
     DEFAULT_CHRONOS_PREFIX,
@@ -165,11 +168,25 @@ def build_application(client, gpu_worker=None):
         observability=observability,
     )
 
+    # The lessons and their pictures are files in the package, read once here:
+    # a broken lesson stops the stack starting rather than a reader's page.
+    tutorials_app = create_tutorials_app(
+        load_catalog(),
+        load_shots(),
+        auth_store,
+        secret_key=secret,
+        links=links,
+        secure_cookies=secure,
+        rate_limit_storage_uri=ratelimit,
+        observability=observability,
+    )
+
     # One WSGI callable: akasha at "/", chronos at "/timeline", prithvi at
-    # "/prithvi", logos at "/logos".
+    # "/prithvi", logos at "/logos", the tutorials at "/tutorials".
     return combine(
         akasha_app,
         chronos_app,
         prithvi_app=prithvi_app,
         logos_app=logos_app,
+        tutorials_app=tutorials_app,
     )

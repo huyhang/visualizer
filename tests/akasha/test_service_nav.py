@@ -25,7 +25,7 @@ from visualizer.service_links import ServiceLinks
 
 _SRC = Path(__file__).resolve().parents[2] / "src" / "visualizer"
 
-SERVICES = ("akasha", "chronos", "prithvi", "logos")
+SERVICES = ("akasha", "chronos", "prithvi", "logos", "tutorials")
 
 # Every page-level sheet loaded alongside the shared nav. None of them may
 # redeclare the palette any more -- `static/tokens.css` owns it.
@@ -36,6 +36,7 @@ STYLESHEETS = {
     "chronos": "chronos/static/visualizer.css",
     "prithvi": "prithvi/static/maps.css",
     "logos": "logos/static/reader.css",
+    "tutorials": "tutorials/static/tutorials.css",
     "auth pages": "static/auth.css",
 }
 
@@ -47,6 +48,7 @@ SHELLS = (
     "chronos/templates/visualizer.html",
     "prithvi/templates/maps.html",
     "logos/templates/reader.html",
+    "tutorials/templates/tutorials/base.html",
     "auth/templates/base.html",
 )
 
@@ -78,11 +80,13 @@ def test_the_editor_has_the_service_nav(client):
     assert 'class="service-nav"' in html
     assert 'aria-label="Applications"' in html
     assert all(
-        label in html for label in ("Articles", "Timeline", "Maps", "Manuscripts")
+        label in _nav(html)
+        for label in ("Articles", "Timeline", "Maps", "Manuscripts", "Tutorials")
     )
     assert "http://localhost:5003" in html          # default chronos URL
     assert "http://localhost:5004" in html          # default prithvi URL
     assert "http://localhost:5005" in html          # default logos URL
+    assert "http://localhost:5002/tutorials" in html  # beside akasha
     # Admin is not a header link even for an admin: it is a tab inside Access,
     # so the nav carries services and nothing else.
     assert ">Admin<" not in html
@@ -174,12 +178,12 @@ def test_non_admin_has_no_admin_link():
 def test_the_nav_glyphs_match_the_service_marks():
     """The inlined artwork cannot drift from the files it was taken from.
 
-    The nav inlines each ``<service>-glyph.svg`` rather than fetching four
-    images across four origins. That is a copy, and a copy nobody checks is a
-    copy that goes stale: redraw a mark and the header shows the new one while
-    the nav quietly keeps the old.
+    The nav (and the tutorials' hub) inline each ``<service>-glyph.svg``
+    rather than fetching five images across five apps. That is a copy, and a
+    copy nobody checks is a copy that goes stale: redraw a mark and the header
+    shows the new one while the nav quietly keeps the old.
     """
-    nav = (_SRC / "auth" / "templates" / "_service_nav.html").read_text()
+    nav = (_SRC / "auth" / "templates" / "_service_glyph.html").read_text()
 
     for service in SERVICES:
         glyph = (_SRC / service / "static" / f"{service}-glyph.svg").read_text()

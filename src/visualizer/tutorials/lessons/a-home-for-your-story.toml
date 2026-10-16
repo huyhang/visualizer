@@ -1,0 +1,32 @@
+title = "A home for your story"
+summary = "Make a world, and the first category in it."
+lede = "Everything you know about your story lives in a {world}: one per story, usually. Inside it, {categories|category} keep similar things together, like characters or places."
+needs = "before-you-start"
+
+[[steps]]
+title = "Open Articles"
+text = "Choose **Articles** in the tabs. It opens on **Your worlds**, which is empty for now, so press `＋ New world`."
+shot = "a-home-for-your-story/your-worlds"
+alt = "Your worlds, empty, with the New world button highlighted"
+
+[[steps]]
+title = "Name your world"
+text = "Type a short name for it, with dashes instead of spaces, like **lantern-coast**. The app shows it back to you as “Lantern Coast”."
+shot = "a-home-for-your-story/name-it"
+alt = "The New world dialog, with lantern-coast typed as the world's name"
+
+[[steps]]
+title = "Name its first category"
+text = "A world can't be empty, so it asks for its first {category} at the same time. **characters** is a good start; you can add more whenever you like."
+shot = "a-home-for-your-story/first-category"
+alt = "The New world dialog, with characters typed as the first category and the Create button highlighted"
+note = { kind = "good-to-know", text = "Names can't have spaces, or any of / \\ . \" $ * < > : | ? in them. If one does, the dialog says so before anything is made." }
+
+[[steps]]
+title = "Create it"
+text = "Press `Create`. Your world appears in the list on the left, with its new category open and waiting for its first article."
+shot = "a-home-for-your-story/created"
+alt = "The empty Characters category of Lantern Coast, open beside the list of worlds"
+
+[made]
+text = "A world for your story, with a shelf for its characters. In the next lesson you'll write the first one."

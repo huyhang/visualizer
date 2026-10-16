@@ -22,9 +22,11 @@ LINKS = ServiceLinks(
 )
 
 
-def test_account_and_admin_are_akasha_pages():
+def test_account_admin_and_signing_in_are_akasha_pages():
     assert LINKS.account == "https://world.example/account"
     assert LINKS.admin == "https://world.example/admin"
+    assert LINKS.login == "https://world.example/login"
+    assert LINKS.register == "https://world.example/register"
 
 
 @pytest.mark.parametrize(

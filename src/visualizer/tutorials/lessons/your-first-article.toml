@@ -1,0 +1,38 @@
+title = "Your first article"
+summary = "Write a page for your main character."
+lede = "An {article} is one page about one thing in your story: a person, a place, an object, a legend. In this lesson you'll write one for your main character."
+needs = "a-home-for-your-story"
+
+[[steps]]
+title = "Start a new article"
+text = "Open your world's **Characters** category, where the last lesson left you. Then press `＋ New article`."
+shot = "your-first-article/start"
+alt = "The Characters category, with the New article button highlighted"
+
+[[steps]]
+title = "Give it a name"
+text = "Type your character's name into **Title**, then press `Continue`."
+shot = "your-first-article/name-it"
+alt = "The New article dialog, with Ysolde Marr typed as the title"
+note = { kind = "good-to-know", text = "The {slug} below the title fills itself in. It's the article's permanent address, so it can't change, but the title can, whenever you like." }
+
+[[steps]]
+title = "Write a few lines"
+text = [
+  "A sentence or two is plenty to begin with; you can always come back.",
+  "A line like **== Early life ==** becomes a heading, and the `Heading` button writes one for you.",
+]
+shot = "your-first-article/write"
+alt = "The article editor with a sentence, a heading and another sentence typed"
+note = { kind = "tip", text = "Press `👁 Preview` to see the article as a reader will." }
+
+[[steps]]
+title = "Save it"
+text = "Press `Create`. Until you do, nothing is saved."
+shot = "your-first-article/save"
+alt = "The top of the editor, with the Create button highlighted"
+
+[made]
+text = "Your first article. It has a permanent home in your world, and anything you write later can link to it."
+shot = "your-first-article/made"
+alt = "The finished article for Ysolde Marr, with its Early life heading"

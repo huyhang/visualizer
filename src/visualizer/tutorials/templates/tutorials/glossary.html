@@ -1,0 +1,23 @@
+{% extends "tutorials/base.html" %}
+{% block title %}The words the lessons use — Tutorials{% endblock %}
+
+{% block main %}
+<main class="tut tut-glossary">
+  <nav class="tut-crumbs" aria-label="Breadcrumb">
+    <a href="{{ url_for('index') }}">Tutorials</a><span aria-hidden="true">›</span>Words
+  </nav>
+  <header class="tut-lesson-head">
+    <p class="tut-eyebrow">Glossary</p>
+    <h1>The words the lessons use</h1>
+    <p class="tut-lede">Each one, in a sentence or two. A word underlined in a lesson brings you here.</p>
+  </header>
+  <dl class="tut-terms">
+    {% for term in terms %}
+    <div class="tut-term" id="{{ term.slug }}">
+      <dt>{{ term.word }}</dt>
+      <dd>{{ marks(term.meaning) }}</dd>
+    </div>
+    {% endfor %}
+  </dl>
+</main>
+{% endblock %}

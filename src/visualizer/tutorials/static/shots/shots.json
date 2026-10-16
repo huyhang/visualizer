@@ -1,0 +1,980 @@
+{
+ "version": 1,
+ "sizes": [
+  1280,
+  390
+ ],
+ "themes": [
+  "light",
+  "dark"
+ ],
+ "shots": {
+  "a-home-for-your-story/created": {
+   "1280": {
+    "width": 1064,
+    "height": 300,
+    "rings": []
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Articles",
+    "Characters",
+    "Delete category",
+    "Home",
+    "Lantern Coast",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Text size: Normal",
+    "Timeline",
+    "Toggle browser",
+    "Toggle theme",
+    "Tutorials",
+    "\u25d0",
+    "\u2630",
+    "\uff0b New",
+    "\uff0b New article"
+   ],
+   "390": {
+    "width": 390,
+    "height": 420,
+    "rings": []
+   }
+  },
+  "a-home-for-your-story/first-category": {
+   "1280": {
+    "width": 560,
+    "height": 378,
+    "rings": [
+     {
+      "left": 2.71,
+      "top": 51.37,
+      "width": 94.58,
+      "height": 12.17
+     },
+     {
+      "left": 81.83,
+      "top": 85.35,
+      "width": 15.46,
+      "height": 11.9
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Articles",
+    "Cancel",
+    "Create",
+    "First category",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Text size: Normal",
+    "Timeline",
+    "Toggle browser",
+    "Toggle theme",
+    "Tutorials",
+    "World",
+    "Your worlds",
+    "\u25d0",
+    "\u2630",
+    "\u2715",
+    "\uff0b New",
+    "\uff0b New world"
+   ],
+   "390": {
+    "width": 358,
+    "height": 378,
+    "rings": [
+     {
+      "left": 4.24,
+      "top": 51.37,
+      "width": 91.52,
+      "height": 12.17
+     },
+     {
+      "left": 71.58,
+      "top": 85.35,
+      "width": 24.18,
+      "height": 11.9
+     }
+    ]
+   }
+  },
+  "a-home-for-your-story/name-it": {
+   "1280": {
+    "width": 560,
+    "height": 378,
+    "rings": [
+     {
+      "left": 2.71,
+      "top": 25.27,
+      "width": 94.58,
+      "height": 12.17
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Articles",
+    "Cancel",
+    "Create",
+    "First category",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Text size: Normal",
+    "Timeline",
+    "Toggle browser",
+    "Toggle theme",
+    "Tutorials",
+    "World",
+    "Your worlds",
+    "\u25d0",
+    "\u2630",
+    "\u2715",
+    "\uff0b New",
+    "\uff0b New world"
+   ],
+   "390": {
+    "width": 358,
+    "height": 378,
+    "rings": [
+     {
+      "left": 4.24,
+      "top": 25.27,
+      "width": 91.52,
+      "height": 12.17
+     }
+    ]
+   }
+  },
+  "a-home-for-your-story/your-worlds": {
+   "1280": {
+    "width": 1064,
+    "height": 300,
+    "rings": [
+     {
+      "left": 87.59,
+      "top": 10.26,
+      "width": 10.63,
+      "height": 13.4
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Articles",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Text size: Normal",
+    "Timeline",
+    "Toggle browser",
+    "Toggle theme",
+    "Tutorials",
+    "Your worlds",
+    "\u25d0",
+    "\u2630",
+    "\uff0b New",
+    "\uff0b New world"
+   ],
+   "390": {
+    "width": 390,
+    "height": 420,
+    "rings": [
+     {
+      "left": 66.13,
+      "top": 6.95,
+      "width": 28.99,
+      "height": 9.57
+     }
+    ]
+   }
+  },
+  "before-you-start/comfort": {
+   "1280": {
+    "width": 520,
+    "height": 54,
+    "rings": [
+     {
+      "left": 59.78,
+      "top": 7.03,
+      "width": 8.46,
+      "height": 81.48
+     },
+     {
+      "left": 67.86,
+      "top": 7.03,
+      "width": 8.46,
+      "height": 81.48
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Articles",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Text size: Normal",
+    "Timeline",
+    "Toggle browser",
+    "Toggle theme",
+    "Tutorials",
+    "Your worlds",
+    "\u25d0",
+    "\u2630",
+    "\uff0b New",
+    "\uff0b New world"
+   ],
+   "390": {
+    "width": 390,
+    "height": 54,
+    "rings": [
+     {
+      "left": 66.83,
+      "top": 5.56,
+      "width": 11.28,
+      "height": 81.48
+     },
+     {
+      "left": 77.18,
+      "top": 5.56,
+      "width": 11.28,
+      "height": 81.48
+     }
+    ]
+   }
+  },
+  "before-you-start/log-in": {
+   "1280": {
+    "width": 444,
+    "height": 400,
+    "rings": [
+     {
+      "left": 7.21,
+      "top": 57.59,
+      "width": 85.59,
+      "height": 12.45
+     }
+    ]
+   },
+   "labels": [
+    "Log in",
+    "Password",
+    "Register",
+    "See how it works",
+    "Username"
+   ],
+   "390": {
+    "width": 390,
+    "height": 384,
+    "rings": [
+     {
+      "left": 6.15,
+      "top": 57.91,
+      "width": 87.69,
+      "height": 12.97
+     }
+    ]
+   }
+  },
+  "before-you-start/register": {
+   "1280": {
+    "width": 444,
+    "height": 508,
+    "rings": [
+     {
+      "left": 7.21,
+      "top": 58.03,
+      "width": 85.59,
+      "height": 9.8
+     }
+    ]
+   },
+   "labels": [
+    "Create an account",
+    "Email",
+    "Log in",
+    "Password",
+    "Register",
+    "Username"
+   ],
+   "390": {
+    "width": 390,
+    "height": 514,
+    "rings": [
+     {
+      "left": 6.15,
+      "top": 55.82,
+      "width": 87.69,
+      "height": 9.69
+     }
+    ]
+   }
+  },
+  "before-you-start/tabs": {
+   "1280": {
+    "width": 1280,
+    "height": 800,
+    "rings": [
+     {
+      "left": -0.39,
+      "top": -0.62,
+      "width": 17.66,
+      "height": 101.25
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Articles",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Text size: Normal",
+    "Timeline",
+    "Toggle browser",
+    "Toggle theme",
+    "Tutorials",
+    "Your worlds",
+    "\u25d0",
+    "\u2630",
+    "\uff0b New",
+    "\uff0b New world"
+   ],
+   "390": {
+    "width": 390,
+    "height": 844,
+    "rings": [
+     {
+      "left": -1.28,
+      "top": 92.77,
+      "width": 102.56,
+      "height": 7.82
+     }
+    ]
+   }
+  },
+  "places-and-people/fact": {
+   "1280": {
+    "width": 732,
+    "height": 142,
+    "rings": [
+     {
+      "left": 0.41,
+      "top": 38.42,
+      "width": 36.51,
+      "height": 32.49
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Article details (infobox)",
+    "Article gallery",
+    "Articles",
+    "Bold",
+    "Cancel",
+    "Characters",
+    "Heading",
+    "Italic",
+    "Lantern Coast",
+    "List",
+    "Locations",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Save",
+    "Text size: Normal",
+    "The Last Lighthouse",
+    "Timeline",
+    "Title",
+    "Toggle browser",
+    "Toggle theme",
+    "Tutorials",
+    "Ysolde Marr",
+    "\u25a7 Image",
+    "\u25b8 Advanced (raw fields)",
+    "\u25d0",
+    "\u25f3 Diorama",
+    "\u2630",
+    "\u2715",
+    "\uff0b Add a fact",
+    "\uff0b Add image",
+    "\uff0b New",
+    "\ud83d\udc41 Preview",
+    "\ud83d\udd17 Insert link"
+   ],
+   "390": {
+    "width": 358,
+    "height": 223,
+    "rings": [
+     {
+      "left": 0.84,
+      "top": 24.42,
+      "width": 98.32,
+      "height": 20.65
+     }
+    ]
+   }
+  },
+  "places-and-people/link": {
+   "1280": {
+    "width": 764,
+    "height": 520,
+    "rings": [
+     {
+      "left": 2.62,
+      "top": 81.48,
+      "width": 42.93,
+      "height": 13.01
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Article details (infobox)",
+    "Article gallery",
+    "Articles",
+    "Bold",
+    "Cancel",
+    "Characters",
+    "Heading",
+    "Italic",
+    "Lantern Coast",
+    "List",
+    "Locations",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Save",
+    "Text size: Normal",
+    "The Last Lighthouse",
+    "Timeline",
+    "Title",
+    "Toggle browser",
+    "Toggle theme",
+    "Tutorials",
+    "Ysolde Marr",
+    "\u25a7 Image",
+    "\u25b8 Advanced (raw fields)",
+    "\u25d0",
+    "\u25f3 Diorama",
+    "\u2630",
+    "\uff0b Add a fact",
+    "\uff0b Add image",
+    "\uff0b New",
+    "\ud83d\udc41 Preview",
+    "\ud83d\udd17 Insert link"
+   ],
+   "390": {
+    "width": 390,
+    "height": 620,
+    "rings": [
+     {
+      "left": 5.13,
+      "top": 82.85,
+      "width": 84.1,
+      "height": 10.91
+     }
+    ]
+   }
+  },
+  "places-and-people/locations": {
+   "1280": {
+    "width": 560,
+    "height": 260,
+    "rings": [
+     {
+      "left": 2.71,
+      "top": 36.73,
+      "width": 94.58,
+      "height": 17.69
+     },
+     {
+      "left": 81.83,
+      "top": 78.7,
+      "width": 15.46,
+      "height": 17.31
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Articles",
+    "Cancel",
+    "Category",
+    "Characters",
+    "Characters characters 1 article",
+    "Create",
+    "Home",
+    "Lantern Coast",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Text size: Normal",
+    "Timeline",
+    "Toggle browser",
+    "Toggle theme",
+    "Tutorials",
+    "World Gallery",
+    "\u25d0",
+    "\u2630",
+    "\u2715",
+    "\uff0b New",
+    "\uff0b New category"
+   ],
+   "390": {
+    "width": 358,
+    "height": 260,
+    "rings": [
+     {
+      "left": 4.24,
+      "top": 36.73,
+      "width": 91.52,
+      "height": 17.69
+     },
+     {
+      "left": 71.58,
+      "top": 78.7,
+      "width": 24.18,
+      "height": 17.31
+     }
+    ]
+   }
+  },
+  "places-and-people/made": {
+   "1280": {
+    "width": 1064,
+    "height": 360,
+    "rings": []
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Articles",
+    "Characters",
+    "Delete",
+    "Early life",
+    "Edit",
+    "History",
+    "Home",
+    "Lantern Coast",
+    "Locations",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Share",
+    "Text size: Normal",
+    "The Last Lighthouse",
+    "Timeline",
+    "Toggle browser",
+    "Toggle theme",
+    "Tutorials",
+    "Ysolde Marr",
+    "\u25d0",
+    "\u2630",
+    "\uff0b New"
+   ],
+   "390": {
+    "width": 390,
+    "height": 560,
+    "rings": []
+   }
+  },
+  "places-and-people/place": {
+   "1280": {
+    "width": 764,
+    "height": 300,
+    "rings": [
+     {
+      "left": 75.69,
+      "top": 7.2,
+      "width": 11.33,
+      "height": 15.0
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Article details (infobox)",
+    "Article gallery",
+    "Articles",
+    "Bold",
+    "Cancel",
+    "Characters",
+    "Create",
+    "Heading",
+    "Italic",
+    "Lantern Coast",
+    "List",
+    "Locations",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Text size: Normal",
+    "Timeline",
+    "Title",
+    "Toggle browser",
+    "Toggle theme",
+    "Tutorials",
+    "\u25a7 Image",
+    "\u25b8 Advanced (raw fields)",
+    "\u25d0",
+    "\u25f3 Diorama",
+    "\u2630",
+    "\uff0b Add a fact",
+    "\uff0b Add image",
+    "\uff0b New",
+    "\ud83d\udc41 Preview",
+    "\ud83d\udd17 Insert link"
+   ],
+   "390": {
+    "width": 390,
+    "height": 480,
+    "rings": [
+     {
+      "left": 4.87,
+      "top": 10.07,
+      "width": 22.2,
+      "height": 9.38
+     }
+    ]
+   }
+  },
+  "places-and-people/world": {
+   "1280": {
+    "width": 1064,
+    "height": 260,
+    "rings": [
+     {
+      "left": 85.63,
+      "top": 20.89,
+      "width": 12.58,
+      "height": 15.46
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Articles",
+    "Characters",
+    "Characters characters 1 article",
+    "Home",
+    "Lantern Coast",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Text size: Normal",
+    "Timeline",
+    "Toggle browser",
+    "Toggle theme",
+    "Tutorials",
+    "World Gallery",
+    "\u25d0",
+    "\u2630",
+    "\uff0b New",
+    "\uff0b New category"
+   ],
+   "390": {
+    "width": 390,
+    "height": 400,
+    "rings": [
+     {
+      "left": 33.37,
+      "top": 25.42,
+      "width": 34.32,
+      "height": 10.05
+     }
+    ]
+   }
+  },
+  "your-first-article/made": {
+   "1280": {
+    "width": 1064,
+    "height": 330,
+    "rings": []
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Articles",
+    "Characters",
+    "Delete",
+    "Early life",
+    "Edit",
+    "History",
+    "Home",
+    "Lantern Coast",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Share",
+    "Text size: Normal",
+    "Timeline",
+    "Toggle browser",
+    "Toggle theme",
+    "Tutorials",
+    "Ysolde Marr",
+    "\u25d0",
+    "\u2630",
+    "\uff0b New"
+   ],
+   "390": {
+    "width": 390,
+    "height": 520,
+    "rings": []
+   }
+  },
+  "your-first-article/name-it": {
+   "1280": {
+    "width": 560,
+    "height": 488,
+    "rings": [
+     {
+      "left": 2.71,
+      "top": 50.98,
+      "width": 94.58,
+      "height": 9.43
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Articles",
+    "Cancel",
+    "Category",
+    "Characters",
+    "Continue",
+    "Delete category",
+    "Home",
+    "Lantern Coast",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Slug (id)",
+    "Text size: Normal",
+    "Timeline",
+    "Title",
+    "Toggle browser",
+    "Toggle theme",
+    "Tutorials",
+    "World",
+    "\u25d0",
+    "\u2630",
+    "\u2715",
+    "\uff0b New",
+    "\uff0b New article",
+    "\uff0b New\u2026"
+   ],
+   "390": {
+    "width": 358,
+    "height": 507,
+    "rings": [
+     {
+      "left": 4.24,
+      "top": 49.03,
+      "width": 91.52,
+      "height": 9.07
+     }
+    ]
+   }
+  },
+  "your-first-article/save": {
+   "1280": {
+    "width": 420,
+    "height": 80,
+    "rings": [
+     {
+      "left": 55.78,
+      "top": 24.49,
+      "width": 20.61,
+      "height": 56.25
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Article details (infobox)",
+    "Article gallery",
+    "Articles",
+    "Bold",
+    "Cancel",
+    "Create",
+    "Heading",
+    "Italic",
+    "Lantern Coast",
+    "List",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Text size: Normal",
+    "Timeline",
+    "Title",
+    "Toggle browser",
+    "Toggle theme",
+    "Tutorials",
+    "\u25a7 Image",
+    "\u25b8 Advanced (raw fields)",
+    "\u25d0",
+    "\u25f3 Diorama",
+    "\u2630",
+    "\uff0b Add a fact",
+    "\uff0b Add image",
+    "\uff0b New",
+    "\ud83d\udc41 Preview",
+    "\ud83d\udd17 Insert link"
+   ],
+   "390": {
+    "width": 390,
+    "height": 96,
+    "rings": [
+     {
+      "left": 4.87,
+      "top": 50.36,
+      "width": 22.2,
+      "height": 46.88
+     }
+    ]
+   }
+  },
+  "your-first-article/start": {
+   "1280": {
+    "width": 1064,
+    "height": 240,
+    "rings": [
+     {
+      "left": 75.27,
+      "top": 22.63,
+      "width": 11.05,
+      "height": 16.74
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Articles",
+    "Characters",
+    "Delete category",
+    "Home",
+    "Lantern Coast",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Text size: Normal",
+    "Timeline",
+    "Toggle browser",
+    "Toggle theme",
+    "Tutorials",
+    "\u25d0",
+    "\u2630",
+    "\uff0b New",
+    "\uff0b New article"
+   ],
+   "390": {
+    "width": 390,
+    "height": 380,
+    "rings": [
+     {
+      "left": 4.87,
+      "top": 26.76,
+      "width": 30.16,
+      "height": 10.58
+     }
+    ]
+   }
+  },
+  "your-first-article/write": {
+   "1280": {
+    "width": 764,
+    "height": 330,
+    "rings": [
+     {
+      "left": 2.49,
+      "top": 52.34,
+      "width": 95.03,
+      "height": 100.0
+     }
+    ]
+   },
+   "labels": [
+    "A",
+    "Access",
+    "Akasha",
+    "Article details (infobox)",
+    "Article gallery",
+    "Articles",
+    "Bold",
+    "Cancel",
+    "Create",
+    "Heading",
+    "Italic",
+    "Lantern Coast",
+    "List",
+    "Log out",
+    "Manuscripts",
+    "Maps",
+    "Text size: Normal",
+    "Timeline",
+    "Title",
+    "Toggle browser",
+    "Toggle theme",
+    "Tutorials",
+    "\u25a7 Image",
+    "\u25b8 Advanced (raw fields)",
+    "\u25d0",
+    "\u25f3 Diorama",
+    "\u2630",
+    "\uff0b Add a fact",
+    "\uff0b Add image",
+    "\uff0b New",
+    "\ud83d\udc41 Preview",
+    "\ud83d\udd17 Insert link"
+   ],
+   "390": {
+    "width": 390,
+    "height": 560,
+    "rings": [
+     {
+      "left": 4.87,
+      "top": 41.55,
+      "width": 90.26,
+      "height": 58.93
+     }
+    ]
+   }
+  }
+ }
+}

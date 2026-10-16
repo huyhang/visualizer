@@ -23,7 +23,8 @@ run comfortably on a home NAS.
 
 All four run in **one process behind a single origin** (port `5002`): akasha at
 `/`, chronos at `/timeline`, prithvi at `/prithvi`, logos at `/logos` — one
-login, one reverse-proxy entry.
+login, one reverse-proxy entry. The tutorials that teach them are mounted
+beside them at `/tutorials`.
 
 | Service | Path | What it does | Docs |
 | --- | --- | --- | --- |
@@ -31,6 +32,7 @@ login, one reverse-proxy entry.
 | **chronos** | `/timeline` | A plotline & timeline API for fiction writers: books, events and plotlines, checked for continuity errors, with a plotline visualiser and editor. | [README](docs/chronos/README.md) · [getting started](docs/chronos/getting-started.md) · [plain-language overview](docs/chronos/OVERVIEW.md) · [design](docs/chronos/design.md) |
 | **prithvi** | `/prithvi` | An SVG map per region of a world, with Akasha articles pinned to points on it. Has a web UI: upload a map, place and move pins, and read a pin's article beside the map. | [README](docs/prithvi/README.md) · [openapi](docs/prithvi/openapi.json) |
 | **logos** | `/logos` | A versioned manuscript editor and book-like reader with named drafts, Akasha lookup, private writing feedback, recovery, search, and PDF/EPUB publishing. | [README](docs/logos/README.md) · [permissions](docs/logos/permissions.md) · [openapi](docs/logos/openapi.json) |
+| **tutorials** | `/tutorials` | Short illustrated lessons, from a first article to a first draft, readable by anyone before they have an account. Lessons are files; their screenshots are taken by a camera that walks the real UI. | [README](docs/tutorials/README.md) |
 | **mongo** | *internal* | Shared storage. Deliberately not published to the host. | — |
 
 They are named for what they hold: **Akasha** (the aether said to record all

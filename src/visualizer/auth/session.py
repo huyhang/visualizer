@@ -168,6 +168,10 @@ def register_service_links(
         # header can link to them under the shared origin.
         "account": links.account,
         "admin": links.admin,
+        # Where a page anyone may read -- the tutorials -- sends someone to
+        # sign in or make an account.
+        "login": links.login,
+        "register": links.register,
         "current": current,
         # The same service, spelled for a human. The shared auth pages are served
         # by *both* apps, so their titles cannot name one of them: a page reached
