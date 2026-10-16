@@ -125,3 +125,16 @@ export function sectionTarget(href, { origin, home, book }) {
   for (const key of query.keys()) if (!SECTION_LINK_KEYS.has(key)) return null;
   return { volume, section, block: query.get("block"), draft: query.get("draft") };
 }
+
+/** Whether a link is the contents page of `book`: the reader's address naming it and nothing more. */
+export function isContentsLink(href, { origin, home, book }) {
+  let url;
+  try {
+    url = new URL(href, origin);
+  } catch {
+    return false;
+  }
+  if (url.origin !== origin || url.pathname !== home || !book) return false;
+  const keys = [...url.searchParams.keys()];
+  return keys.length === 1 && keys[0] === "book" && url.searchParams.get("book") === book;
+}

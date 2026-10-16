@@ -12,6 +12,7 @@ import {
   sectionAhead,
   sectionLabel,
   sectionName,
+  isContentsLink,
   sectionNeighbours,
   sectionTarget,
 } from "./navigation.js";
@@ -2316,30 +2317,77 @@ async function openSection(manuscript, entry, requested = {}) {
   await showSection(manuscript, entry, await fetchSection(manuscript, entry, requested), requested);
 }
 
-// -- moving between sections in place ----------------------------------------
+// -- moving within a book in place -------------------------------------------
 //
-// Another section of the same book opens without loading the page again: the
-// manuscript, the modules and the reader's notes are already here, so only
-// the section is asked for, and the one on screen stays until it arrives.
-// The address moves with it, so Back, a reload and a copied link all mean the
-// section in view. Anything that goes wrong falls back to loading the page.
+// Another section of the same book, or its contents, opens without loading
+// the page again: the modules and the reader's notes are already here, so
+// only the section (or a fresh outline) is asked for, and what is on screen
+// stays until it arrives. The address moves with it, so Back, a reload and a
+// copied link all mean what is in view. Anything that goes wrong falls back
+// to loading the page.
 
 const turnDelay = () =>
   (window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 140);
 const pause = (ms) => new Promise((resume) => window.setTimeout(resume, ms));
 
 /**
- * The section a link opens in place: one of this book's, from a section on
- * screen. The contents, a review and the shelf keep loading the page, so
- * nothing of theirs is left behind under a section.
+ * Where a link goes when it can be shown in place: a section of this book, or
+ * its contents, from a section or the contents on screen. A review, the shelf
+ * and the contents being arranged keep loading the page, so nothing of theirs
+ * is left behind under what replaces them.
  */
 function inPlaceTarget(href) {
-  if (!open || !pageManuscript) return null;
-  return sectionTarget(href, {
+  if (!pageManuscript || reviewState || managingContents) return null;
+  const here = {
     origin: window.location.origin,
     home: new URL(home(), window.location.origin).pathname,
     book: pageManuscript.book,
-  });
+  };
+  const section = sectionTarget(href, here);
+  if (section) return { kind: "section", ...section };
+  return isContentsLink(href, here) ? { kind: "contents" } : null;
+}
+
+function goTo(target, options = {}) {
+  return target.kind === "contents" ? goToContents(options) : goToSection(target, options);
+}
+
+/** Leave whatever is on screen: its place is taken, its dialogs shut. */
+function leavingInPlace() {
+  for (const dialog of document.querySelectorAll("dialog[open]")) dialog.close();
+  if (!open) return true;
+  if (open.navigating) return false;
+  open.navigating = true;
+  savePosition();
+  return true;
+}
+
+/** The section just shown, or the contents, takes a keyboard or screen reader's place. */
+function focusHeading(scope) {
+  const heading = scope.querySelector("h1");
+  if (!heading) return;
+  heading.setAttribute("tabindex", "-1");
+  heading.focus({ preventScroll: true });
+}
+
+/**
+ * The book's contents, drawn from a fresh outline: one request, so a section
+ * added or moved since the page loaded is there.
+ */
+async function goToContents({ push = true } = {}) {
+  const url = bookUrl(pageManuscript.book);
+  if (!leavingInPlace()) return;
+  let manuscript;
+  try {
+    manuscript = await api.manuscript(pageManuscript.book);
+  } catch (_error) {
+    window.location.assign(url);
+    return;
+  }
+  if (push) window.history.pushState(null, "", url);
+  window.scrollTo({ top: 0, behavior: "auto" });
+  renderBook(manuscript);
+  focusHeading(content);
 }
 
 async function goToSection(target, { push = true, direction = null } = {}) {
@@ -2352,11 +2400,11 @@ async function goToSection(target, { push = true, direction = null } = {}) {
     window.location.assign(url);
     return;
   }
-  for (const dialog of document.querySelectorAll("dialog[open]")) dialog.close();
   const draftId = (open && open.draft && !open.draft.primary) ? open.draft.id : null;
   const same = open && open.volume.id === entry.volume.id
     && open.section.id === entry.section.id && (target.draft || null) === draftId;
   if (same) {
+    for (const dialog of document.querySelectorAll("dialog[open]")) dialog.close();
     // Already here: a paragraph link scrolls to it, anything else stays put.
     if (push && url !== `${window.location.pathname}${window.location.search}`) {
       window.history.pushState(null, "", url);
@@ -2364,11 +2412,7 @@ async function goToSection(target, { push = true, direction = null } = {}) {
     if (target.block) await restorePosition(null, target.block);
     return;
   }
-  if (open) {
-    if (open.navigating) return;
-    open.navigating = true;
-    savePosition();
-  }
+  if (!leavingInPlace()) return;
   if (direction) document.body.classList.add(`navigating-${direction}`);
   let fetched;
   try {
@@ -2387,12 +2431,7 @@ async function goToSection(target, { push = true, direction = null } = {}) {
   // old one's scroll offset.
   window.scrollTo({ top: 0, behavior: "auto" });
   await showSection(manuscript, entry, fetched, target);
-  if (!target.block) {
-    // Where a keyboard or screen reader is: on the section just opened.
-    const heading = open.article.querySelector("h1");
-    heading.setAttribute("tabindex", "-1");
-    heading.focus({ preventScroll: true });
-  }
+  if (!target.block) focusHeading(open.article);
 }
 
 function followInPlace(event) {
@@ -2404,14 +2443,14 @@ function followInPlace(event) {
   const target = inPlaceTarget(anchor.href);
   if (!target) return;
   event.preventDefault();
-  // A click opens the section straight away; only the edge gesture turns the page.
-  goToSection(target).catch(showFailure);
+  // A click opens it straight away; only the edge gesture turns the page.
+  goTo(target).catch(showFailure);
 }
 
-/** Back and Forward between sections opened in place; anything else loads afresh. */
+/** Back and Forward within the book, in place; anything else loads afresh. */
 function revisit() {
   const target = inPlaceTarget(window.location.href);
-  if (target) goToSection(target, { push: false }).catch(showFailure);
+  if (target) goTo(target, { push: false }).catch(showFailure);
   else window.location.reload();
 }
 

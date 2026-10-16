@@ -37,7 +37,7 @@ import {
 } from "./preferences.js";
 import {
   findSection, neighbours, readingOrder, sectionAhead, sectionLabel, sectionName,
-  sectionNeighbours, sectionTarget,
+  sectionNeighbours, sectionTarget, isContentsLink,
 } from "./navigation.js";
 import {
   advance, blockAnchor, forgetPosition, parsePositions, prunePositions,
@@ -744,6 +744,21 @@ _HERE = {"origin": "https://nas.example", "home": "/logos/", "book": "ember-pact
 ])
 def test_a_link_opens_in_place_only_when_it_is_a_section_of_this_book(run_js, href, expected):
     assert run_js(f"emit(sectionTarget({json.dumps(href)}, {json.dumps(_HERE)}));") == expected
+
+
+@pytest.mark.parametrize("href, expected", [
+    ("/logos/?book=ember-pact", True),
+    ("https://nas.example/logos/?book=ember-pact", True),
+    # A section, another book, a review, the shelf, another site: not the contents.
+    ("/logos/?book=ember-pact&volume=v1&section=s2", False),
+    ("/logos/?book=salt-road", False),
+    ("/logos/?book=ember-pact&review=notes", False),
+    ("/logos/", False),
+    ("https://elsewhere.example/logos/?book=ember-pact", False),
+    ("http://[bad", False),
+])
+def test_only_this_book_s_bare_address_is_its_contents(run_js, href, expected):
+    assert run_js(f"emit(isContentsLink({json.dumps(href)}, {json.dumps(_HERE)}));") is expected
 
 
 def test_a_lone_section_has_no_neighbours_either_way(run_js):

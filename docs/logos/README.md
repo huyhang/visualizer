@@ -125,11 +125,14 @@ named recovery draft.
 A book-like browser over the existing reads. The library opens a book contents
 page where every volume and section is visible, and a section link opens that
 section alone. Previous and next links follow book order across volume
-boundaries. Moving from one section to another of the same book -- the pager,
-scrolling past the end, the jump list, a search hit, a bookmark -- happens in
-place: only the new section is asked for, the one on screen stays until it
-arrives, and the address follows, so Back, a reload and a copied link all mean
-the section in view. The reader preserves the document's headings, lists, marks, links
+boundaries. Moving within a book -- from the contents into a section and back,
+or from one section to another by the pager, scrolling past the end, the jump
+list, a search hit or a bookmark -- happens in place: only the new section (or a
+fresh outline) is asked for, what is on screen stays until it arrives, and the
+address follows, so Back, a reload and a copied link all mean what is in view.
+The reader's files are named by their content and kept by the browser for a
+year, so even a full page load asks the server only for the page and its data.
+The reader preserves the document's headings, lists, marks, links
 and stable block ids. Two modes are remembered per browser:
 
 - **Focused**, the default: the section's structure, prose and unobtrusive
