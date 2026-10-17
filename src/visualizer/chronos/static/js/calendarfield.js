@@ -20,7 +20,7 @@
 // refreshes only the hint in place, so the caret stays put. Cycle rows are
 // rebuilt only when their *number* changes.
 
-import { clear, el } from "./dom.js";
+import { clear, el, markChosen } from "./dom.js";
 import {
   GREGORIAN_TICK_UNITS, PRESETS, calendarHint, calendarProblems, dateUnits,
   descriptorFrom, draftFrom, emptyCycle,
@@ -127,19 +127,20 @@ export function calendarField({
   const current = () => MODES.find((m) => m.key === state.mode);
 
   function modeTabs() {
-    const tabs = el("div", { class: "tabs" });
+    const tabs = el("div", { class: "tabs", role: "group", "aria-label": "How it counts" });
+    const chosen = (tab) => tab.dataset.mode === state.mode;
     for (const mode of MODES) {
       tabs.appendChild(el("button", {
-        class: `tab${mode.key === state.mode ? " active" : ""}`,
-        type: "button", text: mode.label, dataset: { mode: mode.key },
+        class: "tab", type: "button", text: mode.label, dataset: { mode: mode.key },
         onclick: () => {
           if (state.mode === mode.key) return;
           state.mode = mode.key;
-          for (const tab of tabs.children) tab.classList.toggle("active", tab.dataset.mode === mode.key);
+          markChosen(tabs.children, chosen);
           rebuild();
         },
       }));
     }
+    markChosen(tabs.children, chosen);
     return tabs;
   }
 

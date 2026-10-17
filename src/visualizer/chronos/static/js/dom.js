@@ -24,6 +24,17 @@ export function el(tag, attrs = {}, children = []) {
 
 export function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
 
+// A row of `.tab` buttons of which one is the choice: the class draws it, and
+// aria-pressed says it to a screen reader, which a colour alone never did.
+// One place for both, so a chooser cannot light one and announce another.
+export function markChosen(buttons, isChosen) {
+  for (const button of buttons) {
+    const chosen = Boolean(isChosen(button));
+    button.classList.toggle("active", chosen);
+    button.setAttribute("aria-pressed", String(chosen));
+  }
+}
+
 // Most views are pure markup: the router replaces the content node and the old
 // one is simply garbage. A view that also owns listeners on `window`, a timer or
 // an observer is not -- detached, it keeps running and keeps answering for the

@@ -1255,7 +1255,15 @@ body:not(.focus-mode) .scene-row.has-hint { border-color: color-mix(in srgb, var
   font: inherit; font-size: .84rem; font-weight: 600; padding: .35rem .7rem;
   border-radius: 9px; cursor: pointer;
 }
-.tab.active { background: var(--accent-soft); color: var(--accent-strong); border-color: transparent; }
+.tab:hover { border-color: var(--accent); color: var(--text); }
+/* The choice is the strong one. It used to be a pale fill with no border beside
+   an unchosen tab that kept its border -- so the chosen "No calendar" looked
+   like the disabled one, and clicking it (a no-op: it is already chosen)
+   seemed to do nothing. */
+.tab.active, .tab.active:hover {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+[data-theme="dark"] .tab.active { color: var(--bg); }
 
 /* type-ahead */
 .suggest-results { margin-top: .5rem; max-height: 15rem; overflow: auto; }

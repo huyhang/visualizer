@@ -240,6 +240,20 @@ const mk = (tag) => ({
     if (k === "value") this.value = String(v);
   },
   addEventListener(k, fn) { (this.listeners[k] ||= []).push(fn); },
+  // Enough of classList for a chooser to mark its choice.
+  get classList() {
+    const node = this;
+    const names = () => node.className.split(/\s+/).filter(Boolean);
+    return {
+      contains: (c) => names().includes(c),
+      toggle(c, force) {
+        const want = force === undefined ? !names().includes(c) : Boolean(force);
+        const rest = names().filter((n) => n !== c);
+        node.className = (want ? [...rest, c] : rest).join(" ");
+        return want;
+      },
+    };
+  },
   // Class selectors only -- the one descendant selector in these modules runs
   // solely when a cycle row is focused, which nothing here does.
   querySelectorAll(sel) {
@@ -498,6 +512,46 @@ def test_a_book_still_names_the_library_calendar_it_keeps(run_form):
       emit(list.value().map((attachment) => attachment.source));
     """)
     assert got == [{"owner": "mara", "calendar": "earth", "rev": 2}]
+
+
+_CHOICES = """
+const walkAll = (n, out = []) => { out.push(n); (n.children || []).forEach((c) => walkAll(c, out)); return out; };
+const tabsOf = (node) => walkAll(node).filter((n) => n.tag === "button" && n.dataset.mode);
+const state = (node) => tabsOf(node).map((t) => ({
+  mode: t.dataset.mode, pressed: t.attrs["aria-pressed"], drawn: t.classList.contains("active"),
+}));
+const group = (node) => walkAll(node).find((n) => n.attrs && n.attrs.role === "group");
+"""
+
+
+def test_a_new_book_shows_no_calendar_as_the_choice(run_form):
+    """It always was the choice, but drawn pale beside a bordered "From your
+    library", it read as the disabled one -- and clicking it, already chosen,
+    did nothing. The choice is now drawn strong and said to a screen reader."""
+    got = run_form(_CHOICES + """
+      const field = calendarField({library: []});
+      emit({tabs: state(field.node), label: group(field.node).attrs["aria-label"]});
+    """)
+    assert got == {
+        "tabs": [
+            {"mode": "none", "pressed": "true", "drawn": True},
+            {"mode": "library", "pressed": "false", "drawn": False},
+        ],
+        "label": "How it counts",
+    }
+
+
+def test_choosing_the_library_moves_the_choice_and_says_so(run_form):
+    got = run_form(_CHOICES + """
+      const field = calendarField({library: []});
+      const library = tabsOf(field.node).find((t) => t.dataset.mode === "library");
+      for (const fn of library.listeners.click) await fn();
+      emit(state(field.node));
+    """)
+    assert got == [
+        {"mode": "none", "pressed": "false", "drawn": False},
+        {"mode": "library", "pressed": "true", "drawn": True},
+    ]
 
 
 def test_an_invented_calendar_is_never_asked_for_an_origin(run_form):

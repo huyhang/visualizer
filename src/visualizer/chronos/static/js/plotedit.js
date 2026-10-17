@@ -20,7 +20,7 @@
 
 import { api } from "./api.js";
 import { eventTimeframe } from "./cards.js";
-import { clear, el, toast } from "./dom.js";
+import { clear, el, markChosen, toast } from "./dom.js";
 import { findingList, markerClass, problemBanner, verdictNotes } from "./findings.js";
 import { focusToggle } from "./focus.js";
 import { openGoalForm } from "./goalform.js";
@@ -610,11 +610,11 @@ export async function openPlotlineEditor(book, plotlineId, { after } = {}) {
       onPick: (row) => { dialog.close(); addScene(row, at); },
     });
 
-    const tabs = el("div", { class: "tabs" });
+    const tabs = el("div", { class: "tabs", role: "group", "aria-label": "Scene to add" });
     const panel = el("div", { class: "tab-panel" }, existing.el);
     const select = (which) => {
       clear(panel);
-      for (const b of tabs.children) b.classList.toggle("active", b.dataset.tab === which);
+      markChosen(tabs.children, (b) => b.dataset.tab === which);
       panel.appendChild(which === "existing" ? existing.el : sceneForm(book, {
         scope, calendars: bookMeta.calendars || [],
         onCancel: dialog.close,

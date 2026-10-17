@@ -421,9 +421,9 @@
     "rings": [
      {
       "left": 7.21,
-      "top": 57.59,
+      "top": 57.55,
       "width": 85.59,
-      "height": 12.45
+      "height": 12.51
      }
     ]
    },
@@ -440,9 +440,9 @@
     "rings": [
      {
       "left": 6.15,
-      "top": 57.91,
+      "top": 57.86,
       "width": 87.69,
-      "height": 12.97
+      "height": 13.03
      }
     ]
    }
@@ -454,9 +454,9 @@
     "rings": [
      {
       "left": 7.21,
-      "top": 58.03,
+      "top": 58.0,
       "width": 85.59,
-      "height": 9.8
+      "height": 9.85
      }
     ]
    },
@@ -474,9 +474,9 @@
     "rings": [
      {
       "left": 6.15,
-      "top": 55.82,
+      "top": 55.79,
       "width": 87.69,
-      "height": 9.69
+      "height": 9.74
      }
     ]
    }
@@ -809,7 +809,6 @@
     "Toggle theme",
     "Try the new workspace",
     "Tutorials",
-    "Workspace",
     "Your books",
     "\u25d0",
     "\uff0b New book"
@@ -854,7 +853,6 @@
     "Toggle theme",
     "Try the new workspace",
     "Tutorials",
-    "Workspace",
     "Your books",
     "\u25d0",
     "\uff0b New book"
@@ -879,15 +877,15 @@
     "rings": [
      {
       "left": 88.13,
-      "top": 9.1,
+      "top": 9.09,
       "width": 4.74,
-      "height": 17.25
+      "height": 17.23
      },
      {
       "left": 1.58,
-      "top": 69.34,
+      "top": 69.43,
       "width": 17.86,
-      "height": 21.56
+      "height": 21.48
      }
     ]
    },
@@ -922,7 +920,6 @@
     "Toggle theme",
     "Try the new workspace",
     "Tutorials",
-    "Workspace",
     "\u2191",
     "\u2193",
     "\u21a5",
@@ -934,7 +931,7 @@
    ],
    "390": {
     "width": 370,
-    "height": 336,
+    "height": 337,
     "rings": [
      {
       "left": 75.6,
@@ -944,9 +941,9 @@
      },
      {
       "left": 3.25,
-      "top": 80.97,
+      "top": 81.02,
       "width": 36.73,
-      "height": 13.38
+      "height": 13.34
      }
     ]
    }
@@ -975,7 +972,6 @@
     "Toggle theme",
     "Try the new workspace",
     "Tutorials",
-    "Workspace",
     "\u25d0"
    ],
    "390": {
@@ -1793,9 +1789,9 @@
     "rings": [
      {
       "left": 84.94,
-      "top": 12.17,
+      "top": 12.54,
       "width": 10.26,
-      "height": 18.27
+      "height": 17.51
      }
     ]
    },
@@ -1812,7 +1808,6 @@
     "Toggle theme",
     "Try the new workspace",
     "Tutorials",
-    "Workspace",
     "Your books",
     "\u25d0",
     "\uff0b New book"
@@ -1833,19 +1828,19 @@
   "start-a-book/create": {
    "1280": {
     "width": 760,
-    "height": 231,
+    "height": 232,
     "rings": [
      {
       "left": 3.6,
-      "top": 6.49,
+      "top": 6.48,
       "width": 14.8,
-      "height": 19.03
+      "height": 19.01
      },
      {
       "left": 1.58,
-      "top": 74.06,
+      "top": 74.13,
       "width": 16.32,
-      "height": 19.46
+      "height": 19.39
      }
     ]
    },
@@ -1873,7 +1868,6 @@
     "Try the new workspace",
     "Tutorials",
     "WORLD",
-    "Workspace",
     "Your books",
     "lantern-coast",
     "\u2014 none yet \u2014",
@@ -1893,9 +1887,9 @@
      },
      {
       "left": 3.35,
-      "top": 82.48,
+      "top": 82.63,
       "width": 34.65,
-      "height": 19.47
+      "height": 19.43
      }
     ]
    }
@@ -1926,7 +1920,6 @@
     "Toggle theme",
     "Try the new workspace",
     "Tutorials",
-    "Workspace",
     "\u2039 Prev",
     "\u25d0",
     "\u270e"
@@ -1980,7 +1973,6 @@
     "Try the new workspace",
     "Tutorials",
     "WORLD",
-    "Workspace",
     "Your books",
     "lantern-coast",
     "\u2014 none yet \u2014",
@@ -2494,7 +2486,6 @@
     "Toggle theme",
     "Try the new workspace",
     "Tutorials",
-    "Workspace",
     "Write a new scene",
     "\u2039 Prev",
     "\u25d0",
@@ -2540,7 +2531,6 @@
     "Toggle theme",
     "Try the new workspace",
     "Tutorials",
-    "Workspace",
     "\u2039 Prev",
     "\u25d0",
     "\u270e"
@@ -2594,7 +2584,6 @@
     "Toggle theme",
     "Try the new workspace",
     "Tutorials",
-    "Workspace",
     "\u2039 Prev",
     "\u25d0",
     "\u270e",
@@ -2641,7 +2630,6 @@
     "Toggle theme",
     "Try the new workspace",
     "Tutorials",
-    "Workspace",
     "Zoom timeline in",
     "Zoom timeline out",
     "\u2212",
@@ -2959,7 +2947,6 @@
     "Try the new workspace",
     "Tutorials",
     "WHAT HAPPENS",
-    "Workspace",
     "Ysolde Marr characters / ysolde-marr",
     "\u25d0",
     "\u2715"
@@ -3004,7 +2991,6 @@
     "Toggle theme",
     "Try the new workspace",
     "Tutorials",
-    "Workspace",
     "Zoom timeline in",
     "Zoom timeline out",
     "\u2212",
@@ -3060,7 +3046,6 @@
     "Try the new workspace",
     "Tutorials",
     "WHAT HAPPENS",
-    "Workspace",
     "\u25d0",
     "\u2715"
    ],
@@ -3084,9 +3069,9 @@
     "rings": [
      {
       "left": 42.16,
-      "top": 56.27,
+      "top": 56.2,
       "width": 10.46,
-      "height": 14.69
+      "height": 14.82
      }
     ]
    },
@@ -3107,7 +3092,6 @@
     "Toggle theme",
     "Try the new workspace",
     "Tutorials",
-    "Workspace",
     "\u25d0"
    ],
    "390": {
@@ -3118,7 +3102,7 @@
       "left": 75.07,
       "top": 45.14,
       "width": 23.13,
-      "height": 12.66
+      "height": 12.83
      }
     ]
    }
@@ -3136,9 +3120,9 @@
      },
      {
       "left": 2.14,
-      "top": 91.1,
+      "top": 91.12,
       "width": 23.43,
-      "height": 7.03
+      "height": 7.01
      }
     ]
    },
@@ -3170,7 +3154,6 @@
     "Try the new workspace",
     "Tutorials",
     "WHAT HAPPENS",
-    "Workspace",
     "Ysolde Marr characters / ysolde-marr",
     "\u25d0",
     "\u2715"
@@ -3187,9 +3170,9 @@
      },
      {
       "left": 3.35,
-      "top": 92.48,
+      "top": 92.5,
       "width": 36.64,
-      "height": 5.93
+      "height": 5.92
      }
     ]
    }
