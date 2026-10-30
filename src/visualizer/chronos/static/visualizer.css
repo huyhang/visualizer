@@ -1012,7 +1012,7 @@ body:not(.focus-mode) .tl-dot.has-hint { background: var(--warn); box-shadow: 0 
   border-top: 1px solid var(--border);
 }
 .thread-filter {
-  padding: .45rem .6rem; background: var(--surface-2); color: var(--text);
+  padding: .45rem 1.7rem .45rem .6rem; background-color: var(--surface-2); color: var(--text);
   border: 1px solid var(--border); border-radius: 9px; font: inherit; font-size: .88rem;
 }
 
@@ -1119,9 +1119,26 @@ textarea {
   resize: vertical;
 }
 textarea:focus { outline: none; background: var(--surface); border-color: var(--accent); }
+/* Drawn by us, not the platform: Safari's native menu ignores padding and
+   radius, so beside a text box it stood a third shorter with square-ish
+   corners. Without it, the arrow is ours to draw too -- two half-squares in
+   the muted ink, so it follows the theme. Anything restyling a select sets
+   `background-color`, never `background`, or the arrow goes with it. */
 select {
-  padding: .45rem .5rem; background: var(--surface-2); color: var(--text);
+  -webkit-appearance: none; appearance: none;
+  padding: .45rem 1.7rem .45rem .5rem; color: var(--text);
   border: 1px solid var(--border); border-radius: 9px; font-size: .85rem; font-family: inherit;
+  background-color: var(--surface-2);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 13px) 50%, calc(100% - 8px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+}
+select:focus {
+  outline: none; background-color: var(--surface); border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 .form-actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-top: 1rem; }
 .form-error { color: var(--danger); font-size: .85rem; margin: .5rem 0 0; }
@@ -1287,6 +1304,9 @@ body:not(.focus-mode) .scene-row.has-hint { border-color: color-mix(in srgb, var
 }
 .ref-search { display: flex; gap: .4rem; align-items: flex-start; }
 .ref-search .suggest { flex: 1; }
+/* Sits beside the search box, so it takes the box's type size and padding and
+   the two stand the same height. */
+select.ref-collection { font-size: .92rem; padding: .55rem 1.8rem .55rem .7rem; }
 /* when a field has only one collection it could mean, say so rather than
    offering a chooser whose only use would be picking the wrong kind of thing */
 .ref-collection.static { font-size: .78rem; padding: .5rem .1rem 0 0; white-space: nowrap; }
@@ -1306,7 +1326,7 @@ body:not(.focus-mode) .scene-row.has-hint { border-color: color-mix(in srgb, var
   display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; margin: 0 0 .5rem;
 }
 .calendar-choice-field { display: flex; align-items: center; gap: .35rem; font-size: .8rem; }
-.calendar-choice { padding: .2rem .4rem; font-size: .8rem; }
+.calendar-choice { padding: .2rem 1.5rem .2rem .4rem; font-size: .8rem; }
 .timing-mode { display: flex; }
 .timing-mode-option {
   position: relative;
