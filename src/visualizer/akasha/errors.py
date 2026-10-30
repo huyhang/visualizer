@@ -51,6 +51,30 @@ class CollectionAlreadyExists(AkashaError):
     status_code = 409
 
 
+class NameClash(AkashaError):
+    """Raised when a new world or category would read the same as an existing one.
+
+    MongoDB names are case-sensitive, so ``Characters`` beside ``characters``
+    is two categories -- that every page then titles "Characters", and that
+    split one cast between them. Distinct from ``CollectionAlreadyExists``,
+    which callers treat as "already there, carry on": this one is not there,
+    and writing on as if it were would land in the wrong place. ``existing``
+    is the name to use instead.
+    """
+
+    status_code = 409
+
+    def __init__(self, message: str, existing: str):
+        super().__init__(message)
+        self.existing = existing
+
+
+class InvalidName(AkashaError):
+    """Raised when a world or category name is one MongoDB cannot hold."""
+
+    status_code = 400
+
+
 class CollectionNotEmpty(AkashaError):
     """Raised when dropping a collection that still holds documents.
 

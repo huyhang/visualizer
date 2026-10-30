@@ -55,6 +55,7 @@ export function RefField({
   value,
   onChange,
   observed,
+  titles,
   nowhereToSearch,
 }: {
   book: string;
@@ -66,6 +67,8 @@ export function RefField({
   onChange: (refs: EntityRef[]) => void;
   /** The collections this book's world has, as the server reported them. */
   observed: string[];
+  /** What to call each collection, as the server titled it. */
+  titles: Record<string, string>;
   /** The book names no world and has nothing to infer one from: say so rather than "nothing matches". */
   nowhereToSearch: boolean;
 }) {
@@ -112,7 +115,7 @@ export function RefField({
           >
             {collections.map((c) => (
               <option key={c} value={c}>
-                {c}
+                {titles[c] ?? c}
               </option>
             ))}
           </select>

@@ -10,6 +10,8 @@ from visualizer.akasha.errors import (
     DatabaseNotFound,
     DocumentAlreadyExists,
     DocumentNotFound,
+    InvalidName,
+    NameClash,
 )
 
 # Matches the default namespace pre-created by the `store` fixture (conftest).
@@ -211,3 +213,53 @@ def test_search_text_ignores_injected_id(store):
     store.create(DB, COL, "frodo", {"name": "Baggins"})
     # 'frodo' only appears as the id, not in content -> no match
     assert store.search(DB, COL, text="frodo") == []
+
+
+# -- names that would read as another ----------------------------------------
+#
+# MongoDB names are case-sensitive, so `Characters` beside `characters` used to
+# be a second category -- one Akasha then titled "Characters" exactly like the
+# first, and that Chronos offered beside it in every scene's cast picker.
+
+
+@pytest.mark.parametrize("twin", ["Characters", "CHARACTERS", "characters_", "-characters"])
+def test_a_collection_that_reads_like_an_existing_one_is_refused(store, twin):
+    store.create_collection("newdb", "characters")
+    with pytest.raises(NameClash) as caught:
+        store.create_collection("newdb", twin)
+    assert caught.value.existing == "characters"
+    assert store.list_collections("newdb") == ["characters"]
+
+
+def test_separators_are_spelling_too(store):
+    store.create_collection("newdb", "royal-guard")
+    with pytest.raises(NameClash):
+        store.create_collection("newdb", "Royal_Guard")
+
+
+def test_the_same_name_in_another_world_is_not_a_clash(store):
+    store.create_collection("world-a", "characters")
+    store.create_collection("world-b", "Characters")
+    assert store.list_collections("world-b") == ["Characters"]
+
+
+def test_a_world_that_reads_like_an_existing_one_is_refused(store):
+    store.create_collection("ember-pact", "characters")
+    with pytest.raises(NameClash) as caught:
+        store.create_collection("Ember-Pact", "characters")
+    assert caught.value.existing == "ember-pact"
+
+
+def test_an_exact_duplicate_is_still_already_exists(store):
+    """Not a clash: callers treat this one as "already there, carry on"."""
+    store.create_collection("newdb", "characters")
+    with pytest.raises(CollectionAlreadyExists):
+        store.create_collection("newdb", "characters")
+
+
+@pytest.mark.parametrize("bad", ["", "_private", "two words", "a.b", "a/b", "a$b"])
+def test_a_name_mongo_cannot_hold_is_refused(store, bad):
+    with pytest.raises(InvalidName):
+        store.create_collection("newdb", bad)
+    with pytest.raises(InvalidName):
+        store.create_collection(bad, "things")

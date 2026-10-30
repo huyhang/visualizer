@@ -30,6 +30,11 @@ RESEARCH = "research"
 SOURCES = "sources"
 BOT = "research-bot"
 
+# The categories research keeps for itself: drafts waiting for review, what was
+# accepted, and what both cite. Reference material about the real world, not
+# canon -- so a scene's cast, place and items are never picked from them.
+RESEARCH_COLLECTIONS = frozenset({INBOX, RESEARCH, SOURCES})
+
 MAX_TITLE = 300
 MAX_BODY = 60_000
 MAX_FACTS = 100

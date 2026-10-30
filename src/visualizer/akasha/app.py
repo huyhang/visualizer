@@ -52,7 +52,7 @@ from .admin_routes import register_admin_routes
 from .browse_routes import register_browse_routes
 from .collaborator_routes import register_collaborator_routes
 from .document_routes import register_document_routes
-from .errors import AkashaError, MediaInUse
+from .errors import AkashaError, MediaInUse, NameClash
 from .labels import derive_title
 from .media_routes import register_media_routes
 from .media_service import MediaService
@@ -155,6 +155,8 @@ def _register_error_handlers(app: Flask) -> None:
         payload = {"error": err.message}
         if isinstance(err, MediaInUse):
             payload["references"] = err.references
+        if isinstance(err, NameClash):
+            payload["existing"] = err.existing
         response = jsonify(payload)
         if getattr(err, "retry_after", None):
             response.headers["Retry-After"] = str(err.retry_after)

@@ -31,6 +31,13 @@ function nameError(name, what) {
   return null;
 }
 
+// Two names that would read as one -- `Characters` beside `characters`. The
+// server refuses the second (`namespace_key` in validation.py); the new-article
+// dialog asks too, because it creates its category only on the first save, and
+// that is too late to be told to pick another one.
+const nameKey = (name) => name.replace(/[-_\s]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase();
+const namesake = (names, name) => names.find((n) => nameKey(n.name) === nameKey(name));
+
 function field(label, control, hint) {
   return el("div", { class: "field" }, [
     el("label", { text: label }),
@@ -126,10 +133,13 @@ export async function createWithFreeId(db, col, id, body, tries = 20) {
   throw new Error(`Could not find a free slug near “${id}”.`);
 }
 
-// Create a collection, treating "it is already there" as success.
+// Create a collection, treating "it is already there" as success. A conflict
+// naming an `existing` one is different: the name only *reads* like a category
+// that is there (`Characters` beside `characters`), so carrying on would write
+// into a category that was never made.
 export async function ensureCollection(db, col) {
   try { await api.createCollection(db, col); }
-  catch (e) { if (!(e instanceof ApiError && e.status === 409)) throw e; }
+  catch (e) { if (!(e instanceof ApiError && e.isConflict && !e.body?.existing)) throw e; }
 }
 
 // -- the dialogs -------------------------------------------------------------
@@ -254,6 +264,14 @@ export async function newArticleDialog(scope, { onOpen }) {
           const bad = nameError(db, T.database.one) || nameError(col, T.collection.one)
             || (slugIn.value.trim() ? null : `Give the ${T.document.one} a slug.`);
           if (bad) { error.textContent = bad; return; }
+          const worldTwin = dbPicker.isNew() ? namesake(databases, db) : null;
+          const categoryTwin = colPicker.isNew() ? namesake(known, col) : null;
+          const twin = worldTwin || categoryTwin;
+          if (twin) {
+            const what = worldTwin ? T.database.one : T.collection.one;
+            error.textContent = `There is already a ${what} called “${twin.title}” — choose it from the list instead.`;
+            return;
+          }
 
           // The category is only made once the article is saved, so backing out
           // of the editor leaves no empty namespace behind.

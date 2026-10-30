@@ -65,9 +65,9 @@ function refField(book, { role, scope, multiple, initial = [], label, hint }) {
   // possible use is to pick the wrong kind of thing.
   const single = collections.length === 1;
   const collection = single
-    ? el("span", { class: "ref-collection static muted", text: collections[0] })
+    ? el("span", { class: "ref-collection static muted", text: collectionTitle(scope, collections[0]) })
     : el("select", { class: "ref-collection", title: "Which collection to search" },
-      collections.map((c) => el("option", { value: c, text: c })));
+      collections.map((c) => el("option", { value: c, text: collectionTitle(scope, c) })));
   if (!single) collection.value = collections[0];
   const searched = () => (single ? collections[0] : collection.value);
 
@@ -140,6 +140,12 @@ function collectionOptions(scope, role) {
     .map(([, c]) => c);
   const observed = (scope.collections || []).filter((c) => !others.includes(c));
   return Array.from(new Set([mine, ...observed]));
+}
+
+// What the chooser calls a collection: Akasha's title for it ("Characters"),
+// as the server worked it out, or its raw name where there is none.
+function collectionTitle(scope, collection) {
+  return (scope.titles || {})[collection] || collection;
 }
 
 // event === null -> create a scene; otherwise edit that one.
@@ -265,8 +271,11 @@ export async function loadScope(book, bookMeta = {}) {
   const world = bookMeta.world || null;
   try {
     const probe = await api.searchEntities(book, { q: "", collection: ROLE_COLLECTION.characters });
-    return { database: probe.database, collections: probe.collections, world };
+    return {
+      database: probe.database, collections: probe.collections,
+      titles: probe.collection_titles || {}, world,
+    };
   } catch (e) {
-    return { database: world || book, collections: Object.values(ROLE_COLLECTION), world };
+    return { database: world || book, collections: Object.values(ROLE_COLLECTION), titles: {}, world };
   }
 }

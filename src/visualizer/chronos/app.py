@@ -8,6 +8,7 @@ login -- design decision in §12); Chronos authorizes at **book scope** using th
 same allow-only, most-specific-wins ``is_allowed`` logic.
 """
 
+from collections import Counter
 from dataclasses import replace
 
 from flask import Flask, jsonify, render_template, request
@@ -16,6 +17,8 @@ from flask_wtf.csrf import CSRFProtect
 
 from visualizer import sharing
 from visualizer.akasha.browsing import can_read_in_database, visible_collections
+from visualizer.akasha.labels import derive_title
+from visualizer.akasha.research_import import RESEARCH_COLLECTIONS
 from visualizer.auth import (
     build_limiter,
     init_login,
@@ -839,6 +842,15 @@ def _register_ui_routes(app, csrf, auth_store, visualizer, workspace_assets: Bun
             r for r in found["results"]
             if _may_read_entity(auth_store, r["database"], r["collection"], r["id"])
         ][:_SUGGEST_LIMIT]
+        # The categories a picker offers, named the way Akasha names them --
+        # "Characters", not "characters" -- and without the ones research keeps
+        # for itself, which hold no one a scene could feature.
+        found["collections"] = [
+            c for c in found["collections"] if c not in RESEARCH_COLLECTIONS
+        ]
+        found["collection_titles"] = _collection_titles(
+            [*found["collections"], found["collection"]]
+        )
         return jsonify(found)
 
 
@@ -874,6 +886,18 @@ def _browse_args() -> dict:
         "page": _positive_int(request.args.get("page"), 1),
         "per_page": _positive_int(request.args.get("per_page"), None),
     }
+
+
+def _collection_titles(names: list[str]) -> dict[str, str]:
+    """What a picker calls each category: Akasha's title for it.
+
+    Except where two would read the same -- ``Characters`` beside
+    ``characters``, made before Akasha refused that -- which keep their raw
+    names, the only thing still telling them apart.
+    """
+    titles = {name: derive_title(name) for name in names}
+    shared = Counter(titles.values())
+    return {name: title if shared[title] == 1 else name for name, title in titles.items()}
 
 
 def _may_read_entity(auth_store, database: str, collection: str, entity_id: str) -> bool:

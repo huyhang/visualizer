@@ -1336,7 +1336,7 @@
           "browse"
         ],
         "summary": "Create a collection (and its database)",
-        "description": "Any authenticated user may create a namespace, and owns what they make.",
+        "description": "Any authenticated user may create a namespace, and owns what they make. Both names must be ones MongoDB can hold (no `/ \\ . \" $ * < > : | ?` or spaces, no leading `_`), else 400. A name that differs from an existing database or collection only in case or separators (`Characters` beside `characters`) is refused with 409 and `existing`, the name to use instead; an exact duplicate is a plain 409 without it.",
         "responses": {
           "201": {
             "description": "Created.",

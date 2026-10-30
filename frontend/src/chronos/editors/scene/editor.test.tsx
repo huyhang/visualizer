@@ -94,6 +94,33 @@ describe("writing a new scene", () => {
     expect(api.callsTo("createEvent")).toEqual([]);
   });
 
+  it("names the categories a field can search as the server titled them", async () => {
+    const api = datedApi();
+    const search = api.searchEntities;
+    api.searchEntities = async (book, query) => ({
+      ...(await search(book, query)),
+      collections: ["characters", "factions", "items", "locations"],
+      collection_titles: {
+        characters: "Characters",
+        factions: "Factions",
+        items: "Items",
+        locations: "Locations",
+      },
+    });
+    const dialog = await openNewScene(api);
+    const chooser = await within(dialog).findByRole("combobox", {
+      name: "Which collection to search for characters",
+    });
+    expect(
+      within(chooser)
+        .getAllByRole("option")
+        .map((o) => [o.getAttribute("value"), o.textContent]),
+    ).toEqual([
+      ["characters", "Characters"],
+      ["factions", "Factions"],
+    ]);
+  });
+
   it("takes the next free id when the title's is taken", async () => {
     const api = datedApi();
     api.refuse("createEvent", 409, "ALREADY_EXISTS");

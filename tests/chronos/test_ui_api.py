@@ -1073,6 +1073,37 @@ def test_a_world_is_a_default_not_a_fence(seeded, client):
     assert _event(client, "meet").status_code == 201   # refs point at ember-pact
 
 
+
+def test_the_picker_offers_categories_by_akasha_title_without_research(
+    seeded, client, auth_store, fake_gate
+):
+    """Research keeps drafts, findings and their sources in categories of its
+    own; nobody in them could be a scene's cast, place or item."""
+    for article, category in [("draft-1", "research-inbox"), ("tides", "research"),
+                              ("almanac", "sources")]:
+        fake_gate.add(ref(article, category))
+    _grant_world(auth_store, WRITER, "ember-pact")
+    client.post(f"/books/{BOOK}", json={"title": "T", "world": "ember-pact"})
+    scope = client.get(f"/books/{BOOK}/ui/entities?collection=characters&q=").get_json()
+    assert scope["collections"] == ["characters", "locations"]
+    assert scope["collection_titles"] == {"characters": "Characters", "locations": "Locations"}
+
+
+def test_categories_that_title_alike_keep_the_names_that_tell_them_apart(
+    seeded, client, auth_store, fake_gate
+):
+    """`Characters` beside `characters`, made before Akasha refused that: both
+    title as "Characters", so the picker shows what they are actually called."""
+    fake_gate.add(ref("mara", "Characters"))
+    _grant_world(auth_store, WRITER, "ember-pact")
+    client.post(f"/books/{BOOK}", json={"title": "T", "world": "ember-pact"})
+    scope = client.get(f"/books/{BOOK}/ui/entities?collection=characters&q=").get_json()
+    assert scope["collections"] == ["Characters", "characters", "locations"]
+    assert scope["collection_titles"] == {
+        "Characters": "Characters", "characters": "characters", "locations": "Locations",
+    }
+
+
 def test_renaming_a_book_does_not_drop_its_world(seeded, client):
     """`world` is stored, so it is presented, so a client can send it back --
     the round trip the whole-document PUT depends on."""

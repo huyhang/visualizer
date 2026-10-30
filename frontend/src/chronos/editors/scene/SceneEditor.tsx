@@ -41,7 +41,12 @@ function useEntityScope(book: string, world: string | null | undefined) {
     staleTime: 5 * 60_000,
   });
   const observed = data?.collections ?? Object.values(ROLE_COLLECTION);
-  return { observed, nowhereToSearch: Boolean(data) && !world && observed.length === 0 };
+  const titles = data?.collection_titles ?? {};
+  return {
+    observed,
+    titles,
+    nowhereToSearch: Boolean(data) && !world && observed.length === 0,
+  };
 }
 
 /** Why a save failed, in words that say what to do next. */
@@ -177,6 +182,7 @@ function SceneForm({
         value={draft.location}
         onChange={(location) => set({ location })}
         observed={scope.observed}
+        titles={scope.titles}
         nowhereToSearch={scope.nowhereToSearch}
       />
       <TimingField timing={timing} />
@@ -190,6 +196,7 @@ function SceneForm({
           value={draft.characters}
           onChange={(characters) => set({ characters })}
           observed={scope.observed}
+          titles={scope.titles}
           nowhereToSearch={scope.nowhereToSearch}
         />
         <RefField
@@ -200,6 +207,7 @@ function SceneForm({
           value={draft.items}
           onChange={(items) => set({ items })}
           observed={scope.observed}
+          titles={scope.titles}
           nowhereToSearch={scope.nowhereToSearch}
         />
       </div>

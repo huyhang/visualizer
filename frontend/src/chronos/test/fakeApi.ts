@@ -365,6 +365,11 @@ export function fakeApi(): FakeApi {
           database: BOOK,
           collection,
           collections: ["characters", "items", "locations"],
+          collection_titles: {
+            characters: "Characters",
+            items: "Items",
+            locations: "Locations",
+          },
           results,
         };
       }),

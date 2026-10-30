@@ -134,3 +134,23 @@ def test_collections_are_independent(client):
     client.post(collection_url(collection="c1"))
     client.post(doc_url("a1", collection="c1"), json={"name": "one"})
     assert client.get(doc_url("a1", collection="c2")).status_code == 404
+
+
+def test_a_collection_that_reads_like_an_existing_one_returns_409_naming_it(client):
+    client.post(collection_url(database="newdb", collection="characters"))
+    resp = client.post(collection_url(database="newdb", collection="Characters"))
+    assert resp.status_code == 409
+    assert resp.get_json()["existing"] == "characters"
+
+
+def test_an_exact_duplicate_409_names_nothing_else(client):
+    """The editor reads a 409 *without* `existing` as "already there"."""
+    client.post(collection_url(database="newdb", collection="characters"))
+    resp = client.post(collection_url(database="newdb", collection="characters"))
+    assert resp.status_code == 409
+    assert "existing" not in resp.get_json()
+
+
+def test_a_collection_name_mongo_cannot_hold_returns_400(client):
+    resp = client.post(collection_url(database="newdb", collection="a$b"))
+    assert resp.status_code == 400

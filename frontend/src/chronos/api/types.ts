@@ -461,6 +461,8 @@ export interface EntitySuggestions {
   database: string;
   collection: string;
   collections: string[];
+  /** What a picker calls each of `collections` (and `collection`): Akasha's title, or the raw name where two titles would clash. */
+  collection_titles: Record<string, string>;
   results: EntityCandidate[];
 }
 

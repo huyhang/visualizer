@@ -39,15 +39,23 @@ from .errors import (
     DatabaseNotFound,
     DocumentAlreadyExists,
     DocumentNotFound,
+    NameClash,
     RevisionConflict,
 )
 from .history import CREATE, DELETE, UPDATE, last_live_snapshot, make_snapshot, prune
+from .validation import namespace_key, validate_namespace_name
 
 _DEFAULT_VERSIONS_KEEP = 20
 
 
 def _default_clock() -> datetime:
     return datetime.now(UTC)
+
+
+def _namesake(names: list[str], name: str) -> str | None:
+    """The existing name that ``name`` would read the same as, if any."""
+    key = namespace_key(name)
+    return next((n for n in names if namespace_key(n) == key), None)
 
 
 class DocumentStore:
@@ -77,12 +85,34 @@ class DocumentStore:
         """Explicitly create a collection (and its database).
 
         MongoDB creates databases/collections lazily on first write; this makes
-        it an explicit, up-front operation. Fails if the collection exists.
+        it an explicit, up-front operation. Fails if the collection exists, and
+        if either name only differs from an existing one in case or separators:
+        ``Characters`` beside ``characters`` would be a second category that
+        reads exactly like the first.
         """
+        validate_namespace_name(database, "database")
+        validate_namespace_name(collection, "collection")
         if self._collection_exists(database, collection):
             raise CollectionAlreadyExists(
                 f"Collection '{collection}' already exists in database '{database}'."
             )
+        if not self._database_exists(database):
+            existing = _namesake(self.list_databases(), database)
+            if existing is not None:
+                raise NameClash(
+                    f"Database '{database}' reads the same as the existing "
+                    f"'{existing}'. Use '{existing}' instead.",
+                    existing=existing,
+                )
+        else:
+            existing = _namesake(self.list_collections(database), collection)
+            if existing is not None:
+                raise NameClash(
+                    f"Collection '{collection}' reads the same as '{existing}', "
+                    f"which already exists in database '{database}'. "
+                    f"Use '{existing}' instead.",
+                    existing=existing,
+                )
         self._client[database].create_collection(collection)
         return {"database": database, "collection": collection}
 

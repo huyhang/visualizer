@@ -4893,6 +4893,7 @@
           "database",
           "collection",
           "collections",
+          "collection_titles",
           "results"
         ],
         "properties": {
@@ -4908,7 +4909,14 @@
             "items": {
               "type": "string"
             },
-            "description": "Collections this book's existing scenes reference in that database, so a picker can offer them."
+            "description": "Collections this book's existing scenes reference in that database, so a picker can offer them. Akasha's research categories (`research-inbox`, `research`, `sources`) are never offered."
+          },
+          "collection_titles": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "What a picker calls each of `collections` and `collection`: Akasha's title for it (`characters` reads \"Characters\"), or its raw name where two would read the same."
           },
           "results": {
             "type": "array",
@@ -4925,6 +4933,11 @@
             "items",
             "locations"
           ],
+          "collection_titles": {
+            "characters": "Characters",
+            "items": "Items",
+            "locations": "Locations"
+          },
           "results": [
             {
               "database": "ember-pact",
