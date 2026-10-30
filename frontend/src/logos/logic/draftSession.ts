@@ -152,6 +152,17 @@ export function createDraftSession(input: SessionInput, deps: SessionDeps) {
       );
       update((drafts) => promoted(drafts, result.section_rev));
     },
+    /**
+     * Say which scenes the section tells. After the words in flight, because a
+     * title saved with them moves the same section revision. False if they
+     * could not be saved, and nothing was changed.
+     */
+    setScenes: async (eventIds: string[]) => {
+      if (!(await settled())) return false;
+      const moved = await api.updateSectionScenes(at, eventIds, state.drafts.sectionRev);
+      update((drafts) => sectionChanged(drafts, moved.rev));
+      return true;
+    },
     preserveConflict: async () => {
       const held = snapshot();
       const created = await api.createDraft(

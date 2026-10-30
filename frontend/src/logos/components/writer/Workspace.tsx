@@ -61,6 +61,7 @@ import { ContextMenu, type MenuAction, type MenuRequest } from "./ContextMenu";
 import { FormatBar } from "./FormatBar";
 import { useNameDialog } from "./NameDialog";
 import { OutlinePanel } from "./OutlinePanel";
+import { SceneStrip } from "./SceneStrip";
 import { TopBar } from "./TopBar";
 
 const underline = (id: string) =>
@@ -414,6 +415,19 @@ export function Workspace({ workspace, route }: { workspace: Loaded; route: Rout
           onClose={() => drawers.close()}
         />
         <main className="lw-page">
+          <SceneStrip
+            at={at}
+            sections={volume?.sections ?? []}
+            onSave={session.actions.setScenes}
+            onOpenArticle={openArticle}
+            onOpenSection={(next) =>
+              attempt(() =>
+                session.actions.leave(
+                  api.writerUrl({ book: at.book, volume: at.volume, section: next.id }),
+                ),
+              )
+            }
+          />
           <p className="lw-eyebrow">
             Volume {volume?.number} · {sectionLabel(section)}
           </p>

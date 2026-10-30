@@ -1104,6 +1104,28 @@
         }
       }
     },
+    "/books/{book}/volumes/{volume}/ui/scene-cards": {
+      "get": {
+        "tags": ["writer"], "summary": "The scene cards above the writing page, for every section of a volume",
+        "description": "Grouped by section and in section order like the reader's `/ui/scenes`, so the writing page can step from the open section's scenes to the ones either side; only the scenes each section's own `event_ids` name. Each scene also carries its description, its place and its cast. Those are Akasha articles, named only where the writer asking may read them; the rest are counted in `unseen`, never named. Needs write on the book.",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }, { "$ref": "#/components/parameters/Volume" }],
+        "responses": {
+          "200": { "description": "Scene cards, grouped by section.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WriterSceneCards" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/books/{book}/ui/scene-choices": {
+      "get": {
+        "tags": ["writer"], "summary": "Every scene in the book, for choosing the ones a section tells",
+        "description": "In story order: scheduled scenes by when they start, then unscheduled ones by title. A section's scenes are set with `PUT .../metadata` and `event_ids`. Needs write on the book.",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }],
+        "responses": {
+          "200": { "description": "The book's scenes.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SceneChoices" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/books/{book}/ui/entities": {
       "get": {
         "tags": ["writer"], "summary": "Find readable Akasha entities for selected prose",
@@ -2723,6 +2745,58 @@
           "created_by": "mara",
           "updated_by": "mara",
           "updated_at": "2026-01-01T00:00:00+00:00"
+        }
+      },
+      "SceneArticle": {
+        "type": "object",
+        "required": ["database", "collection", "id", "title"],
+        "properties": {
+          "database": { "type": "string" },
+          "collection": { "type": "string" },
+          "id": { "type": "string" },
+          "title": { "type": "string" }
+        }
+      },
+      "WriterScene": {
+        "type": "object",
+        "required": ["id", "title", "when", "missing", "description", "place", "cast", "unseen"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string", "description": "The scene's Chronos title, or its id when it has none." },
+          "when": { "type": "string", "description": "The scene's timeframe in this book's own calendar; empty when the scene is missing." },
+          "missing": { "type": "boolean", "description": "True when the section still names this scene but Chronos no longer has it." },
+          "description": { "type": "string" },
+          "place": { "allOf": [{ "$ref": "#/components/schemas/SceneArticle" }], "nullable": true, "description": "Where the scene happens; null when the writer may not read it, it is gone, or the scene is missing." },
+          "cast": { "type": "array", "items": { "$ref": "#/components/schemas/SceneArticle" }, "description": "The scene's characters the writer may read, in Chronos's order." },
+          "unseen": { "type": "integer", "minimum": 0, "description": "How many of the place and cast are not shown: unreadable to this writer, or no longer in Akasha." }
+        },
+        "example": { "id": "opening", "title": "The gate opens", "when": "Day 5 – Day 7", "missing": false, "description": "Lyra reaches the gate.", "place": { "database": "ember", "collection": "places", "id": "gate", "title": "The Broken Gate" }, "cast": [{ "database": "ember", "collection": "characters", "id": "lyra", "title": "Lyra" }], "unseen": 0 }
+      },
+      "WriterSceneCards": {
+        "type": "object",
+        "required": ["book", "volume", "sections"],
+        "properties": {
+          "book": { "type": "string" },
+          "volume": { "type": "string" },
+          "sections": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["section", "scenes"],
+              "properties": {
+                "section": { "type": "string" },
+                "scenes": { "type": "array", "items": { "$ref": "#/components/schemas/WriterScene" } }
+              }
+            }
+          }
+        }
+      },
+      "SceneChoices": {
+        "type": "object",
+        "required": ["book", "scenes"],
+        "properties": {
+          "book": { "type": "string" },
+          "scenes": { "type": "array", "items": { "$ref": "#/components/schemas/LinkedScene" } }
         }
       },
       "LinkedScene": {

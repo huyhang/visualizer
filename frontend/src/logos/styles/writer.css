@@ -468,6 +468,274 @@ kbd {
   opacity: 0.6;
 }
 
+/* ---- the scene strip ----------------------------------------------------------- */
+
+/* The scenes this section tells, above its title, from Chronos: one card in
+   view, the next one peeking in at the edge so it is plain there is more. The
+   rail is a native scroller -- swipe, two-finger scroll, arrow keys once it
+   has focus -- snapping each card to the middle; the arrows in the heading are
+   for a mouse, and are hidden at either end rather than greyed out. */
+.lw-scenes {
+  margin: 0 0 1.5rem;
+}
+.lw-scenes-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 1.75rem;
+  margin-bottom: 0.35rem;
+}
+.lw-scenes-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0.15rem 0.3rem 0.15rem 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.lw-scenes-toggle:hover {
+  color: var(--text);
+}
+.lw-scenes-toggle svg {
+  flex: none;
+  transition: transform 0.15s ease;
+}
+.lw-scenes.is-closed .lw-scenes-toggle svg {
+  transform: rotate(-90deg);
+}
+.lw-scenes-summary {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+.lw-scenes-nav {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.1rem;
+}
+.lw-scenes-count {
+  min-width: 3.4rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.lw-scenes-step.is-back svg {
+  transform: rotate(180deg);
+}
+.lw-scenes-step:disabled {
+  visibility: hidden;
+}
+.lw-scenes-rail {
+  position: relative;
+  display: flex;
+  gap: 0.6rem;
+  margin: -3px;
+  padding: 3px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  border-radius: 15px;
+  outline: 0;
+}
+.lw-scenes-rail::-webkit-scrollbar {
+  display: none;
+}
+.lw-scenes-rail:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.lw-scene {
+  display: flex;
+  flex: 0 0 calc(100% - 2.5rem);
+  flex-direction: column;
+  gap: 0.3rem;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 0.8rem 1rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+  scroll-snap-align: center;
+}
+.lw-scene:only-child {
+  flex-basis: 100%;
+}
+.lw-scene-here {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.lw-scene-where {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.lw-scene-section,
+.lw-scene-change,
+.lw-scene-place {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.lw-scene-section {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--accent);
+  text-overflow: ellipsis;
+  text-transform: inherit;
+  white-space: nowrap;
+}
+.lw-scene-section .lw-muted {
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.lw-scene-change {
+  flex: none;
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.lw-scene-section:hover,
+.lw-scene-change:hover,
+.lw-scene-place:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.lw-scene-title {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--prose-font);
+  font-size: 1.15rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.lw-scene.is-missing .lw-scene-title {
+  color: var(--muted);
+}
+.lw-scene-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.lw-scene-place {
+  color: var(--text);
+  text-decoration: underline dotted color-mix(in srgb, var(--muted) 60%, transparent);
+  text-underline-offset: 3px;
+}
+.lw-scene-description {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.88rem;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+.lw-scene-cast {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0.2rem 0 0;
+}
+.lw-scene-person {
+  padding: 0.12rem 0.55rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.lw-scene-person:hover {
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+}
+.lw-scene-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.lw-scene-filter {
+  width: 100%;
+  margin-bottom: 0.6rem;
+}
+.lw-scene-choices {
+  max-height: min(50dvh, 24rem);
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  list-style: none;
+}
+.lw-scene-choices li + li {
+  border-top: 1px solid var(--border);
+}
+/* The date under the title, not beside it: a calendar of the book's own
+   spells "Year 1, Month 1, Day 1, 00:00 AF → …", which beside a title left
+   the title a word wide. */
+.lw-scene-choices label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 0.65rem;
+  row-gap: 0.1rem;
+  padding: 0.5rem 0.7rem;
+  cursor: pointer;
+}
+.lw-scene-choices input {
+  grid-row: span 2;
+  margin: 0;
+}
+.lw-scene-choices label:hover {
+  background: var(--surface-2);
+}
+.lw-scene-choice-title {
+  font-weight: 500;
+}
+.lw-scene-choice-when {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.lw-scene-choices > .lw-muted {
+  padding: 0.6rem 0.7rem;
+}
+
 /* Short of room, the floating bar wraps onto a second row rather than
    scrolling its last controls out of sight -- which only the narrowest
    three-column widths ask of it. The docked bar (drawers, phones) keeps one

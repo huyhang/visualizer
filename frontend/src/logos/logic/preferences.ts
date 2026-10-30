@@ -28,6 +28,9 @@ export interface Preferences {
   setReviewOptions: (options: ReviewOptions) => void;
   layers: () => Layers;
   setLayers: (layers: Layers) => void;
+  /** Whether the scene strip above the page is open. */
+  scenesOpen: () => boolean;
+  setScenesOpen: (open: boolean) => void;
 }
 
 const DEFAULT_OPTIONS: ReviewOptions = {
@@ -66,6 +69,7 @@ export function storedPreferences(store: KeyValueStore, user: string): Preferenc
     ignored: `logos-writing-ignored:${who}`,
     review: `logos-review-options:${who}`,
     layers: `logos-writing-layers:${who}`,
+    scenes: `logos-writing-scenes:${who}`,
   };
   return {
     dialect: () => {
@@ -98,6 +102,9 @@ export function storedPreferences(store: KeyValueStore, user: string): Preferenc
         return typeof v?.coach === "boolean" && typeof v?.editor === "boolean";
       }),
     setLayers: (layers) => write(store, keys.layers, layers),
+    scenesOpen: () =>
+      read<boolean>(store, keys.scenes, true, (value) => typeof value === "boolean"),
+    setScenesOpen: (open) => write(store, keys.scenes, open),
   };
 }
 

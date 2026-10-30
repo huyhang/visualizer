@@ -6,7 +6,13 @@
 import type { ArticleRef } from "../doc/types";
 import { LogosApiError } from "./errors";
 import type { LogosApi, SectionAddress } from "./LogosApi";
-import type { CoachReview, DraftListing, Entity, ReviewSummary } from "./types";
+import type {
+  CoachReview,
+  DraftListing,
+  Entity,
+  ReviewSummary,
+  SceneChoice,
+} from "./types";
 
 export interface HttpApiOptions {
   /** Where Logos is mounted: "" when it owns the origin, "/logos" behind the gateway. */
@@ -82,6 +88,12 @@ export function createHttpApi(options: HttpApiOptions): LogosApi {
       }),
     updateSectionTitle: (at, title, revision) =>
       call("PUT", `${section(at)}/metadata`, { body: { title }, revision }),
+    updateSectionScenes: (at, eventIds, revision) =>
+      call("PUT", `${section(at)}/metadata`, { body: { event_ids: eventIds }, revision }),
+
+    sceneCards: (b, v) => call("GET", `${volume(b, v)}/ui/scene-cards`),
+    sceneChoices: async (b) =>
+      (await call<{ scenes: SceneChoice[] }>("GET", `${book(b)}/ui/scene-choices`)).scenes,
 
     drafts: (at) => call<DraftListing>("GET", `${section(at)}/drafts`),
     draft: (at, d) => call("GET", draft(at, d)),

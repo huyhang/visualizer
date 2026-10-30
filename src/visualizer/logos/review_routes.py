@@ -1,11 +1,20 @@
-"""Writer-only aids: Akasha entity lookup and private writing review."""
+"""Writer-only aids: Akasha entity lookup, the scenes beside the prose, and
+private writing review."""
 
 from flask import jsonify, request
 from flask_login import current_user, login_required
 
 from .errors import InvalidSearch
 from .richtext import validate_document
-from .routing import BOOK, RouteDeps, authorize, json_body, truthy, writing_dialect
+from .routing import (
+    BOOK,
+    VOLUME,
+    RouteDeps,
+    authorize,
+    json_body,
+    truthy,
+    writing_dialect,
+)
 from .validation import validate_identifier
 
 
@@ -13,6 +22,7 @@ def register_review_routes(app, csrf, deps: RouteDeps):
     auth_store = deps.auth_store
     manuscripts = deps.manuscripts
     articles = deps.articles
+    volumes = deps.volumes
     writing_advisor = deps.writing_advisor
     series_review = deps.series_review
 
@@ -34,6 +44,28 @@ def register_review_routes(app, csrf, deps: RouteDeps):
                 ),
             }
         )
+
+    @app.get(VOLUME + "/ui/scene-cards")
+    @csrf.exempt
+    @login_required
+    def writer_scene_cards(book, volume):
+        """The scene cards above the writing page, for the whole volume.
+
+        Write access, unlike the reader's ``/ui/scenes``: these carry each
+        scene's place, cast and description, which a reader of the prose has
+        not been offered. Names come from Akasha under the writer's own grants.
+        """
+        authorize(auth_store, "write", book)
+        grants = auth_store.grants_for(current_user.username)
+        return jsonify(volumes.scene_details(book, volume, grants))
+
+    @app.get(BOOK + "/ui/scene-choices")
+    @csrf.exempt
+    @login_required
+    def writer_scene_choices(book):
+        """Every scene in the book, for choosing the ones a section tells."""
+        authorize(auth_store, "write", book)
+        return jsonify(volumes.scene_choices(book))
 
     @app.post(BOOK + "/ui/writing-review")
     @csrf.exempt

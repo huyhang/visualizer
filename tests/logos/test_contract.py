@@ -171,6 +171,8 @@ def seeded(client):
         (f"/books/{BOOK}/volumes/{VOLUME}", "Volume"),
         (f"/books/{BOOK}/volumes/{VOLUME}/manuscript", "VolumeManuscript"),
         (f"/books/{BOOK}/volumes/{VOLUME}/ui/scenes", "VolumeScenes"),
+        (f"/books/{BOOK}/volumes/{VOLUME}/ui/scene-cards", "WriterSceneCards"),
+        (f"/books/{BOOK}/ui/scene-choices", "SceneChoices"),
         (f"/books/{BOOK}/volumes/{VOLUME}/sections/{SECTION}", "Section"),
         (f"/books/{BOOK}/volumes/{VOLUME}/sections/{SECTION}/ui/scenes",
          "SingleSectionScenes"),

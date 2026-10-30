@@ -46,6 +46,21 @@ class ChronosGateway(Protocol):
         fewer than the prose claims.
         """
 
+    def scene_details(self, book: str, event_ids: list[str]) -> list[dict]:
+        """What the writing page shows of each named scene, in the order asked.
+
+        A scene card plus what the writer needs beside the prose: the scene's
+        ``description`` and the Akasha refs of its ``location`` and
+        ``characters``. Refs, not names -- whether the writer may read those
+        articles is Akasha's question, asked by the caller. A missing scene is
+        flagged as in ``scene_cards``, with no location and no cast.
+        """
+
+    def scene_choices(self, book: str) -> list[dict]:
+        """Every scene in the book as ``{"id", "title", "when"}``, in story
+        order: the scheduled ones by when they start, then the unscheduled by
+        title. An empty list when the book is gone."""
+
 
 class ArticleGateway(Protocol):
     def missing_articles(self, refs: list[dict]) -> list[dict]:
@@ -89,6 +104,12 @@ class InProcessChronosGateway:
         return [event for event in event_ids if event not in known]
 
     def scene_cards(self, book: str, event_ids: list[str]) -> list[dict]:
+        return self._scenes(book, event_ids, _scene_card, _absent_scene)
+
+    def scene_details(self, book: str, event_ids: list[str]) -> list[dict]:
+        return self._scenes(book, event_ids, _scene_detail, _absent_detail)
+
+    def _scenes(self, book: str, event_ids: list[str], card, absent) -> list[dict]:
         wanted = _distinct(event_ids)
         if not wanted:
             return []
@@ -96,18 +117,33 @@ class InProcessChronosGateway:
         if stored is None:
             # The book is gone but its prose is still readable, so every scene
             # it named is absent rather than the whole request being an error.
-            return [_absent_scene(event_id) for event_id in wanted]
+            return [absent(event_id) for event_id in wanted]
         codec = codec_for(Book.from_storage(stored))
         found = {
-            record["id"]: _scene_card(Event.from_storage(record), codec)
+            record["id"]: card(Event.from_storage(record), codec)
             for record in self._stories.get_events(book, wanted)
         }
-        return [found.get(event_id) or _absent_scene(event_id) for event_id in wanted]
+        return [found.get(event_id) or absent(event_id) for event_id in wanted]
+
+    def scene_choices(self, book: str) -> list[dict]:
+        stored = self.get_book(book)
+        if stored is None:
+            return []
+        codec = codec_for(Book.from_storage(stored))
+        events = [Event.from_storage(record) for record in self._stories.list_events(book)]
+        return [_scene_card(event, codec) for event in sorted(events, key=_story_order)]
 
 
 def _distinct(event_ids: list[str]) -> list[str]:
     """First-seen order: two sections realising one scene ask for it once."""
     return list(dict.fromkeys(event_ids))
+
+
+def _story_order(event: Event):
+    """When it starts, then ends; the unscheduled after, alphabetically."""
+    if event.is_scheduled:
+        return (0, event.start_tick, event.end_tick, "", event.id)
+    return (1, 0, 0, event.display_title.casefold(), event.id)
 
 
 def _scene_card(event: Event, codec) -> dict:
@@ -120,9 +156,24 @@ def _scene_card(event: Event, codec) -> dict:
     }
 
 
+def _scene_detail(event: Event, codec) -> dict:
+    """The card, and what the writer has beside the prose: where and who."""
+    return {
+        **_scene_card(event, codec),
+        "description": event.description,
+        "location": event.location.to_dict(),
+        "characters": [character.to_dict() for character in event.characters],
+    }
+
+
 def _absent_scene(event_id: str) -> dict:
     """A scene a section still names but Chronos no longer has."""
     return {"id": event_id, "title": event_id, "when": "", "missing": True}
+
+
+def _absent_detail(event_id: str) -> dict:
+    return {**_absent_scene(event_id), "description": "", "location": None,
+            "characters": []}
 
 
 class InProcessArticleGateway:
@@ -225,8 +276,19 @@ class LogosReferenceGate:
         ]
 
 
-def _fake_scene(event_id: str, title: str | None = None, when: str = "unscheduled"):
-    return {"id": event_id, "title": title or event_id, "when": when, "missing": False}
+def _fake_scene(event_id: str, title: str | None = None, when: str = "unscheduled",
+                description: str = "", location: dict | None = None,
+                characters=()):
+    return {
+        "id": event_id, "title": title or event_id, "when": when, "missing": False,
+        "description": description,
+        "location": location or {"database": "ember", "collection": "places",
+                                 "id": "nowhere"},
+        "characters": list(characters),
+    }
+
+
+_CARD = ("id", "title", "when", "missing")
 
 
 class FakeChronosGateway:
@@ -248,10 +310,16 @@ class FakeChronosGateway:
         self._events[book] = {event: _fake_scene(event) for event in events}
 
     def add_event(
-        self, book: str, event: str, title: str | None = None, when: str = "unscheduled"
+        self, book: str, event: str, title: str | None = None, when: str = "unscheduled",
+        *, description: str = "", location: dict | None = None, characters=(),
     ) -> None:
-        """Give a scene the title and timeframe the reader will show for it."""
-        self._events.setdefault(book, {})[event] = _fake_scene(event, title, when)
+        """Give a scene what the reader and the writing page will show of it.
+
+        Scenes list in the order they were added, which stands in for story order.
+        """
+        self._events.setdefault(book, {})[event] = _fake_scene(
+            event, title, when, description, location, characters
+        )
 
     def get_book(self, book: str) -> dict | None:
         return self._books.get(book)
@@ -264,10 +332,24 @@ class FakeChronosGateway:
         return [event for event in event_ids if event not in known]
 
     def scene_cards(self, book: str, event_ids: list[str]) -> list[dict]:
+        return [
+            {key: detail[key] for key in _CARD}
+            for detail in self.scene_details(book, event_ids)
+        ]
+
+    def scene_details(self, book: str, event_ids: list[str]) -> list[dict]:
         known = self._events.get(book, {})
         return [
-            dict(known[event_id]) if event_id in known else _absent_scene(event_id)
+            dict(known[event_id]) if event_id in known else _absent_detail(event_id)
             for event_id in _distinct(event_ids)
+        ]
+
+    def scene_choices(self, book: str) -> list[dict]:
+        if book not in self._books:
+            return []
+        return [
+            {key: scene[key] for key in _CARD}
+            for scene in self._events.get(book, {}).values()
         ]
 
 

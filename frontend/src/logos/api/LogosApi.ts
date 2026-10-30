@@ -16,9 +16,11 @@ import type {
   ReviewReferences,
   ReviewRequest,
   ReviewSummary,
+  SceneChoice,
   Section,
   SectionKind,
   SectionSummary,
+  WriterSceneCards,
 } from "./types";
 
 /** Where a section is: the address every section-level call takes. */
@@ -47,6 +49,17 @@ export interface LogosApi {
     title: string | null,
     revision: number,
   ): Promise<SectionSummary>;
+  /** Say which Chronos scenes the section tells, in the order given. */
+  updateSectionScenes(
+    at: SectionAddress,
+    eventIds: string[],
+    revision: number,
+  ): Promise<SectionSummary>;
+
+  /** The scene cards for every section of the volume, in order. */
+  sceneCards(book: string, volume: string): Promise<WriterSceneCards>;
+  /** Every scene in the book, in story order. */
+  sceneChoices(book: string): Promise<SceneChoice[]>;
 
   drafts(at: SectionAddress): Promise<DraftListing>;
   draft(at: SectionAddress, draft: string): Promise<Draft>;

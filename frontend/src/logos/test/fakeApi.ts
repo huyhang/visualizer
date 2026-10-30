@@ -14,7 +14,9 @@ import type {
   Manuscript,
   Review,
   ReviewIssue,
+  SceneChoice,
   Section,
+  WriterSceneCards,
 } from "../api/types";
 import type { LogosDocument } from "../doc/types";
 import { doc, para, text } from "./docs";
@@ -101,6 +103,8 @@ export interface FakeState {
   /** Hold reviews in "running" until a test lets them finish. */
   holdReviews: boolean;
   failSaves: number | null;
+  sceneCards: WriterSceneCards;
+  sceneChoices: SceneChoice[];
 }
 
 export function fakeState(patch: Partial<FakeState> = {}): FakeState {
@@ -182,6 +186,16 @@ export function fakeState(patch: Partial<FakeState> = {}): FakeState {
     ],
     holdReviews: false,
     failSaves: null,
+    // Every section of the volume, as the server lists them, none telling a scene.
+    sceneCards: {
+      book: AT.book,
+      volume: AT.volume,
+      sections: [
+        { section: AT.section, scenes: [] },
+        { section: "tea", scenes: [] },
+      ],
+    },
+    sceneChoices: [],
     ...patch,
   };
 }
@@ -221,6 +235,39 @@ export function fakeApi(state: FakeState = fakeState()) {
       state.section = { ...state.section, title, rev: state.sectionRev };
       return state.section;
     }),
+    updateSectionScenes: vi.fn(async (at, eventIds, revision) => {
+      if (revision !== state.sectionRev) throw new LogosApiError(409, "Stale.");
+      state.sectionRev += 1;
+      state.section = { ...state.section, rev: state.sectionRev };
+      const known = new Map(
+        state.sceneCards.sections
+          .flatMap((row) => row.scenes)
+          .map((scene) => [scene.id, scene]),
+      );
+      const rows = state.sceneCards.sections.filter((row) => row.section !== at.section);
+      const scenes = eventIds.map((id: string) => {
+        const choice = state.sceneChoices.find((c) => c.id === id);
+        return (
+          known.get(id) ?? {
+            ...(choice ?? { id, title: id, when: "", missing: true }),
+            description: "",
+            place: null,
+            cast: [],
+            unseen: 0,
+          }
+        );
+      });
+      const order = state.manuscript.volumes[0]!.sections.map((s) => s.id);
+      state.sceneCards = {
+        ...state.sceneCards,
+        sections: [...rows, { section: at.section, scenes }].sort(
+          (a, b) => order.indexOf(a.section) - order.indexOf(b.section),
+        ),
+      };
+      return state.section;
+    }),
+    sceneCards: vi.fn(async () => structuredClone(state.sceneCards)),
+    sceneChoices: vi.fn(async () => structuredClone(state.sceneChoices)),
     drafts: vi.fn(async () => ({
       drafts: state.drafts.map(row),
       section_rev: state.sectionRev,

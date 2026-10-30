@@ -454,6 +454,63 @@ class VolumeService(_Service):
         ]
         return {card["id"]: card for card in self.chronos.scene_cards(book, wanted)}
 
+    def scene_details(self, book: str, volume_id: str, grants: list[dict]) -> dict:
+        """The writing page's scene cards for every section of this volume.
+
+        Grouped and ordered as ``scenes``, so the page can step from this
+        section's scenes to the ones either side. Each scene's place and cast
+        are named only where ``grants`` may read the article; the rest are
+        counted in ``unseen`` -- the card says how many it cannot show, without
+        saying what they are.
+        """
+        self._book(book)
+        records = self._ordered_sections(book, self._require_volume(book, volume_id))
+        wanted = [event for record in records for event in record.get("event_ids", [])]
+        details = self.chronos.scene_details(book, wanted)
+        refs = [
+            ref
+            for detail in details
+            for ref in [detail["location"], *detail["characters"]]
+            if ref
+        ]
+        titles = {
+            key: found["title"]
+            for key, found in self.articles.review_articles(refs, grants).items()
+        }
+
+        def named(ref):
+            title = titles.get(_ref_key(ref)) if ref else None
+            return {**ref, "title": title} if title is not None else None
+
+        cards = {}
+        for detail in details:
+            place = named(detail["location"])
+            cast = [named(ref) for ref in detail["characters"]]
+            cards[detail["id"]] = {
+                **{key: detail[key] for key in ("id", "title", "when", "missing")},
+                "description": detail["description"],
+                "place": place,
+                "cast": [person for person in cast if person],
+                "unseen": (detail["location"] is not None and place is None)
+                + sum(person is None for person in cast),
+            }
+        return {
+            "book": book,
+            "volume": volume_id,
+            "sections": [
+                {
+                    "section": record["section"],
+                    "scenes": [cards[event] for event in record.get("event_ids", [])],
+                }
+                for record in records
+            ],
+        }
+
+    def scene_choices(self, book: str) -> dict:
+        """Every scene in the book a section could say it realises."""
+        self._book(book)
+        return {"book": book, "scenes": self.chronos.scene_choices(book)}
+
     def update(
         self, book: str, volume_id: str, payload, expected_rev: int, author: str
     ) -> dict:

@@ -60,6 +60,36 @@ export interface DraftListing {
   section_rev: number;
 }
 
+// -- the scenes beside the prose ----------------------------------------------------
+
+/** A Chronos scene as a list names it: for choosing a section's scenes. */
+export interface SceneChoice {
+  id: string;
+  title: string;
+  when: string;
+  missing: boolean;
+}
+
+/** An Akasha article a scene names, as the writer may read it. */
+export interface SceneArticle extends ArticleRef {
+  title: string;
+}
+
+export interface WriterScene extends SceneChoice {
+  description: string;
+  place: SceneArticle | null;
+  cast: SceneArticle[];
+  /** How many of the place and cast this writer cannot be shown. */
+  unseen: number;
+}
+
+export interface WriterSceneCards {
+  book: string;
+  volume: string;
+  /** Every section of the volume, in order, with the scenes it names. */
+  sections: { section: string; scenes: WriterScene[] }[];
+}
+
 // -- Akasha lookup ---------------------------------------------------------------
 
 export interface Entity extends ArticleRef {
