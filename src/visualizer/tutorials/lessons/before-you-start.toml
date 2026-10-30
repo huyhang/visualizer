@@ -26,7 +26,7 @@ alt = "The app after signing in: the five tabs, with Articles open and no worlds
 
 [[steps]]
 title = "Make it comfortable"
-text = "`A` at the top makes the text bigger, everywhere at once, and `◐` switches between light and dark. The app remembers both."
+text = "`A` at the top makes the text bigger, everywhere at once, and `◐` steps through light, paper and dark. The app remembers both."
 shot = "before-you-start/comfort"
 alt = "The top of the page, with the text size and theme buttons highlighted"
 

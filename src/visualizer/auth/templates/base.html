@@ -41,9 +41,12 @@
         for (var i = 0; i < keys.length && saved === null; i++) {
           saved = localStorage.getItem(keys[i]);
         }
-        var dark = saved ? saved === "dark"
-          : window.matchMedia("(prefers-color-scheme: dark)").matches;
-        document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+        // Any theme prefs.js offers; an unknown name counts as none chosen.
+        if (["light", "paper", "dark"].indexOf(saved) === -1) {
+          saved = window.matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark" : "light";
+        }
+        document.documentElement.setAttribute("data-theme", saved);
       } catch (e) { document.documentElement.setAttribute("data-theme", "light"); }
     })();
   </script>

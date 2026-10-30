@@ -91,3 +91,59 @@
 
   --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 28px rgba(0,0,0,.4);
 }
+
+/* Paper: a light theme for long sittings. Cream stock instead of white, warm
+   ink instead of near-black -- body text at about 13:1 rather than 15, every
+   pair still AA -- and a fountain-pen blue for the one interactive hue, since
+   indigo on cream reads as a highlighter. Every token above is redeclared, so
+   no surface is left white; a service's own tokens, which this file does not
+   know, fall back to their light values, which is why paper is a light theme
+   and not a third palette from nothing. */
+[data-theme="paper"] {
+  --bg: #efe7d6;
+  --surface: #f8f3e8;
+  --surface-2: #f3ecdd;
+  --surface-3: #e9e0cc;
+  --border: #ddd2bb;
+
+  --text: #2e2a24;
+  --muted: #6b6152;
+
+  --accent: #3f5f8a;
+  --accent-strong: #2f4a6e;
+  --accent-soft: #e3e7e8;
+
+  --danger: #a8321f;
+  --danger-soft: #f6e0d6;
+  --warn: #8a5608;
+  --warn-soft: #f4e6c4;
+  --ok: #3a6b33;
+  --ok-soft: #e1ead2;
+
+  --bookmark: #a4470f;
+  --bookmark-soft: #f6e4d0;
+
+  --shadow: 0 1px 2px rgba(74,52,24,.06), 0 6px 20px rgba(74,52,24,.08);
+}
+
+/* The grain: laid over the whole page rather than painted behind it, so a
+   card, a dialog and the reading column are paper too, not white islands on a
+   paper desk. Two noises in warm ink -- a fine tooth, and a slow mottle in a
+   larger tile so its repeat does not show. It ignores the pointer, sits above
+   everything, and stays still while the page scrolls; it is drawn once, not
+   per frame. Off in print, and for anyone who asks for more contrast. */
+[data-theme="paper"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2147483647;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .3 0 0 0 0 .21 0 0 0 0 .11 0 0 0 .8 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='640'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.012' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .45 0 0 0 0 .33 0 0 0 0 .16 0 0 0 .31 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23m)'/%3E%3C/svg%3E");
+  background-size: 220px 220px, 640px 640px;
+  opacity: .16;
+}
+@media print, (prefers-contrast: more) {
+  [data-theme="paper"] body::after { display: none; }
+}

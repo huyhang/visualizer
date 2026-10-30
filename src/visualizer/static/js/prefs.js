@@ -1,4 +1,4 @@
-// Text size and light/dark, for all three services.
+// Text size and theme (light, paper, dark), for all three services.
 //
 // One pair of keys, not one pair per service. The three apps are one product
 // behind one origin, and someone who makes the text bigger in Articles means it
@@ -58,7 +58,10 @@
   }
 
   function theme() {
-    return read(THEME, OLD_THEME) || (prefersDark() ? "dark" : "light");
+    // A name this page does not know -- written by a newer one, or by hand --
+    // is treated as never chosen, not painted as a theme with no colours.
+    var saved = known(read(THEME, OLD_THEME));
+    return saved ? saved.id : prefersDark() ? "dark" : "light";
   }
 
   function level() {
@@ -67,6 +70,21 @@
       if (LEVELS[i].px === px) return LEVELS[i];
     }
     return LEVELS[0];
+  }
+
+  // The order the theme button steps through. Paper sits between the two it
+  // is closest to: one press from light, one from dark.
+  var THEMES = [
+    { id: "light", name: "Light" },
+    { id: "paper", name: "Paper" },
+    { id: "dark", name: "Dark" },
+  ];
+
+  function known(id) {
+    for (var i = 0; i < THEMES.length; i++) {
+      if (THEMES[i].id === id) return THEMES[i];
+    }
+    return null;
   }
 
   function applyTheme(name) {
@@ -88,16 +106,23 @@
     button.setAttribute("aria-label", button.title);
   }
 
+  // Says what the theme is now, so a button that cycles three ways is not a
+  // guess -- the same courtesy the size button pays.
+  function describeTheme(button, id) {
+    button.title = "Theme: " + known(id).name;
+    button.setAttribute("aria-label", button.title);
+  }
+
   function wire() {
     var themeButton = document.getElementById("theme-toggle");
     if (themeButton) {
+      describeTheme(themeButton, theme());
       themeButton.addEventListener("click", function () {
-        var next =
-          document.documentElement.getAttribute("data-theme") === "dark"
-            ? "light"
-            : "dark";
+        var now = known(document.documentElement.getAttribute("data-theme"));
+        var next = THEMES[(THEMES.indexOf(now) + 1) % THEMES.length].id;
         applyTheme(next);
         write(THEME, next);
+        describeTheme(themeButton, next);
       });
     }
 

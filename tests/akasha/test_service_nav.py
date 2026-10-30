@@ -316,3 +316,19 @@ def test_nothing_keeps_a_private_copy_of_the_palette():
             f"<style>; put page rules in a stylesheet and leave the palette to "
             f"tokens.css"
         )
+
+
+def test_paper_redeclares_every_colour_light_has():
+    """Paper is a light theme, so anything it leaves out falls back to light's
+    value -- and light's surfaces are white. One token missed is one white card
+    on a cream page. Geometry (`--radius`) is the same everywhere and exempt.
+    """
+    tokens = re.sub(r"/\*.*?\*/", "", (_SRC / "static" / "tokens.css").read_text(), flags=re.DOTALL)
+
+    def declared(selector: str) -> set[str]:
+        body = re.search(re.escape(selector) + r"\s*\{([^{}]*)\}", tokens).group(1)
+        return set(re.findall(r"(--[a-z0-9-]+)\s*:", body))
+
+    light = declared(':root, [data-theme="light"]') - {"--radius"}
+    missing = sorted(light - declared('[data-theme="paper"]'))
+    assert not missing, f"the paper theme leaves {missing} at their light values"

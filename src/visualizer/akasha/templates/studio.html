@@ -30,7 +30,7 @@
         <div class="header-actions">
           <a class="header-link access-link" href="{{ url_for('account_page') }}">Access</a>
           <button class="icon-btn font-btn" id="font-toggle" aria-label="Text size" title="Text size">A</button>
-          <button class="icon-btn" id="theme-toggle" aria-label="Toggle theme" title="Toggle light/dark">◐</button>
+          <button class="icon-btn" id="theme-toggle" aria-label="Change theme" title="Change theme">◐</button>
           <span class="userchip"><span class="avatar">{{ username[0] | upper }}</span>
             <span class="username">{{ username }}</span></span>
           <form class="inline-form" method="post" action="{{ url_for('auth.logout') }}">

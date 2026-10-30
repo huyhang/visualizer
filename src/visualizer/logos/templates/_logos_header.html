@@ -14,7 +14,7 @@
        href="{{ service_links.account }}"
        {%- if not service_links.active %} aria-current="true"{% endif %}>Access</a>
     <button class="icon-btn font-btn" id="font-toggle" aria-label="Text size" title="Text size">A</button>
-    <button class="icon-btn" id="theme-toggle" aria-label="Toggle theme" title="Toggle light/dark">◐</button>
+    <button class="icon-btn" id="theme-toggle" aria-label="Change theme" title="Change theme">◐</button>
     <span class="userchip">
       <span class="avatar">{{ current_user.username[0] | upper }}</span>
       <span class="username">{{ current_user.username }}</span>
