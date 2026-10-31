@@ -10,6 +10,7 @@ import type {
   CoachReview,
   DraftListing,
   Entity,
+  LinkedArticle,
   ReviewSummary,
   SceneChoice,
 } from "./types";
@@ -90,6 +91,16 @@ export function createHttpApi(options: HttpApiOptions): LogosApi {
       call("PUT", `${section(at)}/metadata`, { body: { title }, revision }),
     updateSectionScenes: (at, eventIds, revision) =>
       call("PUT", `${section(at)}/metadata`, { body: { event_ids: eventIds }, revision }),
+
+    updateSectionArticles: (at, articles, revision) =>
+      call("PUT", `${section(at)}/metadata`, { body: { articles }, revision }),
+    linkedArticles: async (at) =>
+      (
+        await call<{ articles: LinkedArticle[] }>(
+          "GET",
+          `${section(at)}/ui/linked-articles`,
+        )
+      ).articles,
 
     sceneCards: (b, v) => call("GET", `${volume(b, v)}/ui/scene-cards`),
     sceneChoices: async (b) =>

@@ -18,10 +18,10 @@ shot = "your-world-beside-you/panel"
 alt = "The Akasha panel showing Ysolde Marr's article and her Home fact"
 
 [[steps]]
-title = "Link the name"
-text = "Press `Link mention` to tie this name in your prose to its article. It's marked in the text from then on."
+title = "Link it to the chapter"
+text = "Press `Link to chapter` to keep the article beside this chapter, under **Linked to this chapter**. Your words stay exactly as you wrote them, and the Editor reads every linked article as reference when it reviews the chapter."
 shot = "your-world-beside-you/linked"
-alt = "Ysolde Marr marked as a mention in the prose"
+alt = "Ysolde Marr listed under Linked to this chapter in the Akasha panel"
 
 [made]
 text = "Your world and your prose, side by side and joined up."

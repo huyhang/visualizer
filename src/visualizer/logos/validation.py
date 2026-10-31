@@ -5,7 +5,8 @@ given: every function builds and returns a fresh record, so a rejected request
 leaves no trace and an accepted one shares no structure with the request body.
 
 Metadata is deliberately small. A volume has a title and an optional overview; a
-section adds its kind and the Chronos events it realises. Anything that can be
+section adds its kind, the Chronos events it realises and the Akasha articles
+linked to it. Anything that can be
 derived from order or content -- numbers, counts, links -- is computed on read
 rather than stored, so it cannot fall out of date.
 """
@@ -33,6 +34,7 @@ NUMBERED_SECTION_KIND = "chapter"
 MAX_TITLE_LENGTH = 300
 MAX_OVERVIEW_LENGTH = 10_000
 MAX_DRAFT_NAME_LENGTH = 120
+MAX_SECTION_ARTICLES = 200
 
 # A volume or section id becomes a URL path segment, so it is kept to characters
 # that need no escaping and cannot be confused with the store's key separator.
@@ -67,7 +69,7 @@ def validate_section_payload(section_id: str, payload: Any) -> Section:
     body = _mapping(payload, InvalidSection, "A section body")
     _only(
         body,
-        {"kind", "title", "overview", "event_ids", "document"},
+        {"kind", "title", "overview", "event_ids", "articles", "document"},
         InvalidSection,
         "section",
     )
@@ -88,6 +90,7 @@ def validate_section_payload(section_id: str, payload: Any) -> Section:
             body.get("overview", ""), "overview", MAX_OVERVIEW_LENGTH, InvalidSection
         ),
         _id_list(body.get("event_ids", []), "event_ids", InvalidSection),
+        articles=_article_list(body.get("articles", [])),
     )
 
 
@@ -219,3 +222,39 @@ def _id_list(value: Any, field: str, error) -> list[str]:
             f"'{field}' contains duplicate ids.", evidence={"duplicates": duplicates}
         )
     return list(value)
+
+
+def _article_list(value: Any) -> list[dict]:
+    """Akasha refs, each named once. Whether they still land is for the reports."""
+    if not isinstance(value, list):
+        raise InvalidSection("'articles' must be a list of Akasha refs.")
+    if len(value) > MAX_SECTION_ARTICLES:
+        raise InvalidSection(
+            f"'articles' must hold at most {MAX_SECTION_ARTICLES} refs.",
+            evidence={"articles": len(value), "max": MAX_SECTION_ARTICLES},
+        )
+    refs: list[dict] = []
+    seen: set[tuple[str, str, str]] = set()
+    repeated: list[dict] = []
+    for item in value:
+        if not isinstance(item, dict) or set(item) != {"database", "collection", "id"}:
+            raise InvalidSection(
+                "Each of 'articles' must be a {database, collection, id} ref."
+            )
+        parts = [item[field] for field in ("database", "collection", "id")]
+        if not all(isinstance(part, str) and part.strip() for part in parts):
+            raise InvalidSection(
+                "Each of 'articles' must name its database, collection and id."
+            )
+        ref = dict(zip(("database", "collection", "id"), (p.strip() for p in parts)))
+        key = (ref["database"], ref["collection"], ref["id"])
+        if key in seen:
+            repeated.append(ref)
+        seen.add(key)
+        refs.append(ref)
+    if repeated:
+        raise InvalidSection(
+            "'articles' names an article more than once.",
+            evidence={"duplicates": repeated},
+        )
+    return refs

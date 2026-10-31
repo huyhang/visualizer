@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Logos API",
-    "version": "1.7.0",
+    "version": "1.8.0",
     "description": "Versioned manuscripts for Chronos books, named writing drafts, volume and section organisation, private reader annotations and writing feedback, Akasha lookup, cross-volume search, and whole-series PDF/EPUB publication.\n\nPaths are relative to the service mount. In the combined deployment that is `/logos`; running Logos standalone it is `/`.\n\nUpdates to revisioned resources and reader items require an `If-Match` header carrying the `rev` from the last read."
   },
   "servers": [
@@ -900,7 +900,7 @@
       "put": {
         "tags": ["sections"], "summary": "Edit section metadata without replacing a draft",
         "parameters": [{ "$ref": "#/components/parameters/Book" }, { "$ref": "#/components/parameters/Volume" }, { "$ref": "#/components/parameters/Section" }, { "$ref": "#/components/parameters/IfMatch" }],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "title": { "type": "string", "nullable": true }, "overview": { "type": "string" }, "event_ids": { "type": "array", "items": { "type": "string" } } } } } } },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "title": { "type": "string", "nullable": true }, "overview": { "type": "string" }, "event_ids": { "type": "array", "items": { "type": "string" } }, "articles": { "type": "array", "maxItems": 200, "items": { "$ref": "#/components/schemas/ArticleRef" } } } } } } },
         "responses": {
           "200": { "description": "The updated section.", "headers": { "ETag": { "$ref": "#/components/headers/ETag" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Section" } } } },
           "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "428": { "$ref": "#/components/responses/PreconditionRequired" }
@@ -1111,6 +1111,17 @@
         "parameters": [{ "$ref": "#/components/parameters/Book" }, { "$ref": "#/components/parameters/Volume" }],
         "responses": {
           "200": { "description": "Scene cards, grouped by section.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WriterSceneCards" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/books/{book}/volumes/{volume}/sections/{section}/ui/linked-articles": {
+      "get": {
+        "tags": ["writer"], "summary": "The Akasha articles linked to a section",
+        "description": "In the order the section lists them, for the writing tools beside the page. Each is titled only where the writer asking may read it; one that is gone is `missing`. They are set with `PUT .../metadata` and `articles`. Needs write on the book.",
+        "parameters": [{ "$ref": "#/components/parameters/Book" }, { "$ref": "#/components/parameters/Volume" }, { "$ref": "#/components/parameters/Section" }],
+        "responses": {
+          "200": { "description": "The linked articles.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LinkedArticles" } } } },
           "401": { "$ref": "#/components/responses/Unauthorized" }, "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
@@ -2585,6 +2596,7 @@
           "title",
           "overview",
           "event_ids",
+          "articles",
           "primary_draft_id",
           "paragraph_count",
           "word_count",
@@ -2611,12 +2623,17 @@
           "title": { "type": "string", "nullable": true },
           "overview": { "type": "string" },
           "event_ids": { "type": "array", "items": { "type": "string" } },
+          "articles": {
+            "type": "array",
+            "description": "Akasha articles linked to the section as a whole, rather than to words in its prose. Soft references, like a mention.",
+            "items": { "$ref": "#/components/schemas/ArticleRef" }
+          },
           "primary_draft_id": { "type": "string", "description": "The named draft shown by readers and exports." },
           "paragraph_count": { "type": "integer" },
           "word_count": { "type": "integer" },
           "missing_refs": {
             "type": "array",
-            "description": "Akasha articles this prose mentions that no longer exist.",
+            "description": "Akasha articles this section links, or its prose mentions, that no longer exist.",
             "items": { "$ref": "#/components/schemas/ArticleRef" }
           },
           "_links": { "type": "object" },
@@ -2635,6 +2652,7 @@
           "title": "The Broken Gate",
           "overview": "Lyra reaches the gate.",
           "event_ids": ["opening"],
+          "articles": [],
           "primary_draft_id": "draft-1",
           "paragraph_count": 1,
           "word_count": 4,
@@ -2745,6 +2763,30 @@
           "created_by": "mara",
           "updated_by": "mara",
           "updated_at": "2026-01-01T00:00:00+00:00"
+        }
+      },
+      "LinkedArticle": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ArticleRef" },
+          {
+            "type": "object",
+            "required": ["title", "missing"],
+            "properties": {
+              "title": { "type": "string", "nullable": true, "description": "Null when the writer asking may not read the article, or it is gone." },
+              "missing": { "type": "boolean", "description": "The article no longer exists in Akasha." }
+            }
+          }
+        ]
+      },
+      "LinkedArticles": {
+        "type": "object",
+        "required": ["book", "volume", "section", "rev", "articles"],
+        "properties": {
+          "book": { "type": "string" },
+          "volume": { "type": "string" },
+          "section": { "type": "string" },
+          "rev": { "type": "integer", "description": "The section revision these were read at." },
+          "articles": { "type": "array", "items": { "$ref": "#/components/schemas/LinkedArticle" } }
         }
       },
       "SceneArticle": {
@@ -2996,6 +3038,7 @@
           "title": { "type": "string", "nullable": true },
           "overview": { "type": "string" },
           "event_ids": { "type": "array", "items": { "type": "string" } },
+          "articles": { "type": "array", "items": { "$ref": "#/components/schemas/ArticleRef" } },
           "paragraph_count": { "type": "integer" },
           "word_count": { "type": "integer" },
           "document": { "$ref": "#/components/schemas/Document" }
@@ -3246,6 +3289,12 @@
             "type": "array",
             "description": "Chronos scenes this section realises. They must exist.",
             "items": { "type": "string" }
+          },
+          "articles": {
+            "type": "array",
+            "maxItems": 200,
+            "description": "Akasha articles linked to the section as a whole, each at most once. They need not exist: one that does not is reported in `missing_refs`.",
+            "items": { "$ref": "#/components/schemas/ArticleRef" }
           },
           "document": { "$ref": "#/components/schemas/Document" }
         },

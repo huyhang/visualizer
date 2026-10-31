@@ -169,9 +169,9 @@ def run() -> None:
             select_words(page, "Lyra")
             page.keyboard.press("ControlOrMeta+k")
             expect(page.locator(".lw-entity")).to_contain_text("Lyra")
-            page.get_by_role("button", name="Link mention").click()
-            expect(page.locator(".lw-editor .entity-mention")).to_have_text("Lyra")
-            expect(page.locator(".lw-save")).to_have_text("Saved", timeout=5_000)
+            page.get_by_role("button", name="Link to chapter").click()
+            expect(page.locator(".lw-linked")).to_contain_text("Lyra")
+            expect(page.locator(".lw-editor .entity-mention")).to_have_count(0)
 
             page.get_by_role("button", name="New draft").click()
             page.get_by_label("Draft name").fill("Alternate opening")

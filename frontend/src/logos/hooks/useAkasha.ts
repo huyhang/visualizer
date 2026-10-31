@@ -1,16 +1,15 @@
 // The Akasha tab's subject: nothing yet, words the writer is looking up, or a
-// phrase already linked. Lookups go through the permission-filtered entity
+// phrase linked in the prose. Lookups go through the permission-filtered entity
 // search, which prefers the book's own world.
 
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import type { Range } from "../editor/positions";
 import type { MentionAt } from "../editor/mentions";
 import { useDeps } from "../deps";
 
 export type AkashaSubject =
   | { kind: "idle" }
-  | { kind: "lookup"; text: string; range: Range; linkable: boolean }
+  | { kind: "lookup"; text: string }
   | { kind: "mention"; mention: MentionAt };
 
 /** Words as a lookup query: whitespace collapsed; null when empty or too long to be a name. */

@@ -1,5 +1,5 @@
-"""Writer-only aids: Akasha entity lookup, the scenes beside the prose, and
-private writing review."""
+"""Writer-only aids: Akasha entity lookup and the articles linked to a section,
+the scenes beside the prose, and private writing review."""
 
 from flask import jsonify, request
 from flask_login import current_user, login_required
@@ -8,6 +8,7 @@ from .errors import InvalidSearch
 from .richtext import validate_document
 from .routing import (
     BOOK,
+    SECTION,
     VOLUME,
     RouteDeps,
     authorize,
@@ -23,6 +24,7 @@ def register_review_routes(app, csrf, deps: RouteDeps):
     manuscripts = deps.manuscripts
     articles = deps.articles
     volumes = deps.volumes
+    sections = deps.sections
     writing_advisor = deps.writing_advisor
     series_review = deps.series_review
 
@@ -66,6 +68,16 @@ def register_review_routes(app, csrf, deps: RouteDeps):
         """Every scene in the book, for choosing the ones a section tells."""
         authorize(auth_store, "write", book)
         return jsonify(volumes.scene_choices(book))
+
+    @app.get(SECTION + "/ui/linked-articles")
+    @csrf.exempt
+    @login_required
+    def writer_linked_articles(book, volume, section):
+        """The Akasha articles linked to a section, titled under the writer's
+        own grants, for the writing tools beside the page."""
+        authorize(auth_store, "write", book)
+        grants = auth_store.grants_for(current_user.username)
+        return jsonify(sections.linked_articles(book, volume, section, grants))
 
     @app.post(BOOK + "/ui/writing-review")
     @csrf.exempt

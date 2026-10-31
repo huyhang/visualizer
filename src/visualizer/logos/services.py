@@ -55,6 +55,18 @@ def _ref_key(ref: dict) -> tuple[str, str, str]:
     return (ref["database"], ref["collection"], ref["id"])
 
 
+def section_refs(record: dict) -> list[dict]:
+    """Every Akasha article a section names: those linked to the section as a
+    whole first, then the ones its prose mentions, each once."""
+    found: list[dict] = []
+    seen: set[tuple[str, str, str]] = set()
+    for ref in [*record.get("articles", []), *article_refs(record["document"])]:
+        if _ref_key(ref) not in seen:
+            seen.add(_ref_key(ref))
+            found.append(dict(ref))
+    return found
+
+
 class _Service:
     def __init__(self, store, chronos, articles):
         self.store = store
@@ -136,7 +148,7 @@ class _Service:
     ) -> list[dict]:
         records = self._ordered_sections(book, volume_record)
         numbers = section_numbers(records)
-        refs_per_section = [article_refs(row["document"]) for row in records]
+        refs_per_section = [section_refs(row) for row in records]
         missing = self._missing_refs(
             [ref for refs in refs_per_section for ref in refs]
         )
@@ -341,7 +353,7 @@ class ManuscriptService(_Service):
         ]
         by_id = {row["section"]: row for row in sections}
         missing = self._missing_refs(
-            [ref for row in sections for ref in article_refs(row["document"])]
+            [ref for row in sections for ref in section_refs(row)]
         )
         dangling = []
         totals = {"words": 0, "sections": 0}
@@ -354,7 +366,7 @@ class ManuscriptService(_Service):
                 totals["words"] += word_count(row["document"])
                 unresolved = [
                     ref
-                    for ref in article_refs(row["document"])
+                    for ref in section_refs(row)
                     if _ref_key(ref) in missing
                 ]
                 if unresolved:
@@ -658,6 +670,36 @@ class SectionService(_Service):
             "scenes": [cards[event] for event in wanted],
         }
 
+    def linked_articles(
+        self, book: str, volume_id: str, section_id: str, grants: list[dict]
+    ) -> dict:
+        """The articles linked to the section, as the writing tools list them.
+
+        Each is titled only where ``grants`` may read it. One that is gone is
+        ``missing``; one that is there but not readable has no title and is
+        not missing -- the writer can still take the link off.
+        """
+        self._book(book)
+        self._require_volume(book, volume_id)
+        record = self._require_section(book, volume_id, section_id)
+        refs = list(record.get("articles", []))
+        missing = self._missing_refs(refs)
+        found = self.articles.review_articles(refs, grants)
+        return {
+            "book": book,
+            "volume": volume_id,
+            "section": section_id,
+            "rev": record["rev"],
+            "articles": [
+                {
+                    **ref,
+                    "title": (found.get(_ref_key(ref)) or {}).get("title"),
+                    "missing": _ref_key(ref) in missing,
+                }
+                for ref in refs
+            ],
+        }
+
     def update(
         self,
         book: str,
@@ -719,7 +761,9 @@ class SectionService(_Service):
         current = self._require_section(book, volume_id, section_id)
         if not isinstance(payload, dict):
             raise InvalidSection("A section metadata body must be a JSON object.")
-        unexpected = sorted(set(payload) - {"title", "overview", "event_ids"})
+        unexpected = sorted(
+            set(payload) - {"title", "overview", "event_ids", "articles"}
+        )
         if unexpected:
             raise InvalidSection(
                 "A section metadata body contains unsupported fields.",
@@ -730,6 +774,7 @@ class SectionService(_Service):
             "title": payload.get("title", current.get("title")),
             "overview": payload.get("overview", current.get("overview", "")),
             "event_ids": payload.get("event_ids", current.get("event_ids", [])),
+            "articles": payload.get("articles", current.get("articles", [])),
             "document": current["document"],
         }
         incoming = validate_section_payload(section_id, body)
@@ -1098,7 +1143,8 @@ class SectionService(_Service):
         section = validate_section_payload(
             section_id,
             {key: target.get(key) for key in
-             ("kind", "title", "overview", "event_ids", "document")},
+             ("kind", "title", "overview", "event_ids", "articles", "document")
+             if key in target},
         )
         self._check_kind(book, volume_record, section, ignore=section_id)
         self._check_events(book, section.event_ids)
@@ -1140,15 +1186,12 @@ class SectionService(_Service):
     def _present_one(self, book: str, volume_id: str, record: dict) -> dict:
         record = self._with_primary_document(record)
         volume_record = self.store.get_volume(book, volume_id)
-        missing = self._missing_refs(article_refs(record["document"]))
+        refs = section_refs(record)
+        missing = self._missing_refs(refs)
         return present_section(
             record,
             self._section_number(book, volume_record, record["section"]),
-            [
-                ref
-                for ref in article_refs(record["document"])
-                if _ref_key(ref) in missing
-            ],
+            [ref for ref in refs if _ref_key(ref) in missing],
         )
 
     def _check_events(self, book: str, event_ids: list[str]) -> None:

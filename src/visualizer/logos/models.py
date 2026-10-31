@@ -57,6 +57,9 @@ class Section:
     overview: str = ""
     event_ids: list[str] = field(default_factory=list)
     primary_draft_id: str | None = None
+    # The Akasha articles the writer linked to the section as a whole, rather
+    # than to words in its prose. Soft references, like a mention.
+    articles: list[dict] = field(default_factory=list)
 
     def to_storage(self) -> dict:
         result = {
@@ -64,6 +67,7 @@ class Section:
             "title": self.title,
             "overview": self.overview,
             "event_ids": list(self.event_ids),
+            "articles": [dict(ref) for ref in self.articles],
             "document": self.document,
         }
         if self.primary_draft_id:
@@ -80,6 +84,7 @@ class Section:
             event_ids=list(record.get("event_ids", [])),
             document=record["document"],
             primary_draft_id=record.get("primary_draft_id"),
+            articles=[dict(ref) for ref in record.get("articles", [])],
         )
 
 

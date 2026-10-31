@@ -11,6 +11,7 @@ import type {
   Draft,
   DraftRow,
   Entity,
+  LinkedArticle,
   Manuscript,
   Review,
   ReviewIssue,
@@ -18,7 +19,7 @@ import type {
   Section,
   WriterSceneCards,
 } from "../api/types";
-import type { LogosDocument } from "../doc/types";
+import type { ArticleRef, LogosDocument } from "../doc/types";
 import { doc, para, text } from "./docs";
 
 export const AT: SectionAddress = { book: "ember", volume: "one", section: "gate" };
@@ -105,6 +106,8 @@ export interface FakeState {
   failSaves: number | null;
   sceneCards: WriterSceneCards;
   sceneChoices: SceneChoice[];
+  /** The Akasha articles linked to the open section. */
+  linked: LinkedArticle[];
 }
 
 export function fakeState(patch: Partial<FakeState> = {}): FakeState {
@@ -196,6 +199,7 @@ export function fakeState(patch: Partial<FakeState> = {}): FakeState {
       ],
     },
     sceneChoices: [],
+    linked: [],
     ...patch,
   };
 }
@@ -266,6 +270,23 @@ export function fakeApi(state: FakeState = fakeState()) {
       };
       return state.section;
     }),
+    updateSectionArticles: vi.fn(async (_at, articles, revision) => {
+      if (revision !== state.sectionRev) throw new LogosApiError(409, "Stale.");
+      state.sectionRev += 1;
+      state.section = { ...state.section, rev: state.sectionRev };
+      const same = (a: ArticleRef) => (b: ArticleRef) =>
+        a.database === b.database && a.collection === b.collection && a.id === b.id;
+      state.linked = articles.map(
+        (ref: ArticleRef) =>
+          state.linked.find(same(ref)) ?? {
+            ...ref,
+            title: state.entities.find(same(ref))?.title ?? null,
+            missing: false,
+          },
+      );
+      return state.section;
+    }),
+    linkedArticles: vi.fn(async () => structuredClone(state.linked)),
     sceneCards: vi.fn(async () => structuredClone(state.sceneCards)),
     sceneChoices: vi.fn(async () => structuredClone(state.sceneChoices)),
     drafts: vi.fn(async () => ({

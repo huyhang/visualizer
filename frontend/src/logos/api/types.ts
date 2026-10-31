@@ -99,6 +99,14 @@ export interface Entity extends ArticleRef {
   fields?: { name: string; value: string }[];
 }
 
+/** An article linked to a section as a whole, rather than to words in it. */
+export interface LinkedArticle extends ArticleRef {
+  /** Null when this writer may not read it, or it is gone. */
+  title: string | null;
+  /** Akasha no longer has it. */
+  missing: boolean;
+}
+
 // -- the Writing Coach -------------------------------------------------------------
 
 export interface CoachIssue {

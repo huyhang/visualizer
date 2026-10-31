@@ -428,6 +428,15 @@ def _drawer(page, opener: str | None) -> None:
         page.wait_for_timeout(450)
 
 
+def _to_top(page) -> None:
+    """Scroll the window, and every pane inside it, back to the top."""
+    page.evaluate("""() => {
+        window.scrollTo(0, 0);
+        for (const el of document.querySelectorAll("*")) if (el.scrollTop) el.scrollTop = 0;
+    }""")
+    page.wait_for_timeout(200)
+
+
 def _writer_page(ui: Ui):
     return per_size(window_top(560, left=216, top=54), window())
 
@@ -463,7 +472,9 @@ def the_writing_page(ui: Ui, cam: Camera) -> None:
               rings=[lambda page: page.locator(".lw-save")])
     bar = lambda page: page.locator(".lw-format")
     cam.shoot("the-writing-page/format", element(bar, pad=10), rings=[bar])
-    cam.shoot("the-writing-page/made", _writer_page(ui))
+    # The format bar's close-up scrolled the page to it; the whole page is shown
+    # from the top, scene strip and all.
+    cam.shoot("the-writing-page/made", _writer_page(ui), prepare=_to_top)
 
 
 def your_world_beside_you(ui: Ui, cam: Camera) -> None:
@@ -488,11 +499,11 @@ def your_world_beside_you(ui: Ui, cam: Camera) -> None:
               rings=[lambda page: ui.button("Open article")],
               prepare=lambda page: _drawer(page, "Open writing tools"))
     _drawer(ui.page, None)
-    ui.press("Link mention")
+    ui.press("Link to chapter")
     ui.page.wait_for_timeout(1200)
-    cam.shoot("your-world-beside-you/linked", around(paragraph, pad=24),
-              rings=[lambda page: page.locator(".ProseMirror .entity-mention").first],
-              prepare=lambda page: _drawer(page, None))
+    cam.shoot("your-world-beside-you/linked", per_size(element(panel), window()),
+              rings=[lambda page: page.locator(".lw-linked")],
+              prepare=lambda page: _drawer(page, "Open writing tools"))
 
 
 def chapter_after_chapter(ui: Ui, cam: Camera) -> None:

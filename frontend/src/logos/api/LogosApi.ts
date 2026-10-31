@@ -10,6 +10,7 @@ import type {
   DraftListing,
   Entity,
   IssueStatus,
+  LinkedArticle,
   Manuscript,
   Review,
   ReviewIssue,
@@ -55,6 +56,15 @@ export interface LogosApi {
     eventIds: string[],
     revision: number,
   ): Promise<SectionSummary>;
+
+  /** Link Akasha articles to the section as a whole, in the order given. */
+  updateSectionArticles(
+    at: SectionAddress,
+    articles: ArticleRef[],
+    revision: number,
+  ): Promise<SectionSummary>;
+  /** The articles linked to the section, titled as this writer may read them. */
+  linkedArticles(at: SectionAddress): Promise<LinkedArticle[]>;
 
   /** The scene cards for every section of the volume, in order. */
   sceneCards(book: string, volume: string): Promise<WriterSceneCards>;

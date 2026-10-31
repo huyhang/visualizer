@@ -148,6 +148,25 @@ def test_the_preview_shows_what_would_be_sent_and_what_would_not(client):
         ("ember/characters/ghost", "unavailable")}
 
 
+def test_articles_linked_to_the_chapter_are_sent_before_the_ones_it_mentions(client):
+    rev = client.get(SECTION_URL).get_json()["rev"]
+    assert client.put(
+        SECTION_URL + "/metadata",
+        json={"articles": [{"database": WORLD, "collection": "places", "id": "highkeep"},
+                           {"database": WORLD, "collection": "characters", "id": "lyra"}]},
+        headers={"If-Match": f'"{rev}"'},
+    ).status_code == 200
+
+    body = client.get(REVIEWS + "/references").get_json()
+
+    assert [(r["ref"], r["kind"]) for r in body["references"]] == [
+        ("ember/deviations/qi-lanterns", "deviation"),
+        ("ember/watchlist/crops", "watchlist"),
+        ("ember/places/highkeep", "canon"),
+        ("ember/characters/lyra", "canon"),
+        ("ember/research/song-tea", "research")]
+
+
 def test_more_articles_can_be_included(client):
     body = client.get(REVIEWS + "/references?include=ember/places/highkeep").get_json()
     assert body["references"][-1] == {"ref": "ember/places/highkeep", "kind": "canon",

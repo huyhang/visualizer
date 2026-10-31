@@ -8,7 +8,8 @@
 //   useCoach         the local Writing Coach
 //   useEditorReview  the editor on the GPU box
 //   useNoteActions   accepting and setting aside notes
-//   useAkasha        looking words up, and linked phrases
+//   useAkasha        looking words up, and phrases linked in the prose
+//   useLinkedArticles  the articles linked to the section as a whole
 
 import type { Editor } from "@tiptap/core";
 import { EditorContent } from "@tiptap/react";
@@ -22,11 +23,11 @@ import {
   type MouseEvent,
 } from "react";
 import { messageOf } from "../../api/errors";
-import type { Entity } from "../../api/types";
+import type { Entity, LinkedArticle } from "../../api/types";
 import { pmToLogos } from "../../doc/convert";
 import { wordCount } from "../../doc/text";
 import type { Placement } from "../../editor/annotations";
-import { linkable, mentionAt } from "../../editor/mentions";
+import { mentionAt } from "../../editor/mentions";
 import { caretAt, caretPos, findBlock } from "../../editor/positions";
 import { useNotify } from "../../../components/ui/Toaster";
 import { useDeps } from "../../deps";
@@ -38,6 +39,7 @@ import { useDrawers } from "../../hooks/useDrawers";
 import { useEditorReview } from "../../hooks/useEditorReview";
 import { useKeyboardOffset } from "../../hooks/useKeyboardOffset";
 import { useLatest } from "../../hooks/useLatest";
+import { useLinkedArticles } from "../../hooks/useLinkedArticles";
 import { useNoteActions } from "../../hooks/useNoteActions";
 import { useWriterEditor } from "../../hooks/useWriterEditor";
 import type { Workspace as Loaded } from "../../hooks/useWorkspace";
@@ -100,6 +102,7 @@ export function Workspace({ workspace, route }: { workspace: Loaded; route: Rout
     [session.drafts.rows],
   );
   const akasha = useAkasha(at.book);
+  const linked = useLinkedArticles(at, session.actions.setArticles);
   const [askName, nameDialog] = useNameDialog();
 
   const [placement, setPlacement] = useState<Placement>({});
@@ -142,12 +145,7 @@ export function Workspace({ workspace, route }: { workspace: Loaded; route: Rout
     const { from, to } = view.state.selection;
     const text = from === to ? null : lookupText(view.state.doc.textBetween(from, to, " "));
     if (!text) return false;
-    akasha.setSubject({
-      kind: "lookup",
-      text,
-      range: { from, to },
-      linkable: linkable(view.state, { from, to }),
-    });
+    akasha.setSubject({ kind: "lookup", text });
     openTools("akasha");
     return true;
   }, [akasha, openTools]);
@@ -246,22 +244,16 @@ export function Workspace({ workspace, route }: { workspace: Loaded; route: Rout
 
   // -- Akasha ---------------------------------------------------------------------
 
-  const link = (entity: Entity) => {
-    if (akasha.subject.kind !== "lookup") return;
-    const { range, text } = akasha.subject;
-    const still =
-      lookupText(editor.state.doc.textBetween(range.from, range.to, " ")) === text;
-    if (!still || !editor.commands.linkMention(range, entity)) {
+  const link = (entity: Entity) => attempt(() => linked.link(entity));
+
+  const unlinkArticle = (ref: LinkedArticle) =>
+    attempt(async () => {
+      await linked.unlink(ref);
       notify({
-        title: "Those words have changed",
-        description: "Select them again to link them.",
-        tone: "danger",
+        title: `${ref.title ?? "The article"} is no longer linked`,
+        description: `It is no longer listed beside this ${section.kind}.`,
       });
-      return;
-    }
-    const linked = mentionAt(editor.state, range.from);
-    akasha.setSubject(linked ? { kind: "mention", mention: linked } : { kind: "idle" });
-  };
+    });
 
   const unlink = () => {
     if (akasha.subject.kind !== "mention") return;
@@ -467,7 +459,11 @@ export function Workspace({ workspace, route }: { workspace: Loaded; route: Rout
             <AkashaTab
               subject={akasha.subject}
               results={akasha.results}
+              linked={linked.linked}
+              where={section.kind}
+              busy={linked.busy}
               onLink={link}
+              onUnlinkArticle={unlinkArticle}
               onOpen={openArticle}
               onUnlink={unlink}
             />

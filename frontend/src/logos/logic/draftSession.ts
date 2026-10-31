@@ -11,7 +11,7 @@
 import type { LogosApi, SectionAddress } from "../api/LogosApi";
 import { saveFailure } from "../api/errors";
 import type { Draft, DraftListing, Manuscript, Section } from "../api/types";
-import type { LogosDocument } from "../doc/types";
+import type { ArticleRef, LogosDocument } from "../doc/types";
 import type { Caret } from "../editor/positions";
 import { createAutosave, type SaveState, type Timer } from "./autosave";
 import { promoted, renamed, saved, sectionChanged, type DraftState } from "./drafts";
@@ -160,6 +160,13 @@ export function createDraftSession(input: SessionInput, deps: SessionDeps) {
     setScenes: async (eventIds: string[]) => {
       if (!(await settled())) return false;
       const moved = await api.updateSectionScenes(at, eventIds, state.drafts.sectionRev);
+      update((drafts) => sectionChanged(drafts, moved.rev));
+      return true;
+    },
+    /** Say which Akasha articles the section links to, as `setScenes` does. */
+    setArticles: async (articles: ArticleRef[]) => {
+      if (!(await settled())) return false;
+      const moved = await api.updateSectionArticles(at, articles, state.drafts.sectionRev);
       update((drafts) => sectionChanged(drafts, moved.rev));
       return true;
     },

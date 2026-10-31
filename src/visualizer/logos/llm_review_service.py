@@ -314,7 +314,7 @@ class LlmReviewService:
         found = self.drafts.get(book, volume, section, draft_id, writer)
         title = current.get("title") or current["kind"].title()
         return {"draft": draft_id, "rev": found["rev"], "document": found["document"],
-                "title": title}
+                "title": title, "articles": current.get("articles", [])}
 
     def _current(self, record: dict, writer: str) -> dict | None:
         """The reviewed draft as it is now, or None if it is gone."""
@@ -328,7 +328,9 @@ class LlmReviewService:
         world = self.manuscripts.require(book).get("world")
         return assemble_references(
             self.articles, self.auth_store.grants_for(writer), world,
-            article_refs(target["document"]), settings["include"])
+            # Linked to the section first, then named in the prose.
+            [*target["articles"], *article_refs(target["document"])],
+            settings["include"])
 
     def _summary(self, record: dict) -> dict:
         issues = record.get("issues") or []
