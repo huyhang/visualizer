@@ -14,9 +14,10 @@ Logos that only show up at scale are actually visible:
 * **Every chapter attached to a real scene**, including the disputed sighting
   that ``seed_demo.py`` deliberately leaves in conflict -- so the manuscript has
   prose written from a scene the timeline itself flags.
-* **Prose that mentions the canon**: characters, the Seal and the three
-  locations, as soft references. Delete one of those articles in Akasha and the
-  report here lists the chapters that mention it, without touching the prose.
+* **Chapters linked to the canon**: each lists the characters, the Seal and
+  the locations its prose names, as soft references beside the chapter -- the
+  words themselves stay plain. Delete one of those articles in Akasha and the
+  report here lists the chapters that link it, without touching the prose.
 * **Private reader data for Mara**: paragraph notes, bookmarks, series
   checklists, and section checklists in both volumes, ready to inspect in Full
   view.
@@ -56,29 +57,40 @@ def text(value, *marks):
     return node
 
 
-def who(article, label):
-    """A soft mention of a character in the canon."""
+def _named(collection, article, label):
+    """A name in the canon: plain words in the prose, and the article it names,
+    which ``section`` lifts out and links to the chapter as a whole."""
     return {
-        "type": "mention",
-        "ref": {"database": WORLD, "collection": "characters", "id": article},
+        "type": "text",
         "text": label,
+        "_names": {"database": WORLD, "collection": collection, "id": article},
     }
+
+
+def who(article, label):
+    return _named("characters", article, label)
 
 
 def where(article, label):
-    return {
-        "type": "article_link",
-        "ref": {"database": WORLD, "collection": "locations", "id": article},
-        "text": label,
-    }
+    return _named("locations", article, label)
 
 
 def thing(article, label):
-    return {
-        "type": "article_link",
-        "ref": {"database": WORLD, "collection": "items", "id": article},
-        "text": label,
-    }
+    return _named("items", article, label)
+
+
+def _linked(node, found):
+    """Strip the names out of ``node``, collecting each article once, in order."""
+    if isinstance(node, dict):
+        ref = node.pop("_names", None)
+        if ref is not None and ref not in found:
+            found.append(ref)
+        for value in node.values():
+            _linked(value, found)
+    elif isinstance(node, list):
+        for value in node:
+            _linked(value, found)
+    return found
 
 
 def para(node_id, *nodes):
@@ -110,6 +122,7 @@ def document(*blocks):
 
 
 def section(section_id, kind, title, overview, events, *blocks):
+    prose = document(*blocks)
     return {
         "id": section_id,
         "body": {
@@ -117,7 +130,8 @@ def section(section_id, kind, title, overview, events, *blocks):
             "title": title,
             "overview": overview,
             "event_ids": list(events),
-            "document": document(*blocks),
+            "articles": _linked(prose, []),
+            "document": prose,
         },
     }
 
@@ -652,7 +666,7 @@ def main():
     dangling = report["sections_with_missing_refs"] if status == 200 else []
     if dangling:
         print()
-        print(f"  {len(dangling)} section(s) mention an article that is missing:")
+        print(f"  {len(dangling)} section(s) link an article that is missing:")
         for row in dangling:
             names = ", ".join(ref["id"] for ref in row["missing_refs"])
             print(f"    {row['volume']}/{row['section']}: {names}")

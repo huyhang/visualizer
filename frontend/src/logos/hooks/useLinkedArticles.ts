@@ -4,10 +4,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import type { SectionAddress } from "../api/LogosApi";
-import type { LinkedArticle } from "../api/types";
+import type { Entity, LinkedArticle } from "../api/types";
 import type { ArticleRef } from "../doc/types";
 import { useDeps } from "../deps";
-import { isLinked, refOf, sameArticle, withArticle, withoutArticle } from "../logic/linked";
+import { isLinked, refOf, withArticle, withoutArticle } from "../logic/linked";
 
 export function useLinkedArticles(
   at: SectionAddress,
@@ -21,21 +21,15 @@ export function useLinkedArticles(
   const [busy, setBusy] = useState(false);
   const rows = linked.data ?? [];
 
-  /** Save `next`, showing it at once with the titles already known. */
+  /** Save `next`, showing it at once with what is already known of each. */
   const change = async (next: ArticleRef[], known: LinkedArticle[]) => {
     setBusy(true);
     try {
       if (!(await save(next)))
         throw new Error("Your words could not be saved, so the link was not changed.");
+      // `known` is the list as it was, plus any article just linked, last.
       client.setQueryData<LinkedArticle[]>(key, () =>
-        next.map(
-          (ref) =>
-            known.find((row) => sameArticle(row, ref)) ?? {
-              ...ref,
-              title: null,
-              missing: false,
-            },
-        ),
+        known.filter((row) => isLinked(next, row)),
       );
     } finally {
       setBusy(false);
@@ -48,10 +42,17 @@ export function useLinkedArticles(
     linked,
     busy,
     isLinked: (ref: ArticleRef) => isLinked(rows, ref),
-    link: (article: ArticleRef & { title: string }) =>
+    link: (article: Entity) =>
       change(withArticle(rows, article), [
         ...rows,
-        { ...refOf(article), title: article.title, missing: false },
+        {
+          ...refOf(article),
+          database_title: article.database_title,
+          collection_title: article.collection_title,
+          title: article.title,
+          fields: article.fields ?? [],
+          missing: false,
+        },
       ]),
     unlink: (ref: ArticleRef) => change(withoutArticle(rows, ref), rows),
   };

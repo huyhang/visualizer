@@ -43,6 +43,7 @@ import { useLinkedArticles } from "../../hooks/useLinkedArticles";
 import { useNoteActions } from "../../hooks/useNoteActions";
 import { useWriterEditor } from "../../hooks/useWriterEditor";
 import type { Workspace as Loaded } from "../../hooks/useWorkspace";
+import { refOf } from "../../logic/linked";
 import { coachNote, editorNote, type Note } from "../../logic/notes";
 import { sectionLabel, sectionName, singleLine } from "../../logic/outline";
 import type { Layers } from "../../logic/preferences";
@@ -463,6 +464,7 @@ export function Workspace({ workspace, route }: { workspace: Loaded; route: Rout
               where={section.kind}
               busy={linked.busy}
               onLink={link}
+              onPreview={(row) => akasha.setSubject({ kind: "linked", ref: refOf(row) })}
               onUnlinkArticle={unlinkArticle}
               onOpen={openArticle}
               onUnlink={unlink}

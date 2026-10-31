@@ -91,7 +91,15 @@ describe("the Akasha tab", () => {
     title: "Lin Qingyu",
     database_title: "Ember",
     collection_title: "Characters",
+    fields: [{ name: "Home", value: "Ashfall" }],
   };
+  /** A linked row: titled and readable unless the patch says otherwise. */
+  const row = (patch: Partial<LinkedArticle> = {}): LinkedArticle => ({
+    ...entity,
+    fields: entity.fields ?? [],
+    missing: false,
+    ...patch,
+  });
   const tab = (patch: Partial<Parameters<typeof AkashaTab>[0]> = {}) =>
     render(
       <AkashaTab
@@ -101,6 +109,7 @@ describe("the Akasha tab", () => {
         where="chapter"
         busy={false}
         onLink={vi.fn()}
+        onPreview={vi.fn()}
         onUnlinkArticle={vi.fn()}
         onOpen={vi.fn()}
         onUnlink={vi.fn()}
@@ -126,7 +135,7 @@ describe("the Akasha tab", () => {
 
     tab({
       results: results({ data: [entity] }),
-      linked: linked({ data: [{ ...entity, title: "Lin Qingyu", missing: false }] }),
+      linked: linked({ data: [row()] }),
     });
     expect(screen.queryByRole("button", { name: "Link to chapter" })).toBeNull();
     expect(
@@ -136,25 +145,20 @@ describe("the Akasha tab", () => {
 
   it("lists what is linked, even one it cannot open or that is gone", () => {
     const onUnlinkArticle = vi.fn();
-    const gone = {
-      database: "ember",
+    const gone = row({
       collection: "places",
+      collection_title: "Places",
       id: "old-mill",
       title: null,
+      fields: [],
       missing: true,
-    };
+    });
     tab({
       subject: { kind: "idle" },
       linked: linked({
         data: [
-          { ...entity, title: "Lin Qingyu", missing: false },
-          {
-            database: "ember",
-            collection: "secrets",
-            id: "x",
-            title: null,
-            missing: false,
-          },
+          row(),
+          row({ collection: "secrets", id: "x", title: null, fields: [] }),
           gone,
         ],
       }),
@@ -171,6 +175,58 @@ describe("the Akasha tab", () => {
     expect(screen.queryByRole("button", { name: "Open old-mill in Akasha" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Unlink old-mill" }));
     expect(onUnlinkArticle).toHaveBeenCalledWith(gone);
+  });
+
+  it("previews a linked article when its name is chosen, and nothing it cannot open", () => {
+    const onPreview = vi.fn();
+    const hidden = row({ collection: "secrets", id: "x", title: null, fields: [] });
+    tab({
+      subject: { kind: "idle" },
+      linked: linked({ data: [row(), hidden] }),
+      onPreview,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^Lin Qingyu/ }));
+    expect(onPreview).toHaveBeenCalledWith(row());
+    expect(screen.queryByRole("button", { name: /^An article you can.t open/ })).toBeNull();
+  });
+
+  it("shows the previewed article's facts, to open or unlink", () => {
+    const onOpen = vi.fn();
+    const onUnlinkArticle = vi.fn();
+    tab({
+      subject: {
+        kind: "linked",
+        ref: { database: "ember", collection: "characters", id: "lin" },
+      },
+      linked: linked({ data: [row()] }),
+      onOpen,
+      onUnlinkArticle,
+    });
+
+    const card = screen.getByRole("article");
+    expect(card).toHaveTextContent("Lin Qingyu");
+    expect(card).toHaveTextContent("Ember / Characters");
+    expect(card).toHaveTextContent("HomeAshfall");
+    expect(
+      screen.getByRole("button", { name: /^Lin Qingyu/, current: true }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open article" }));
+    expect(onOpen).toHaveBeenCalledWith(row());
+    fireEvent.click(screen.getByRole("button", { name: "Unlink from chapter" }));
+    expect(onUnlinkArticle).toHaveBeenCalledWith(row());
+  });
+
+  it("goes back to the hint once the previewed article is unlinked", () => {
+    tab({
+      subject: {
+        kind: "linked",
+        ref: { database: "ember", collection: "characters", id: "lin" },
+      },
+      linked: linked({ data: [] }),
+    });
+    expect(screen.queryByRole("article")).toBeNull();
+    expect(screen.getByText(/to look it up in/)).toBeInTheDocument();
   });
 
   it("says when nothing is linked yet", () => {

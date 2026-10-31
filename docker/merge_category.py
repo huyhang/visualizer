@@ -22,7 +22,8 @@ second and leaves nothing pointing at the old name:
   see the moved articles. The run lists each such person before anything is
   written.
 
-Chronos scenes, Prithvi pins and Logos prose can name an article too. This
+Chronos scenes, Prithvi pins and Logos -- its prose, and the articles linked
+to a section -- can name an article too. This
 script does not rewrite those: it looks, and if any of them points into the
 old category it stops and says where, rather than leave them dangling.
 
@@ -315,7 +316,12 @@ def _references_elsewhere(client, world, source) -> list[str]:
     for name in (SECTION_REVISIONS, DRAFT_REVISIONS):
         for revision in client[LOGOS_DB][name].find():
             where = (revision.get("book"), revision.get("section"))
-            if where not in seen and _mentions(revision.get("body"), world, source):
+            body = revision.get("body") or {}
+            linked = body.get("articles") or [] if isinstance(body, dict) else []
+            if where not in seen and (
+                _mentions(body, world, source)
+                or any(_points_at(ref, world, source) for ref in linked)
+            ):
                 seen.add(where)
                 places.append(f"Logos section '{where[1]}' in book '{where[0]}'")
     return places

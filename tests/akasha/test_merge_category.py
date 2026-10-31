@@ -160,6 +160,17 @@ def test_logos_prose_naming_the_twin_stops_the_run(script, mongo_client, docs):
     assert any("Logos section 's1'" in line for line in report.lines)
 
 
+def test_an_article_linked_to_a_logos_section_stops_the_run(script, mongo_client, docs):
+    mongo_client["_logos"]["section_revisions"].insert_one({
+        "book": "b", "section": "s2",
+        "body": {"articles": [{"database": WORLD, "collection": "Characters", "id": "lyra"}],
+                 "document": {"type": "doc", "content": []}},
+    })
+    report = _merge(script, mongo_client)
+    assert report.blocked
+    assert any("Logos section 's2'" in line for line in report.lines)
+
+
 def test_a_run_that_stopped_half_way_finishes(script, mongo_client, docs):
     """A copy already in place, identical to what the move would write, is the
     previous run's -- not a second article under the same id."""

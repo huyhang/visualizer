@@ -1118,7 +1118,7 @@
     "/books/{book}/volumes/{volume}/sections/{section}/ui/linked-articles": {
       "get": {
         "tags": ["writer"], "summary": "The Akasha articles linked to a section",
-        "description": "In the order the section lists them, for the writing tools beside the page. Each is titled only where the writer asking may read it; one that is gone is `missing`. They are set with `PUT .../metadata` and `articles`. Needs write on the book.",
+        "description": "In the order the section lists them, for the writing tools beside the page. Each is titled, with the facts its preview shows, only where the writer asking may read it; one that is gone is `missing`. They are set with `PUT .../metadata` and `articles`. Needs write on the book.",
         "parameters": [{ "$ref": "#/components/parameters/Book" }, { "$ref": "#/components/parameters/Volume" }, { "$ref": "#/components/parameters/Section" }],
         "responses": {
           "200": { "description": "The linked articles.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LinkedArticles" } } } },
@@ -2770,9 +2770,16 @@
           { "$ref": "#/components/schemas/ArticleRef" },
           {
             "type": "object",
-            "required": ["title", "missing"],
+            "required": ["database_title", "collection_title", "title", "fields", "missing"],
             "properties": {
+              "database_title": { "type": "string" },
+              "collection_title": { "type": "string" },
               "title": { "type": "string", "nullable": true, "description": "Null when the writer asking may not read the article, or it is gone." },
+              "fields": {
+                "type": "array",
+                "description": "The article's own facts, named and clipped, as an entity lookup gives them, for a preview beside the prose. Empty when it is not readable.",
+                "items": { "type": "object", "required": ["name", "value"], "properties": { "name": { "type": "string" }, "value": { "type": "string" } } }
+              },
               "missing": { "type": "boolean", "description": "The article no longer exists in Akasha." }
             }
           }

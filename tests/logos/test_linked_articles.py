@@ -40,10 +40,19 @@ def test_linking_articles_is_a_metadata_edit_that_leaves_the_prose_alone(section
     assert section.get(SECTION_URL).get_json()["articles"] == [GATE, LYRA]
 
 
-def test_the_tools_list_them_in_order_titled_and_flag_one_that_is_gone(
+def labels(ref):
+    return {
+        "database_title": "Ember",
+        "collection_title": ref["collection"].title(),
+    }
+
+
+def test_the_tools_list_them_in_order_with_what_a_preview_shows(
     section, article_gateway
 ):
-    article_gateway.add(WORLD, "places", "gate", {"title": "The Broken Gate"})
+    article_gateway.add(
+        WORLD, "places", "gate", {"title": "The Broken Gate", "region": "North"}
+    )
     link(section, [GATE, GONE, LYRA])
 
     body = section.get(LINKED).get_json()
@@ -51,9 +60,10 @@ def test_the_tools_list_them_in_order_titled_and_flag_one_that_is_gone(
     assert body["section"] == SECTION
     assert body["rev"] == section.get(SECTION_URL).get_json()["rev"]
     assert body["articles"] == [
-        {**GATE, "title": "The Broken Gate", "missing": False},
-        {**GONE, "title": None, "missing": True},
-        {**LYRA, "title": "Lyra", "missing": False},
+        {**GATE, **labels(GATE), "title": "The Broken Gate",
+         "fields": [{"name": "Region", "value": "North"}], "missing": False},
+        {**GONE, **labels(GONE), "title": None, "fields": [], "missing": True},
+        {**LYRA, **labels(LYRA), "title": "Lyra", "fields": [], "missing": False},
     ]
 
 
@@ -153,7 +163,7 @@ def test_titles_come_only_from_articles_the_writer_may_read(
         ("characters", "lyra", "Lyra Venn"), ("places", "gate", "The Broken Gate"),
     ):
         documents.create_collection(WORLD, collection)
-        documents.create(WORLD, collection, article, {"title": title})
+        documents.create(WORLD, collection, article, {"title": title, "home": "Ashfall"})
     auth_store.grant_owner("mara", WORLD, "characters", None, list(ALL_PERMS))
     chronos = FakeChronosGateway()
     chronos.add_book(BOOK, "The Ember Pact", world=WORLD)
@@ -167,7 +177,8 @@ def test_titles_come_only_from_articles_the_writer_may_read(
     body = sections.linked_articles(BOOK, VOLUME, SECTION, auth_store.grants_for("mara"))
 
     assert body["articles"] == [
-        # There, but not the writer's to read: no title, and not missing.
-        {**GATE, "title": None, "missing": False},
-        {**LYRA, "title": "Lyra Venn", "missing": False},
+        # There, but not the writer's to read: no title or facts, and not missing.
+        {**GATE, **labels(GATE), "title": None, "fields": [], "missing": False},
+        {**LYRA, **labels(LYRA), "title": "Lyra Venn",
+         "fields": [{"name": "Home", "value": "Ashfall"}], "missing": False},
     ]

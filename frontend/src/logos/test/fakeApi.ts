@@ -276,14 +276,19 @@ export function fakeApi(state: FakeState = fakeState()) {
       state.section = { ...state.section, rev: state.sectionRev };
       const same = (a: ArticleRef) => (b: ArticleRef) =>
         a.database === b.database && a.collection === b.collection && a.id === b.id;
-      state.linked = articles.map(
-        (ref: ArticleRef) =>
+      state.linked = articles.map((ref: ArticleRef) => {
+        const entity = state.entities.find(same(ref));
+        return (
           state.linked.find(same(ref)) ?? {
             ...ref,
-            title: state.entities.find(same(ref))?.title ?? null,
+            database_title: entity?.database_title ?? ref.database,
+            collection_title: entity?.collection_title ?? ref.collection,
+            title: entity?.title ?? null,
+            fields: entity?.fields ?? [],
             missing: false,
-          },
-      );
+          }
+        );
+      });
       return state.section;
     }),
     linkedArticles: vi.fn(async () => structuredClone(state.linked)),

@@ -18,6 +18,17 @@ const LIN: Entity = {
 };
 const LIN_REF = { database: "ember", collection: "characters", id: "lin" };
 const TEA = { database: "ember", collection: "research", id: "tea" };
+const SONG_TEA = {
+  ...TEA,
+  database_title: "Ember",
+  collection_title: "Research",
+  title: "Song tea",
+  fields: [{ name: "Body", value: "Tea was powdered and whisked." }],
+  missing: false,
+};
+
+/** The writing tools beside the page; the scene cards above it are articles too. */
+const tools = () => within(screen.getByRole("complementary", { name: "Writing tools" }));
 
 async function opened(setup: Parameters<typeof renderWriter>[0] = {}) {
   const view = renderWriter(setup);
@@ -63,7 +74,7 @@ describe("linking an article to the chapter", () => {
     const { editor, user, api } = await opened({
       state: {
         entities: [LIN],
-        linked: [{ ...TEA, title: "Song tea", missing: false }],
+        linked: [SONG_TEA],
       },
     });
     const list = await screen.findByRole("region", { name: "Linked to this chapter" });
@@ -86,6 +97,19 @@ describe("linking an article to the chapter", () => {
       ).not.toHaveTextContent("Song tea"),
     );
     expect(await screen.findByText("Song tea is no longer linked")).toBeInTheDocument();
+  });
+
+  it("previews a linked article in the tab when its name is clicked", async () => {
+    const { user } = await opened({ state: { linked: [SONG_TEA] } });
+    const list = await screen.findByRole("region", { name: "Linked to this chapter" });
+
+    await user.click(await within(list).findByRole("button", { name: /^Song tea/ }));
+
+    const card = tools().getByRole("article");
+    expect(card).toHaveTextContent("Song tea");
+    expect(card).toHaveTextContent("Tea was powdered and whisked.");
+    await user.click(within(card).getByRole("button", { name: "Unlink from chapter" }));
+    await waitFor(() => expect(tools().queryByRole("article")).toBeNull());
   });
 
   it("says so when the link could not be saved, and lists nothing new", async () => {

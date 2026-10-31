@@ -246,7 +246,7 @@ class InProcessArticleGateway:
                             "collection_title": derive_title(collection),
                             "id": record["id"],
                             "title": title,
-                            "fields": _article_fields(body),
+                            "fields": article_fields(body),
                         }
                     )
         return sorted(
@@ -441,7 +441,7 @@ def _clip(text: str, limit: int) -> str:
     return clean if len(clean) <= limit else clean[: limit - 1].rstrip() + "…"
 
 
-def _article_fields(body: dict, limit: int = 6) -> list[dict]:
+def article_fields(body: dict, limit: int = 6) -> list[dict]:
     """The article's own fields, named and clipped, for a glance beside prose.
 
     Kept as pairs rather than flattened into one string: a writer checking a

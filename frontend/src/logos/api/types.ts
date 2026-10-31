@@ -101,8 +101,12 @@ export interface Entity extends ArticleRef {
 
 /** An article linked to a section as a whole, rather than to words in it. */
 export interface LinkedArticle extends ArticleRef {
+  database_title: string;
+  collection_title: string;
   /** Null when this writer may not read it, or it is gone. */
   title: string | null;
+  /** Its facts, for a preview; empty when it cannot be read. */
+  fields: { name: string; value: string }[];
   /** Akasha no longer has it. */
   missing: boolean;
 }

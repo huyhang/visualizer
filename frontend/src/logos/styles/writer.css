@@ -1149,6 +1149,21 @@ kbd {
   display: grid;
   flex: 1;
   min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+button.lw-linked-name {
+  cursor: pointer;
+}
+button.lw-linked-name:hover strong {
+  color: var(--accent-strong);
+}
+.lw-linked-row.is-shown {
+  background: var(--accent-soft);
 }
 .lw-linked-name strong {
   overflow: hidden;

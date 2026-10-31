@@ -11,6 +11,8 @@ compensating write that could itself fail silently.
 
 from dataclasses import replace
 
+from visualizer.akasha.labels import derive_title
+
 from .errors import (
     AlreadyExists,
     BookNotFound,
@@ -26,6 +28,7 @@ from .errors import (
     SectionNotFound,
     VolumeNotFound,
 )
+from .gateways import article_fields
 from .models import Draft, Outline, Section, Volume
 from .presenters import (
     present_draft,
@@ -65,6 +68,19 @@ def section_refs(record: dict) -> list[dict]:
             seen.add(_ref_key(ref))
             found.append(dict(ref))
     return found
+
+
+def _linked_article(ref: dict, found: dict | None, missing: set) -> dict:
+    """One linked article as the writing tools show it: named, with its facts,
+    only if ``found`` -- that is, readable."""
+    return {
+        **ref,
+        "database_title": derive_title(ref["database"]),
+        "collection_title": derive_title(ref["collection"]),
+        "title": found["title"] if found else None,
+        "fields": article_fields(found["document"]) if found else [],
+        "missing": _ref_key(ref) in missing,
+    }
 
 
 class _Service:
@@ -675,9 +691,10 @@ class SectionService(_Service):
     ) -> dict:
         """The articles linked to the section, as the writing tools list them.
 
-        Each is titled only where ``grants`` may read it. One that is gone is
-        ``missing``; one that is there but not readable has no title and is
-        not missing -- the writer can still take the link off.
+        Each is titled, and carries the facts the panel previews, only where
+        ``grants`` may read it. One that is gone is ``missing``; one that is
+        there but not readable has no title and no facts and is not missing --
+        the writer can still take the link off.
         """
         self._book(book)
         self._require_volume(book, volume_id)
@@ -691,12 +708,7 @@ class SectionService(_Service):
             "section": section_id,
             "rev": record["rev"],
             "articles": [
-                {
-                    **ref,
-                    "title": (found.get(_ref_key(ref)) or {}).get("title"),
-                    "missing": _ref_key(ref) in missing,
-                }
-                for ref in refs
+                _linked_article(ref, found.get(_ref_key(ref)), missing) for ref in refs
             ],
         }
 

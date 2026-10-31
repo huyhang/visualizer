@@ -6,7 +6,7 @@ The script uses an in-memory app on a random local port and leaves no database
 or browser state. It defaults to WebKit; set ``PLAYWRIGHT_BROWSER`` to another
 installed engine.
 
-What it walks: typing and autosave, an Akasha lookup linked as a mention, a new
+What it walks: typing and autosave, an Akasha lookup linked to the chapter, a new
 draft and the comparison, then the narrowest phone layout at the largest text
 size -- no surface overflows, the formatting bar and dialogs stay on screen,
 the drawers open and close -- and the band around the service rail's 1100px
